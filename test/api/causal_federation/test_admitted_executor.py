@@ -22,6 +22,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     open_database_coordinator,
 )
@@ -101,6 +104,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     _database_daemon_quack_sidecar_paths,
     _open_database_writer_lock,
+    _write_database_writer_lock_binding,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
@@ -189,6 +193,130 @@ def _typed_bootstrap_credentials(
         token=token,
         execution_route_policy=route_policy,
     )
+
+
+def _legacy_typed_quack_stable_binding(
+    binding: Mapping[str, Any],
+    **overrides: Any,
+) -> tuple[str, dict[str, Any]]:
+    current = dict(binding["stable_authority"])
+    authority = {
+        "interface": "TypedDatabaseTaskSourceStableQuackAuthority@1",
+        "store_id": current["store_id"],
+        "database_uuid": current["database_uuid"],
+        "schema_fingerprint": current["schema_fingerprint"],
+        "repository_id": current["repository_id"],
+        "schema_revision": current["schema_revision"],
+        "route_policy_id": binding["route_policy_id"],
+        "plan_root_cid": current["plan_root_cid"],
+        "repository_tree_id": current["repository_tree_id"],
+        "source_projection_cid": binding["source_projection_cid"],
+        **overrides,
+    }
+    return content_identity(authority), authority
+
+
+def _install_legacy_typed_quack_sidecar_binding(
+    *,
+    coordination_path: Path,
+    execution_path: Path,
+    binding_id: str,
+    authority: Mapping[str, Any],
+) -> None:
+    lock_paths = tuple(
+        sorted(
+            (
+                coordination_path.with_name(
+                    f".{coordination_path.name}.writer.lock"
+                ),
+                execution_path.with_name(
+                    f".{execution_path.name}.writer.lock"
+                ),
+            ),
+            key=str,
+        )
+    )
+    handles = [_open_database_writer_lock(path) for path in lock_paths]
+    connection = None
+    try:
+        connection = open_duckdb_connection(execution_path)
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES ('typed_quack_stable_binding_id', ?)",
+            [binding_id],
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES ('typed_quack_stable_authority', ?)",
+            [canonical_json_bytes(dict(authority)).decode("utf-8")],
+        )
+        connection.execute(
+            "DELETE FROM daemon_execution_metadata "
+            "WHERE key = 'typed_quack_stable_binding_migration'"
+        )
+        connection.execute("COMMIT")
+        for handle in handles:
+            _write_database_writer_lock_binding(handle, binding_id)
+    except BaseException:
+        if connection is not None:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    finally:
+        if connection is not None:
+            connection.close()
+        for handle in reversed(handles):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+
+
+def _replace_typed_quack_execution_metadata(
+    *,
+    coordination_path: Path,
+    execution_path: Path,
+    key: str,
+    value: str,
+) -> None:
+    lock_paths = tuple(
+        sorted(
+            (
+                coordination_path.with_name(
+                    f".{coordination_path.name}.writer.lock"
+                ),
+                execution_path.with_name(
+                    f".{execution_path.name}.writer.lock"
+                ),
+            ),
+            key=str,
+        )
+    )
+    handles = [_open_database_writer_lock(path) for path in lock_paths]
+    connection = None
+    try:
+        connection = open_duckdb_connection(execution_path)
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES (?, ?)",
+            [key, value],
+        )
+        connection.execute("COMMIT")
+    except BaseException:
+        if connection is not None:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    finally:
+        if connection is not None:
+            connection.close()
+        for handle in reversed(handles):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
 
 
 def _eventually(path: Path, process: subprocess.Popen[bytes]) -> dict[str, Any]:
@@ -1774,22 +1902,67 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 require_real_execution=True,
             ).open()
 
+        initialize_stable_metadata = (
+            DatabaseImplementationDaemon
+            ._initialize_typed_quack_execution_stable_metadata
+        )
+
+        def fail_stable_metadata_initialization(
+            _self: DatabaseImplementationDaemon,
+        ) -> None:
+            raise DatabaseImplementationAuthorityError(
+                "simulated crash before stable metadata transaction"
+            )
+
+        with monkeypatch.context() as initialization_crash:
+            initialization_crash.setattr(
+                DatabaseImplementationDaemon,
+                "_initialize_typed_quack_execution_stable_metadata",
+                fail_stable_metadata_initialization,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="simulated crash before stable metadata transaction",
+            ):
+                open_lane("initialization-crash")
+        assert initialize_stable_metadata is (
+            DatabaseImplementationDaemon
+            ._initialize_typed_quack_execution_stable_metadata
+        )
+        initialization_recovery = open_lane("initialization-crash")
+        initialization_recovery.close()
+
         authority_lane = open_lane("authority-binding")
         authority_lane.close()
+        authority_coordination = (
+            tmp_path
+            / "typed-claim-barrier-authority-binding-coordination.duckdb"
+        )
+        authority_execution = (
+            tmp_path
+            / "typed-claim-barrier-authority-binding-execution.duckdb"
+        )
+        initial_authority_binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        legacy_binding_id, legacy_authority = (
+            _legacy_typed_quack_stable_binding(initial_authority_binding)
+        )
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=authority_coordination,
+            execution_path=authority_execution,
+            binding_id=legacy_binding_id,
+            authority=legacy_authority,
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="reserved for a typed Quack stable control authority",
         ):
             DatabaseImplementationDaemon(
                 database_path=database,
-                coordination_path=(
-                    tmp_path
-                    / "typed-claim-barrier-authority-binding-coordination.duckdb"
-                ),
-                execution_path=(
-                    tmp_path
-                    / "typed-claim-barrier-authority-binding-execution.duckdb"
-                ),
+                coordination_path=authority_coordination,
+                execution_path=authority_execution,
                 owner_session_id="session:typed-claim-barrier",
                 authority_mode="embedded",
                 task_source_kind="duckdb",
@@ -1811,28 +1984,150 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             token=token,
             route_policy=alternate_policy,
         )
+        alternate_profile = {
+            "database_path": database,
+            "coordination_path": authority_coordination,
+            "execution_path": authority_execution,
+            "owner_session_id": "session:typed-claim-barrier",
+            "process_instance_id": identity.process_birth_id,
+            "authority_mode": "quack",
+            "task_source_kind": "duckdb",
+            "quack_uri": identity.listen_uri,
+            "task_source": alternate_adapter,
+            "close_task_source": False,
+            "state_owner_bootstrap_credentials": alternate_credentials,
+        }
+        write_lock_binding = (
+            implementation_daemon_module._write_database_writer_lock_binding
+        )
+        migrated_lock_count = 0
+
+        def crash_after_first_migrated_lock(
+            handle: Any,
+            binding_id: str,
+        ) -> None:
+            nonlocal migrated_lock_count
+            write_lock_binding(handle, binding_id)
+            migrated_lock_count += 1
+            if migrated_lock_count == 1:
+                raise DatabaseImplementationAuthorityError(
+                    "simulated crash after first migrated writer-lock pin"
+                )
+
+        with monkeypatch.context() as migration_crash:
+            migration_crash.setattr(
+                implementation_daemon_module,
+                "_write_database_writer_lock_binding",
+                crash_after_first_migrated_lock,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="simulated crash after first migrated writer-lock pin",
+            ):
+                DatabaseImplementationDaemon(**alternate_profile)
+        assert migrated_lock_count == 1
+        alternate_daemon = DatabaseImplementationDaemon(**alternate_profile)
+        migration_row = alternate_daemon._connection.execute(
+            "SELECT value FROM daemon_execution_metadata "
+            "WHERE key = 'typed_quack_stable_binding_migration'"
+        ).fetchone()
+        assert migration_row is not None
+        migration_receipt = json.loads(str(migration_row[0]))
+        assert migration_receipt["from_stable_binding_id"] == legacy_binding_id
+        assert migration_receipt["to_stable_binding_id"] == (
+            alternate_adapter.require_quack_authority_binding(
+                expected_endpoint=identity.listen_uri,
+                expected_process_instance_id=identity.process_birth_id,
+            )["stable_binding_id"]
+        )
+        assert set(alternate_daemon._embedded_writer_lock_bindings.values()) == {
+            migration_receipt["to_stable_binding_id"]
+        }
+        alternate_daemon.close()
+        forged_migration_receipt = {
+            **migration_receipt,
+            "receipt_id": content_identity(
+                {"forged": "typed-stable-migration-receipt"}
+            ),
+        }
+        _replace_typed_quack_execution_metadata(
+            coordination_path=authority_coordination,
+            execution_path=authority_execution,
+            key="typed_quack_stable_binding_migration",
+            value=canonical_json_bytes(forged_migration_receipt).decode("utf-8"),
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
-            match="different stable control authority",
+            match="migration receipt is not authoritative",
         ):
-            DatabaseImplementationDaemon(
-                database_path=database,
-                coordination_path=(
-                    tmp_path / "typed-claim-barrier-authority-binding-coordination.duckdb"
-                ),
-                execution_path=(
-                    tmp_path / "typed-claim-barrier-authority-binding-execution.duckdb"
-                ),
-                owner_session_id="session:typed-claim-barrier",
-                process_instance_id=identity.process_birth_id,
-                authority_mode="quack",
-                task_source_kind="duckdb",
-                quack_uri=identity.listen_uri,
-                task_source=alternate_adapter,
-                close_task_source=False,
-                state_owner_bootstrap_credentials=alternate_credentials,
-            )
+            DatabaseImplementationDaemon(**alternate_profile)
         alternate_adapter.close()
+
+        divergent_lane = open_lane("legacy-core-divergence")
+        divergent_lane.close()
+        divergent_coordination = (
+            tmp_path
+            / "typed-claim-barrier-legacy-core-divergence-coordination.duckdb"
+        )
+        divergent_execution = (
+            tmp_path
+            / "typed-claim-barrier-legacy-core-divergence-execution.duckdb"
+        )
+        core_divergences = (
+            {"store_id": "store:forged-owner"},
+            {"database_uuid": "database:forged"},
+            {"schema_fingerprint": "schema:forged"},
+            {"repository_id": "repository:forged-owner"},
+            {
+                "schema_revision": (
+                    int(legacy_authority["schema_revision"]) + 1
+                )
+            },
+            {"plan_root_cid": "plan:forged"},
+            {"repository_tree_id": "tree:forged"},
+        )
+        for divergence in core_divergences:
+            divergent_id, divergent_authority = (
+                _legacy_typed_quack_stable_binding(
+                    initial_authority_binding,
+                    **divergence,
+                )
+            )
+            _install_legacy_typed_quack_sidecar_binding(
+                coordination_path=divergent_coordination,
+                execution_path=divergent_execution,
+                binding_id=divergent_id,
+                authority=divergent_authority,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="legacy sidecar authority cannot be migrated",
+            ):
+                open_lane("legacy-core-divergence")
+
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=divergent_coordination,
+            execution_path=divergent_execution,
+            binding_id=legacy_binding_id,
+            authority=legacy_authority,
+        )
+        mixed_pin_path = divergent_coordination.with_name(
+            f".{divergent_coordination.name}.writer.lock"
+        )
+        mixed_pin_handle = _open_database_writer_lock(mixed_pin_path)
+        try:
+            _write_database_writer_lock_binding(
+                mixed_pin_handle,
+                str(initial_authority_binding["stable_binding_id"]),
+            )
+        finally:
+            fcntl.flock(mixed_pin_handle.fileno(), fcntl.LOCK_UN)
+            mixed_pin_handle.close()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="legacy sidecar authority cannot be migrated",
+        ):
+            open_lane("legacy-core-divergence")
 
         daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission
@@ -2206,6 +2501,7 @@ def test_real_typed_owner_starts_exact_four_virgin_transfer_lanes(
     )
     clock = {"now_ms": 1_000}
     adapter: TypedDatabaseTaskSource | None = None
+    refreshed_adapter: TypedDatabaseTaskSource | None = None
     daemons: list[DatabaseImplementationDaemon] = []
     try:
         client.attach(identity.listen_uri, server_id=identity.server_id)
@@ -2539,9 +2835,198 @@ def test_real_typed_owner_starts_exact_four_virgin_transfer_lanes(
         assert replayed_receipt["virgin_task_transfer_claim_cursor"] == (
             cursor_before_replay
         )
+
+        # A prior-release lane persists policy-dependent @1 custody.  After
+        # the board advances, all application attempts must survive an exact
+        # @1 -> @2 restart migration without rewriting their old routes.
+        old_attempt_bodies: dict[int, list[tuple[str, str]]] = {}
+        for lane_index, daemon in enumerate(daemons):
+            old_attempt_bodies[lane_index] = [
+                (str(row[0]), str(row[1]))
+                for row in daemon._connection.execute(
+                    "SELECT attempt_id, body_json FROM database_task_attempts "
+                    "ORDER BY attempt_id"
+                ).fetchall()
+            ]
+            assert old_attempt_bodies[lane_index]
+        old_authority_binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        legacy_binding_id, legacy_authority = (
+            _legacy_typed_quack_stable_binding(old_authority_binding)
+        )
+        for daemon in reversed(daemons):
+            daemon.close()
+        daemons.clear()
+        for lane_index in range(4):
+            _install_legacy_typed_quack_sidecar_binding(
+                coordination_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-execution.duckdb"
+                ),
+                binding_id=legacy_binding_id,
+                authority=legacy_authority,
+            )
+
+        refreshed_unsealed = TypedDatabaseTaskSource(
+            client,
+            owns_client=False,
+        )
+        refreshed_policy = refreshed_unsealed.seal_execution_route_policy(
+            {
+                alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+                for alias in aliases
+            }
+        )
+        refreshed_unsealed.close()
+        assert refreshed_policy.policy_id != route_policy.policy_id
+        assert refreshed_policy.source_revision > route_policy.source_revision
+        refreshed_adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=refreshed_policy,
+            owns_client=False,
+        )
+        refreshed_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=refreshed_policy,
+        )
+        refreshed_authority_binding = (
+            refreshed_adapter.require_quack_authority_binding(
+                expected_endpoint=identity.listen_uri,
+                expected_process_instance_id=identity.process_birth_id,
+            )
+        )
+        assert refreshed_authority_binding["stable_binding_id"] == (
+            old_authority_binding["stable_binding_id"]
+        )
+        assert refreshed_authority_binding["route_policy_id"] != (
+            old_authority_binding["route_policy_id"]
+        )
+
+        for alias in aliases:
+            current_task = refreshed_adapter.get(alias)
+            assert current_task is not None
+            carried_route = dict(
+                current_task.body["completion_receipt"][
+                    "execution_route_binding"
+                ]
+            )
+            assert dict(
+                refreshed_adapter.validate_execution_route_binding(
+                    carried_route,
+                    task=current_task,
+                    allow_claim_revision=True,
+                )
+            ) == carried_route
+            forged_routes = (
+                {
+                    **carried_route,
+                    "execution_mode": GROK_CODEX_EXECUTION_MODE,
+                },
+                {
+                    **carried_route,
+                    "policy_id": refreshed_policy.policy_id,
+                },
+                {
+                    **carried_route,
+                    "source_revision": refreshed_policy.source_revision,
+                },
+            )
+            for forged_route in forged_routes:
+                with pytest.raises(
+                    TaskSourceIntegrityError,
+                    match="launch policy lineage",
+                ):
+                    refreshed_adapter.validate_execution_route_binding(
+                        forged_route,
+                        task=current_task,
+                        allow_claim_revision=True,
+                    )
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="exact carried execution-route lineage",
+            ):
+                refreshed_adapter.validate_execution_route_binding(
+                    {
+                        **carried_route,
+                        "policy_id": "policy:forged-historical-lineage",
+                    },
+                    task=current_task,
+                    allow_claim_revision=True,
+                )
+
+        for lane_index in range(4):
+            daemon = DatabaseImplementationDaemon(
+                database_path=database,
+                coordination_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-execution.duckdb"
+                ),
+                owner_session_id=f"session:typed-four-lane:{lane_index}",
+                process_instance_id=identity.process_birth_id,
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri=identity.listen_uri,
+                task_source=refreshed_adapter,
+                close_task_source=False,
+                state_owner_bootstrap_credentials=refreshed_credentials,
+                lease_ms=5_000,
+                clock_ms=lambda: clock["now_ms"],
+                task_shard_count=4,
+                task_shard_index=lane_index,
+                strict_task_sharding=True,
+                idle_lane_work_stealing="virgin-transfer",
+                task_prefix="LGCVF-",
+                provider_fn=lambda _attempt: {
+                    "status": "ok",
+                    "accepted": True,
+                },
+                effect_fn=lambda _attempt, _provider: {
+                    "status": "applied"
+                },
+                validation_fn=lambda _attempt, _effect: {
+                    "outcome": "passed",
+                    "evidence_digest": "sha256:" + "a" * 64,
+                },
+                require_real_execution=True,
+            ).open()
+            assert [
+                (str(row[0]), str(row[1]))
+                for row in daemon._connection.execute(
+                    "SELECT attempt_id, body_json FROM database_task_attempts "
+                    "ORDER BY attempt_id"
+                ).fetchall()
+            ] == old_attempt_bodies[lane_index]
+            migration_row = daemon._connection.execute(
+                "SELECT value FROM daemon_execution_metadata "
+                "WHERE key = 'typed_quack_stable_binding_migration'"
+            ).fetchone()
+            assert migration_row is not None
+            migration_receipt = json.loads(str(migration_row[0]))
+            assert migration_receipt["from_stable_binding_id"] == (
+                legacy_binding_id
+            )
+            assert migration_receipt["to_stable_binding_id"] == (
+                refreshed_authority_binding["stable_binding_id"]
+            )
+            daemons.append(daemon)
     finally:
         for daemon in reversed(daemons):
             daemon.close()
+        if refreshed_adapter is not None:
+            refreshed_adapter.close()
         if adapter is not None:
             adapter.close()
         else:
@@ -3273,6 +3758,19 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             client_id=client_id,
             token=token,
             route_policy=route_policy,
+        )
+        preserved_authority = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        preserved_binding_id, preserved_stable_authority = (
+            _legacy_typed_quack_stable_binding(preserved_authority)
+        )
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            binding_id=preserved_binding_id,
+            authority=preserved_stable_authority,
         )
         validated_cooldown_identities: list[dict[str, Any]] = []
         validate_cooldown = adapter.validate_retrying_task_cooldown

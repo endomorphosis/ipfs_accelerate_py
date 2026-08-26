@@ -83620,6 +83620,45 @@ DATABASE_PROCESS_INSTANCE_ID_MAX_BYTES = 512
 _DATABASE_PROCESS_INSTANCE_ID_PATTERN = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,511}\Z"
 )
+_TYPED_QUACK_STABLE_AUTHORITY_V1 = (
+    "TypedDatabaseTaskSourceStableQuackAuthority@1"
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V2 = (
+    "TypedDatabaseTaskSourceStableQuackAuthority@2"
+)
+_TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-quack-stable-binding-migration@1"
+)
+_TYPED_QUACK_STABLE_BINDING_ID_KEY = "typed_quack_stable_binding_id"
+_TYPED_QUACK_STABLE_AUTHORITY_KEY = "typed_quack_stable_authority"
+_TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY = (
+    "typed_quack_stable_binding_migration"
+)
+_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS = (
+    "store_id",
+    "database_uuid",
+    "schema_fingerprint",
+    "repository_id",
+    "schema_revision",
+    "plan_root_cid",
+    "repository_tree_id",
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V1_FIELDS = frozenset(
+    {
+        "interface",
+        *_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS,
+        "route_policy_id",
+        "source_projection_cid",
+    }
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V2_FIELDS = frozenset(
+    {"interface", *_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS}
+)
+_TYPED_QUACK_STABLE_BINDING_CID_PATTERN = re.compile(
+    r"baguqeera[a-z2-7]{52}\Z", re.ASCII
+)
+_TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES = 128
 DATABASE_PORTAL_RETRYABLE_FAILURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-retryable-failure@1"
 )
@@ -84485,6 +84524,214 @@ def _open_or_create_database_lock_parent(path: Path) -> tuple[int, str]:
         os.close(parent_descriptor)
         raise
     return parent_descriptor, lexical.name
+
+
+def _validated_typed_quack_stable_authority(
+    value: Mapping[str, Any],
+    *,
+    expected_interface: str,
+) -> dict[str, Any]:
+    """Return one exact, bounded stable-authority body or fail closed."""
+
+    if type(value) is not dict:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority is not an exact object"
+        )
+    expected_fields = (
+        _TYPED_QUACK_STABLE_AUTHORITY_V1_FIELDS
+        if expected_interface == _TYPED_QUACK_STABLE_AUTHORITY_V1
+        else _TYPED_QUACK_STABLE_AUTHORITY_V2_FIELDS
+        if expected_interface == _TYPED_QUACK_STABLE_AUTHORITY_V2
+        else frozenset()
+    )
+    if not expected_fields or set(value) != expected_fields:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority shape is invalid"
+        )
+    if value.get("interface") != expected_interface:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority interface is invalid"
+        )
+    text_fields = expected_fields - {"interface", "schema_revision"}
+    if any(
+        type(value.get(field)) is not str
+        or not value[field]
+        or len(value[field].encode("utf-8")) > 4_096
+        for field in text_fields
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority identity is invalid"
+        )
+    schema_revision = value.get("schema_revision")
+    if (
+        type(schema_revision) is not int
+        or schema_revision < 0
+        or schema_revision > 2**63 - 1
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority schema revision is invalid"
+        )
+    authority = dict(value)
+    if len(canonical_json(authority).encode("utf-8")) > 32_768:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority exceeds its size bound"
+        )
+    return authority
+
+
+def _validated_typed_quack_stable_binding(
+    binding_id: Any,
+    authority: Mapping[str, Any],
+    *,
+    expected_interface: str,
+) -> tuple[str, dict[str, Any]]:
+    """Validate the exact typed stable authority and its canonical CID."""
+
+    body = _validated_typed_quack_stable_authority(
+        authority,
+        expected_interface=expected_interface,
+    )
+    expected_binding_id = content_identity(body)
+    if (
+        type(binding_id) is not str
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(binding_id) is None
+        or binding_id != expected_binding_id
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority binding ID is invalid"
+        )
+    return binding_id, body
+
+
+def _typed_quack_stable_authority_core(
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: authority[field]
+        for field in _TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS
+    }
+
+
+def _typed_quack_stable_binding_migration_receipt(
+    *,
+    from_binding_id: str,
+    from_authority: Mapping[str, Any],
+    to_binding_id: str,
+    to_authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    body = {
+        "schema": _TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA,
+        "from_stable_binding_id": from_binding_id,
+        "from_stable_authority": dict(from_authority),
+        "to_stable_binding_id": to_binding_id,
+        "to_stable_authority": dict(to_authority),
+    }
+    return {**body, "receipt_id": content_identity(body)}
+
+
+def _validated_typed_quack_stable_binding_migration_receipt(
+    value: Mapping[str, Any],
+    *,
+    expected_to_binding_id: str,
+    expected_to_authority: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Validate an exact deterministic legacy-to-current migration receipt."""
+
+    required = {
+        "schema",
+        "receipt_id",
+        "from_stable_binding_id",
+        "from_stable_authority",
+        "to_stable_binding_id",
+        "to_stable_authority",
+    }
+    if (
+        type(value) is not dict
+        or set(value) != required
+        or value.get("schema")
+        != _TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-binding migration receipt is malformed"
+        )
+    from_binding_id, from_authority = _validated_typed_quack_stable_binding(
+        value.get("from_stable_binding_id"),
+        value.get("from_stable_authority"),
+        expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V1,
+    )
+    to_binding_id, to_authority = _validated_typed_quack_stable_binding(
+        value.get("to_stable_binding_id"),
+        value.get("to_stable_authority"),
+        expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+    )
+    receipt_body = {
+        key: value[key]
+        for key in required
+        if key != "receipt_id"
+    }
+    if (
+        type(value.get("receipt_id")) is not str
+        or value["receipt_id"] != content_identity(receipt_body)
+        or to_binding_id != expected_to_binding_id
+        or to_authority != dict(expected_to_authority)
+        or _typed_quack_stable_authority_core(from_authority)
+        != _typed_quack_stable_authority_core(to_authority)
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-binding migration receipt is not authoritative"
+        )
+    return from_binding_id, from_authority
+
+
+def _read_database_writer_lock_binding(handle: Any) -> str:
+    """Read one exact empty-or-CID lock pin from an already-held inode."""
+
+    handle.seek(0)
+    encoded = handle.read(_TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES + 1)
+    if len(encoded) > _TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is oversized"
+        )
+    if not encoded:
+        return ""
+    try:
+        text = encoded.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is malformed"
+        ) from exc
+    if (
+        not text.endswith("\n")
+        or text.count("\n") != 1
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(text[:-1]) is None
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is malformed"
+        )
+    return text[:-1]
+
+
+def _write_database_writer_lock_binding(handle: Any, binding_id: str) -> None:
+    """Durably replace and verify one held writer-lock authority pin."""
+
+    if (
+        type(binding_id) is not str
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(binding_id) is None
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock target is malformed"
+        )
+    expected = (binding_id + "\n").encode("ascii")
+    handle.seek(0)
+    handle.write(expected)
+    handle.truncate()
+    handle.flush()
+    os.fsync(handle.fileno())
+    handle.seek(0)
+    if handle.read(len(expected) + 1) != expected:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock rotation did not persist"
+        )
 
 
 def _open_database_writer_lock(lock_path: Path) -> Any:
@@ -85415,6 +85662,7 @@ class DatabaseImplementationDaemon:
             f".{self.coordination_path.name}.writer.lock"
         )
         self._embedded_writer_lock_handles: dict[Path, Any] = {}
+        self._embedded_writer_lock_bindings: dict[Path, str] = {}
         self._embedded_sidecar_identities: dict[
             Path,
             tuple[tuple[int, int], tuple[int, int] | None],
@@ -85502,31 +85750,14 @@ class DatabaseImplementationDaemon:
             )
         )
         acquired: dict[Path, Any] = {}
+        observed_bindings: dict[Path, str] = {}
         try:
             for lock_path in lock_paths:
                 handle = _open_database_writer_lock(lock_path)
                 try:
                     binding = self._typed_quack_authority_binding
-                    expected = b""
-                    if binding is not None:
-                        expected = (
-                            str(binding["stable_binding_id"]) + "\n"
-                        ).encode("utf-8")
-                    handle.seek(0)
-                    observed = handle.read(len(expected) + 1)
-                    if binding is not None:
-                        if not observed:
-                            handle.seek(0)
-                            handle.write(expected)
-                            handle.truncate()
-                            handle.flush()
-                            os.fsync(handle.fileno())
-                        elif observed != expected:
-                            raise DatabaseImplementationAuthorityError(
-                                "typed Quack sidecar belongs to a different "
-                                "stable control authority"
-                            )
-                    elif observed:
+                    observed = _read_database_writer_lock_binding(handle)
+                    if binding is None and observed:
                         raise DatabaseImplementationAuthorityError(
                             "embedded sidecar is reserved for a typed Quack "
                             "stable control authority"
@@ -85535,6 +85766,7 @@ class DatabaseImplementationDaemon:
                     handle.close()
                     raise
                 acquired[lock_path] = handle
+                observed_bindings[lock_path] = observed
         except Exception as exc:
             for handle in reversed(tuple(acquired.values())):
                 try:
@@ -85548,6 +85780,7 @@ class DatabaseImplementationDaemon:
                 ) from exc
             raise
         self._embedded_writer_lock_handles = acquired
+        self._embedded_writer_lock_bindings = observed_bindings
         self._embedded_writer_lock_handle = acquired.get(
             self._embedded_writer_lock_path
         )
@@ -85614,6 +85847,7 @@ class DatabaseImplementationDaemon:
     def _release_embedded_writer_lock(self) -> None:
         handles = self._embedded_writer_lock_handles
         self._embedded_writer_lock_handles = {}
+        self._embedded_writer_lock_bindings = {}
         self._embedded_writer_lock_handle = None
         self._embedded_sidecar_identities = {}
         if not handles:
@@ -85623,6 +85857,459 @@ class DatabaseImplementationDaemon:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             finally:
                 handle.close()
+
+    def _current_typed_quack_stable_binding(
+        self,
+    ) -> tuple[str, dict[str, Any]]:
+        binding = self._typed_quack_authority_binding
+        if not isinstance(binding, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority is unavailable"
+            )
+        authority = binding.get("stable_authority")
+        if not isinstance(authority, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority is unavailable"
+            )
+        return _validated_typed_quack_stable_binding(
+            binding.get("stable_binding_id"),
+            dict(authority),
+            expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+        )
+
+    @staticmethod
+    def _decode_typed_quack_metadata_json(
+        value: Any,
+        *,
+        description: str,
+    ) -> dict[str, Any]:
+        if (
+            type(value) is not str
+            or not value
+            or len(value.encode("utf-8")) > 131_072
+        ):
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is invalid"
+            )
+        try:
+            decoded = json.loads(value)
+        except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is invalid"
+            ) from exc
+        if type(decoded) is not dict or canonical_json(decoded) != value:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is not canonical"
+            )
+        return decoded
+
+    def _prepare_typed_quack_writer_lock_bindings(
+        self,
+        *,
+        execution_sidecar_exists: bool,
+    ) -> None:
+        """Initialize only a fresh sidecar; existing pins need DB proof first."""
+
+        if self._typed_quack_authority_binding is None:
+            return
+        current_binding_id, _current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        expected_paths = {
+            self._coordination_writer_lock_path,
+            self._embedded_writer_lock_path,
+        }
+        if (
+            set(self._embedded_writer_lock_handles) != expected_paths
+            or set(self._embedded_writer_lock_bindings) != expected_paths
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority does not hold both writer locks"
+            )
+        if execution_sidecar_exists:
+            return
+        if any(
+            observed not in {"", current_binding_id}
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack writer-lock pin has no execution-sidecar authority"
+            )
+        for lock_path in sorted(expected_paths, key=str):
+            if self._embedded_writer_lock_bindings[lock_path] == current_binding_id:
+                continue
+            _write_database_writer_lock_binding(
+                self._embedded_writer_lock_handles[lock_path],
+                current_binding_id,
+            )
+            self._embedded_writer_lock_bindings[lock_path] = current_binding_id
+
+    def _typed_quack_execution_stable_metadata(
+        self,
+    ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution metadata requires an open sidecar"
+            )
+        keys = (
+            _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+            _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+            _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+        )
+        try:
+            rows = connection.execute(
+                "SELECT key, value FROM daemon_execution_metadata "
+                "WHERE key IN (?, ?, ?)",
+                list(keys),
+            ).fetchall()
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution sidecar lacks stable authority metadata"
+            ) from exc
+        metadata: dict[str, Any] = {}
+        for row in rows:
+            key = row[0]
+            if type(key) is not str or key not in keys or key in metadata:
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack execution stable authority metadata is malformed"
+                )
+            metadata[key] = row[1]
+        if (
+            frozenset(metadata)
+            not in (
+                frozenset(
+                    {
+                        _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                        _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    }
+                ),
+                frozenset(keys),
+            )
+            or type(metadata.get(_TYPED_QUACK_STABLE_BINDING_ID_KEY)) is not str
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution sidecar stable authority is incomplete"
+            )
+        authority = self._decode_typed_quack_metadata_json(
+            metadata[_TYPED_QUACK_STABLE_AUTHORITY_KEY],
+            description="stable-authority",
+        )
+        migration = None
+        if _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY in metadata:
+            migration = self._decode_typed_quack_metadata_json(
+                metadata[_TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY],
+                description="stable-binding migration receipt",
+            )
+        return (
+            metadata[_TYPED_QUACK_STABLE_BINDING_ID_KEY],
+            authority,
+            migration,
+        )
+
+    def _typed_quack_stable_metadata_presence(self) -> int:
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable metadata probe requires an open sidecar"
+            )
+        try:
+            table = connection.execute(
+                "SELECT COUNT(*) FROM duckdb_tables() "
+                "WHERE schema_name = 'main' "
+                "AND table_name = 'daemon_execution_metadata'"
+            ).fetchone()
+            if table is None or type(table[0]) is not int:
+                raise ValueError("invalid metadata table count")
+            if int(table[0]) == 0:
+                return 0
+            if int(table[0]) != 1:
+                raise ValueError("ambiguous metadata table")
+            row = connection.execute(
+                "SELECT COUNT(*) FROM daemon_execution_metadata "
+                "WHERE key IN (?, ?, ?)",
+                [
+                    _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+                ],
+            ).fetchone()
+            if row is None or type(row[0]) is not int:
+                raise ValueError("invalid stable metadata count")
+            return int(row[0])
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable metadata cannot be inspected"
+            ) from exc
+
+    def _require_uninitialized_typed_quack_execution_sidecar(self) -> None:
+        """Prove a current-pinned crash remnant has no application state."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack initialization recovery requires an open sidecar"
+            )
+        allowed_tables = {
+            "daemon_execution_metadata",
+            "database_task_attempts",
+            "attempt_phases",
+            "provider_invocations",
+            "effect_claims",
+            "daemon_execution_events",
+        }
+        try:
+            table_rows = connection.execute(
+                "SELECT table_name FROM duckdb_tables() "
+                "WHERE schema_name = 'main' ORDER BY table_name"
+            ).fetchall()
+            tables = {str(row[0]) for row in table_rows}
+            view_row = connection.execute(
+                "SELECT COUNT(*) FROM duckdb_views() "
+                "WHERE schema_name = 'main' AND internal = false"
+            ).fetchone()
+            if (
+                not tables.issubset(allowed_tables)
+                or view_row is None
+                or type(view_row[0]) is not int
+                or int(view_row[0]) != 0
+            ):
+                raise ValueError("unexpected execution schema")
+            for table in sorted(tables):
+                row = connection.execute(
+                    f'SELECT COUNT(*) FROM "{table}"'
+                ).fetchone()
+                if (
+                    row is None
+                    or type(row[0]) is not int
+                    or int(row[0]) != 0
+                ):
+                    raise ValueError("nonempty execution table")
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack current-pinned execution sidecar is not an "
+                "uninitialized crash remnant"
+            ) from exc
+
+    def _initialize_typed_quack_execution_stable_metadata(self) -> None:
+        """Atomically install the execution schema and its current custody."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution initialization requires an open sidecar"
+            )
+        current_binding_id, current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        if any(
+            observed != current_binding_id
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution initialization lacks current lock custody"
+            )
+        self._require_uninitialized_typed_quack_execution_sidecar()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                connection.execute(statement)
+            for key, value in (
+                (_TYPED_QUACK_STABLE_BINDING_ID_KEY, current_binding_id),
+                (
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    canonical_json(current_authority),
+                ),
+            ):
+                connection.execute(
+                    "INSERT INTO daemon_execution_metadata(key, value) "
+                    "VALUES (?, ?)",
+                    [key, value],
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        stored_id, stored_authority, migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        if (
+            stored_id != current_binding_id
+            or stored_authority != current_authority
+            or migration is not None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable initialization did not persist"
+            )
+
+    def _commit_typed_quack_stable_binding_migration(
+        self,
+        *,
+        expected_legacy_binding_id: str,
+        expected_legacy_authority: Mapping[str, Any],
+        current_binding_id: str,
+        current_authority: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> None:
+        """Atomically publish current metadata and its durable migration proof."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable-binding migration requires an open sidecar"
+            )
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            observed_id, observed_authority, observed_receipt = (
+                self._typed_quack_execution_stable_metadata()
+            )
+            if (
+                observed_id != expected_legacy_binding_id
+                or observed_authority != dict(expected_legacy_authority)
+                or observed_receipt is not None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack legacy authority changed during migration"
+                )
+            for key, value in (
+                (_TYPED_QUACK_STABLE_BINDING_ID_KEY, current_binding_id),
+                (
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    canonical_json(dict(current_authority)),
+                ),
+                (
+                    _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+                    canonical_json(dict(receipt)),
+                ),
+            ):
+                connection.execute(
+                    "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+                    "VALUES (?, ?)",
+                    [key, value],
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+
+    def _admit_or_migrate_typed_quack_stable_binding(self) -> None:
+        """Admit current @2 metadata or migrate exact legacy @1 custody."""
+
+        current_binding_id, current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        stored_binding_id, stored_authority, migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        interface = stored_authority.get("interface")
+        legacy_binding_id = ""
+        if interface == _TYPED_QUACK_STABLE_AUTHORITY_V1:
+            legacy_binding_id, legacy_authority = (
+                _validated_typed_quack_stable_binding(
+                    stored_binding_id,
+                    stored_authority,
+                    expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V1,
+                )
+            )
+            if (
+                migration is not None
+                or _typed_quack_stable_authority_core(legacy_authority)
+                != _typed_quack_stable_authority_core(current_authority)
+                or any(
+                    observed != legacy_binding_id
+                    for observed in self._embedded_writer_lock_bindings.values()
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack legacy sidecar authority cannot be migrated"
+                )
+            receipt = _typed_quack_stable_binding_migration_receipt(
+                from_binding_id=legacy_binding_id,
+                from_authority=legacy_authority,
+                to_binding_id=current_binding_id,
+                to_authority=current_authority,
+            )
+            self._commit_typed_quack_stable_binding_migration(
+                expected_legacy_binding_id=legacy_binding_id,
+                expected_legacy_authority=legacy_authority,
+                current_binding_id=current_binding_id,
+                current_authority=current_authority,
+                receipt=receipt,
+            )
+            migration = receipt
+        elif interface == _TYPED_QUACK_STABLE_AUTHORITY_V2:
+            validated_id, validated_authority = (
+                _validated_typed_quack_stable_binding(
+                    stored_binding_id,
+                    stored_authority,
+                    expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+                )
+            )
+            if (
+                validated_id != current_binding_id
+                or validated_authority != current_authority
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "execution sidecar belongs to a different stable typed "
+                    "Quack authority"
+                )
+        else:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable authority version is unsupported"
+            )
+
+        if migration is None:
+            if any(
+                observed != current_binding_id
+                for observed in self._embedded_writer_lock_bindings.values()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack current sidecar has divergent writer-lock pins"
+                )
+            return
+
+        reread_binding_id, reread_authority, reread_migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        if (
+            reread_binding_id != current_binding_id
+            or reread_authority != current_authority
+            or reread_migration != migration
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack migration metadata changed before lock rotation"
+            )
+        receipt_from_binding_id, _receipt_from_authority = (
+            _validated_typed_quack_stable_binding_migration_receipt(
+                reread_migration,
+                expected_to_binding_id=current_binding_id,
+                expected_to_authority=current_authority,
+            )
+        )
+        allowed_pins = {receipt_from_binding_id, current_binding_id}
+        if any(
+            observed not in allowed_pins
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack migration receipt does not authorize writer-lock pins"
+            )
+        self._inspect_embedded_sidecars(require_exists=False)
+        for lock_path in sorted(self._embedded_writer_lock_handles, key=str):
+            if self._embedded_writer_lock_bindings[lock_path] == current_binding_id:
+                continue
+            _write_database_writer_lock_binding(
+                self._embedded_writer_lock_handles[lock_path],
+                current_binding_id,
+            )
+            self._embedded_writer_lock_bindings[lock_path] = current_binding_id
+            self._inspect_embedded_sidecars(require_exists=False)
 
     def _require_typed_quack_authority_binding(self) -> None:
         """Revalidate the exact typed owner pinned during construction."""
@@ -85752,35 +86439,44 @@ class DatabaseImplementationDaemon:
                 # symlink, multi-link inode, non-regular file, or path in a
                 # peer-writable/changed parent.
                 self._inspect_embedded_sidecars(require_exists=False)
+                execution_sidecar_exists = (
+                    self._embedded_sidecar_identities[self.execution_path][1]
+                    is not None
+                )
+                self._prepare_typed_quack_writer_lock_bindings(
+                    execution_sidecar_exists=execution_sidecar_exists,
+                )
                 self._connection = open_duckdb_connection(self.execution_path)
                 self._inspect_embedded_sidecar(
                     self.execution_path,
                     require_exists=True,
                 )
-                for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
-                    self._connection.execute(statement)
+                typed_schema_initialized = False
+                if self._typed_quack_authority_binding is not None:
+                    stable_metadata_presence = (
+                        self._typed_quack_stable_metadata_presence()
+                    )
+                    if stable_metadata_presence == 0:
+                        self._initialize_typed_quack_execution_stable_metadata()
+                        typed_schema_initialized = True
+                    else:
+                        self._admit_or_migrate_typed_quack_stable_binding()
+                if not typed_schema_initialized:
+                    for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                        self._connection.execute(statement)
                 typed_binding_metadata: tuple[tuple[str, str], ...] = ()
                 if self._typed_quack_authority_binding is not None:
+                    current_binding_id, current_authority = (
+                        self._current_typed_quack_stable_binding()
+                    )
                     typed_binding_metadata = (
                         (
-                            "typed_quack_stable_binding_id",
-                            str(
-                                self._typed_quack_authority_binding[
-                                    "stable_binding_id"
-                                ]
-                            ),
+                            _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                            current_binding_id,
                         ),
                         (
-                            "typed_quack_stable_authority",
-                            json.dumps(
-                                dict(
-                                    self._typed_quack_authority_binding[
-                                        "stable_authority"
-                                    ]
-                                ),
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ),
+                            _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                            canonical_json(current_authority),
                         ),
                     )
                     for key, expected_value in typed_binding_metadata:

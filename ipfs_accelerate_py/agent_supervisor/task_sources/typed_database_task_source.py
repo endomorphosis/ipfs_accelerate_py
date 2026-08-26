@@ -484,22 +484,23 @@ class TypedDatabaseTaskSource:
                 "typed task authority differs from its process-bound bootstrap"
             )
         stable_body = {
-            "interface": "TypedDatabaseTaskSourceStableQuackAuthority@1",
+            "interface": "TypedDatabaseTaskSourceStableQuackAuthority@2",
             "store_id": store_identity.store_id,
             "database_uuid": store_identity.database_uuid,
             "schema_fingerprint": store_identity.schema_fingerprint,
             "repository_id": store_identity.repository_id,
             "schema_revision": int(store_identity.schema_revision),
-            "route_policy_id": route_policy.policy_id,
             "plan_root_cid": route_policy.plan_root_cid,
             "repository_tree_id": route_policy.repository_tree_id,
-            "source_projection_cid": route_policy.source_projection_cid,
         }
         return MappingProxyType(
             {
                 "interface": "TypedDatabaseTaskSourceQuackAuthorityBinding@1",
                 "stable_binding_id": content_identity(stable_body),
                 "stable_authority": MappingProxyType(stable_body),
+                "route_policy_id": route_policy.policy_id,
+                "source_revision": int(route_policy.source_revision),
+                "source_projection_cid": route_policy.source_projection_cid,
                 "endpoint": session.endpoint,
                 "server_id": session.server_id,
                 "session_id": session.session_id,
@@ -918,7 +919,36 @@ class TypedDatabaseTaskSource:
         """Validate an attempt binding and its exact shared claim lineage."""
 
         policy = self._require_execution_route_plan_root()
-        binding: TaskExecutionRouteBinding = policy.validate_binding(value)
+        binding = TaskExecutionRouteBinding.from_dict(value)
+        entry = policy.entries_by_cid.get(binding.task_cid)
+        current_policy_binding = (
+            binding.policy_id == policy.policy_id
+            and binding.plan_root_cid == policy.plan_root_cid
+            and binding.repository_tree_id == policy.repository_tree_id
+            and binding.source_revision == policy.source_revision
+            and entry is not None
+            and binding.task_alias == entry.task_alias
+            and binding.task_revision == entry.task_revision
+            and binding.task_contract_cid == entry.task_contract_cid
+            and binding.execution_mode == entry.execution_mode
+        )
+        historical_policy_binding = (
+            allow_claim_revision
+            and entry is not None
+            and binding.plan_root_cid == policy.plan_root_cid
+            and binding.repository_tree_id == policy.repository_tree_id
+            and binding.policy_id != policy.policy_id
+            and binding.source_revision < policy.source_revision
+            and binding.task_alias == entry.task_alias
+            and binding.task_contract_cid == entry.task_contract_cid
+            and binding.execution_mode == entry.execution_mode
+            and binding.task_revision < entry.task_revision
+            and binding.task_revision < task.revision
+        )
+        if not current_policy_binding and not historical_policy_binding:
+            raise TaskSourceIntegrityError(
+                "task execution route binding is not in the launch policy lineage"
+            )
         if (
             task.task_cid != binding.task_cid
             or task.task_alias != binding.task_alias
