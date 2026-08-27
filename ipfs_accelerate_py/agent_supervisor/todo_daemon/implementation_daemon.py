@@ -92099,10 +92099,21 @@ class DatabaseImplementationDaemon:
                     and (
                         receipt_payload.get("operation")
                         != "database_attempt_admitted"
-                        or self._current_typed_attempt_admission(
-                            current,
-                            receipt_payload,
-                            expected_attempt_number=attempt_number,
+                        or (
+                            type(
+                                receipt_payload.get(
+                                    "admitted_from_revision"
+                                )
+                            )
+                            is int
+                            and type(expected_revision) is int
+                            and receipt_payload["admitted_from_revision"]
+                            == expected_revision
+                            and self._current_typed_attempt_admission(
+                                current,
+                                receipt_payload,
+                                expected_attempt_number=attempt_number,
+                            )
                         )
                     )
                 )

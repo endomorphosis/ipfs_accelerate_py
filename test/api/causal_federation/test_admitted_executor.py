@@ -98,6 +98,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     _database_daemon_quack_sidecar_paths,
@@ -1992,6 +1993,35 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         )
         generation_before_admission_replay = client.load_generation()
         compare_and_set_status = adapter.compare_and_set_status
+
+        def reject_stale_admission_replay(
+            *_args: Any,
+            **_kwargs: Any,
+        ) -> Any:
+            raise TaskSourceTransitionError(
+                "transition_invalid after admitted response loss"
+            )
+
+        with monkeypatch.context() as stale_replay:
+            stale_replay.setattr(
+                adapter,
+                "compare_and_set_status",
+                reject_stale_admission_replay,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="control status replay conflicts",
+            ):
+                daemon._cas_task_status_database(
+                    admitted_completion_task.task_cid,
+                    expected_revision=admitted_completion_task.revision - 2,
+                    new_status="in_progress",
+                    receipt=admitted_completion_receipt,
+                )
+        assert adapter.get(admitted_completion_task.task_cid) == (
+            admitted_completion_task
+        )
+        assert client.load_generation() == generation_before_admission_replay
         replay_calls = {"count": 0}
 
         def replay_after_lost_admission_response(
