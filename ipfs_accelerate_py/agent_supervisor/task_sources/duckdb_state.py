@@ -2976,6 +2976,16 @@ _TASK_STATUS_INDEX_DDL = (
     ("tasks_status_idx", "CREATE INDEX tasks_status_idx ON tasks(status, ordinal)"),
     ("tasks_goal_idx", "CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)"),
 )
+_LEASE_STATE_INDEX_DDL = (
+    (
+        "leases_scheduler_state_idx",
+        "CREATE INDEX leases_scheduler_state_idx ON leases(state, expires_at_ms, retry_not_before_ms)",
+    ),
+    (
+        "leases_claimant_idx",
+        "CREATE INDEX leases_claimant_idx ON leases(claimant_did, state)",
+    ),
+)
 
 
 def is_art_index_delete_fatal(exc: BaseException) -> bool:
@@ -3022,18 +3032,43 @@ def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> 
         connection.execute(text)
 
 
+def _drop_lease_state_indexes(connection: Any) -> list[str]:
+    """Drop lease-state ART indexes that can fatal cooldown / retry CAS."""
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'leases'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "state" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
 def rebuild_task_status_indexes(connection: Any) -> list[str]:
-    """Recreate status-bearing task ART indexes after a fatal status CAS.
+    """Recreate status-bearing ART indexes after a fatal status or cooldown CAS.
 
     Reopening the exclusive DuckDB handle does not repair a poisoned ART
-    index.  The next ``tasks.status`` UPDATE then fatals again on COMMIT.
-    Dropping and recreating the indexes from live table bytes makes a later
-    claim or retry CAS succeed without operator surgery.
+    index.  The next ``tasks.status`` or ``leases.state`` UPDATE then fatals
+    again on COMMIT.  Dropping and recreating the indexes from live table
+    bytes makes a later claim or retry CAS succeed without operator surgery.
     """
 
     statements = _drop_task_status_indexes(connection)
+    statements.extend(_drop_lease_state_indexes(connection))
     if not statements:
-        for name, sql in _TASK_STATUS_INDEX_DDL:
+        for name, sql in (*_TASK_STATUS_INDEX_DDL, *_LEASE_STATE_INDEX_DDL):
             try:
                 connection.execute(
                     "DROP INDEX IF EXISTS " + _quote_duckdb_ident(name)

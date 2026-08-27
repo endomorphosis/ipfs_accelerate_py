@@ -53,6 +53,7 @@ from .database_task_source import (
 )
 from .duckdb_state import (
     DuckDBConnectionPolicyError,
+    _drop_lease_state_indexes,
     _drop_task_status_indexes,
     _restore_task_status_indexes,
     is_art_index_delete_fatal,
@@ -2369,6 +2370,7 @@ _TASK_STATUS_UPDATE_COMMANDS: Final[frozenset[str]] = frozenset(
     {
         "task.status.cas",
         "task.status.cas.receipt",
+        "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
     }
@@ -3525,7 +3527,10 @@ class TypedStateOwnerGateway:
         operation = str(command.parameters.get("operation") or "")
         if operation not in _TASK_STATUS_UPDATE_COMMANDS:
             return []
-        return _drop_task_status_indexes(self._connection)
+        return [
+            *_drop_task_status_indexes(self._connection),
+            *_drop_lease_state_indexes(self._connection),
+        ]
 
     def _restore_task_status_cas_indexes(
         self,

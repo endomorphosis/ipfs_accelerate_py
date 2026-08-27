@@ -110823,6 +110823,7 @@ class DatabaseImplementationDaemon:
                         "portal_provider_failed_reclassified",
                         "portal_checkout_contention_reclassified",
                         "portal_completion_handshake_reclassified",
+                        "portal_pending_merge_claim_reclassified",
                     }
                     and operation
                     == "database_portal_validation_retry_recovery"
