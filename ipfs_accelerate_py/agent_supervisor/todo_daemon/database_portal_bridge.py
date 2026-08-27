@@ -7206,6 +7206,494 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError("database task alias changed")
         return record
 
+    @staticmethod
+    def _record_allows_validated_no_change(record: Any) -> bool:
+        """Read one exact opt-in from the current typed task revision."""
+
+        body = getattr(record, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        accepted_keys = {
+            "no-change completion",
+            "no change completion",
+            "no_change_completion",
+        }
+        values = [
+            value
+            for key, value in body.items()
+            if str(key).strip().lower() in accepted_keys
+        ]
+        return bool(
+            len(values) == 1
+            and type(values[0]) is str
+            and values[0].strip() == "allowed"
+        )
+
+    def _validated_no_change_task_authority(
+        self,
+        *,
+        record: Any,
+        binding: Mapping[str, Any],
+        paths: DatabasePortalAttemptPaths,
+    ) -> dict[str, Any]:
+        """Bind zero-diff authority to the immutable claimed task contract."""
+
+        body = getattr(record, "body", None)
+        if (
+            not self._record_allows_validated_no_change(record)
+            or not isinstance(body, Mapping)
+            or database_portal_task_contract_digest(record)
+            != str(binding.get("task_contract_digest") or "")
+            or _sha256_bytes(_canonical_json(dict(body)))
+            != str(binding.get("task_body_digest") or "")
+            or str(getattr(record, "task_cid", "") or "")
+            != str(binding.get("task_cid") or "")
+            or str(getattr(record, "task_alias", "") or "")
+            != str(binding.get("task_alias") or "")
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change task authority changed after projection"
+            )
+        repository_scope = self._validation_repository_scope(body)
+        outputs = tuple(
+            sorted(
+                self._scope_outputs(
+                    _output_values(record, body),
+                    repository_scope,
+                )
+            )
+        )
+        validation_commands = tuple(
+            self._scope_validations(
+                _validation_values(record, body),
+                repository_scope,
+            )
+        )
+        repository_tree_id = str(
+            binding.get("repository_tree_id") or ""
+        )
+        canonical_task_key = str(
+            binding.get("canonical_task_key") or ""
+        )
+        body_board_namespaces = [
+            value
+            for key, value in body.items()
+            if str(key).strip().lower().replace("_", " ")
+            == "board namespace"
+        ]
+        if body_board_namespaces:
+            if (
+                len(body_board_namespaces) != 1
+                or type(body_board_namespaces[0]) is not str
+                or not body_board_namespaces[0].strip()
+                or body_board_namespaces[0] != body_board_namespaces[0].strip()
+                or len(body_board_namespaces[0].encode("utf-8"))
+                > _MAX_TASK_IDENTITY_BYTES
+                or any(
+                    character in body_board_namespaces[0]
+                    for character in "\r\n"
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change board namespace is malformed"
+                )
+            board_namespace = body_board_namespaces[0]
+        else:
+            # Legacy database tasks did not carry a board namespace in their
+            # immutable body. Portal then derives the namespace from the
+            # private projection filename, so retain that exact fail-closed
+            # compatibility spelling. Current CASF tasks bind the real
+            # namespace in the task body and must never collapse to this name.
+            board_namespace = paths.task_projection.name
+        if (
+            not outputs
+            or not validation_commands
+            or len(outputs) != len(set(outputs))
+            or len(validation_commands) != len(set(validation_commands))
+            or any(type(item) is not str or not item for item in outputs)
+            or any(
+                type(item) is not str or not item
+                for item in validation_commands
+            )
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                repository_tree_id,
+            )
+            is None
+            or not canonical_task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change task authority is incomplete"
+            )
+        return {
+            "board_namespace": board_namespace,
+            "canonical_task_key": canonical_task_key,
+            "declared_outputs": outputs,
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "repository_scope": repository_scope,
+            "repository_tree_id": repository_tree_id,
+            "task_contract_digest": str(
+                binding.get("task_contract_digest") or ""
+            ),
+            "validation_commands": validation_commands,
+        }
+
+    def _require_validated_no_change_target(
+        self,
+        *,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        authority: Mapping[str, Any],
+        completion: Mapping[str, Any],
+        projection_text: str,
+    ) -> str:
+        """Prove the exact private projection-only target transition."""
+
+        if (
+            self.repository_root is None
+            or completion.get("_source_validated_no_change") is not True
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion has no target authority"
+            )
+        baseline_commit = str(completion.get("baseline_commit") or "")
+        implementation_commit = str(
+            completion.get("implementation_commit") or ""
+        )
+        effect_tree = str(completion.get("_source_effect_tree") or "")
+        projection_commit = str(
+            completion.get("_source_projection_commit") or ""
+        )
+        uncommitted_projection = completion.get(
+            "_source_projection_uncommitted"
+        )
+        projection_path = str(
+            completion.get("_source_projection_path") or ""
+        )
+        projection_repo = str(
+            completion.get("_source_projection_repo") or ""
+        )
+        projection_absolute_path = str(
+            completion.get("_source_projection_absolute_path") or ""
+        )
+        outputs = authority.get("declared_outputs")
+        try:
+            repository_root = self.repository_root.resolve(strict=True)
+            resolved_projection = paths.task_projection.resolve(strict=True)
+            resolved_projection_repo = Path(projection_repo).resolve(
+                strict=False
+            )
+            resolved_projection_absolute_path = Path(
+                projection_absolute_path
+            ).resolve(strict=False)
+            relative_projection = resolved_projection.relative_to(
+                repository_root
+            ).as_posix()
+            expected_projection_path = _safe_repository_path(
+                relative_projection
+            )
+            safe_projection_path = _safe_repository_path(projection_path)
+            safe_outputs = tuple(
+                _safe_output_path(output) for output in outputs or ()
+            )
+        except (DatabasePortalBridgeError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "validated no-change projection is outside its repository"
+            ) from exc
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "validated no-change projection cannot be resolved safely"
+            ) from exc
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or implementation_commit != baseline_commit
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                effect_tree,
+            )
+            is None
+            or effect_tree != str(authority.get("repository_tree_id") or "")
+            or effect_tree != str(binding.get("repository_tree_id") or "")
+            or type(uncommitted_projection) is not bool
+            or (
+                uncommitted_projection is True
+                and projection_commit != ""
+            )
+            or (
+                uncommitted_projection is False
+                and re.fullmatch(r"[0-9a-f]{40}", projection_commit) is None
+            )
+            or safe_projection_path != expected_projection_path
+            or resolved_projection_repo != repository_root
+            or Path(projection_absolute_path).absolute()
+            != paths.task_projection.absolute()
+            or resolved_projection_absolute_path != resolved_projection
+            or not safe_outputs
+            or safe_outputs != tuple(outputs or ())
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change projection target binding is invalid"
+            )
+
+        def git(
+            *arguments: str,
+            text: bool = True,
+        ) -> subprocess.CompletedProcess[Any]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=text,
+                timeout=10,
+            )
+
+        target_ref = (
+            f"refs/heads/{self.merge_target_branch}"
+            if self.merge_target_branch
+            else self.merge_target_ref
+        )
+        try:
+            baseline_tree = self._require_portal_commit_lineage(
+                baseline_commit=baseline_commit,
+                implementation_commit=baseline_commit,
+            )
+            target = git(
+                "rev-parse",
+                "--verify",
+                f"{target_ref}^{{commit}}",
+            )
+            top_level = git("rev-parse", "--show-toplevel")
+            resolved_top_level = (
+                Path(top_level.stdout.strip()).resolve(strict=True)
+                if top_level.returncode == 0 and top_level.stdout.strip()
+                else None
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                "validated no-change target proof is unavailable"
+            ) from exc
+        expected_projection = projection_text.encode("utf-8")
+        if (
+            baseline_tree != effect_tree
+            or target.returncode != 0
+            or resolved_top_level != repository_root
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change target tree is invalid"
+            )
+        if uncommitted_projection is True:
+            descriptor = -1
+            try:
+                path_metadata = os.lstat(paths.task_projection)
+                descriptor = os.open(
+                    paths.task_projection,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                )
+                projection_metadata = os.fstat(descriptor)
+                chunks: list[bytes] = []
+                projection_size = 0
+                while projection_size <= _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+                    chunk = os.read(
+                        descriptor,
+                        min(
+                            65_536,
+                            _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                            + 1
+                            - projection_size,
+                        ),
+                    )
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    projection_size += len(chunk)
+                final_projection_metadata = os.fstat(descriptor)
+                current_projection = b"".join(chunks)
+                tracked = git(
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    safe_projection_path,
+                )
+                ignored = git(
+                    "check-ignore",
+                    "--quiet",
+                    "--no-index",
+                    "--",
+                    safe_projection_path,
+                )
+                ignored_projection = git(
+                    "ls-files",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "-z",
+                    "--",
+                    safe_projection_path,
+                    text=False,
+                )
+                current_head = git(
+                    "rev-parse",
+                    "--verify",
+                    "HEAD^{commit}",
+                )
+                current_branch = git("branch", "--show-current")
+                final_path_metadata = os.lstat(paths.task_projection)
+                final_resolved_projection = paths.task_projection.resolve(
+                    strict=True
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise DatabasePortalBridgeError(
+                    "validated no-change private projection proof is unavailable"
+                ) from exc
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            if (
+                stat.S_ISLNK(path_metadata.st_mode)
+                or not stat.S_ISREG(projection_metadata.st_mode)
+                or stat.S_ISLNK(projection_metadata.st_mode)
+                or projection_metadata.st_nlink != 1
+                or (
+                    path_metadata.st_dev,
+                    path_metadata.st_ino,
+                    path_metadata.st_mode,
+                    path_metadata.st_nlink,
+                    path_metadata.st_size,
+                    path_metadata.st_mtime_ns,
+                    path_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or (
+                    final_projection_metadata.st_dev,
+                    final_projection_metadata.st_ino,
+                    final_projection_metadata.st_mode,
+                    final_projection_metadata.st_nlink,
+                    final_projection_metadata.st_size,
+                    final_projection_metadata.st_mtime_ns,
+                    final_projection_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or (
+                    final_path_metadata.st_dev,
+                    final_path_metadata.st_ino,
+                    final_path_metadata.st_mode,
+                    final_path_metadata.st_nlink,
+                    final_path_metadata.st_size,
+                    final_path_metadata.st_mtime_ns,
+                    final_path_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or len(current_projection) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                or current_projection != expected_projection
+                or final_resolved_projection != resolved_projection
+                or tracked.returncode != 1
+                or ignored.returncode != 0
+                or ignored_projection.returncode != 0
+                or bytes(ignored_projection.stdout or b"")
+                != safe_projection_path.encode("utf-8") + b"\0"
+                or target.stdout.strip() != baseline_commit
+                or current_head.returncode != 0
+                or current_head.stdout.strip() != baseline_commit
+                or current_branch.returncode != 0
+                or (
+                    bool(self.merge_target_branch)
+                    and current_branch.stdout.strip()
+                    != self.merge_target_branch
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change private projection is not exact"
+                )
+            output_commits = (baseline_commit,)
+        else:
+            try:
+                parents = git(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    projection_commit,
+                )
+                changed = git(
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "-z",
+                    projection_commit,
+                    text=False,
+                )
+                projection_blob = git(
+                    "cat-file",
+                    "blob",
+                    f"{projection_commit}:{safe_projection_path}",
+                    text=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise DatabasePortalBridgeError(
+                    "validated no-change projection commit proof is unavailable"
+                ) from exc
+            if (
+                parents.returncode != 0
+                or parents.stdout.strip().split()
+                != [projection_commit, baseline_commit]
+                or changed.returncode != 0
+                or bytes(changed.stdout or b"")
+                != safe_projection_path.encode("utf-8") + b"\0"
+                or projection_blob.returncode != 0
+                or len(bytes(projection_blob.stdout or b""))
+                > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                or bytes(projection_blob.stdout or b"") != expected_projection
+                or target.stdout.strip() != projection_commit
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change target is not the exact projection commit"
+                )
+            output_commits = (baseline_commit, projection_commit)
+        for commit in output_commits:
+            for output in safe_outputs:
+                try:
+                    present = git("cat-file", "-e", f"{commit}:{output}")
+                except (OSError, subprocess.SubprocessError) as exc:
+                    raise DatabasePortalBridgeError(
+                        "validated no-change declared output proof is unavailable"
+                    ) from exc
+                if present.returncode != 0:
+                    raise DatabasePortalBridgeError(
+                        "validated no-change declared output is absent"
+                    )
+        return baseline_tree
+
     def recover_landed_completion(self, attempt: Any) -> Mapping[str, Any] | None:
         """Propose a landed candidate for a newer, freshly validated claim.
 
@@ -8768,6 +9256,807 @@ class DatabasePortalExecutionBridge:
             "_source_landed_revalidated": True,
         }
 
+    @staticmethod
+    def _validated_no_change_completion_source(
+        events: Sequence[Mapping[str, Any]],
+        *,
+        terminal_index: int,
+        terminal: Mapping[str, Any],
+        alias: str,
+        task_cid: str,
+        authority: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Decode one ordinary, task-authorized zero-diff completion."""
+
+        validation = terminal.get("validation_result")
+        commit_result = terminal.get("commit_result")
+        board_completion = terminal.get("board_completion")
+        claims_no_change = bool(
+            isinstance(commit_result, Mapping)
+            and commit_result.get("reason") == "no_changes"
+        ) or bool(
+            isinstance(board_completion, Mapping)
+            and board_completion.get("reason")
+            == "validated_no_change_completion"
+        )
+        if not claims_no_change:
+            return None
+        if not isinstance(authority, Mapping):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion lacks task authority"
+            )
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        authority_fields = {
+            "board_namespace",
+            "canonical_task_key",
+            "declared_outputs",
+            "projection_immutable_digest",
+            "repository_scope",
+            "repository_tree_id",
+            "task_contract_digest",
+            "validation_commands",
+        }
+        outputs = authority.get("declared_outputs")
+        validation_commands = authority.get("validation_commands")
+        expected_tree = str(
+            authority.get("repository_tree_id") or ""
+        )
+        canonical_task_key = str(authority.get("canonical_task_key") or "")
+        board_namespace = str(authority.get("board_namespace") or "")
+        if (
+            set(authority) != authority_fields
+            or not isinstance(outputs, tuple)
+            or not outputs
+            or not isinstance(validation_commands, tuple)
+            or not validation_commands
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                expected_tree,
+            )
+            is None
+            or not canonical_task_key
+            or not board_namespace
+            or _SHA256_ID.fullmatch(
+                str(authority.get("projection_immutable_digest") or "")
+            )
+            is None
+            or _SHA256_ID.fullmatch(
+                str(authority.get("task_contract_digest") or "")
+            )
+            is None
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion task authority is malformed"
+            )
+
+        no_change_guard = (
+            commit_result.get("no_change_guard")
+            if isinstance(commit_result, Mapping)
+            else None
+        )
+        merge_result = terminal.get("merge_result")
+        cleanup_result = terminal.get("cleanup_result")
+        todo_result = terminal.get("todo_update_result")
+        baseline_commit = str(terminal.get("baseline_ref") or "")
+        branch = str(terminal.get("branch") or "")
+        terminal_event_id = str(terminal.get("event_id") or "")
+        portal_attempt = terminal.get("attempt")
+        policy_gate = (
+            validation.get("no_change_policy_gate")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        proposal_gate = (
+            validation.get("proposal_gate")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        candidate_binding = (
+            validation.get("candidate_binding")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        candidate_handoff = (
+            validation.get("candidate_handoff")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        pre_handoff = (
+            candidate_handoff.get("pre_commit")
+            if isinstance(candidate_handoff, Mapping)
+            else None
+        )
+        post_handoff = (
+            candidate_handoff.get("post_commit")
+            if isinstance(candidate_handoff, Mapping)
+            else None
+        )
+        committed_handoff = (
+            commit_result.get("candidate_handoff_guard")
+            if isinstance(commit_result, Mapping)
+            else None
+        )
+        empty_digest = hashlib.sha256(b"[]").hexdigest()
+        empty_fingerprint = f"sha256:{empty_digest}"
+        clean_fingerprint = "sha256:" + hashlib.sha256(b"").hexdigest()
+
+        workspace_fields = {
+            "branch",
+            "errors",
+            "head",
+            "status_bytes",
+            "status_clean",
+            "status_fingerprint",
+            "tree",
+            "verified",
+        }
+
+        def exact_workspace(value: Any) -> bool:
+            return bool(
+                isinstance(value, Mapping)
+                and set(value) == workspace_fields
+                and value.get("verified") is True
+                and value.get("errors") == []
+                and value.get("head") == baseline_commit
+                and value.get("tree") == expected_tree
+                and value.get("branch") == branch
+                and value.get("status_clean") is True
+                and type(value.get("status_bytes")) is int
+                and value.get("status_bytes") == 0
+                and value.get("status_fingerprint") == clean_fingerprint
+            )
+
+        candidate_fields = {
+            "current_fingerprint",
+            "expected_fingerprint",
+            "reason",
+            "validated_workspace",
+            "verified",
+        }
+        if (
+            not isinstance(candidate_binding, Mapping)
+            or set(candidate_binding) != candidate_fields
+            or candidate_binding.get("verified") is not True
+            or candidate_binding.get("reason")
+            != "validated_no_change_candidate"
+            or candidate_binding.get("expected_fingerprint")
+            != empty_fingerprint
+            or candidate_binding.get("current_fingerprint")
+            != empty_fingerprint
+            or not exact_workspace(candidate_binding.get("validated_workspace"))
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion candidate binding is invalid"
+            )
+        validated_workspace = candidate_binding["validated_workspace"]
+
+        handoff_fields = {
+            "allowed",
+            "attempt",
+            "baseline_commit",
+            "baseline_ref",
+            "candidate_entry_count",
+            "collection_error",
+            "current_fingerprint",
+            "expected_branch",
+            "expected_fingerprint",
+            "final_status_fingerprint",
+            "final_tree",
+            "implementation_commit",
+            "phase",
+            "reasons",
+            "schema",
+            "submodule_expansion_count",
+            "task_id",
+            "validated_fingerprint",
+            "validated_workspace",
+            "workspace_after",
+            "workspace_before",
+        }
+
+        def exact_handoff(value: Any, phase: str) -> bool:
+            return bool(
+                isinstance(value, Mapping)
+                and set(value) == handoff_fields
+                and value.get("schema")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "validated-candidate-handoff-guard@1"
+                )
+                and value.get("allowed") is True
+                and value.get("phase") == phase
+                and value.get("reasons") == []
+                and value.get("task_id") == alias
+                and type(value.get("attempt")) is int
+                and value.get("attempt") == portal_attempt
+                and value.get("baseline_ref") == baseline_commit
+                and value.get("baseline_commit") == baseline_commit
+                and value.get("expected_branch") == branch
+                and value.get("implementation_commit") == ""
+                and value.get("expected_fingerprint") == empty_fingerprint
+                and value.get("validated_fingerprint") == empty_fingerprint
+                and value.get("current_fingerprint") == empty_fingerprint
+                and type(value.get("candidate_entry_count")) is int
+                and value.get("candidate_entry_count") == 0
+                and type(value.get("submodule_expansion_count")) is int
+                and value.get("submodule_expansion_count") == 0
+                and value.get("collection_error") == ""
+                and value.get("validated_workspace") == validated_workspace
+                and value.get("workspace_before") == validated_workspace
+                and value.get("workspace_after") == validated_workspace
+                and value.get("final_tree") == expected_tree
+                and value.get("final_status_fingerprint") == clean_fingerprint
+            )
+
+        expected_findings = sorted(
+            [
+                [
+                    "empty_patch",
+                    "patch",
+                    "candidate diff contains no file changes",
+                    "",
+                ],
+                [
+                    "missing_required_field",
+                    "structure",
+                    "structured proposal requires operations",
+                    "",
+                ],
+                [
+                    "missing_required_field",
+                    "structure",
+                    "structured proposal requires patch_text",
+                    "",
+                ],
+            ]
+        )
+        policy_fields = {
+            "schema",
+            "attempted",
+            "accepted",
+            "reason",
+            "completion_mode",
+            "task_id",
+            "canonical_task_cid",
+            "proposal_id",
+            "policy_id",
+            "proposal_receipt_id",
+            "repository_tree_id",
+            "repository_id",
+            "baseline_id",
+            "context_id",
+            "accepted_plan_id",
+            "objective_id",
+            "replay_nonce",
+            "diff_digest",
+            "candidate_fingerprint",
+            "validation_plan_id",
+            "expected_output_preflight_id",
+            "proposal_collection_error",
+            "changed_paths",
+            "proposal_accepted",
+            "expected_findings",
+            "actual_findings",
+            "proof_authoritative",
+            "completion_authoritative",
+            "gate_id",
+        }
+        policy_body = (
+            dict(policy_gate) if isinstance(policy_gate, Mapping) else {}
+        )
+        policy_gate_id = str(policy_body.pop("gate_id", "") or "")
+        hex_policy_fields = (
+            "policy_id",
+            "proposal_id",
+            "proposal_receipt_id",
+            "replay_nonce",
+        )
+        if (
+            not isinstance(policy_gate, Mapping)
+            or set(policy_gate) != policy_fields
+            or policy_gate_id != content_identity(policy_body)
+            or policy_gate.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor/"
+                "no-change-candidate-policy-gate@1"
+            )
+            or policy_gate.get("attempted") is not True
+            or policy_gate.get("accepted") is not True
+            or policy_gate.get("reason") != "empty_candidate_policy_admitted"
+            or policy_gate.get("completion_mode") != "allowed"
+            or policy_gate.get("task_id") != alias
+            or policy_gate.get("canonical_task_cid") != task_cid
+            or policy_gate.get("repository_tree_id") != baseline_commit
+            or policy_gate.get("baseline_id") != baseline_commit
+            or policy_gate.get("diff_digest") != empty_digest
+            or policy_gate.get("candidate_fingerprint") != empty_fingerprint
+            or policy_gate.get("changed_paths") != []
+            or policy_gate.get("proposal_accepted") is not False
+            or policy_gate.get("expected_findings") != expected_findings
+            or policy_gate.get("actual_findings") != expected_findings
+            or policy_gate.get("proposal_collection_error") != ""
+            or policy_gate.get("proof_authoritative") is not False
+            or policy_gate.get("completion_authoritative") is not False
+            or any(
+                re.fullmatch(r"[0-9a-f]{64}", str(policy_gate.get(key) or ""))
+                is None
+                for key in hex_policy_fields
+            )
+            or not str(policy_gate.get("repository_id") or "").startswith(
+                "repository:sha256:"
+            )
+            or not str(policy_gate.get("validation_plan_id") or "")
+            or not str(policy_gate.get("expected_output_preflight_id") or "")
+            or not str(policy_gate.get("context_id") or "")
+            or not str(policy_gate.get("accepted_plan_id") or "")
+            or not str(policy_gate.get("objective_id") or "")
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion policy gate is invalid"
+            )
+
+        proposal_fields = {
+            "accepted",
+            "attempted",
+            "changed_paths",
+            "completion_authoritative",
+            "policy_id",
+            "proof_authoritative",
+            "proposal_id",
+            "reason",
+            "reason_codes",
+            "receipt_id",
+            "repository_tree_id",
+        }
+        if (
+            not isinstance(proposal_gate, Mapping)
+            or set(proposal_gate) != proposal_fields
+            or proposal_gate.get("attempted") is not True
+            or proposal_gate.get("accepted") is not False
+            or proposal_gate.get("reason")
+            != "empty_patch_reserved_for_no_change_gate"
+            or proposal_gate.get("changed_paths") != []
+            or sorted(proposal_gate.get("reason_codes") or [])
+            != ["empty_patch", "missing_required_field"]
+            or proposal_gate.get("proposal_id")
+            != policy_gate.get("proposal_id")
+            or proposal_gate.get("policy_id") != policy_gate.get("policy_id")
+            or proposal_gate.get("receipt_id")
+            != policy_gate.get("proposal_receipt_id")
+            or proposal_gate.get("repository_tree_id") != baseline_commit
+            or proposal_gate.get("proof_authoritative") is not False
+            or proposal_gate.get("completion_authoritative") is not False
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion proposal gate is invalid"
+            )
+
+        results = validation.get("results") if isinstance(validation, Mapping) else None
+        selection = validation.get("selection") if isinstance(validation, Mapping) else None
+        decisions = selection.get("decisions") if isinstance(selection, Mapping) else None
+        plan_binding = (
+            validation.get("validation_plan_binding")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        plan_commands = (
+            plan_binding.get("commands")
+            if isinstance(plan_binding, Mapping)
+            else None
+        )
+        commands_valid = bool(
+            isinstance(results, list)
+            and len(results) == len(validation_commands)
+            and all(
+                isinstance(result, Mapping)
+                and type(result.get("ordinal")) is int
+                and result.get("ordinal") == index
+                and result.get("command") == command
+                and result.get("raw_command") == command
+                and type(result.get("returncode")) is int
+                and result.get("returncode") == 0
+                and result.get("timed_out") is False
+                and result.get("cache_hit") is False
+                and re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(result.get("validation_result_digest") or ""),
+                )
+                is not None
+                for index, (result, command) in enumerate(
+                    zip(results, validation_commands, strict=True)
+                )
+            )
+        )
+        decisions_valid = bool(
+            isinstance(decisions, list)
+            and len(decisions) == len(validation_commands)
+            and all(
+                isinstance(decision, Mapping)
+                and decision.get("command") == command
+                and decision.get("source") == "declared"
+                and decision.get("selected") is True
+                for decision, command in zip(
+                    decisions,
+                    validation_commands,
+                    strict=True,
+                )
+            )
+        )
+        plan_valid = bool(
+            isinstance(plan_binding, Mapping)
+            and plan_binding.get("schema")
+            == (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "deterministic-declared-validation-plan@1"
+            )
+            and plan_binding.get("task_id") == alias
+            and plan_binding.get("canonical_task_cid") == task_cid
+            and plan_binding.get("repository_tree_id") == baseline_commit
+            and type(plan_binding.get("command_count")) is int
+            and plan_binding.get("command_count") == len(validation_commands)
+            and isinstance(plan_commands, list)
+            and len(plan_commands) == len(validation_commands)
+            and all(
+                isinstance(command, Mapping)
+                and set(command) == {"command_cid", "validation_id"}
+                and str(command.get("validation_id") or "")
+                and command.get("command_cid")
+                == content_identity(
+                    {
+                        "command": result.get("command"),
+                        "raw_command": result.get("raw_command"),
+                        "ordinal": index,
+                    }
+                )
+                for index, (command, result) in enumerate(
+                    zip(plan_commands, results or (), strict=True)
+                )
+            )
+            and str(plan_binding.get("validation_plan_cid") or "")
+            == content_identity(
+                {
+                    key: value
+                    for key, value in plan_binding.items()
+                    if key != "validation_plan_cid"
+                }
+            )
+            and set(outputs).issubset(
+                set(plan_binding.get("changed_paths") or ())
+            )
+        )
+        if (
+            str(terminal.get("type") or "") != "implementation_finished"
+            or str(terminal.get("task_id") or "") != alias
+            or str(terminal.get("canonical_task_cid") or "") != task_cid
+            or str(terminal.get("task_cid") or "") != task_cid
+            or terminal.get("canonical_task_key") != canonical_task_key
+            or terminal.get("board_namespace") != board_namespace
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or not branch
+            or terminal.get("implementation_commit") != ""
+            or type(terminal.get("returncode")) is not int
+            or terminal.get("returncode") != 0
+            or terminal.get("attempt_consumed") is not True
+            or terminal.get("provider_dispatched") is not False
+            or type(portal_attempt) is not int
+            or portal_attempt < 1
+            or _SHA256_ID.fullmatch(terminal_event_id) is None
+            or not isinstance(validation, Mapping)
+            or validation.get("attempted") is not True
+            or validation.get("passed") is not True
+            or type(validation.get("returncode")) is not int
+            or validation.get("returncode") != 0
+            or validation.get("target_commit") != baseline_commit
+            or type(validation.get("cache_hits")) is not int
+            or validation.get("cache_hits") != 0
+            or type(validation.get("cache_misses")) is not int
+            or validation.get("cache_misses") != len(validation_commands)
+            or "pre_dispatch_no_change" in validation
+            or not commands_valid
+            or not decisions_valid
+            or not plan_valid
+            or not isinstance(selection, Mapping)
+            or selection.get("scope") != "pre_merge"
+            or selection.get("changed_files") != []
+            or type(selection.get("selected_count")) is not int
+            or selection.get("selected_count") != len(validation_commands)
+            or not isinstance(commit_result, Mapping)
+            or set(commit_result)
+            != {
+                "candidate_handoff_guard",
+                "committed",
+                "no_change_guard",
+                "reason",
+            }
+            or commit_result.get("committed") is not False
+            or not isinstance(no_change_guard, Mapping)
+            or set(no_change_guard)
+            != {
+                "allowed",
+                "reasons",
+                "baseline_ref",
+                "current_head",
+                "expected_branch",
+                "current_branch",
+                "validated_changed_files",
+                "no_change_policy_gate_id",
+                "proposal_receipt_id",
+            }
+            or no_change_guard.get("allowed") is not True
+            or no_change_guard.get("reasons") != []
+            or no_change_guard.get("baseline_ref") != baseline_commit
+            or no_change_guard.get("current_head") != baseline_commit
+            or no_change_guard.get("expected_branch") != branch
+            or no_change_guard.get("current_branch") != branch
+            or no_change_guard.get("validated_changed_files") != []
+            or no_change_guard.get("no_change_policy_gate_id") != policy_gate_id
+            or no_change_guard.get("proposal_receipt_id")
+            != policy_gate.get("proposal_receipt_id")
+            or not exact_handoff(pre_handoff, "pre_commit")
+            or not exact_handoff(post_handoff, "post_commit")
+            or committed_handoff != post_handoff
+            or dict(merge_result or {})
+            != {"merged": False, "reason": "not_attempted"}
+            or not isinstance(cleanup_result, Mapping)
+            or cleanup_result.get("cleaned") is not True
+            or cleanup_result.get("branch") != branch
+            or not isinstance(cleanup_result.get("lifecycle_finalize"), Mapping)
+            or cleanup_result["lifecycle_finalize"].get("finalized") is not True
+            or board_completion
+            != {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "validated_no_change_completion",
+            }
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion authority is invalid"
+            )
+
+        identity = {
+            "board_namespace": board_namespace,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": canonical_task_key,
+            "task_id": alias,
+        }
+
+        def exact_event(
+            event: Mapping[str, Any],
+            event_type: str,
+            payload: Mapping[str, Any],
+        ) -> bool:
+            expected = {**dict(payload), **identity}
+            return bool(
+                event.get("type") == event_type
+                and set(event) == set(expected) | _PORTAL_EVENT_ENVELOPE_FIELDS
+                and all(event.get(key) == value for key, value in expected.items())
+            )
+
+        output_payload = {
+            "completion_authoritative": False,
+            "expected_paths": list(outputs),
+            "force_staged_paths": [],
+            "issues": [],
+            "passed": True,
+            "proof_authoritative": False,
+            "proposal_id": policy_gate["proposal_id"],
+            "staged_paths": [],
+        }
+        preflight_output_payload = {
+            **output_payload,
+            "proposal_id": "",
+            "reason": "validated_no_change_candidate",
+        }
+        proposal_payload = {
+            key: value
+            for key, value in proposal_gate.items()
+            if key != "reason"
+        }
+        prior = events[:terminal_index]
+        match_specs = (
+            (
+                "preflight_outputs",
+                "implementation_expected_outputs_checked",
+                preflight_output_payload,
+            ),
+            (
+                "outputs",
+                "implementation_expected_outputs_checked",
+                output_payload,
+            ),
+            (
+                "proposal",
+                "implementation_proposal_rejected",
+                proposal_payload,
+            ),
+            (
+                "policy",
+                "implementation_no_change_policy_validated",
+                policy_gate,
+            ),
+            (
+                "candidate",
+                "implementation_candidate_binding_verified",
+                candidate_binding,
+            ),
+            (
+                "protected_clear",
+                "implementation_protected_path_snapshot_cleared",
+                {
+                    "attempt": portal_attempt,
+                    "reason": "post_validation_check_unchanged",
+                },
+            ),
+            (
+                "pre_handoff",
+                "implementation_candidate_handoff_verified",
+                pre_handoff,
+            ),
+            (
+                "post_handoff",
+                "implementation_candidate_handoff_verified",
+                post_handoff,
+            ),
+        )
+        positions: dict[str, int] = {}
+        for name, event_type, payload in match_specs:
+            matches = [
+                index
+                for index, event in enumerate(prior)
+                if isinstance(payload, Mapping)
+                and exact_event(event, event_type, payload)
+            ]
+            if len(matches) != 1:
+                raise DatabasePortalBridgeError(
+                    "validated no-change completion issuance chain is invalid"
+                )
+            positions[name] = matches[0]
+
+        cleanup_matches = [
+            index
+            for index, event in enumerate(prior)
+            if isinstance(cleanup_result, Mapping)
+            and event.get("type") == "cleanup_finished"
+            and set(event)
+            == set(cleanup_result) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            and all(
+                event.get(key) == value
+                for key, value in cleanup_result.items()
+            )
+        ]
+        todo_payload = (
+            {**dict(todo_result), **identity}
+            if isinstance(todo_result, Mapping)
+            else {}
+        )
+        todo_matches = [
+            index
+            for index, event in enumerate(prior)
+            if todo_payload
+            and event.get("type") == "todo_status_updated"
+            and set(event) == set(todo_payload) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            and all(event.get(key) == value for key, value in todo_payload.items())
+        ]
+        if len(cleanup_matches) != 1 or len(todo_matches) != 1:
+            raise DatabasePortalBridgeError(
+                "validated no-change completion terminal chain is invalid"
+            )
+        positions["cleanup"] = cleanup_matches[0]
+        positions["todo"] = todo_matches[0]
+        if list(positions.values()) != sorted(positions.values()):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion chain is out of order"
+            )
+
+        projection_commit_result = (
+            todo_result.get("commit_result")
+            if isinstance(todo_result, Mapping)
+            else None
+        )
+        receipts = (
+            todo_result.get("completion_receipts")
+            if isinstance(todo_result, Mapping)
+            else None
+        )
+        expected_member_receipt = {
+            "board_namespace": board_namespace,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": canonical_task_key,
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "status": "succeeded",
+            "task_id": alias,
+        }
+        todo_fields = {
+            "already_completed_task_ids",
+            "commit_result",
+            "completion_reason",
+            "completion_receipts",
+            "inserted_status_task_ids",
+            "missing_status_task_ids",
+            "missing_task_ids",
+            "path",
+            "task_id",
+            "updated",
+            "updated_checkbox_task_ids",
+            "updated_task_ids",
+        }
+        committed_projection = bool(
+            isinstance(projection_commit_result, Mapping)
+            and set(projection_commit_result)
+            == {"commit", "committed", "path", "repo", "status"}
+            and projection_commit_result.get("committed") is True
+            and re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(projection_commit_result.get("commit") or ""),
+            )
+            is not None
+            and bool(str(projection_commit_result.get("path") or ""))
+            and bool(str(projection_commit_result.get("repo") or ""))
+            and bool(str(projection_commit_result.get("status") or ""))
+        )
+        private_uncommitted_projection = bool(
+            isinstance(projection_commit_result, Mapping)
+            and set(projection_commit_result)
+            == {"committed", "path", "reason", "repo"}
+            and projection_commit_result.get("committed") is False
+            and projection_commit_result.get("reason") == "no_changes"
+            and bool(str(projection_commit_result.get("path") or ""))
+            and bool(str(projection_commit_result.get("repo") or ""))
+        )
+        if (
+            not isinstance(todo_result, Mapping)
+            or set(todo_result) != todo_fields
+            or todo_result.get("updated") is not True
+            or todo_result.get("task_id") != alias
+            or todo_result.get("completion_reason") != "single_task"
+            or todo_result.get("updated_task_ids") != [alias]
+            or todo_result.get("already_completed_task_ids") != []
+            or todo_result.get("missing_task_ids") != []
+            or todo_result.get("missing_status_task_ids") != []
+            or todo_result.get("inserted_status_task_ids") != []
+            or todo_result.get("updated_checkbox_task_ids") != []
+            or not str(todo_result.get("path") or "")
+            or receipts != [expected_member_receipt]
+            or committed_projection == private_uncommitted_projection
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change completion projection commit is invalid"
+            )
+
+        return {
+            "implementation_commit": baseline_commit,
+            "baseline_commit": baseline_commit,
+            "completion_source_event_id": terminal_event_id,
+            "completion_source_event_type": "implementation_finished",
+            "completion_source_portal_attempt": portal_attempt,
+            "_source_event_index": terminal_index,
+            "_source_event": terminal,
+            "_source_merged": False,
+            "_source_queued": False,
+            "_source_validated_no_change": True,
+            "_source_effect_tree": expected_tree,
+            "_source_projection_commit": str(
+                projection_commit_result.get("commit") or ""
+            ),
+            "_source_projection_uncommitted": (
+                private_uncommitted_projection
+            ),
+            "_source_projection_path": str(
+                projection_commit_result["path"]
+            ),
+            "_source_projection_repo": str(
+                projection_commit_result["repo"]
+            ),
+            "_source_projection_absolute_path": str(
+                todo_result["path"]
+            ),
+        }
+
     @classmethod
     def _completion_event_evidence(
         cls,
@@ -8778,6 +10067,7 @@ class DatabasePortalExecutionBridge:
         completion_task_key: str,
         completion_task_cid: str | None = None,
         verified_landed_completion_claim_seed: Mapping[str, Any] | None = None,
+        validated_no_change_authority: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any] | None:
         """Bind projected completion to one exact implementation commit.
 
@@ -8882,6 +10172,17 @@ class DatabasePortalExecutionBridge:
                 )
                 if landed_source is not None:
                     sources.append(landed_source)
+                    continue
+                no_change_source = cls._validated_no_change_completion_source(
+                    events,
+                    terminal_index=event_index,
+                    terminal=event,
+                    alias=alias,
+                    task_cid=task_cid,
+                    authority=validated_no_change_authority,
+                )
+                if no_change_source is not None:
+                    sources.append(no_change_source)
                     continue
                 admissible = bool(
                     isinstance(validation_result, Mapping)
@@ -9196,6 +10497,7 @@ class DatabasePortalExecutionBridge:
             selected_source = matching_sources[0]
             source_handoff_admitted = bool(
                 selected_source.get("_source_landed_revalidated") is True
+                or selected_source.get("_source_validated_no_change") is True
                 or selected_source.get("_source_merged") is True
                 or (
                     selected_source.get("_source_queued") is True
@@ -9238,7 +10540,6 @@ class DatabasePortalExecutionBridge:
         source.pop("_source_event", None)
         source.pop("_source_merged", None)
         source.pop("_source_queued", None)
-        source.pop("_source_landed_revalidated", None)
         claimed_source_event_id = str(
             completion.get("completion_source_event_id") or ""
         )
@@ -17074,6 +18375,16 @@ class DatabasePortalExecutionBridge:
         verified_landed_completion_claim_seed = (
             self._verify_landed_completion_target_stable(attempt, binding)
         )
+        current_record = self._record_for_attempt(self.task_source, attempt)
+        validated_no_change_authority = (
+            self._validated_no_change_task_authority(
+                record=current_record,
+                binding=binding,
+                paths=paths,
+            )
+            if self._record_allows_validated_no_change(current_record)
+            else None
+        )
         alias = str(binding.get("task_alias") or "")
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
@@ -17103,10 +18414,23 @@ class DatabasePortalExecutionBridge:
             verified_landed_completion_claim_seed=(
                 verified_landed_completion_claim_seed
             ),
+            validated_no_change_authority=validated_no_change_authority,
         )
         if completion is None:
             raise DatabasePortalBridgeError(
                 "Portal completion lacks a matching durable task_completed event"
+            )
+        if completion.get("_source_validated_no_change") is True:
+            if validated_no_change_authority is None:
+                raise DatabasePortalBridgeError(
+                    "validated no-change completion lacks task authority"
+                )
+            self._require_validated_no_change_target(
+                paths=paths,
+                binding=binding,
+                authority=validated_no_change_authority,
+                completion=completion,
+                projection_text=projection_text,
             )
         if (summary_count is None) != (summaries_digest is None):
             raise DatabasePortalBridgeError(
@@ -19173,6 +20497,118 @@ class DatabasePortalExecutionBridge:
             "write_count": 0,
         }
 
+    def _revalidate_equal_commit_completion(
+        self,
+        *,
+        attempt: Any,
+        evidence: Mapping[str, Any],
+    ) -> None:
+        """Replay zero-diff authority at the database effect boundary."""
+
+        paths = self._paths(attempt)
+        if not (
+            paths.binding.is_file()
+            and paths.task_projection.is_file()
+            and paths.events.is_file()
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change apply evidence is incomplete"
+            )
+        binding = self._read_binding(paths.binding)
+        binding_body = dict(binding)
+        binding_id = str(binding_body.pop("binding_id", "") or "")
+        if (
+            binding_id != _sha256_bytes(_canonical_json(binding_body))
+            or binding_id != str(evidence.get("binding_id") or "")
+            or binding.get("attempt_id") != str(attempt.attempt_id)
+            or binding.get("claim_id") != str(attempt.claim_id)
+            or binding.get("task_cid") != str(attempt.task_cid)
+            or binding.get("task_alias") != str(attempt.task_alias)
+            or binding.get("attempt_number") != int(attempt.attempt_number)
+            or binding.get("owner_session_id")
+            != str(attempt.owner_session_id)
+            or binding.get("fencing_token") != int(attempt.fencing_token)
+            or binding.get("fence_epoch") != int(attempt.fence_epoch)
+            or binding.get("lease_id") != str(attempt.lease_id)
+            or binding.get("projection_immutable_digest")
+            != evidence.get("projection_immutable_digest")
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change apply binding changed"
+            )
+        projection_text = self._verify_projection(paths, binding)
+        if (
+            _sha256_bytes(projection_text.encode("utf-8"))
+            != evidence.get("projection_digest")
+            or _sha256_file(paths.events) != evidence.get("events_digest")
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change apply artifacts changed"
+            )
+        record = self._record_for_attempt(self.task_source, attempt)
+        authority = (
+            self._validated_no_change_task_authority(
+                record=record,
+                binding=binding,
+                paths=paths,
+            )
+            if self._record_allows_validated_no_change(record)
+            else None
+        )
+        landed_seed = self._verify_landed_completion_target_stable(
+            attempt,
+            binding,
+        )
+        completion = self._completion_event_evidence(
+            paths,
+            alias=str(attempt.task_alias),
+            task_cid=str(attempt.task_cid),
+            completion_task_key=str(binding.get("canonical_task_key") or ""),
+            verified_landed_completion_claim_seed=landed_seed,
+            validated_no_change_authority=authority,
+        )
+        expected = {
+            "baseline_commit": str(evidence.get("baseline_commit") or ""),
+            "implementation_commit": str(
+                evidence.get("implementation_commit") or ""
+            ),
+            "completion_event_id": str(
+                evidence.get("completion_event_id") or ""
+            ),
+            "completion_source_event_id": str(
+                evidence.get("completion_source_event_id") or ""
+            ),
+            "completion_source_event_type": str(
+                evidence.get("completion_source_event_type") or ""
+            ),
+            "completion_source_portal_attempt": evidence.get(
+                "completion_source_portal_attempt"
+            ),
+        }
+        if (
+            not isinstance(completion, Mapping)
+            or any(completion.get(key) != value for key, value in expected.items())
+            or (
+                completion.get("_source_validated_no_change") is not True
+                and completion.get("_source_landed_revalidated") is not True
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "validated no-change apply lineage changed"
+            )
+        if completion.get("_source_validated_no_change") is True:
+            if authority is None:
+                raise DatabasePortalBridgeError(
+                    "validated no-change apply lost task authority"
+                )
+            self._require_validated_no_change_target(
+                paths=paths,
+                binding=binding,
+                authority=authority,
+                completion=completion,
+                projection_text=projection_text,
+            )
+
     def _require_portal_commit_lineage(
         self,
         *,
@@ -19436,6 +20872,11 @@ class DatabasePortalExecutionBridge:
         ):
             raise DatabasePortalBridgeError(
                 "database effect rejected malformed Portal evidence identity"
+            )
+        if implementation_commit == baseline_commit:
+            self._revalidate_equal_commit_completion(
+                attempt=attempt,
+                evidence=evidence,
             )
         baseline_tree = self._require_portal_commit_lineage(
             baseline_commit=baseline_commit,

@@ -731,6 +731,161 @@ def _content_addressed_projection(
     return MappingProxyType({**normalized, "projection_cid": content_identity(normalized)})
 
 
+def _completion_evidence_projection_on(
+    connection: Any,
+    requested: tuple[str, ...],
+) -> Mapping[str, Any]:
+    """Read one exact completion projection on the caller's MVCC snapshot."""
+
+    if requested:
+        placeholders = ", ".join("?" for _ in requested)
+        task_rows = connection.execute(
+            "SELECT task_cid, status, revision FROM tasks "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid",
+            list(requested),
+        ).fetchall()
+        found = {str(row[0]) for row in task_rows}
+        missing = sorted(set(requested) - found)
+        if missing:
+            raise KeyError(
+                "unknown task_cids in completion projection: "
+                + ", ".join(missing)
+            )
+    else:
+        task_count = int(
+            connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        )
+        if task_count > MAX_PAGE_LIMIT:
+            raise IntentRepositoryBoundsError(
+                "completion projection task count exceeds bound"
+            )
+        task_rows = connection.execute(
+            "SELECT task_cid, status, revision FROM tasks ORDER BY task_cid"
+        ).fetchall()
+
+    projected_task_cids = tuple(str(row[0]) for row in task_rows)
+    if projected_task_cids:
+        placeholders = ", ".join("?" for _ in projected_task_cids)
+        current_receipt_predicate = (
+            "receipt.task_cid IN ("
+            + placeholders
+            + ") AND TRY_CAST(json_extract_string("
+            "TRY_CAST(receipt.body_json AS JSON), '$.revision') AS BIGINT) "
+            "= task.revision"
+        )
+        malformed_revision = connection.execute(
+            "SELECT receipt.task_cid "
+            "FROM completion_receipts AS receipt "
+            f"WHERE receipt.task_cid IN ({placeholders}) AND ("
+            "TRY_CAST(receipt.body_json AS JSON) IS NULL OR "
+            "NOT COALESCE(regexp_full_match(json_extract_string("
+            "TRY_CAST(receipt.body_json AS JSON), '$.revision'), "
+            "'0|[1-9][0-9]*'), FALSE)) "
+            "ORDER BY receipt.task_cid LIMIT 1",
+            list(projected_task_cids),
+        ).fetchone()
+        if malformed_revision is not None:
+            raise IntentRepositoryIntegrityError(
+                "completion projection receipt revision is not a normalized integer "
+                f"for task {malformed_revision[0]}"
+            )
+        duplicate_current = connection.execute(
+            "SELECT receipt.task_cid, COUNT(*) "
+            "FROM completion_receipts AS receipt "
+            "JOIN tasks AS task ON task.task_cid = receipt.task_cid "
+            f"WHERE {current_receipt_predicate} "
+            "GROUP BY receipt.task_cid HAVING COUNT(*) > 1 "
+            "ORDER BY receipt.task_cid LIMIT 1",
+            list(projected_task_cids),
+        ).fetchone()
+        if duplicate_current is not None:
+            raise IntentRepositoryIntegrityError(
+                "completion projection has multiple current-revision receipts "
+                f"for task {duplicate_current[0]}"
+            )
+        receipt_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM completion_receipts AS receipt "
+                "JOIN tasks AS task ON task.task_cid = receipt.task_cid "
+                f"WHERE {current_receipt_predicate}",
+                list(projected_task_cids),
+            ).fetchone()[0]
+        )
+        if receipt_count > MAX_EVIDENCE:
+            raise IntentRepositoryBoundsError(
+                "completion receipt projection count exceeds bound"
+            )
+        receipt_rows = connection.execute(
+            """
+            SELECT receipt.receipt_cid, receipt.task_cid, receipt.goal_cid,
+                   receipt.attempt_id, receipt.claim_cid, receipt.fencing_token,
+                   receipt.completed_at, receipt.validation_run_id,
+                   receipt.evidence_digest, receipt.body_json
+            FROM completion_receipts AS receipt
+            JOIN tasks AS task ON task.task_cid = receipt.task_cid
+            WHERE """
+            + current_receipt_predicate
+            + " ORDER BY receipt.task_cid, receipt.completed_at, receipt.receipt_cid",
+            list(projected_task_cids),
+        ).fetchall()
+    else:
+        receipt_rows = []
+    watermark = int(
+        connection.execute(
+            "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+        ).fetchone()[0]
+    )
+    task_states = [
+        {
+            "task_cid": str(row[0]),
+            "status": str(row[1]),
+            "revision": int(row[2]),
+        }
+        for row in task_rows
+    ]
+    current_revisions = {str(row[0]): int(row[2]) for row in task_rows}
+    completion_receipts: list[dict[str, Any]] = []
+    for row in receipt_rows:
+        task_cid = str(row[1])
+        body = _decode_json(row[9], noun="completion receipt body")
+        if (
+            not isinstance(body, Mapping)
+            or set(body) != {"schema", "receipt", "evidence_digests", "revision"}
+            or body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+            or type(body.get("revision")) is not int
+            or body.get("revision") != current_revisions[task_cid]
+            or not isinstance(body.get("receipt"), Mapping)
+            or not isinstance(body.get("evidence_digests"), list)
+        ):
+            raise IntentRepositoryIntegrityError(
+                "completion projection current-revision receipt is not normalized"
+            )
+        completion_receipts.append(
+            {
+                "receipt_cid": str(row[0]),
+                "task_cid": task_cid,
+                "goal_cid": str(row[2]),
+                "attempt_id": str(row[3] or ""),
+                "claim_cid": str(row[4] or ""),
+                "fencing_token": int(row[5]),
+                "completed_at": str(row[6]),
+                "validation_run_id": str(row[7] or ""),
+                "evidence_digest": str(row[8]),
+                "body": dict(body),
+            }
+        )
+    return _content_addressed_projection(
+        {
+            "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+            "event_watermark": watermark,
+            "task_states": task_states,
+            "completion_receipts": completion_receipts,
+        },
+        maximum_bytes=MAX_COMPLETION_PROJECTION_BYTES,
+        noun="intent completion projection",
+    )
+
+
 def _goal_completion_authority_spec(value: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one closed, content-addressed goal-completion population.
 
@@ -8605,107 +8760,11 @@ class IntentRepository:
 
     def completion_evidence_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Return exact current task states and durable completion receipts."""
-
-        requested = _projection_task_cids(task_cids)
         with self._connection(write=False) as connection:
-            connection.execute("BEGIN TRANSACTION")
-            try:
-                if requested:
-                    placeholders = ", ".join("?" for _ in requested)
-                    task_rows = connection.execute(
-                        "SELECT task_cid, status, revision FROM tasks "
-                        f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid",
-                        list(requested),
-                    ).fetchall()
-                    found = {str(row[0]) for row in task_rows}
-                    missing = sorted(set(requested) - found)
-                    if missing:
-                        raise KeyError(
-                            "unknown task_cids in completion projection: " + ", ".join(missing)
-                        )
-                else:
-                    task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
-                    if task_count > MAX_PAGE_LIMIT:
-                        raise IntentRepositoryBoundsError(
-                            "completion projection task count exceeds bound"
-                        )
-                    task_rows = connection.execute(
-                        "SELECT task_cid, status, revision FROM tasks ORDER BY task_cid"
-                    ).fetchall()
-
-                projected_task_cids = tuple(str(row[0]) for row in task_rows)
-                if projected_task_cids:
-                    placeholders = ", ".join("?" for _ in projected_task_cids)
-                    receipt_count = int(
-                        connection.execute(
-                            "SELECT COUNT(*) FROM completion_receipts "
-                            f"WHERE task_cid IN ({placeholders})",
-                            list(projected_task_cids),
-                        ).fetchone()[0]
-                    )
-                    if receipt_count > MAX_EVIDENCE:
-                        raise IntentRepositoryBoundsError(
-                            "completion receipt projection count exceeds bound"
-                        )
-                    receipt_rows = connection.execute(
-                        """
-                        SELECT receipt_cid, task_cid, goal_cid, attempt_id,
-                               claim_cid, fencing_token, completed_at,
-                               validation_run_id, evidence_digest, body_json
-                        FROM completion_receipts
-                        WHERE task_cid IN ("""
-                        + placeholders
-                        + ") ORDER BY task_cid, completed_at, receipt_cid",
-                        list(projected_task_cids),
-                    ).fetchall()
-                else:
-                    receipt_rows = []
-                watermark = int(
-                    connection.execute(
-                        "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
-                    ).fetchone()[0]
-                )
-                connection.execute("COMMIT")
-            except BaseException:
-                try:
-                    connection.execute("ROLLBACK")
-                except Exception:
-                    pass
-                raise
-
-        task_states = [
-            {
-                "task_cid": str(row[0]),
-                "status": str(row[1]),
-                "revision": int(row[2]),
-            }
-            for row in task_rows
-        ]
-        completion_receipts = [
-            {
-                "receipt_cid": str(row[0]),
-                "task_cid": str(row[1]),
-                "goal_cid": str(row[2]),
-                "attempt_id": str(row[3] or ""),
-                "claim_cid": str(row[4] or ""),
-                "fencing_token": int(row[5]),
-                "completed_at": str(row[6]),
-                "validation_run_id": str(row[7] or ""),
-                "evidence_digest": str(row[8]),
-                "body": _decode_json(row[9], noun="completion receipt body"),
-            }
-            for row in receipt_rows
-        ]
-        return _content_addressed_projection(
-            {
-                "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
-                "event_watermark": watermark,
-                "task_states": task_states,
-                "completion_receipts": completion_receipts,
-            },
-            maximum_bytes=MAX_COMPLETION_PROJECTION_BYTES,
-            noun="intent completion projection",
-        )
+            return completion_evidence_projection_on_connection(
+                connection,
+                task_cids=task_cids,
+            )
 
     def plan_revisions(self) -> PlanRevisionRepository:
         """Return the plan-revision repository view over this intent store."""
@@ -9054,6 +9113,49 @@ def goal_authority_projection_on_connection(
     )
 
 
+def completion_evidence_projection_on_connection(
+    connection: Any,
+    *,
+    task_cids: Sequence[str],
+    transaction_owned_by_caller: bool = False,
+) -> Mapping[str, Any]:
+    """Project exact completion evidence on one admitted read connection.
+
+    The typed state owner passes ``transaction_owned_by_caller=True`` while it
+    holds its sole connection lock and MVCC transaction. Other callers receive
+    a short self-owned read transaction. No database path or write surface is
+    accepted here.
+    """
+
+    if not callable(getattr(connection, "execute", None)):
+        raise IntentRepositoryIntegrityError(
+            "completion evidence projection requires a readable connection"
+        )
+    requested = _projection_task_cids(task_cids)
+    owns_transaction = False
+    if not transaction_owned_by_caller:
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            owns_transaction = True
+        except Exception as exc:
+            raise IntentRepositoryConflictError(
+                "completion projection could not start an MVCC read transaction"
+            ) from exc
+    try:
+        projection = _completion_evidence_projection_on(connection, requested)
+        if owns_transaction:
+            connection.execute("COMMIT")
+            owns_transaction = False
+        return projection
+    except BaseException:
+        if owns_transaction:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+
+
 def open_intent_repository(
     database_path: str | Path | None = None,
     *,
@@ -9118,6 +9220,7 @@ __all__ = (
     "PlanRevisionRepository",
     "task_projection_spec_cid",
     "task_authority_spec_cid",
+    "completion_evidence_projection_on_connection",
     "goal_authority_projection_on_connection",
     "open_intent_repository",
     "duckdb_available",

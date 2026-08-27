@@ -194,6 +194,7 @@ from ..task_sources.board_control_plane import (
     resolve_board_implementation_branch,
 )
 from ..task_sources.database_task_source import (
+    CASResult as DatabaseTaskCASResult,
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
@@ -82501,6 +82502,9 @@ from ..merge.database_coordination import (
 )
 from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    TYPED_DATABASE_CLAIM_RECOVERY_REASON,
+    TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
@@ -92107,10 +92111,23 @@ class DatabaseImplementationDaemon:
                     "control status replay conflicts with a foreign durable "
                     "receipt"
                 ) from exc
-            # The exact receipt already holds the requested status.  Replay at
-            # the observed revision only to obtain the task source's durable
-            # idempotent result; a foreign same-status receipt never reaches
-            # this call.
+            if receipt_payload.get("operation") == "database_attempt_admitted":
+                # The typed owner admits this phase only over its exact prior
+                # reservation; it must reject a second admission mutation once
+                # the admitted receipt is current.  The authoritative reread
+                # and checks above prove that the response was lost after the
+                # original mutation committed, so project that durable state
+                # without issuing a forbidden same-status write.
+                snapshot = self.task_source.snapshot()
+                return DatabaseTaskCASResult(
+                    task=current,
+                    previous_status=str(current.status),
+                    revision=int(current.revision),
+                    event_cursor=int(snapshot.event_cursor),
+                    changed=False,
+                )
+            # Other exact receipts retain the task source's durable idempotent
+            # replay.  A foreign same-status receipt never reaches this call.
             return cas(
                 current.task_cid,
                 expected_revision=int(current.revision),
@@ -101540,6 +101557,133 @@ class DatabaseImplementationDaemon:
                     ),
                 )
             existing_entry = get_queue_entry(attempt.task_cid)
+            dead_claim_recovery = bool(
+                isinstance(prior_control_receipt, Mapping)
+                and prior_control_receipt.get("operation")
+                == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            )
+            if dead_claim_recovery:
+                assert isinstance(prior_control_receipt, Mapping)
+                expected_fields = {
+                    "schema",
+                    "operation",
+                    "claim_id",
+                    "attempt_id",
+                    "attempt_number",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "recovered_claim_phase_schema",
+                    "recovered_claimed_from_revision",
+                    "recovered_reservation_cid",
+                    "recovered_claim_process_attestation",
+                    "recovery_process_attestation",
+                    "recovered_from_revision",
+                    "queue_reason",
+                    "backoff_ms",
+                    "retry_not_before_ms",
+                    "control_expected_revision",
+                    "execution_route_binding",
+                    "execution_route_policy_id",
+                    "execution_route_origin_revision",
+                }
+                expected_identity = {
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "attempt_number": int(attempt.attempt_number),
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                }
+                control_revision = int(task.revision) - 1
+                if (
+                    set(prior_control_receipt) != expected_fields
+                    or prior_control_receipt.get("schema")
+                    != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
+                    or prior_control_receipt.get("queue_reason")
+                    != TYPED_DATABASE_CLAIM_RECOVERY_REASON
+                    or prior_control_receipt.get("backoff_ms") != 0
+                    or prior_control_receipt.get("recovered_claim_phase_schema")
+                    != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    or prior_control_receipt.get("recovered_from_revision")
+                    != control_revision
+                    or prior_control_receipt.get("control_expected_revision")
+                    != control_revision
+                    or prior_control_receipt.get(
+                        "recovered_claimed_from_revision"
+                    )
+                    != control_revision - 1
+                    or type(
+                        prior_control_receipt.get("recovered_reservation_cid")
+                    )
+                    is not str
+                    or not prior_control_receipt.get(
+                        "recovered_reservation_cid"
+                    )
+                    or not isinstance(
+                        prior_control_receipt.get(
+                            "recovered_claim_process_attestation"
+                        ),
+                        Mapping,
+                    )
+                    or not isinstance(
+                        prior_control_receipt.get(
+                            "recovery_process_attestation"
+                        ),
+                        Mapping,
+                    )
+                    or type(
+                        prior_control_receipt.get("retry_not_before_ms")
+                    )
+                    is not int
+                    or any(
+                        type(prior_control_receipt.get(name))
+                        is not type(expected)
+                        or prior_control_receipt.get(name) != expected
+                        for name, expected in expected_identity.items()
+                    )
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "dead claim recovery retry receipt is malformed or foreign"
+                    )
+                # This also reproduces the immutable launch route from the
+                # current retry receipt.  A malformed carried route therefore
+                # cannot use the cooldown shortcut below.
+                self._execution_route_binding_for_claim(
+                    task,
+                    fenced_retry=True,
+                )
+                validate_retrying_cooldown = getattr(
+                    self.task_source,
+                    "validate_retrying_task_cooldown",
+                    None,
+                )
+                if not callable(validate_retrying_cooldown):
+                    raise DatabaseImplementationAuthorityError(
+                        "dead claim recovery has no exact cooldown validator"
+                    )
+                existing_entry = validate_retrying_cooldown(
+                    attempt.task_cid,
+                    expected_attempt_identity=expected_identity,
+                    expected_reason=TYPED_DATABASE_CLAIM_RECOVERY_REASON,
+                    expected_delay_ms=0,
+                )
+                return {
+                    "task_cid": attempt.task_cid,
+                    "attempt_id": attempt.attempt_id,
+                    "status": "retrying",
+                    "changed": False,
+                    "backoff_seconds": 0,
+                    "backoff_ms": 0,
+                    "retry_not_before_ms": int(
+                        getattr(existing_entry, "retry_not_before_ms", 0) or 0
+                    ),
+                    "evidence_source": "typed_dead_claim_reservation_recovery",
+                    "queue_reused": True,
+                    "queue_receipt": {},
+                }
             if (
                 (
                     validation_retry_evidence is not None

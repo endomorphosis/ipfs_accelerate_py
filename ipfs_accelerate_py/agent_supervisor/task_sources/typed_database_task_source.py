@@ -77,7 +77,7 @@ TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
 )
 DEFAULT_QUERY_LIMIT: Final = 50
 _TRANSPORT_PAGE_LIMIT: Final = 500
-_TASK_HISTORY_PAGE_LIMIT: Final = 16
+_HISTORY_TRANSPORT_PAGE_LIMIT: Final = 24
 _MAX_JSON_BYTES: Final = 262_144
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
@@ -114,8 +114,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
-        "select_task_by_cid",
-        "executor_task_revision_history_by_cid",
+        "executor_task_revision_history_page",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
         "txn_load_generation",
@@ -124,6 +123,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_completion_receipt",
         "executor_insert_task_revision",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
@@ -163,6 +163,33 @@ def _mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
         return {}
     if not isinstance(parsed, dict) or not all(isinstance(key, str) for key in parsed):
         raise TaskSourceIntegrityError(f"{noun} is not a JSON object")
+    return parsed
+
+
+def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
+    """Decode one bounded history body while rejecting duplicate JSON keys."""
+
+    if not isinstance(value, str):
+        raise TaskSourceIntegrityError("task revision body is not encoded JSON")
+    if len(value.encode("utf-8")) > _MAX_JSON_BYTES:
+        raise TaskSourceBoundsError("task revision body exceeds its byte bound")
+
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
+    try:
+        parsed = json.loads(value, object_pairs_hook=closed_object)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TaskSourceIntegrityError(
+            "task revision body is malformed or ambiguous"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise TaskSourceIntegrityError("task revision body is not a JSON object")
     return parsed
 
 
@@ -979,96 +1006,133 @@ class TypedDatabaseTaskSource:
         self,
         task_cid_or_alias: str,
     ) -> Mapping[str, Any]:
-        """Return canonical task history through the closed typed owner.
+        """Return one stable, bounded canonical task lifecycle history."""
 
-        The post-merge crash fence consumes this same projection contract from
-        local DuckDB task sources.  Typed execution must obtain it through a
-        fixed read-only operation so it never falls back to a second database
-        authority or weakens the fence when a task reaches later revisions.
-        """
-
+        self._require_open()
         key = str(task_cid_or_alias or "").strip()
         if not key:
-            raise TaskSourceIntegrityError("task identity must not be empty")
+            raise TaskSourceIntegrityError("task history identity must not be empty")
         for _attempt in range(4):
             before = self._client.load_generation()
-            task = self.get_task(key)
-            if task is None:
-                raise KeyError(key)
-            rows: list[Mapping[str, Any]] = []
-            offset = 0
-            while offset <= MAX_PROJECTION_RECORDS:
-                page = self._client.execute(
-                    "executor_task_revision_history_by_cid",
+            task_rows = self._client.execute(
+                "executor_task_projection_by_identity",
+                {"task_identity": key, "task_alias": key},
+            )
+            if len(task_rows) != 1:
+                after = self._client.load_generation()
+                if before.content_id != after.content_id:
+                    continue
+                if not task_rows:
+                    raise KeyError(key)
+                raise TaskSourceIntegrityError("task history identity is ambiguous")
+            current = _record_from_row(task_rows[0])[0]
+            revisions: list[dict[str, Any]] = []
+            projection_bytes = len(
+                canonical_json_bytes(
                     {
-                        "task_cid": task.task_cid,
-                        "limit": min(
-                            _TASK_HISTORY_PAGE_LIMIT,
-                            MAX_PROJECTION_RECORDS + 1 - offset,
-                        ),
+                        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                        "task_cid": current.task_cid,
+                        "revisions": [],
+                    }
+                )
+            )
+            offset = 0
+            while len(revisions) <= MAX_PROJECTION_RECORDS:
+                limit = min(
+                    _HISTORY_TRANSPORT_PAGE_LIMIT,
+                    MAX_PROJECTION_RECORDS + 1 - len(revisions),
+                )
+                page = self._client.execute(
+                    "executor_task_revision_history_page",
+                    {
+                        "task_cid": current.task_cid,
+                        "limit": limit,
                         "offset": offset,
                     },
                 )
                 if not page:
                     break
-                rows.extend(page)
+                for row in page:
+                    if set(row) != {
+                        "task_cid",
+                        "revision",
+                        "status",
+                        "body_json",
+                    }:
+                        raise TaskSourceIntegrityError(
+                            "typed task history differs from its closed projection"
+                        )
+                    if str(row.get("task_cid") or "") != current.task_cid:
+                        raise TaskSourceIntegrityError(
+                            "task history differs from its resolved canonical identity"
+                        )
+                    revision = row.get("revision")
+                    status = row.get("status")
+                    if (
+                        type(revision) is not int
+                        or revision < 1
+                        or type(status) is not str
+                        or not status
+                    ):
+                        raise TaskSourceIntegrityError(
+                            "typed task history lifecycle row is malformed"
+                        )
+                    item = {
+                        "revision": revision,
+                        "status": status,
+                        "body": _closed_history_mapping_json(
+                            row.get("body_json")
+                        ),
+                    }
+                    projection_bytes += len(canonical_json_bytes(item))
+                    if revisions:
+                        projection_bytes += 1
+                    if projection_bytes > MAX_PLAN_PROJECTION_BYTES:
+                        raise TaskSourceBoundsError(
+                            "task revision history exceeds projection byte bound"
+                        )
+                    revisions.append(item)
+                    if len(revisions) > MAX_PROJECTION_RECORDS:
+                        raise TaskSourceBoundsError(
+                            "task revision history exceeds projection bound"
+                        )
                 offset += len(page)
-                if len(rows) > MAX_PROJECTION_RECORDS:
-                    raise TaskSourceBoundsError(
-                        "task revision history exceeds projection bound"
-                    )
-                if len(page) < _TASK_HISTORY_PAGE_LIMIT:
+                if len(page) < limit:
                     break
             after = self._client.load_generation()
             if before.content_id != after.content_id:
                 continue
-
-            revisions: list[dict[str, Any]] = []
-            for raw in rows:
-                row = dict(raw)
-                if set(row) != {"revision", "status", "body_json"}:
-                    raise TaskSourceIntegrityError(
-                        "typed task revision differs from its closed projection"
-                    )
-                revision = row.get("revision")
-                status = row.get("status")
-                if (
-                    isinstance(revision, bool)
-                    or not isinstance(revision, int)
-                    or revision < 1
-                    or not isinstance(status, str)
-                    or not status.strip()
-                ):
-                    raise TaskSourceIntegrityError(
-                        "typed task revision history is malformed"
-                    )
-                revisions.append(
-                    {
-                        "revision": revision,
-                        "status": status,
-                        "body": _mapping_json(
-                            row.get("body_json"),
-                            noun="task revision body",
-                        ),
-                    }
+            if not revisions:
+                raise TaskSourceIntegrityError(
+                    "task revision history is absent for an existing task"
+                )
+            if [item["revision"] for item in revisions] != list(
+                range(1, current.revision + 1)
+            ):
+                raise TaskSourceIntegrityError(
+                    "typed task history does not reach the current task revision"
+                )
+            if (
+                revisions[-1]["status"] != current.status
+                or revisions[-1]["body"] != dict(current.body)
+            ):
+                raise TaskSourceIntegrityError(
+                    "typed task history tail differs from the current task"
                 )
             material = {
                 "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
-                "task_cid": task.task_cid,
+                "task_cid": current.task_cid,
                 "revisions": revisions,
             }
             if len(canonical_json_bytes(material)) > MAX_PLAN_PROJECTION_BYTES:
                 raise TaskSourceBoundsError(
-                    "task revision history projection exceeds its byte bound"
+                    "task revision history exceeds projection byte bound"
                 )
             return MappingProxyType(
-                {
-                    **material,
-                    "projection_cid": content_identity(material),
-                }
+                {**material, "projection_cid": content_identity(material)}
             )
         raise TaskSourceConflictError(
-            "typed task revision history changed during bounded projection"
+            "typed task history changed during bounded projection"
         )
 
     def list_tasks(
@@ -1189,29 +1253,31 @@ class TypedDatabaseTaskSource:
             raise TaskSourceConflictError("expected task revision is invalid")
         if prior.revision != expected_revision:
             raise TaskSourceConflictError("task revision CAS failed")
-        receipt_snapshot = dict(receipt) if receipt is not None else None
-        if expected_control_receipt is not None and not isinstance(
-            expected_control_receipt, Mapping
-        ):
-            raise TaskSourceConflictError("task control receipt CAS is stale")
-        expected_control_receipt_snapshot = (
-            dict(expected_control_receipt)
-            if expected_control_receipt is not None
-            else None
-        )
-        prior_control_receipt = prior.body.get("completion_receipt")
-        if expected_control_receipt_snapshot is not None and (
-            not isinstance(prior_control_receipt, Mapping)
-            or canonical_json_bytes(dict(prior_control_receipt))
-            != canonical_json_bytes(expected_control_receipt_snapshot)
-        ):
-            raise TaskSourceConflictError("task control receipt CAS is stale")
         requested_status = str(status or "").strip().lower()
         if requested_status not in TYPED_TASK_STATUS_VOCABULARY:
             raise TaskSourceIntegrityError(
                 "task status is outside the closed typed vocabulary"
             )
         prior_receipt = prior.body.get("completion_receipt")
+        if expected_control_receipt is not None and not isinstance(
+            expected_control_receipt, Mapping
+        ):
+            raise TaskSourceIntegrityError(
+                "expected task control receipt is not a mapping"
+            )
+        if expected_control_receipt is not None:
+            try:
+                receipts_match = (
+                    isinstance(prior_receipt, Mapping)
+                    and canonical_json_bytes(dict(prior_receipt))
+                    == canonical_json_bytes(dict(expected_control_receipt))
+                )
+            except (TypeError, ValueError) as exc:
+                raise TaskSourceIntegrityError(
+                    "task control receipt is outside the canonical contract"
+                ) from exc
+            if not receipts_match:
+                raise TaskSourceConflictError("task control receipt CAS is stale")
         if (
             prior.status == "blocked"
             and requested_status in _PROTECTED_REOPENED_TASK_STATUSES
@@ -1223,41 +1289,31 @@ class TypedDatabaseTaskSource:
                 "protected typed-deferral task cannot be reopened by generic CAS"
             )
         merged_body = dict(prior.body)
-        if receipt_snapshot is not None:
-            merged_body["completion_receipt"] = receipt_snapshot
-        if (
-            prior.status == requested_status
-            and canonical_json_bytes(merged_body)
-            == canonical_json_bytes(dict(prior.body))
-        ):
-            return DatabaseCASResult(
-                task=prior,
-                previous_status=prior.status,
-                revision=prior.revision,
-                event_cursor=self.snapshot().event_cursor,
-                changed=False,
-                receipt_cid="",
-            )
+        if receipt is not None:
+            merged_body["completion_receipt"] = dict(receipt)
         material = {
             "task_cid": prior.task_cid,
             "expected_revision": expected_revision,
             "status": requested_status,
-            "receipt": dict(receipt_snapshot or {}),
+            "receipt": dict(receipt or {}),
+            "expected_control_receipt": (
+                dict(expected_control_receipt)
+                if expected_control_receipt is not None
+                else None
+            ),
             "evidence_digests": list(evidence_digests or ()),
         }
-        if expected_control_receipt_snapshot is not None:
-            material["expected_control_receipt"] = (
-                expected_control_receipt_snapshot
-            )
         digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
         result = self._client.cas_task_status(
             task_cid=prior.task_cid,
+            goal_cid=prior.goal_cid,
             expected_task_revision=expected_revision,
             new_status=requested_status,
             idempotency_key=f"executor-cas:{digest}",
             command_id=f"executor-cas:{digest}",
             body=merged_body,
-            expected_control_receipt=expected_control_receipt_snapshot,
+            expected_control_receipt=expected_control_receipt,
+            evidence_digests=evidence_digests,
         )
         if not result.accepted:
             raise TaskSourceConflictError(
@@ -1268,13 +1324,23 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError("task disappeared after status CAS")
         if updated.status != requested_status:
             raise TaskSourceIntegrityError("task status CAS returned inconsistent state")
+        completion_receipt_cid = str(
+            result.result.get("completion_receipt_cid") or ""
+        )
+        if (
+            requested_status in _COMPLETED_STATUSES
+            and not completion_receipt_cid
+        ):
+            raise TaskSourceIntegrityError(
+                "completed task status CAS returned no normalized completion receipt"
+            )
         return DatabaseCASResult(
             task=updated,
             previous_status=prior.status,
             revision=updated.revision,
             event_cursor=self.snapshot().event_cursor,
             changed=bool(result.changed),
-            receipt_cid=str(result.result_digest or ""),
+            receipt_cid=completion_receipt_cid or str(result.result_digest or ""),
         )
 
     cas_status = compare_and_set_status

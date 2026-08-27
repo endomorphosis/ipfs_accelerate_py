@@ -119,8 +119,7 @@ EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
-        "select_task_by_cid",
-        "executor_task_revision_history_by_cid",
+        "executor_task_revision_history_page",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
     }
@@ -143,6 +142,7 @@ EXECUTOR_OWNER_TRANSACTION_OPERATIONS: Final = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_completion_receipt",
         "executor_insert_task_revision",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
@@ -811,6 +811,7 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         "ducklake_receipt": evidence / "bootstrap-operator" / "ducklake-current.json",
         "launch_receipt": evidence / "bootstrap-operator" / "launch-current.json",
         "status_receipt": evidence / "bootstrap-operator" / "status-current.json",
+        "progress_manifest": evidence / "bootstrap-operator" / "progress-current.json",
         "coordinator_receipt": (
             evidence / "bootstrap-operator" / "coordinator-current.json"
         ),
@@ -3086,7 +3087,279 @@ def _task_projection(source: Any) -> dict[str, Any]:
     }
 
 
-def _query_quack_tasks(board: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
+def _sealed_task_portfolio(
+    board: Any,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rebuild the exact task-CID/dependency seal from its admitted Git tree."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
+        parse_todo_blocks,
+    )
+
+    source_head = str(authority.get("source_head") or "").strip().lower()
+    expected_tree = str(authority.get("repository_tree_id") or "").strip().lower()
+    expected_plan_root = str(authority.get("plan_root_cid") or "").strip()
+    if (
+        re.fullmatch(r"[0-9a-f]{40,64}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40,64}", expected_tree) is None
+        or not expected_plan_root
+    ):
+        raise OperatorError("sealed task portfolio Git authority is invalid")
+    resolved_head = str(
+        _git("rev-parse", "--verify", f"{source_head}^{{commit}}")
+    ).strip().lower()
+    resolved_tree = str(_git("rev-parse", f"{source_head}^{{tree}}")).strip().lower()
+    if resolved_head != source_head or resolved_tree != expected_tree:
+        raise OperatorError("sealed task portfolio Git identity differs")
+
+    paths = {
+        "config": board.config_path,
+        "taskboard": board.path(board.taskboard_path),
+        "objectives": board.path(board.objectives_path),
+        "plan": board.path(board.plan_path),
+        "validator": board.path(board.validator_path),
+        "operator": Path(__file__).resolve(),
+    }
+
+    def git_blob(path: Path) -> bytes:
+        try:
+            relative = path.resolve(strict=False).relative_to(ROOT).as_posix()
+        except ValueError as exc:
+            raise OperatorError("sealed task portfolio source escapes repository") from exc
+        body = _git("show", f"{source_head}:{relative}", binary=True)
+        if not isinstance(body, bytes):
+            raise OperatorError("sealed task portfolio source is not a Git blob")
+        return body
+
+    sources = {name: git_blob(path) for name, path in paths.items()}
+    plan_root = content_identity(
+        {
+            "schema": "casf-plan-root@1",
+            "program_id": PROGRAM_ID,
+            "source_head": source_head,
+            "repository_tree_id": resolved_tree,
+            "sources": {
+                name: _identity(body) for name, body in sorted(sources.items())
+            },
+        }
+    )
+    if plan_root != expected_plan_root:
+        raise OperatorError("sealed task portfolio plan root differs")
+    parsed_tasks = parse_todo_blocks(
+        sources["taskboard"].decode("utf-8"), task_header_prefix="## CASF-"
+    )
+    if [item[0] for item in parsed_tasks] != list(CASF_TASK_ALIASES):
+        raise OperatorError("sealed task portfolio is not CASF-000..CASF-043")
+    task_cids_by_alias = {
+        task_id: content_identity(
+            {
+                "task_id": task_id,
+                "title": title,
+                "source_line": source_line,
+                "metadata": fields,
+                "plan_root_cid": plan_root,
+                "repository_tree_id": resolved_tree,
+            }
+        )
+        for task_id, title, source_line, fields in parsed_tasks
+    }
+    dependencies_by_alias: dict[str, list[str]] = {}
+    observed: set[str] = set()
+    for task_id, _title, _source_line, fields in parsed_tasks:
+        dependencies = _split_csv(fields.get("depends_on"))
+        if any(item not in observed for item in dependencies):
+            raise OperatorError("sealed task portfolio dependency order differs")
+        dependencies_by_alias[task_id] = dependencies
+        observed.add(task_id)
+    material = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "casf-sealed-task-portfolio@1"
+        ),
+        "source_head": source_head,
+        "repository_tree_id": resolved_tree,
+        "plan_root_cid": plan_root,
+        "task_cids_by_alias": dict(sorted(task_cids_by_alias.items())),
+        "dependencies_by_alias": dict(sorted(dependencies_by_alias.items())),
+    }
+    return {**material, "portfolio_cid": content_identity(material)}
+
+
+def _operational_completion_progress(
+    owner_snapshot: Mapping[str, Any],
+    portfolio: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Alias-map one validated owner snapshot without manufacturing authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        COMPLETION_EVIDENCE_SCHEMA,
+    )
+
+    raw_mapping = portfolio.get("task_cids_by_alias")
+    raw_dependencies = portfolio.get("dependencies_by_alias")
+    projection = owner_snapshot.get("completion_projection")
+    if (
+        not isinstance(raw_mapping, Mapping)
+        or not isinstance(raw_dependencies, Mapping)
+        or not isinstance(projection, Mapping)
+    ):
+        raise OperatorError("completion progress lacks sealed portfolio authority")
+    task_cids_by_alias = {
+        str(alias): str(task_cid) for alias, task_cid in raw_mapping.items()
+    }
+    if (
+        tuple(sorted(task_cids_by_alias)) != tuple(sorted(CASF_TASK_ALIASES))
+        or len(set(task_cids_by_alias.values())) != len(CASF_TASK_ALIASES)
+    ):
+        raise OperatorError("completion progress sealed task mapping differs")
+    states = projection.get("task_states")
+    if not isinstance(states, list):
+        raise OperatorError("completion progress task states are unavailable")
+    state_by_cid = {
+        str(item.get("task_cid") or ""): {
+            "status": str(item.get("status") or "").lower(),
+            "revision": int(item.get("revision") or 0),
+        }
+        for item in states
+        if isinstance(item, Mapping)
+    }
+    if set(state_by_cid) != set(task_cids_by_alias.values()):
+        raise OperatorError("completion progress differs from the sealed task population")
+    status_by_alias = {
+        alias: state_by_cid[task_cid]["status"]
+        for alias, task_cid in sorted(task_cids_by_alias.items())
+    }
+    dependencies_by_alias = {
+        str(alias): [str(item) for item in dependencies]
+        for alias, dependencies in raw_dependencies.items()
+        if isinstance(dependencies, list)
+    }
+    if set(dependencies_by_alias) != set(task_cids_by_alias) or any(
+        dependency not in task_cids_by_alias
+        for dependencies in dependencies_by_alias.values()
+        for dependency in dependencies
+    ):
+        raise OperatorError("completion progress sealed dependencies differ")
+    ready = [
+        alias
+        for alias in CASF_TASK_ALIASES
+        if status_by_alias[alias] in READY_STATUSES
+        and all(
+            status_by_alias[dependency] in COMPLETED_STATUSES
+            for dependency in dependencies_by_alias[alias]
+        )
+    ]
+
+    receipts = projection.get("completion_receipts")
+    receipts = receipts if isinstance(receipts, list) else []
+    current_bindings: list[dict[str, Any]] = []
+    terminal_without_current_receipt: list[dict[str, Any]] = []
+    alias_by_cid = {task_cid: alias for alias, task_cid in task_cids_by_alias.items()}
+    for task_cid, state in sorted(state_by_cid.items()):
+        if state["status"] not in COMPLETED_STATUSES:
+            continue
+        matches = [
+            item
+            for item in receipts
+            if isinstance(item, Mapping)
+            and item.get("task_cid") == task_cid
+            and isinstance(item.get("body"), Mapping)
+            and item["body"].get("revision") == state["revision"]
+        ]
+        reason_codes: list[str] = []
+        if len(matches) != 1:
+            reason_codes.append("current_normalized_receipt_population_not_exact")
+        else:
+            receipt = matches[0]
+            body = receipt["body"]
+            control_receipt = body.get("receipt")
+            evidence_digests = body.get("evidence_digests")
+            if (
+                body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+                or not isinstance(control_receipt, Mapping)
+                or not control_receipt
+                or not isinstance(evidence_digests, list)
+            ):
+                reason_codes.append("current_normalized_receipt_body_invalid")
+            else:
+                evidence_digest = content_identity(
+                    {
+                        "task_cid": task_cid,
+                        "revision": state["revision"],
+                        "receipt": dict(control_receipt),
+                        "evidence_digests": list(evidence_digests),
+                    }
+                )
+                receipt_cid = content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": task_cid,
+                        "revision": state["revision"],
+                        "evidence_digest": evidence_digest,
+                    }
+                )
+                if (
+                    receipt.get("evidence_digest") != evidence_digest
+                    or receipt.get("receipt_cid") != receipt_cid
+                ):
+                    reason_codes.append("current_normalized_receipt_identity_invalid")
+                else:
+                    current_bindings.append(
+                        {
+                            "task_alias": alias_by_cid[task_cid],
+                            "task_cid": task_cid,
+                            "task_revision": state["revision"],
+                            "completion_receipt_cid": receipt_cid,
+                            "completion_evidence_digest": evidence_digest,
+                        }
+                    )
+        if reason_codes:
+            terminal_without_current_receipt.append(
+                {
+                    "task_alias": alias_by_cid[task_cid],
+                    "task_cid": task_cid,
+                    "task_revision": state["revision"],
+                    "reason_codes": reason_codes,
+                }
+            )
+    statuses = Counter(status_by_alias.values())
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "casf-operational-completion-progress@1"
+        ),
+        "sealed_portfolio_cid": str(portfolio.get("portfolio_cid") or ""),
+        "task_count": len(status_by_alias),
+        "task_statuses": status_by_alias,
+        "status_counts": dict(sorted(statuses.items())),
+        "ready_task_ids": ready,
+        "current_normalized_receipt_count": len(current_bindings),
+        "current_normalized_receipt_task_ids": sorted(
+            item["task_alias"] for item in current_bindings
+        ),
+        "current_normalized_receipt_bindings": sorted(
+            current_bindings, key=lambda item: item["task_alias"]
+        ),
+        "terminal_without_current_normalized_receipt": sorted(
+            terminal_without_current_receipt, key=lambda item: item["task_alias"]
+        ),
+        "program_completion_qualified": False,
+        "qualification_authority": "existing_completion_and_fixed_point_gates",
+    }
+
+
+def _query_quack_tasks(
+    board: Any,
+    paths: Mapping[str, Path],
+    portfolio: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     from datetime import datetime, timezone
 
     from ipfs_accelerate_py.agent_supervisor.federation.registry import (
@@ -3130,43 +3403,20 @@ def _query_quack_tasks(board: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
         # the owner.  This does not open the database or expose caller SQL.
         FederationStateRepository(client, require_quack_authority=True)
 
-        statuses: Counter[str] = Counter()
-        aliases: dict[str, str] = {}
-        cursor = 0
-        seen = 0
-        while True:
-            page = client.paginate(cursor=cursor, limit=100)
-            for task in page.items:
-                alias = str(task.get("task_alias") or "").strip()
-                status = str(task.get("status") or "").strip().lower()
-                if not alias or alias in aliases:
-                    raise OperatorError(
-                        "typed task query returned an invalid or duplicate task alias"
-                    )
-                aliases[alias] = status
-                statuses[status] += 1
-                seen += 1
-                if seen > 44:
-                    raise OperatorError("typed task query exceeded sealed population")
-            if page.exhausted:
-                break
-            if page.next_cursor is None or page.next_cursor <= cursor:
-                raise OperatorError("typed task cursor failed to advance")
-            cursor = page.next_cursor
-
-        ready_rows = client.execute("list_ready_task_aliases")
-        ready = [str(row.get("task_alias") or "") for row in ready_rows]
-        if any(not item for item in ready) or len(set(ready)) != len(ready):
-            raise OperatorError("typed ready-task query returned invalid identities")
-        count_rows = client.execute("count_tasks")
-        event_rows = client.execute("max_event_watermark")
-        task_count = int(count_rows[0].get("task_count") or 0) if count_rows else 0
-        event_cursor = (
-            int(event_rows[0].get("event_watermark") or 0) if event_rows else 0
+        task_mapping = portfolio.get("task_cids_by_alias")
+        if not isinstance(task_mapping, Mapping):
+            raise OperatorError("sealed task-CID portfolio is unavailable")
+        owner_snapshot = client.completion_progress_snapshot(
+            tuple(str(task_mapping[alias]) for alias in CASF_TASK_ALIASES)
         )
-        if task_count != seen:
-            raise OperatorError("typed task count differs from bounded page projection")
-        generation = client.load_generation()
+        completion = _operational_completion_progress(owner_snapshot, portfolio)
+        aliases = dict(completion["task_statuses"])
+        statuses = Counter(completion["status_counts"])
+        ready = list(completion["ready_task_ids"])
+        task_count = int(completion["task_count"])
+        projection = owner_snapshot["completion_projection"]
+        event_cursor = int(projection["event_watermark"])
+        generation = dict(owner_snapshot["store_generation"])
         runtime_health: dict[str, Any] = {
             "available": False,
             "reason_code": "runtime_projection_or_acknowledgement_absent",
@@ -3268,43 +3518,41 @@ def _query_quack_tasks(board: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
                         and int(row.get("cursor_revision") or 0) >= 2
                     ),
                 }
-        projection_cid = _identity(
-            {
-                "store_id": generation.store_id,
-                "generation": generation.generation,
-                "revision": generation.revision,
-                "event_cursor": event_cursor,
-                "task_statuses": dict(sorted(aliases.items())),
-            }
-        )
+        projection_cid = str(owner_snapshot["snapshot_cid"])
         snapshot = {
             "schema": "TypedQuackTaskSnapshot@1",
             "task_count": task_count,
             "event_cursor": event_cursor,
-            "store_generation": generation.to_dict(),
+            "store_generation": generation,
             "projection_cid": projection_cid,
         }
-        return {
-            "available": True,
-            "transport": "typed_quack_state_owner",
-            "snapshot": snapshot,
-            "status_counts": dict(sorted(statuses.items())),
-            "task_statuses": dict(sorted(aliases.items())),
-            "ready_task_ids": ready,
-            "ready_count": len(ready),
-            "active_count": sum(statuses.get(item, 0) for item in ACTIVE_STATUSES),
-            "blocked_count": int(statuses.get("blocked", 0)),
-            "completed_count": sum(
-                statuses.get(item, 0) for item in COMPLETED_STATUSES
-            ),
-            "terminal_count": sum(
-                statuses.get(item, 0) for item in TERMINAL_STATUSES
-            ),
-            "task_count": task_count,
-            "event_cursor": event_cursor,
-            "projection_cid": projection_cid,
-            "runtime_health": runtime_health,
-        }
+        return (
+            {
+                "available": True,
+                "transport": "typed_quack_state_owner",
+                "snapshot": snapshot,
+                "status_counts": dict(sorted(statuses.items())),
+                "task_statuses": dict(sorted(aliases.items())),
+                "ready_task_ids": ready,
+                "ready_count": len(ready),
+                "active_count": sum(
+                    statuses.get(item, 0) for item in ACTIVE_STATUSES
+                ),
+                "blocked_count": int(statuses.get("blocked", 0)),
+                "completed_count": sum(
+                    statuses.get(item, 0) for item in COMPLETED_STATUSES
+                ),
+                "terminal_count": sum(
+                    statuses.get(item, 0) for item in TERMINAL_STATUSES
+                ),
+                "task_count": task_count,
+                "event_cursor": event_cursor,
+                "projection_cid": projection_cid,
+                "completion_evidence": completion,
+                "runtime_health": runtime_health,
+            },
+            dict(owner_snapshot),
+        )
     except OperatorError:
         raise
     except Exception as exc:
@@ -4535,6 +4783,94 @@ def _verify_receipt(payload: Mapping[str, Any], *, kind: str) -> None:
         raise OperatorError(f"{kind} receipt identity is absent or invalid")
 
 
+def _persist_campaign_progress(
+    paths: Mapping[str, Path],
+    *,
+    portfolio: Mapping[str, Any],
+    owner_snapshot: Mapping[str, Any] | None,
+    classification: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Render the live owner snapshot without changing canonical board state."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.campaign_progress import (
+        build_program_qualification_disposition,
+        render_campaign_progress,
+        write_campaign_progress_outputs,
+    )
+
+    progress_manifest = paths.get("progress_manifest")
+    task_mapping = portfolio.get("task_cids_by_alias")
+    projection = (
+        owner_snapshot.get("completion_projection")
+        if isinstance(owner_snapshot, Mapping)
+        else None
+    )
+    if (
+        not isinstance(progress_manifest, Path)
+        or not isinstance(task_mapping, Mapping)
+        or not isinstance(owner_snapshot, Mapping)
+        or not isinstance(projection, Mapping)
+    ):
+        return {
+            "available": False,
+            "reason_code": "live_typed_completion_snapshot_unavailable",
+        }
+
+    reason_codes = classification.get("reason_codes")
+    blockers = (
+        sorted({str(item) for item in reason_codes if str(item).strip()})
+        if isinstance(reason_codes, list)
+        else []
+    )
+    if not blockers:
+        blockers = ["fixed_point_completion_receipt_not_yet_observed"]
+    disposition_status = (
+        "not_qualified"
+        if classification.get("classification") == "completion_unqualified"
+        else "not_run"
+    )
+    qualification = build_program_qualification_disposition(
+        program_id=PROGRAM_ID,
+        status=disposition_status,
+        blockers=blockers,
+        evidence_refs=[str(owner_snapshot.get("snapshot_cid") or "")],
+    )
+    rendering = render_campaign_progress(
+        owner_snapshot,
+        sealed_tasks={
+            str(alias): str(task_cid)
+            for alias, task_cid in task_mapping.items()
+        },
+        qualification=qualification,
+    )
+    manifest = write_campaign_progress_outputs(
+        rendering,
+        repository_root=ROOT,
+        current_manifest_destination=progress_manifest,
+    )
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        raise OperatorError("campaign progress manifest lacks immutable artifacts")
+    json_artifact = artifacts.get("json")
+    markdown_artifact = artifacts.get("markdown")
+    if not isinstance(json_artifact, Mapping) or not isinstance(
+        markdown_artifact, Mapping
+    ):
+        raise OperatorError("campaign progress manifest artifact bindings differ")
+    return {
+        "available": True,
+        "authoritative": False,
+        "report_cid": str(rendering.report["report_cid"]),
+        "owner_snapshot_cid": str(owner_snapshot["snapshot_cid"]),
+        "manifest_cid": str(manifest["manifest_cid"]),
+        "manifest_path": progress_manifest.relative_to(ROOT).as_posix(),
+        "json_path": str(json_artifact.get("path") or ""),
+        "markdown_path": str(markdown_artifact.get("path") or ""),
+        "json_sha256": str(json_artifact.get("sha256") or ""),
+        "markdown_sha256": str(markdown_artifact.get("sha256") or ""),
+    }
+
+
 def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, Any]:
     board, config = _load_config(config_path)
     paths = _runtime_paths(board)
@@ -4559,9 +4895,16 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         raise OperatorError("launch receipt lacks master process-birth identity")
     master_live = _birth_liveness(master_birth)
     authority: dict[str, Any]
+    owner_snapshot: Mapping[str, Any] | None = None
+    portfolio: dict[str, Any] = {}
     if owner_live == "alive":
         try:
-            authority = _query_quack_tasks(board, paths)
+            portfolio = _sealed_task_portfolio(board, launch)
+            authority, owner_snapshot = _query_quack_tasks(
+                board,
+                paths,
+                portfolio,
+            )
         except OperatorError as exc:
             authority = {
                 "available": False,
@@ -4676,6 +5019,26 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         if classification.get("plan_work_healthy") is True
         else "unadmitted",
     )
+    progress_export: dict[str, Any]
+    if persist:
+        try:
+            progress_export = _persist_campaign_progress(
+                paths,
+                portfolio=portfolio,
+                owner_snapshot=owner_snapshot,
+                classification=classification,
+            )
+        except Exception as exc:
+            progress_export = {
+                "available": False,
+                "reason_code": "campaign_progress_export_failed",
+                "error_class": type(exc).__name__,
+            }
+    else:
+        progress_export = {
+            "available": False,
+            "reason_code": "status_persistence_disabled",
+        }
     payload: dict[str, Any] = {
         "schema": STATUS_SCHEMA,
         "program_id": PROGRAM_ID,
@@ -4688,6 +5051,7 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         "master_liveness": master_live,
         "master_process_birth": dict(master_birth),
         "task_authority": authority,
+        "progress_export": progress_export,
         "runtime": runtime,
         "outbox_worker": outbox_worker,
         "task_execution_admitted": task_execution_admitted,
@@ -4850,7 +5214,11 @@ def launch(
             or _birth_liveness(executor_birth) != "alive"
         ):
             raise OperatorError("state owner did not attest a live configured executor")
-        task_authority = _query_quack_tasks(board, paths)
+        task_authority, _owner_snapshot = _query_quack_tasks(
+            board,
+            paths,
+            _sealed_task_portfolio(board, bootstrap),
+        )
         outbox_worker = _outbox_worker_health(
             _read_optional_json(paths["owner_status"])
         )
@@ -5268,6 +5636,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif arguments.command == "status":
             result = status(config_path)
             print(json.dumps(result, indent=2, sort_keys=True))
+            task_authority = result.get("task_authority")
+            progress_export = result.get("progress_export")
+            if (
+                isinstance(task_authority, Mapping)
+                and task_authority.get("available") is True
+                and (
+                    not isinstance(progress_export, Mapping)
+                    or progress_export.get("available") is not True
+                )
+            ):
+                # A live typed snapshot paired with a failed export must not
+                # leave a stale fixed-name progress pointer behind a successful
+                # shell status.  A stopped/unavailable owner remains a truthful
+                # zero-exit status observation unless a stricter flag is used.
+                return 1
             if arguments.require_healthy:
                 return 0 if result.get("healthy") is True else 1
             if arguments.require_coordinator_ready:

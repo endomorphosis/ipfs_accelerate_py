@@ -9500,6 +9500,957 @@ def test_bridge_completion_lineage_requires_exact_precompletion_source_event(
         bridge.run_provider(_attempt())
 
 
+def _append_validated_no_change_completion_chain(
+    paths: object,
+    *,
+    tamper: str = "",
+    uncommitted_projection: bool = False,
+) -> dict[str, object]:
+    alias = "LGSWF-004"
+    task_cid = "task:cid:004"
+    task_key = "task/v1/current-authority-inventory"
+    board_namespace = "agent-supervisor-causal-event-federation-v1"
+    baseline = "b" * 40
+    tree = "c" * 40
+    branch = "implementation/lgswf-004-no-change"
+    output = "inventory/result.json"
+    validation_command = "/usr/bin/true"
+    empty_fingerprint = "sha256:" + hashlib.sha256(b"[]").hexdigest()
+    clean_fingerprint = "sha256:" + hashlib.sha256(b"").hexdigest()
+    authority: dict[str, object] = {
+        "board_namespace": board_namespace,
+        "canonical_task_key": task_key,
+        "declared_outputs": (output,),
+        "projection_immutable_digest": "sha256:" + "1" * 64,
+        "repository_scope": "",
+        "repository_tree_id": tree,
+        "task_contract_digest": "sha256:" + "2" * 64,
+        "validation_commands": (validation_command,),
+    }
+    expected_findings = sorted(
+        [
+            [
+                "empty_patch",
+                "patch",
+                "candidate diff contains no file changes",
+                "",
+            ],
+            [
+                "missing_required_field",
+                "structure",
+                "structured proposal requires operations",
+                "",
+            ],
+            [
+                "missing_required_field",
+                "structure",
+                "structured proposal requires patch_text",
+                "",
+            ],
+        ]
+    )
+    policy_gate = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor/"
+            "no-change-candidate-policy-gate@1"
+        ),
+        "attempted": True,
+        "accepted": True,
+        "reason": "empty_candidate_policy_admitted",
+        "completion_mode": "allowed",
+        "task_id": alias,
+        "canonical_task_cid": task_cid,
+        "proposal_id": "3" * 64,
+        "policy_id": "4" * 64,
+        "proposal_receipt_id": "5" * 64,
+        "repository_tree_id": baseline,
+        "repository_id": "repository:sha256:" + "6" * 64,
+        "baseline_id": baseline,
+        "context_id": task_cid,
+        "accepted_plan_id": task_cid,
+        "objective_id": task_cid,
+        "replay_nonce": "7" * 64,
+        "diff_digest": hashlib.sha256(b"[]").hexdigest(),
+        "candidate_fingerprint": empty_fingerprint,
+        "validation_plan_id": content_identity(
+            {"command": [validation_command]}
+        ),
+        "expected_output_preflight_id": content_identity(
+            {"outputs": [output]}
+        ),
+        "proposal_collection_error": "",
+        "changed_paths": [],
+        "proposal_accepted": False,
+        "expected_findings": expected_findings,
+        "actual_findings": expected_findings,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    policy_gate["gate_id"] = content_identity(policy_gate)
+
+    workspace = {
+        "branch": branch,
+        "errors": [],
+        "head": baseline,
+        "status_bytes": 0,
+        "status_clean": True,
+        "status_fingerprint": clean_fingerprint,
+        "tree": tree,
+        "verified": True,
+    }
+
+    def candidate_handoff(phase: str) -> dict[str, object]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "validated-candidate-handoff-guard@1"
+            ),
+            "allowed": True,
+            "phase": phase,
+            "reasons": [],
+            "task_id": alias,
+            "attempt": 1,
+            "baseline_ref": baseline,
+            "baseline_commit": baseline,
+            "expected_branch": branch,
+            "implementation_commit": "",
+            "expected_fingerprint": empty_fingerprint,
+            "validated_fingerprint": empty_fingerprint,
+            "current_fingerprint": empty_fingerprint,
+            "candidate_entry_count": 0,
+            "submodule_expansion_count": 0,
+            "collection_error": "",
+            "validated_workspace": dict(workspace),
+            "workspace_before": dict(workspace),
+            "workspace_after": dict(workspace),
+            "final_tree": tree,
+            "final_status_fingerprint": clean_fingerprint,
+        }
+
+    pre_commit_handoff = candidate_handoff("pre_commit")
+    post_commit_handoff = candidate_handoff("post_commit")
+    result = {
+        "cache_hit": False,
+        "command": validation_command,
+        "ordinal": 0,
+        "raw_command": validation_command,
+        "returncode": 0,
+        "timed_out": False,
+        "validation_result_digest": "8" * 64,
+    }
+    command_binding = {
+        "command_cid": content_identity(
+            {
+                "command": validation_command,
+                "raw_command": validation_command,
+                "ordinal": 0,
+            }
+        ),
+        "validation_id": "declared:" + "9" * 64,
+    }
+    validation_plan_binding = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "deterministic-declared-validation-plan@1"
+        ),
+        "task_id": alias,
+        "canonical_task_cid": task_cid,
+        "repository_id": "repository:sha256:" + "6" * 64,
+        "repository_tree_id": baseline,
+        "graph_id": "a" * 64,
+        "graph_version": "declared-validation-plan-v1",
+        "command_count": 1,
+        "commands": [command_binding],
+        "changed_paths": [output],
+    }
+    validation_plan_binding["validation_plan_cid"] = content_identity(
+        validation_plan_binding
+    )
+    validation = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": baseline,
+        "cache_hits": 0,
+        "cache_misses": 1,
+        "results": [result],
+        "selection": {
+            "scope": "pre_merge",
+            "changed_files": [],
+            "selected_count": 1,
+            "decisions": [
+                {
+                    "command": validation_command,
+                    "selected": True,
+                    "source": "declared",
+                }
+            ],
+        },
+        "validation_plan_binding": validation_plan_binding,
+        "no_change_policy_gate": policy_gate,
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": False,
+            "changed_paths": [],
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+            "reason": "empty_patch_reserved_for_no_change_gate",
+            "reason_codes": ["empty_patch", "missing_required_field"],
+            "proposal_id": policy_gate["proposal_id"],
+            "policy_id": policy_gate["policy_id"],
+            "receipt_id": policy_gate["proposal_receipt_id"],
+            "repository_tree_id": baseline,
+        },
+        "candidate_binding": {
+            "verified": True,
+            "expected_fingerprint": empty_fingerprint,
+            "current_fingerprint": empty_fingerprint,
+            "reason": "validated_no_change_candidate",
+            "validated_workspace": workspace,
+        },
+        "candidate_handoff": {
+            "pre_commit": pre_commit_handoff,
+            "post_commit": post_commit_handoff,
+        },
+    }
+    cleanup_result = {
+        "branch": branch,
+        "cleaned": True,
+        "deleted_branch": True,
+        "finished_at": "2026-08-26T21:33:49+00:00",
+        "lifecycle_finalize": {
+            "fence": 5,
+            "finalized": True,
+            "reason": "pool_release_cleaned",
+            "state": "terminal",
+        },
+        "pool_release": {"released": True},
+        "pooled": True,
+        "removed_worktree": False,
+        "started_at": "2026-08-26T21:33:48+00:00",
+        "submodule_cleanup": [],
+        "worktree_path": "/tmp/disposable-no-change-worktree",
+    }
+    projection_path = "private/attempt/task-projection.md"
+    projection_repo = "/tmp/disposable-no-change-repository"
+    projection_commit_result = (
+        {
+            "committed": False,
+            "path": projection_path,
+            "reason": "no_changes",
+            "repo": projection_repo,
+        }
+        if uncommitted_projection
+        else {
+            "commit": "d" * 40,
+            "committed": True,
+            "path": projection_path,
+            "repo": projection_repo,
+            "status": f"?? {projection_path}",
+        }
+    )
+    todo_result = {
+        "already_completed_task_ids": [],
+        "commit_result": projection_commit_result,
+        "completion_reason": "single_task",
+        "completion_receipts": [
+            {
+                "board_namespace": board_namespace,
+                "canonical_task_cid": task_cid,
+                "canonical_task_key": task_key,
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "member_completion_receipt@1"
+                ),
+                "status": "succeeded",
+                "task_id": alias,
+            }
+        ],
+        "inserted_status_task_ids": [],
+        "missing_status_task_ids": [],
+        "missing_task_ids": [],
+        "path": f"{projection_repo}/{projection_path}",
+        "task_id": alias,
+        "updated": True,
+        "updated_checkbox_task_ids": [],
+        "updated_task_ids": [alias],
+    }
+    no_change_guard = {
+        "allowed": True,
+        "reasons": [],
+        "baseline_ref": baseline,
+        "current_head": baseline,
+        "expected_branch": branch,
+        "current_branch": branch,
+        "validated_changed_files": [],
+        "no_change_policy_gate_id": policy_gate["gate_id"],
+        "proposal_receipt_id": policy_gate["proposal_receipt_id"],
+    }
+    source = {
+        "task_id": alias,
+        "task_cid": task_cid,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "board_namespace": board_namespace,
+        "attempt": 1,
+        "returncode": 0,
+        "attempt_consumed": True,
+        "provider_dispatched": False,
+        "branch": branch,
+        "baseline_ref": baseline,
+        "implementation_commit": "",
+        "validation_result": validation,
+        "commit_result": {
+            "committed": False,
+            "reason": "no_changes",
+            "no_change_guard": no_change_guard,
+            "candidate_handoff_guard": post_commit_handoff,
+        },
+        "merge_result": {"merged": False, "reason": "not_attempted"},
+        "cleanup_result": cleanup_result,
+        "todo_update_result": todo_result,
+        "board_completion": {
+            "complete": True,
+            "pending_merge": False,
+            "reason": "validated_no_change_completion",
+        },
+    }
+    if tamper == "implementation-commit":
+        source["implementation_commit"] = "a" * 40
+    elif tamper == "guard-head":
+        no_change_guard["current_head"] = "c" * 40
+    elif tamper == "guard-extra-field":
+        no_change_guard["unsealed"] = True
+    elif tamper == "policy-identity":
+        policy_gate["gate_id"] = "sha256:" + "d" * 64
+        no_change_guard["no_change_policy_gate_id"] = policy_gate["gate_id"]
+    elif tamper == "policy-task":
+        policy_gate["task_id"] = "LGSWF-999"
+        policy_gate["gate_id"] = content_identity(
+            {key: value for key, value in policy_gate.items() if key != "gate_id"}
+        )
+        no_change_guard["no_change_policy_gate_id"] = policy_gate["gate_id"]
+    elif tamper == "proposal-receipt":
+        validation["proposal_gate"]["receipt_id"] = "receipt:foreign"
+    elif tamper == "candidate-fingerprint":
+        validation["candidate_binding"]["current_fingerprint"] = (
+            "sha256:" + "e" * 64
+        )
+    elif tamper == "candidate-handoff":
+        validation["candidate_handoff"]["post_commit"]["allowed"] = False
+    elif tamper == "merge":
+        source["merge_result"] = {"merged": True, "reason": "merged"}
+    elif tamper == "cleanup":
+        cleanup_result["cleaned"] = False
+    elif tamper == "board":
+        source["board_completion"]["reason"] = "merged_into_target"
+    elif tamper == "provider-type":
+        source["provider_dispatched"] = "false"
+    elif tamper == "unproven-bypass":
+        validation["pre_dispatch_no_change"] = None
+    elif tamper == "validation-cache":
+        result["cache_hit"] = True
+    elif tamper == "validation-command":
+        result["command"] = "/usr/bin/false"
+    elif tamper == "workspace-tree":
+        workspace["tree"] = "e" * 40
+    elif tamper == "authority-tree":
+        authority["repository_tree_id"] = "e" * 40
+    elif tamper == "projection-commit":
+        todo_result["commit_result"]["commit"] = "not-a-commit"
+
+    identity = {
+        "board_namespace": board_namespace,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "task_id": alias,
+    }
+    output_payload = {
+        **identity,
+        "completion_authoritative": False,
+        "expected_paths": [output],
+        "force_staged_paths": [],
+        "issues": [],
+        "passed": True,
+        "proof_authoritative": False,
+        "proposal_id": policy_gate["proposal_id"],
+        "staged_paths": [],
+    }
+    preflight_output_payload = {
+        **output_payload,
+        "proposal_id": "",
+        "reason": "validated_no_change_candidate",
+    }
+    proposal_event = {
+        **identity,
+        **{
+            key: value
+            for key, value in validation["proposal_gate"].items()
+            if key != "reason"
+        },
+    }
+    policy_event = {**identity, **policy_gate}
+    candidate_event = {**identity, **validation["candidate_binding"]}
+    protected_clear_event = {
+        **identity,
+        "attempt": 1,
+        "reason": "post_validation_check_unchanged",
+    }
+    pre_handoff_event = {**identity, **pre_commit_handoff}
+    post_handoff_event = {**identity, **post_commit_handoff}
+    event_specs = [
+        ("implementation_expected_outputs_checked", preflight_output_payload),
+        ("implementation_expected_outputs_checked", output_payload),
+        ("implementation_proposal_rejected", proposal_event),
+        ("implementation_no_change_policy_validated", policy_event),
+        ("implementation_candidate_binding_verified", candidate_event),
+        (
+            "implementation_protected_path_snapshot_cleared",
+            protected_clear_event,
+        ),
+        ("implementation_candidate_handoff_verified", pre_handoff_event),
+        ("implementation_candidate_handoff_verified", post_handoff_event),
+        ("cleanup_finished", cleanup_result),
+        ("todo_status_updated", {**todo_result, **identity}),
+    ]
+    if tamper == "missing-policy-event":
+        event_specs.pop(3)
+    elif tamper == "duplicate-policy-event":
+        event_specs.insert(4, event_specs[3])
+    elif tamper == "out-of-order":
+        event_specs[6], event_specs[7] = event_specs[7], event_specs[6]
+    elif tamper == "missing-preflight-output":
+        event_specs.pop(0)
+    for event_type, payload in event_specs:
+        append_jsonl_event(paths.events, event_type, payload)
+    append_jsonl_event(paths.events, "implementation_finished", source)
+    append_jsonl_event(
+        paths.events,
+        "task_completed",
+        identity,
+    )
+    return authority
+
+
+def test_bridge_accepts_exact_validated_no_change_commit_lineage(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "validated no-change lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    authority = _append_validated_no_change_completion_chain(paths)
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        completion_task_key="task/v1/current-authority-inventory",
+        validated_no_change_authority=authority,
+    )
+
+    assert evidence is not None
+    assert evidence["baseline_commit"] == "b" * 40
+    assert evidence["implementation_commit"] == "b" * 40
+    assert evidence["completion_source_event_type"] == "implementation_finished"
+    assert evidence["completion_source_portal_attempt"] == 1
+
+
+def test_bridge_accepts_exact_validated_no_change_ignored_projection_lineage(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "validated no-change lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    authority = _append_validated_no_change_completion_chain(
+        paths,
+        uncommitted_projection=True,
+    )
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        completion_task_key="task/v1/current-authority-inventory",
+        validated_no_change_authority=authority,
+    )
+
+    assert evidence is not None
+    assert evidence["implementation_commit"] == "b" * 40
+    assert evidence["_source_projection_commit"] == ""
+    assert evidence["_source_projection_uncommitted"] is True
+
+
+def test_bridge_rejects_validated_no_change_without_current_task_authority(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "unauthorized no-change lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_validated_no_change_completion_chain(paths)
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="validated no-change completion lacks task authority",
+    ):
+        bridge._completion_event_evidence(
+            paths,
+            alias="LGSWF-004",
+            task_cid="task:cid:004",
+            completion_task_key="task/v1/current-authority-inventory",
+        )
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"no_change_completion": "allowed"}, True),
+        ({"No-change completion": "allowed"}, True),
+        ({"no change completion": " allowed "}, True),
+        ({"no_change_completion": "Allowed"}, False),
+        ({"no_change_completion": True}, False),
+        (
+            {
+                "no_change_completion": "allowed",
+                "no change completion": "allowed",
+            },
+            False,
+        ),
+        ({}, False),
+    ],
+)
+def test_bridge_reads_one_exact_current_no_change_authority(
+    body: dict[str, object],
+    expected: bool,
+) -> None:
+    record = SimpleNamespace(body=body)
+
+    assert (
+        DatabasePortalExecutionBridge._record_allows_validated_no_change(record)
+        is expected
+    )
+
+
+def test_bridge_binds_no_change_authority_to_sealed_board_namespace(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.outputs = (
+        {"path": "inventory/z-last.json"},
+        {"path": "inventory/result.json"},
+        {"path": "inventory/a-first.json"},
+    )
+    record.body.update(
+        {
+            "board_namespace": (
+                "agent-supervisor-causal-event-federation-v1"
+            ),
+            "no_change_completion": "allowed",
+        }
+    )
+    source = _TaskSource(record)
+    source.snapshot = lambda: SimpleNamespace(repository_tree_id="c" * 40)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), record)
+
+    authority = bridge._validated_no_change_task_authority(
+        record=record,
+        binding=binding,
+        paths=paths,
+    )
+
+    assert authority["board_namespace"] == (
+        "agent-supervisor-causal-event-federation-v1"
+    )
+    assert authority["board_namespace"] != paths.task_projection.name
+    assert authority["declared_outputs"] == (
+        "inventory/a-first.json",
+        "inventory/result.json",
+        "inventory/z-last.json",
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "implementation-commit",
+        "guard-head",
+        "guard-extra-field",
+        "policy-identity",
+        "policy-task",
+        "proposal-receipt",
+        "candidate-fingerprint",
+        "candidate-handoff",
+        "merge",
+        "cleanup",
+        "board",
+        "provider-type",
+        "unproven-bypass",
+        "validation-cache",
+        "validation-command",
+        "workspace-tree",
+        "authority-tree",
+        "projection-commit",
+        "missing-policy-event",
+        "duplicate-policy-event",
+        "out-of-order",
+        "missing-preflight-output",
+    ],
+)
+def test_bridge_rejects_tampered_validated_no_change_commit_lineage(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "tampered no-change lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    authority = _append_validated_no_change_completion_chain(
+        paths,
+        tamper=tamper,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="validated no-change completion",
+    ):
+        bridge._completion_event_evidence(
+            paths,
+            alias="LGSWF-004",
+            task_cid="task:cid:004",
+            completion_task_key="task/v1/current-authority-inventory",
+            validated_no_change_authority=authority,
+        )
+
+
+def test_bridge_requires_exact_validated_no_change_projection_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir()
+    output.write_text('{"passed":true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    projection = repo / "private" / "attempt" / "task-projection.md"
+    projection.parent.mkdir(parents=True)
+    projection_text = "## LGSWF-004\n- Status: completed\n"
+    projection.write_text(projection_text, encoding="utf-8")
+    projection_path = projection.relative_to(repo).as_posix()
+    subprocess.run(["git", "add", projection_path], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "private projection",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    projection_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=repo / "private",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        merge_target_branch="main",
+    )
+    authority = {
+        "declared_outputs": ("inventory/result.json",),
+        "repository_tree_id": tree,
+    }
+    completion = {
+        "baseline_commit": baseline,
+        "implementation_commit": baseline,
+        "_source_validated_no_change": True,
+        "_source_effect_tree": tree,
+        "_source_projection_commit": projection_commit,
+        "_source_projection_uncommitted": False,
+        "_source_projection_path": projection_path,
+        "_source_projection_repo": str(repo),
+        "_source_projection_absolute_path": str(projection),
+    }
+
+    observed_tree = bridge._require_validated_no_change_target(
+        paths=SimpleNamespace(task_projection=projection),
+        binding={"repository_tree_id": tree},
+        authority=authority,
+        completion=completion,
+        projection_text=projection_text,
+    )
+
+    assert observed_tree == tree
+
+    unrelated = repo / "unrelated.txt"
+    unrelated.write_text("target moved\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "unrelated target movement",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="exact projection commit",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+
+def test_bridge_requires_exact_ignored_no_change_projection_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir()
+    output.write_text('{"passed":true}\n', encoding="utf-8")
+    unrelated = repo / "unrelated.txt"
+    unrelated.write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("runtime/\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "git",
+            "add",
+            ".gitignore",
+            "inventory/result.json",
+            "unrelated.txt",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    projection = repo / "runtime" / "attempt" / "task-projection.md"
+    projection.parent.mkdir(parents=True)
+    projection_text = "## LGSWF-004\n- Status: completed\n"
+    projection.write_text(projection_text, encoding="utf-8")
+    projection_path = projection.relative_to(repo).as_posix()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=repo / "runtime",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        merge_target_branch="main",
+    )
+    authority = {
+        "declared_outputs": ("inventory/result.json",),
+        "repository_tree_id": tree,
+    }
+    completion = {
+        "baseline_commit": baseline,
+        "implementation_commit": baseline,
+        "_source_validated_no_change": True,
+        "_source_effect_tree": tree,
+        "_source_projection_commit": "",
+        "_source_projection_uncommitted": True,
+        "_source_projection_path": projection_path,
+        "_source_projection_repo": str(repo),
+        "_source_projection_absolute_path": str(projection),
+    }
+
+    observed_tree = bridge._require_validated_no_change_target(
+        paths=SimpleNamespace(task_projection=projection),
+        binding={"repository_tree_id": tree},
+        authority=authority,
+        completion=completion,
+        projection_text=projection_text,
+    )
+
+    assert observed_tree == tree
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == baseline
+    )
+
+    # The proof is deliberately path-local. Unrelated dirty tracked content
+    # must not contend with a private projection that is itself exact.
+    unrelated.write_text("unrelated dirty content\n", encoding="utf-8")
+    assert (
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+        == tree
+    )
+    unrelated.write_text("baseline\n", encoding="utf-8")
+
+    projection.write_text(
+        projection_text.replace("completed", "todo"),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+    projection.write_text(projection_text, encoding="utf-8")
+    (repo / ".gitignore").write_text("other-runtime/\n", encoding="utf-8")
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+    (repo / ".gitignore").write_text("runtime/\n", encoding="utf-8")
+    unrelated.write_text("target advanced\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "advance target",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+
 def _append_exact_callback_completion_chain(
     paths: object,
     *,
@@ -12698,6 +13649,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         callback: object,
         *,
         post_merge_queue_admission_spec: object = None,
+        **_kwargs: object,
     ) -> dict[str, object]:
         assert post_merge_queue_admission_spec is None
         cas_result = callback()
@@ -13286,6 +14238,54 @@ def test_bridge_apply_effect_rejects_resealed_nonancestor_baseline(
         match="unproven Portal commit lineage",
     ):
         bridge.apply_effect(_attempt(), provider)
+
+
+def test_bridge_apply_effect_replays_equal_commit_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, _baseline_tree, implementation_commit = (
+        _git_completion_lineage(repository_root)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(
+            paths,
+            alias,
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+        ),
+        repository_root=repository_root,
+    )
+    provider = dict(bridge.run_provider(_attempt()))
+    evidence = dict(provider["portal_evidence"])
+    evidence["implementation_commit"] = baseline_commit
+    provider["implementation_commit"] = baseline_commit
+    provider["portal_evidence"] = evidence
+    provider["evidence_digest"] = _capacity_record_id(
+        evidence,
+        "__no_identity_field__",
+    )
+    provider["receipt_id"] = _capacity_record_id(provider, "receipt_id")
+    observed: list[dict[str, object]] = []
+
+    def revalidate(**kwargs: object) -> None:
+        observed.append(dict(kwargs))
+
+    monkeypatch.setattr(
+        bridge,
+        "_revalidate_equal_commit_completion",
+        revalidate,
+    )
+
+    effect = bridge.apply_effect(_attempt(), provider)
+
+    assert effect["implementation_commit"] == baseline_commit
+    assert len(observed) == 1
+    assert observed[0]["attempt"] == _attempt()
+    assert observed[0]["evidence"] == evidence
 
 
 @pytest.mark.parametrize(

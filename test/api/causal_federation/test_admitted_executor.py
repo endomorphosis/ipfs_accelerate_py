@@ -1442,11 +1442,20 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             "attempt_execution_phase": "claimed",
             "attempt_execution_revision": 1,
         }
+        with pytest.raises(TaskSourceConflictError, match="control receipt CAS"):
+            adapter.compare_and_set_status(
+                claimed.task.task_cid,
+                claimed.task.revision,
+                "in_progress",
+                admitted_receipt,
+                expected_control_receipt={**claim_receipt, "fencing_token": 2},
+            )
         claimed = adapter.compare_and_set_status(
             claimed.task.task_cid,
             claimed.task.revision,
             "in_progress",
             admitted_receipt,
+            expected_control_receipt=claim_receipt,
         )
         assert claimed.task.body["completion_receipt"]["operation"] == (
             "database_attempt_admitted"
@@ -1470,16 +1479,17 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             "operation": "database_complete",
             "evidence_digest": evidence_digest,
         }
-        forged_result = client.cas_task_status(
-            task_cid=claimed.task.task_cid,
-            expected_task_revision=claimed.task.revision,
-            new_status="completed",
-            idempotency_key="executor-cas:forged-control-receipt",
-            body=forged_body,
-            expected_control_receipt=forged_expected_receipt,
-        )
-        assert forged_result.accepted is False
-        assert forged_result.changed is False
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            client.cas_task_status(
+                task_cid=claimed.task.task_cid,
+                goal_cid=claimed.task.goal_cid,
+                expected_task_revision=claimed.task.revision,
+                new_status="completed",
+                idempotency_key="executor-cas:forged-control-receipt",
+                body=forged_body,
+                expected_control_receipt=forged_expected_receipt,
+                evidence_digests=[evidence_digest],
+            )
         unchanged = adapter.get(claimed.task.task_cid)
         assert unchanged is not None
         assert unchanged.revision == claimed.task.revision
@@ -1499,16 +1509,76 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
                 expected_control_receipt=forged_expected_receipt,
                 evidence_digests=[evidence_digest],
             )
+        completion_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **{
+                name: admitted_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
         completed = adapter.compare_and_set_status(
             claimed.task.task_cid,
             claimed.task.revision,
             "completed",
-            {"operation": "database_complete", "evidence_digest": evidence_digest},
+            completion_receipt,
             expected_control_receipt=admitted_receipt,
             evidence_digests=[evidence_digest],
         )
         assert completed.task.status == "completed"
         assert adapter.snapshot().terminal is True
+        history = adapter.task_revision_history_projection("CASF-TYPED")
+        assert history["task_cid"] == ready.task_cid
+        assert history["revisions"] == [
+            {
+                "revision": 1,
+                "status": "ready",
+                "body": dict(ready.body),
+            },
+            {
+                "revision": 2,
+                "status": "in_progress",
+                "body": dict(claimed.task.body)
+                | {"completion_receipt": claim_receipt},
+            },
+            {
+                "revision": 3,
+                "status": "in_progress",
+                "body": dict(claimed.task.body),
+            },
+            {
+                "revision": 4,
+                "status": "completed",
+                "body": dict(completed.task.body),
+            },
+        ]
+        history_material = dict(history)
+        projection_cid = history_material.pop("projection_cid")
+        assert projection_cid == content_identity(history_material)
+        with pytest.raises(KeyError):
+            adapter.task_revision_history_projection("CASF-TYPED-UNKNOWN")
+        invalid_history_queries = (
+            {"task_cid": "x" * 1_025, "limit": 1, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": True, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 0, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 25, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": True},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": -1},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": 10_001},
+        )
+        for parameters in invalid_history_queries:
+            with pytest.raises(QuackClientError):
+                client.execute(
+                    "executor_task_revision_history_page",
+                    parameters,
+                )
 
         with pytest.raises(TypedStateOwnerAuthorizationError):
             TypedStateOwnerConnection(
@@ -1947,7 +2017,10 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 new_status="in_progress",
                 receipt=admitted_completion_receipt,
             )
-        assert replay_calls["count"] == 2
+        # The typed owner forbids a second admission mutation after the exact
+        # admitted receipt is current.  Recovery projects the authoritative
+        # reread as a no-change result instead of issuing that forbidden write.
+        assert replay_calls["count"] == 1
         assert admission_replay.changed is False
         assert admission_replay.revision == admitted_completion_task.revision
         assert adapter.get(admitted_completion_task.task_cid) == (
@@ -4645,9 +4718,21 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "task_alias",
     )
     assert catalog[
-        "executor_task_revision_history_by_cid"
-    ].parameter_names == ("task_cid", "limit", "offset")
-    assert catalog["executor_task_revision_history_by_cid"].mutation is False
+        "executor_task_revision_history_page"
+    ].parameter_names == (
+        "task_cid",
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_task_revision_history_page"].mutation is False
+    assert catalog["executor_insert_task_revision"].parameter_names == (
+        "task_cid",
+        "revision",
+        "status",
+        "body_json",
+        "recorded_at",
+    )
+    assert catalog["executor_insert_task_revision"].mutation is True
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
     assert catalog["executor_retry_cooldown_by_task"].parameter_names == (
@@ -4998,7 +5083,10 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         text=True,
     ).stdout.strip()
     database = tmp_path / "managed-control.duckdb"
-    managed_store_id = "data/casf-managed-e2e-runtime/control.duckdb"
+    managed_store_id = (
+        "data/agent_supervisor/causal_event_federation/"
+        "managed-e2e-runtime/control.duckdb"
+    )
     source = DatabaseTaskSource(database)
     source.materialize(
         {
@@ -5021,8 +5109,16 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                     "description": "Revalidate an output already present on target",
                     # Database population normalizes Markdown metadata keys.
                     # Exercise the exact representation used by live CASF.
+                    "board_namespace": (
+                        "agent-supervisor-causal-event-federation-v1"
+                    ),
                     "no_change_completion": "allowed",
-                    "outputs": [{"path": "pyproject.toml", "effect": {}}],
+                    # Deliberately differ from Portal's canonical path order.
+                    "outputs": [
+                        {"path": "setup.py", "effect": {}},
+                        {"path": "README.md", "effect": {}},
+                        {"path": "pyproject.toml", "effect": {}},
+                    ],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 },
                 {
@@ -5446,6 +5542,40 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         _contains_provider_disposition(item, True)
         for item in evidence.get("CASF-MANAGED-MODEL", [])
     ), diagnostic_text
+    target_head = subprocess.run(
+        ["git", "rev-parse", f"refs/heads/{temporary_branch}"],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_first_parent_count = subprocess.run(
+        [
+            "git",
+            "rev-list",
+            "--first-parent",
+            "--count",
+            f"{protected_head}..{target_head}",
+        ],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_changed_paths = subprocess.run(
+        ["git", "diff", "--name-only", protected_head, target_head],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    # The model candidate and its merge are both reachable, but only the
+    # model merge may advance the target's first-parent history. A private
+    # no-change projection commit would make this count two.
+    assert target_first_parent_count == "1", diagnostic_text
+    assert target_changed_paths == ["data/casf-model-provider-output.txt"], (
+        diagnostic_text
+    )
     assert not fallback_marker.exists(), diagnostic_text
 
 

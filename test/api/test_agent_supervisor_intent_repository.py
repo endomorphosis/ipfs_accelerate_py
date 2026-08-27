@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,11 +30,11 @@ from ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts import
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
-    duckdb_available,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     ControlPlaneIdentityError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+    duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DATABASE_TASK_SOURCE_INTERFACE,
@@ -65,6 +63,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     IntentRepositoryIntegrityError,
     IntentRepositoryTransitionError,
     PlanRevisionRepository,
+    completion_evidence_projection_on_connection,
     open_intent_repository,
     task_authority_spec_cid,
     task_projection_spec_cid,
@@ -504,6 +503,17 @@ def test_completion_evidence_projection_binds_exact_receipts(tmp_path: Path) -> 
         }
         projection_cid = projection["projection_cid"]
 
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            connection.execute("BEGIN TRANSACTION")
+            on_owner_snapshot = completion_evidence_projection_on_connection(
+                connection,
+                task_cids=[ids["task_a"]],
+                transaction_owned_by_caller=True,
+            )
+            assert on_owner_snapshot == projection
+            # The projection must leave an owner-held transaction to its caller.
+            connection.execute("ROLLBACK")
+
         empty = repo.completion_evidence_projection(task_cids=[ids["task_b"]])
         assert empty["completion_receipts"] == []
         with pytest.raises(KeyError):
@@ -513,6 +523,211 @@ def test_completion_evidence_projection_binds_exact_receipts(tmp_path: Path) -> 
         stable = reopened.completion_evidence_projection(task_cids=[ids["task_a"]])
         assert stable["projection_cid"] == projection_cid
         assert stable["completion_receipts"][0] == receipt
+
+
+def test_completion_projection_tracks_only_reopened_tasks_current_revision(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        task_cid = ids["task_a"]
+        first = repo.get_task(task_cid)
+        assert first is not None
+        repo.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=int(first["revision"]),
+            new_status="completed",
+            receipt={"validation": "first completion"},
+            allow_completion_without_evidence=True,
+        )
+        first_projection = repo.completion_evidence_projection(task_cids=[task_cid])
+        assert [
+            receipt["body"]["revision"]
+            for receipt in first_projection["completion_receipts"]
+        ] == [2]
+
+        repo.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=2,
+            new_status="ready",
+            receipt={"operation": "manual_reopen"},
+        )
+        reopened_projection = repo.completion_evidence_projection(task_cids=[task_cid])
+        assert reopened_projection["task_states"] == [
+            {"task_cid": task_cid, "status": "ready", "revision": 3}
+        ]
+        assert reopened_projection["completion_receipts"] == []
+
+        repo.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=3,
+            new_status="completed",
+            receipt={"validation": "second completion"},
+            allow_completion_without_evidence=True,
+        )
+        recompleted_projection = repo.completion_evidence_projection(
+            task_cids=[task_cid]
+        )
+        assert recompleted_projection["task_states"] == [
+            {"task_cid": task_cid, "status": "completed", "revision": 4}
+        ]
+        assert len(recompleted_projection["completion_receipts"]) == 1
+        assert recompleted_projection["completion_receipts"][0]["body"]["revision"] == 4
+
+
+def test_completion_projection_rejects_duplicate_or_malformed_current_receipts(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        task_cid = ids["task_a"]
+        task = repo.get_task(task_cid)
+        assert task is not None
+        repo.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=int(task["revision"]),
+            new_status="completed",
+            receipt={"validation": "passed"},
+            allow_completion_without_evidence=True,
+        )
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                """
+                INSERT INTO completion_receipts (
+                    receipt_cid, task_cid, goal_cid, attempt_id, claim_cid,
+                    fencing_token, completed_at, validation_run_id,
+                    evidence_digest, body_json
+                )
+                SELECT ?, task_cid, goal_cid, attempt_id, claim_cid,
+                       fencing_token, completed_at, validation_run_id,
+                       evidence_digest, body_json
+                FROM completion_receipts WHERE task_cid = ?
+                """,
+                ["receipt:duplicate:current", task_cid],
+            )
+        with pytest.raises(IntentRepositoryIntegrityError, match="multiple current-revision"):
+            repo.completion_evidence_projection(task_cids=[task_cid])
+
+    malformed_path = tmp_path / "malformed.duckdb"
+    with open_intent_repository(malformed_path, owner_id="owner:malformed") as repo:
+        ids = _seed_graph(repo)
+        task_cid = ids["task_a"]
+        task = repo.get_task(task_cid)
+        assert task is not None
+        repo.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=int(task["revision"]),
+            new_status="completed",
+            receipt={"validation": "passed"},
+            allow_completion_without_evidence=True,
+        )
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                "UPDATE completion_receipts SET body_json = '{}' WHERE task_cid = ?",
+                [task_cid],
+            )
+        with pytest.raises(IntentRepositoryIntegrityError, match="normalized integer"):
+            repo.completion_evidence_projection(task_cids=[task_cid])
+
+
+def test_completion_projection_waits_then_owns_its_mvcc_transaction(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    with open_intent_repository(database_path, owner_id="owner:seed") as repo:
+        ids = _seed_graph(repo)
+
+    connection = open_duckdb_connection(database_path)
+    owner_started = threading.Event()
+    release_owner = threading.Event()
+    projection_entered = threading.Event()
+    projection_finished = threading.Event()
+    observation_lock = threading.Lock()
+    projection_calls: list[str] = []
+    projection_query_transaction_states: list[bool] = []
+    results: list[Any] = []
+    errors: list[BaseException] = []
+
+    class _ObservedConnection:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(connection, name)
+
+        def execute(self, sql: str, *args: Any, **kwargs: Any) -> Any:
+            normalized = " ".join(str(sql).split()).upper()
+            projection_thread = threading.current_thread().name == "completion-projection-reader"
+            if projection_thread:
+                with observation_lock:
+                    projection_calls.append(normalized)
+                projection_entered.set()
+            result = connection.execute(sql, *args, **kwargs)
+            if projection_thread and normalized.startswith("SELECT"):
+                with observation_lock:
+                    projection_query_transaction_states.append(connection.in_transaction)
+            return result
+
+    observed = _ObservedConnection()
+
+    def hold_connection_transaction() -> None:
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            owner_started.set()
+            if not release_owner.wait(5.0):
+                raise AssertionError("timed out waiting to release owner transaction")
+            connection.execute("ROLLBACK")
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+            owner_started.set()
+
+    def read_projection() -> None:
+        try:
+            results.append(
+                completion_evidence_projection_on_connection(
+                    observed,
+                    task_cids=[ids["task_a"]],
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+        finally:
+            projection_finished.set()
+
+    owner = threading.Thread(
+        target=hold_connection_transaction,
+        name="existing-transaction-owner",
+    )
+    reader = threading.Thread(
+        target=read_projection,
+        name="completion-projection-reader",
+    )
+    try:
+        owner.start()
+        assert owner_started.wait(5.0)
+        assert not errors
+        reader.start()
+        assert projection_entered.wait(5.0)
+        # The reader has attempted transaction admission but cannot run a
+        # projection query while the other thread owns the connection.
+        assert not projection_finished.is_set()
+        release_owner.set()
+        owner.join(5.0)
+        reader.join(5.0)
+        assert not owner.is_alive()
+        assert not reader.is_alive()
+        assert not errors
+    finally:
+        release_owner.set()
+        owner.join(5.0)
+        reader.join(5.0)
+        connection.close()
+
+    assert len(results) == 1
+    assert results[0]["task_states"] == [
+        {"task_cid": ids["task_a"], "status": "ready", "revision": 1}
+    ]
+    assert projection_calls[0] == "BEGIN TRANSACTION"
+    assert projection_calls[-1] == "COMMIT"
+    assert projection_query_transaction_states
+    assert all(projection_query_transaction_states)
 
 
 def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
@@ -1014,6 +1229,7 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         assert completion_before["completion_receipts"][0]["body"][
             "evidence_digests"
         ] == [ids["evidence_digest"]]
+        assert completion_before["completion_receipts"][0]["body"]["receipt"] == {}
 
         before = repo.snapshot()
         assert before.task_count == 2

@@ -8,6 +8,7 @@ import os
 import socket
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    CommandKind,
+    CommandOutcome,
+    StateCommand,
     canonical_json_bytes,
     content_identity,
 )
@@ -30,11 +34,15 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    CASResult as ControlPlaneCASResult,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
     TransactionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskSourceConflictError,
+    TaskSourceIntegrityError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE,
@@ -61,7 +69,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
+    INTENT_COMPLETION_PROJECTION_SCHEMA,
     QUEUE_ENTRY_SCHEMA,
+    completion_evidence_projection_on_connection,
     open_intent_repository,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
@@ -207,6 +217,70 @@ def _typed_claim_receipt(
         "fence_epoch": 1,
         "claimed_from_revision": int(claimed_from_revision),
     }
+
+
+def _typed_owner_completion_state(connection: Any) -> dict[str, Any]:
+    """Capture every durable surface a rejected completion could mutate."""
+
+    task_row = connection.execute(
+        "SELECT status, revision, updated_at, body_json FROM tasks "
+        "WHERE task_cid = 'task:test'"
+    ).fetchone()
+    generation_row = connection.execute(
+        "SELECT generation, revision, fence_epoch FROM store_generations "
+        "ORDER BY generation DESC LIMIT 1"
+    ).fetchone()
+    assert task_row is not None and generation_row is not None
+    return {
+        "task": tuple(task_row[index] for index in range(4)),
+        "history": tuple(
+            tuple(row[index] for index in range(4))
+            for row in connection.execute(
+                "SELECT revision, status, body_json, recorded_at "
+                "FROM task_revisions WHERE task_cid = 'task:test' "
+                "ORDER BY revision"
+            ).fetchall()
+        ),
+        "completion_receipts": tuple(
+            tuple(row[index] for index in range(4))
+            for row in connection.execute(
+                "SELECT receipt_cid, evidence_digest, completed_at, body_json "
+                "FROM completion_receipts WHERE task_cid = 'task:test' "
+                "ORDER BY receipt_cid"
+            ).fetchall()
+        ),
+        "generation": tuple(generation_row[index] for index in range(3)),
+        "idempotency_count": int(
+            connection.execute(
+                "SELECT COUNT(*) FROM idempotency_records"
+            ).fetchone()[0]
+        ),
+    }
+
+
+def _raw_typed_status_command(
+    source: TypedDatabaseTaskSource,
+    *,
+    suffix: str,
+    parameters: dict[str, Any],
+) -> StateCommand:
+    """Build a raw command that deliberately bypasses CAS convenience guards."""
+
+    client = source._client  # noqa: SLF001 - boundary-adversarial test.
+    session = client.session
+    live = client.load_generation()
+    assert session is not None
+    return StateCommand(
+        command_id=f"cmd:completion-authority:{suffix}",
+        command_kind=CommandKind.CLAIM,
+        store_id=client.store_id,
+        session_id=session.session_id,
+        expected_generation=live.generation,
+        expected_revision=live.revision,
+        fence_epoch=live.fence_epoch,
+        idempotency_key=f"idem:completion-authority:{suffix}",
+        parameters=parameters,
+    )
 
 
 def _isolation_receipt(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
@@ -1696,11 +1770,30 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
             for reader in readers:
                 reader.join(timeout=5)
         assert all(first_samples_observed), read_failures
+        admitted_control_receipt = dict(
+            admitted.task.body["completion_receipt"]
+        )
+        completion_control_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **{
+                name: admitted_control_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
         completed = winner.compare_and_set_status(
             admitted.task.task_cid,
             admitted.task.revision,
             "completed",
-            {"operation": "database_complete", "evidence_digest": evidence_digest},
+            completion_control_receipt,
+            expected_control_receipt=admitted_control_receipt,
             evidence_digests=[evidence_digest],
         )
         read_stopping.set()
@@ -1711,7 +1804,89 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         assert read_revisions
         assert completed.task.status == "completed"
         assert completed.task.revision == admitted.task.revision + 1
-        assert completed.receipt_cid
+        normalized_evidence_digest = content_identity(
+            {
+                "task_cid": completed.task.task_cid,
+                "revision": completed.task.revision,
+                "receipt": completion_control_receipt,
+                "evidence_digests": [evidence_digest],
+            }
+        )
+        expected_receipt_cid = content_identity(
+            {
+                "namespace": "completion-receipt",
+                "task_cid": completed.task.task_cid,
+                "revision": completed.task.revision,
+                "evidence_digest": normalized_evidence_digest,
+            }
+        )
+        assert completed.receipt_cid == expected_receipt_cid
+
+        completion_projection = completion_evidence_projection_on_connection(
+            server._connection,  # noqa: SLF001 - owner-held test transaction.
+            task_cids=[completed.task.task_cid],
+            transaction_owned_by_caller=True,
+        )
+        completion_projection = dict(completion_projection)
+        projected_receipts = completion_projection["completion_receipts"]
+        assert isinstance(projected_receipts, list) and len(projected_receipts) == 1
+        completed_at = projected_receipts[0]["completed_at"]
+        expected_completion_body = {
+            "schema": COMPLETION_EVIDENCE_SCHEMA,
+            "receipt": completion_control_receipt,
+            "evidence_digests": [evidence_digest],
+            "revision": completed.task.revision,
+        }
+        expected_completion_receipt = {
+            "receipt_cid": expected_receipt_cid,
+            "task_cid": completed.task.task_cid,
+            "goal_cid": "goal:test",
+            "attempt_id": "",
+            "claim_cid": "",
+            "fencing_token": 0,
+            "completed_at": completed_at,
+            "validation_run_id": "",
+            "evidence_digest": normalized_evidence_digest,
+            "body": expected_completion_body,
+        }
+        projection_material = {
+            "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+            "event_watermark": completion_projection["event_watermark"],
+            "task_states": [
+                {
+                    "task_cid": completed.task.task_cid,
+                    "status": "completed",
+                    "revision": completed.task.revision,
+                }
+            ],
+            "completion_receipts": [expected_completion_receipt],
+        }
+        assert completion_projection == {
+            **projection_material,
+            "projection_cid": content_identity(projection_material),
+        }
+        persisted_completion = [
+            tuple(row[index] for index in range(4))
+            for row in server._connection.execute(  # noqa: SLF001
+                "SELECT receipt_cid, completed_at, evidence_digest, body_json "
+                "FROM completion_receipts WHERE task_cid = ?",
+                [completed.task.task_cid],
+            ).fetchall()
+        ]
+        assert persisted_completion == [
+            (
+                expected_receipt_cid,
+                completed_at,
+                normalized_evidence_digest,
+                canonical_json_bytes(expected_completion_body).decode("utf-8"),
+            )
+        ]
+        persisted_task_time_row = server._connection.execute(  # noqa: SLF001
+            "SELECT updated_at FROM tasks WHERE task_cid = ?",
+            [completed.task.task_cid],
+        ).fetchone()
+        assert persisted_task_time_row is not None
+        assert persisted_task_time_row[0] == completed_at
         final = winner.get_task("task:test")
         assert final is not None
         assert (final.status, final.revision) == (
@@ -1729,6 +1904,635 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         final = local.get_task("task:test")
         assert final is not None
         assert (final.status, final.revision) == ("completed", 4)
+
+
+@pytest.mark.parametrize(
+    ("current_evidence_digest", "supplied_evidence_digest"),
+    [
+        (None, "sha256:" + ("ab" * 32)),
+        ("sha256:" + ("ab" * 32), "sha256:" + ("cd" * 32)),
+    ],
+    ids=("no-current-evidence", "supplied-digest-not-current"),
+)
+def test_typed_completion_evidence_rejection_rolls_back_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    current_evidence_digest: str | None,
+    supplied_evidence_digest: str,
+) -> None:
+    """A failed evidence gate cannot leave a task completed without its receipt."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-evidence-rollback-owner",
+        store_id="typed-evidence-rollback-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-evidence-rollback",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim_receipt = _typed_claim_receipt(
+            source,
+            lane="evidence-rollback",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim_receipt,
+        ).task
+        admitted = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "in_progress",
+            {
+                **claim_receipt,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claimed.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
+        ).task
+        if current_evidence_digest is not None:
+            validation = source.record_validation_result(
+                task_cid=admitted.task_cid,
+                outcome="passed",
+                evidence_digest=current_evidence_digest,
+                argv=["python", "-m", "pytest", "-q"],
+                attempt_id=claim_receipt["attempt_id"],
+            )
+            assert validation.changed is True
+
+        connection = server._connection  # noqa: SLF001
+        task_before_row = connection.execute(
+            "SELECT status, revision, updated_at, body_json FROM tasks "
+            "WHERE task_cid = 'task:test'"
+        ).fetchone()
+        history_before = [
+            tuple(row[index] for index in range(4))
+            for row in connection.execute(
+                "SELECT revision, status, body_json, recorded_at "
+                "FROM task_revisions WHERE task_cid = 'task:test' "
+                "ORDER BY revision"
+            ).fetchall()
+        ]
+        generation_before_row = connection.execute(
+            "SELECT generation, revision, fence_epoch FROM store_generations "
+            "ORDER BY generation DESC LIMIT 1"
+        ).fetchone()
+        idempotency_count_before_row = connection.execute(
+            "SELECT COUNT(*) FROM idempotency_records"
+        ).fetchone()
+        assert task_before_row is not None
+        assert generation_before_row is not None
+        assert idempotency_count_before_row is not None
+        task_before = tuple(task_before_row[index] for index in range(4))
+        generation_before = tuple(
+            generation_before_row[index] for index in range(3)
+        )
+        idempotency_count_before = int(idempotency_count_before_row[0])
+        assert (task_before[0], task_before[1]) == ("in_progress", admitted.revision)
+        receipt_count_before = connection.execute(
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert receipt_count_before is not None and int(receipt_count_before[0]) == 0
+
+        with pytest.raises((TransactionError, TaskSourceIntegrityError)):
+            admitted_control_receipt = dict(
+                admitted.body["completion_receipt"]
+            )
+            source.compare_and_set_status(
+                admitted.task_cid,
+                admitted.revision,
+                "completed",
+                {
+                    "operation": "database_complete",
+                    "evidence_digest": supplied_evidence_digest,
+                    **{
+                        name: admitted_control_receipt[name]
+                        for name in (
+                            "attempt_id",
+                            "claim_id",
+                            "lease_id",
+                            "owner_session_id",
+                            "fencing_token",
+                            "fence_epoch",
+                        )
+                    },
+                },
+                expected_control_receipt=admitted_control_receipt,
+                evidence_digests=[supplied_evidence_digest],
+            )
+
+        task_after = connection.execute(
+            "SELECT status, revision, updated_at, body_json FROM tasks "
+            "WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert task_after is not None
+        assert tuple(task_after[index] for index in range(4)) == task_before
+        history_after = [
+            tuple(row[index] for index in range(4))
+            for row in connection.execute(
+                "SELECT revision, status, body_json, recorded_at "
+                "FROM task_revisions WHERE task_cid = 'task:test' "
+                "ORDER BY revision"
+            ).fetchall()
+        ]
+        assert history_after == history_before
+        receipt_count_after = connection.execute(
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert receipt_count_after is not None and int(receipt_count_after[0]) == 0
+        generation_after = connection.execute(
+            "SELECT generation, revision, fence_epoch FROM store_generations "
+            "ORDER BY generation DESC LIMIT 1"
+        ).fetchone()
+        assert generation_after is not None
+        assert tuple(generation_after[index] for index in range(3)) == generation_before
+        idempotency_count_after = connection.execute(
+            "SELECT COUNT(*) FROM idempotency_records"
+        ).fetchone()
+        assert idempotency_count_after is not None
+        assert int(idempotency_count_after[0]) == idempotency_count_before
+
+        completion_projection = completion_evidence_projection_on_connection(
+            connection,
+            task_cids=[admitted.task_cid],
+            transaction_owned_by_caller=True,
+        )
+        assert completion_projection["task_states"] == [
+            {
+                "task_cid": admitted.task_cid,
+                "status": "in_progress",
+                "revision": admitted.revision,
+            }
+        ]
+        assert (
+            completion_projection["completion_receipts"] == []
+        )
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "gate",
+    [
+        "receiptless-terminal-cas",
+        "database-completion-without-admitted-receipt",
+    ],
+)
+def test_typed_owner_rejects_untrusted_completion_at_command_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gate: str,
+) -> None:
+    """Raw typed commands cannot bypass the client's completion guards."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / f"typed-completion-boundary-{gate}",
+        store_id=f"typed-completion-boundary-{gate}-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=f"database-implementation-daemon:{gate}",
+        allowed_command_operations=(
+            "task.status.cas",
+            "task.status.cas.receipt",
+        ),
+    )
+    try:
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        if gate == "receiptless-terminal-cas":
+            parameters = {
+                "operation": "task.status.cas",
+                "task_cid": "task:test",
+                "expected_task_revision": 1,
+                "status": "completed",
+            }
+        else:
+            parameters = {
+                "operation": "task.status.cas.receipt",
+                "task_cid": "task:test",
+                "expected_task_revision": 1,
+                "status": "completed",
+                "body_json": canonical_json_bytes(
+                    {
+                        "completion_receipt": {
+                            "operation": "database_complete",
+                            "evidence_digest": "sha256:" + ("ab" * 32),
+                        }
+                    }
+                ).decode("utf-8"),
+                "goal_cid": "goal:test",
+                "evidence_digests_json": canonical_json_bytes([]).decode("utf-8"),
+            }
+        command = _raw_typed_status_command(
+            source,
+            suffix=gate,
+            parameters=parameters,
+        )
+
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            # This is intentionally below QuackStateClient.cas_task_status():
+            # the exclusive owner must independently reject the raw command.
+            source._client.submit_command(command)  # noqa: SLF001
+
+        assert (
+            _typed_owner_completion_state(server._connection)  # noqa: SLF001
+            == before
+        )
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_owner_rejects_mismatched_completion_claim_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completion cannot replace the admitted claim/fence identity."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-completion-claim-mismatch",
+        store_id="typed-completion-claim-mismatch-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:completion-claim-mismatch",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    evidence_digest = "sha256:" + ("ab" * 32)
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim_receipt = _typed_claim_receipt(
+            source,
+            lane="completion-claim-mismatch",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim_receipt,
+        ).task
+        admitted = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "in_progress",
+            {
+                **claim_receipt,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claimed.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
+        ).task
+        validation = source.record_validation_result(
+            task_cid=admitted.task_cid,
+            outcome="passed",
+            evidence_digest=evidence_digest,
+            argv=["python", "-m", "pytest", "-q"],
+            attempt_id=claim_receipt["attempt_id"],
+        )
+        assert validation.changed is True
+
+        admitted_receipt = dict(admitted.body["completion_receipt"])
+        forged_completion_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **{
+                name: admitted_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
+        forged_completion_receipt["fencing_token"] += 1
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+
+        with pytest.raises(
+            TransactionError,
+            match="authorization_denied",
+        ):
+            source.compare_and_set_status(
+                admitted.task_cid,
+                admitted.revision,
+                "completed",
+                forged_completion_receipt,
+                expected_control_receipt=admitted_receipt,
+                evidence_digests=[evidence_digest],
+            )
+
+        assert (
+            _typed_owner_completion_state(server._connection)  # noqa: SLF001
+            == before
+        )
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_owner_allows_bound_same_status_completion_repair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal repair retains its receipt and immediate admitted lineage."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-completion-bound-repair",
+        store_id="typed-completion-bound-repair-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:completion-bound-repair",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    evidence_digest = "sha256:" + ("ab" * 32)
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim_receipt = _typed_claim_receipt(
+            source,
+            lane="completion-bound-repair",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim_receipt,
+        ).task
+        admitted = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "in_progress",
+            {
+                **claim_receipt,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claimed.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
+        ).task
+        validation = source.record_validation_result(
+            task_cid=admitted.task_cid,
+            outcome="passed",
+            evidence_digest=evidence_digest,
+            argv=["python", "-m", "pytest", "-q"],
+            attempt_id=claim_receipt["attempt_id"],
+        )
+        assert validation.changed is True
+        admitted_receipt = dict(admitted.body["completion_receipt"])
+        completion_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **{
+                name: admitted_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
+        completed = source.compare_and_set_status(
+            admitted.task_cid,
+            admitted.revision,
+            "completed",
+            completion_receipt,
+            expected_control_receipt=admitted_receipt,
+            evidence_digests=[evidence_digest],
+        )
+        before_repair = _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        )
+
+        repaired = source.compare_and_set_status(
+            completed.task.task_cid,
+            completed.task.revision,
+            "completed",
+            completion_receipt,
+            expected_control_receipt=completion_receipt,
+            evidence_digests=[evidence_digest],
+        )
+
+        assert repaired.changed is True
+        assert repaired.previous_status == "completed"
+        assert repaired.task.revision == completed.task.revision + 1
+        assert repaired.task.body["completion_receipt"] == completion_receipt
+        assert repaired.receipt_cid and repaired.receipt_cid != completed.receipt_cid
+        after_repair = _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        )
+        assert len(after_repair["history"]) == len(before_repair["history"]) + 1
+        assert len(after_repair["completion_receipts"]) == (
+            len(before_repair["completion_receipts"]) + 1
+        )
+        assert after_repair["generation"][1] == before_repair["generation"][1] + 1
+        assert after_repair["idempotency_count"] == (
+            before_repair["idempotency_count"] + 1
+        )
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_owner_rejects_legacy_terminal_receipt_without_admitted_predecessor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy terminal row cannot self-authorize a normalized receipt repair."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    evidence_digest = "sha256:" + ("ab" * 32)
+    legacy_receipt = {
+        "operation": "database_complete",
+        "evidence_digest": evidence_digest,
+        "attempt_id": "attempt:legacy",
+        "claim_id": "claim:legacy",
+        "lease_id": "lease:legacy",
+        "owner_session_id": "session:legacy",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    legacy_body_json = canonical_json_bytes(
+        {"completion_receipt": legacy_receipt}
+    ).decode("utf-8")
+    with DuckDBConnection(database) as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'completed', body_json = ? "
+            "WHERE task_cid = 'task:test'",
+            [legacy_body_json],
+        )
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-legacy-terminal-repair",
+        store_id="typed-legacy-terminal-repair-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:legacy-terminal-repair",
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        legacy = source.get_task("task:test")
+        assert legacy is not None
+        assert (legacy.status, legacy.revision) == ("completed", 1)
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+
+        with pytest.raises(TransactionError, match="constraint_conflict"):
+            source.compare_and_set_status(
+                legacy.task_cid,
+                legacy.revision,
+                "completed",
+                legacy_receipt,
+                expected_control_receipt=legacy_receipt,
+                evidence_digests=[evidence_digest],
+            )
+
+        assert (
+            _typed_owner_completion_state(server._connection)  # noqa: SLF001
+            == before
+        )
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_terminal_typed_database_cas_requires_normalized_receipt_cid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A result digest is not a normalized terminal completion receipt CID."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-missing-completion-cid",
+        store_id="typed-missing-completion-cid-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:missing-completion-cid",
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        completed = replace(ready, status="completed", revision=ready.revision + 1)
+        observations = iter((ready, completed))
+        monkeypatch.setattr(
+            source,
+            "get_task",
+            lambda _identity: next(observations),
+        )
+        synthetic = ControlPlaneCASResult(
+            outcome=CommandOutcome.ACCEPTED,
+            changed=True,
+            revision=2,
+            generation=1,
+            fence_epoch=1,
+            result={"completion_receipt_cid": ""},
+            idempotency_key="idem:missing-completion-cid",
+            command_id="cmd:missing-completion-cid",
+            result_digest="sha256:" + ("cd" * 32),
+        )
+        monkeypatch.setattr(
+            source._client,  # noqa: SLF001 - simulate a malformed owner response.
+            "cas_task_status",
+            lambda **_kwargs: synthetic,
+        )
+
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="returned no normalized completion receipt",
+        ):
+            source.compare_and_set_status(
+                ready.task_cid,
+                ready.revision,
+                "completed",
+                {"operation": "generic_complete"},
+            )
+    finally:
+        source.close()
+        server.stop()
 
 
 def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repairs(

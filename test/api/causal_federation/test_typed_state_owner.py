@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,13 @@ from ipfs_accelerate_py.agent_supervisor.task_sources import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     CommandKind,
     StateCommand,
+    StoreGeneration,
+    canonical_json_bytes,
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    OptimisticConflictError,
+    result_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
@@ -22,15 +30,22 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    COMPLETION_EVIDENCE_SCHEMA,
+    INTENT_COMPLETION_PROJECTION_SCHEMA,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientTransportError,
     QuackStateClient,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     STATUS_BOOTSTRAP_ALLOWED_OPERATIONS,
     STATUS_BOOTSTRAP_CLIENT_ID,
+    TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
     TypedStateOwnerGateway,
@@ -696,6 +711,223 @@ def test_live_grant_expiry_is_checked_on_every_request(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_completion_progress_is_reserved_for_status_session_grants(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    try:
+        with pytest.raises(
+            TypedStateOwnerAuthorizationError,
+            match="absent from the server catalog",
+        ):
+            gateway.issue_grant(
+                client_id="client:forged-progress",
+                allowed_operations=(COMPLETION_PROGRESS_SNAPSHOT_OPERATION,),
+                peer_pid=os.getpid(),
+            )
+    finally:
+        gateway.stop()
+        connection.close()
+
+
+def test_completion_progress_accepts_canonical_empty_control_receipt() -> None:
+    owner_identity = {
+        "server_id": "server:progress:001",
+        "process_birth_id": "birth:progress:001",
+        "store_id": "store:progress:001",
+        "database_uuid": "12345678-1234-4678-9234-567812345678",
+        "generation": 3,
+        "fence_epoch": 7,
+    }
+    request = typed_owner.completion_progress_request(
+        owner_identity,
+        ["task:progress:001"],
+    )
+    evidence_digests = ["sha256:" + ("2b" * 32)]
+    evidence_digest = content_identity(
+        {
+            "task_cid": "task:progress:001",
+            "revision": 2,
+            "receipt": {},
+            "evidence_digests": evidence_digests,
+        }
+    )
+    receipt_cid = content_identity(
+        {
+            "namespace": "completion-receipt",
+            "task_cid": "task:progress:001",
+            "revision": 2,
+            "evidence_digest": evidence_digest,
+        }
+    )
+    projection = {
+        "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+        "event_watermark": 10,
+        "task_states": [
+            {
+                "task_cid": "task:progress:001",
+                "status": "completed",
+                "revision": 2,
+            }
+        ],
+        "completion_receipts": [
+            {
+                "receipt_cid": receipt_cid,
+                "task_cid": "task:progress:001",
+                "goal_cid": "goal:progress:001",
+                "attempt_id": "",
+                "claim_cid": "",
+                "fencing_token": 0,
+                "completed_at": "2026-08-26T12:00:00Z",
+                "validation_run_id": "",
+                "evidence_digest": evidence_digest,
+                "body": {
+                    "schema": COMPLETION_EVIDENCE_SCHEMA,
+                    "receipt": {},
+                    "evidence_digests": evidence_digests,
+                    "revision": 2,
+                },
+            }
+        ],
+    }
+    projection["projection_cid"] = content_identity(projection)
+    snapshot = {
+        "schema": TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
+        "request_cid": request["request_cid"],
+        "owner_identity": owner_identity,
+        "store_generation": StoreGeneration(
+            store_id="store:progress:001",
+            generation=3,
+            schema_revision=14,
+            fence_epoch=7,
+            revision=19,
+            database_uuid="12345678-1234-4678-9234-567812345678",
+            birth_id="birth:progress:001",
+        ).to_dict(),
+        "completion_projection": projection,
+    }
+    snapshot["snapshot_cid"] = content_identity(snapshot)
+
+    validated = typed_owner.validate_completion_progress_snapshot(
+        snapshot,
+        request=request,
+    )
+
+    assert validated["completion_projection"]["completion_receipts"][0]["body"][
+        "receipt"
+    ] == {}
+
+
+@pytest.mark.parametrize(
+    "request_id",
+    ("", " request:leading-space", "request:embedded space", "r" * 257, 7),
+)
+def test_request_ids_are_compact_on_open_and_every_followup_request(
+    tmp_path: Path,
+    request_id: Any,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    token, _grant = gateway.issue_grant(
+        client_id="client:request-id",
+        allowed_operations=("whoami_metadata",),
+        peer_pid=os.getpid(),
+    )
+
+    def _connect() -> socket.socket:
+        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        channel.settimeout(2.0)
+        channel.connect(str(socket_path))
+        return channel
+
+    def _open_payload(correlation_id: Any) -> dict[str, Any]:
+        return {
+            "schema": typed_owner.TYPED_STATE_OWNER_SCHEMA,
+            "action": "open",
+            "request_id": correlation_id,
+            "token": token,
+            "client_id": "client:request-id",
+            "process_birth_id": "birth:request-id",
+            "store_id": "control.duckdb",
+        }
+
+    try:
+        with _connect() as invalid_open:
+            typed_owner._send_frame(  # noqa: SLF001
+                invalid_open,
+                _open_payload(request_id),
+            )
+            with pytest.raises((OSError, TypedStateOwnerProtocolError)):
+                typed_owner._receive_frame(invalid_open)  # noqa: SLF001
+
+        with _connect() as invalid_followup:
+            typed_owner._send_frame(  # noqa: SLF001
+                invalid_followup,
+                _open_payload("request:valid-open"),
+            )
+            opened = typed_owner._receive_frame(invalid_followup)  # noqa: SLF001
+            assert opened["ok"] is True
+            typed_owner._send_frame(  # noqa: SLF001
+                invalid_followup,
+                {
+                    "schema": typed_owner.TYPED_STATE_OWNER_SCHEMA,
+                    "action": "execute",
+                    "request_id": request_id,
+                    "operation": "whoami_metadata",
+                    "parameters": [],
+                },
+            )
+            with pytest.raises((OSError, TypedStateOwnerProtocolError)):
+                typed_owner._receive_frame(invalid_followup)  # noqa: SLF001
+    finally:
+        gateway.stop()
+        connection.close()
+
+
+def test_partial_response_timeout_poison_closes_the_client_transport() -> None:
+    client_socket, server_socket = socket.socketpair()
+    client_socket.settimeout(0.1)
+    client = object.__new__(TypedStateOwnerConnection)
+    client._socket = client_socket  # noqa: SLF001
+    client._request_lock = threading.RLock()  # noqa: SLF001
+    client._closed = False  # noqa: SLF001
+    client._active = True  # noqa: SLF001
+    client._prepared_command = object()  # noqa: SLF001
+    client._request_index = 0  # noqa: SLF001
+    partial_sent = threading.Event()
+    release_server = threading.Event()
+
+    def _send_partial_response() -> None:
+        try:
+            typed_owner._receive_frame(server_socket)  # noqa: SLF001
+            server_socket.sendall((64).to_bytes(4, "big") + b"{")
+            partial_sent.set()
+            release_server.wait(timeout=2.0)
+        finally:
+            server_socket.close()
+
+    server = threading.Thread(target=_send_partial_response, daemon=True)
+    server.start()
+    try:
+        with pytest.raises(OSError):
+            client._request("execute", operation="whoami_metadata", parameters=[])  # noqa: SLF001
+        assert partial_sent.wait(timeout=1.0)
+        assert client._closed is True  # noqa: SLF001
+        assert client._active is False  # noqa: SLF001
+        assert client._prepared_command is None  # noqa: SLF001
+        assert client_socket.fileno() == -1
+        with pytest.raises(TypedStateOwnerProtocolError, match="closed"):
+            client._request("execute", operation="whoami_metadata", parameters=[])  # noqa: SLF001
+    finally:
+        release_server.set()
+        server.join(timeout=2.0)
+
+
 def _independent_reader(
     receive: Any,
     result: Any,
@@ -735,6 +967,9 @@ def _independent_status_reader(
         )
         try:
             count = connection.execute_operation("count_tasks").fetchone()
+            completion_snapshot = connection.completion_progress_snapshot(
+                ["task:typed-owner"]
+            )
             denied: list[str] = []
             for operation, parameters in (
                 ("casf_select_federation", ["federation:forged", "tenant:forged"]),
@@ -780,6 +1015,7 @@ def _independent_status_reader(
             result.send(
                 {
                     "count": count,
+                    "completion_snapshot": dict(completion_snapshot),
                     "grant": dict(connection.grant),
                     "denied": denied,
                     "raw_sql_denied": raw_sql_denied,
@@ -890,6 +1126,18 @@ def test_status_bootstrap_rebinds_each_distinct_process_read_only(
             assert process.exitcode == 0
             assert payload.get("error") is None
             assert payload["count"] == (1,)
+            completion_snapshot = payload["completion_snapshot"]
+            assert completion_snapshot["schema"] == (
+                TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA
+            )
+            assert completion_snapshot["completion_projection"]["task_states"] == [
+                {
+                    "task_cid": "task:typed-owner",
+                    "status": "ready",
+                    "revision": 0,
+                }
+            ]
+            assert completion_snapshot["snapshot_cid"].startswith("b")
             assert payload["denied"] == [
                 "authorization_denied",
                 "authorization_denied",
@@ -903,6 +1151,9 @@ def test_status_bootstrap_rebinds_each_distinct_process_read_only(
             assert set(grant["allowed_operations"]) == set(
                 STATUS_BOOTSTRAP_ALLOWED_OPERATIONS
             )
+            assert COMPLETION_PROGRESS_SNAPSHOT_OPERATION in grant[
+                "allowed_operations"
+            ]
             assert grant["allowed_command_operations"] == []
             assert grant["tenant_id"] == "tenant:status"
             assert grant["federation_id"] == "federation:status"
@@ -1238,3 +1489,524 @@ def test_manifest_rejects_duplicate_and_out_of_order_mutations(
     assert (task[0], task[1]) == ("ready", 0)
     gateway.stop()
     owner_connection.close()
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "missing",
+        "reordered",
+        "duplicate",
+        "mismatched",
+        "mismatched_timestamp",
+        "mismatched_idempotency",
+        "bool_store_seal",
+        "stale_cas",
+        "gapped_history",
+    ),
+)
+def test_receipt_manifest_requires_exact_atomic_task_revision_history(
+    tmp_path: Path,
+    attack: str,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    if attack == "gapped_history":
+        with open_duckdb_connection(db) as seed:
+            seed.execute(
+                "UPDATE tasks SET revision = 2 WHERE task_cid = 'task:typed-owner'"
+            )
+            seed.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES ('task:typed-owner', 1, 'ready', '{}',
+                          '1970-01-01T00:00:00Z')
+                """
+            )
+    gateway, owner_connection = _gateway(db, socket_path)
+    baseline_task = owner_connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()
+    assert baseline_task is not None
+    baseline_task = (baseline_task[0], baseline_task[1])
+    baseline_history_count = owner_connection.execute(
+        "SELECT COUNT(*) FROM task_revisions "
+        "WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()[0]
+    client_id = f"client:receipt-history:{attack}"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=(
+            *_task_grant_operations(),
+            "executor_cas_task_status_receipt",
+            "executor_insert_task_revision",
+        ),
+        allowed_command_operations=("task.status.cas.receipt",),
+        peer_pid=os.getpid(),
+    )
+    client = TypedStateOwnerConnection(
+        socket_path=socket_path,
+        token=token,
+        client_id=client_id,
+        process_birth_id=f"birth:receipt-history:{attack}",
+        store_id="control.duckdb",
+    )
+    head = client.execute_operation("load_store_generation").fetchone()
+    assert head is not None
+    expected_task_revision = (
+        2
+        if attack == "gapped_history"
+        else 1
+        if attack == "stale_cas"
+        else 0
+    )
+    command = StateCommand(
+        command_id=f"command:receipt-history:{attack}",
+        command_kind=CommandKind.CLAIM,
+        store_id="control.duckdb",
+        session_id=client.session_id,
+        expected_generation=int(head[0]),
+        expected_revision=int(head[3]),
+        fence_epoch=int(head[2]),
+        idempotency_key=f"idempotency:receipt-history:{attack}",
+        parameters={
+            "operation": "task.status.cas.receipt",
+            "task_cid": "task:typed-owner",
+            "expected_task_revision": expected_task_revision,
+            "status": "claimed",
+            "body_json": "{}",
+        },
+    )
+    recorded_at = "1970-01-01T00:00:01Z"
+    receipt_parameters = [
+        "claimed",
+        expected_task_revision + 1,
+        recorded_at,
+        "{}",
+        "task:typed-owner",
+        expected_task_revision,
+    ]
+    history_parameters = [
+        "task:typed-owner",
+        expected_task_revision + 1,
+        "claimed",
+        "{}",
+        recorded_at,
+    ]
+    try:
+        client.prepare_command(command)
+        client.execute("BEGIN TRANSACTION")
+        if attack == "reordered":
+            with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                client.execute_operation(
+                    "executor_insert_task_revision", history_parameters
+                )
+        else:
+            client.execute_operation(
+                "executor_cas_task_status_receipt", receipt_parameters
+            )
+            if attack == "mismatched":
+                bad_history = list(history_parameters)
+                bad_history[3] = '{"forged":true}'
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.execute_operation(
+                        "executor_insert_task_revision", bad_history
+                    )
+            elif attack == "mismatched_timestamp":
+                bad_history = list(history_parameters)
+                bad_history[4] = "1970-01-01T00:00:02Z"
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.execute_operation(
+                        "executor_insert_task_revision", bad_history
+                    )
+            elif attack == "duplicate":
+                client.execute_operation(
+                    "executor_insert_task_revision", history_parameters
+                )
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.execute_operation(
+                        "executor_insert_task_revision", history_parameters
+                    )
+            elif attack == "bool_store_seal":
+                client.execute_operation(
+                    "executor_insert_task_revision", history_parameters
+                )
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.execute_operation(
+                        "txn_advance_store_revision",
+                        [True, int(head[0]), int(head[3]), int(head[2])],
+                    )
+            elif attack in {
+                "stale_cas",
+                "gapped_history",
+                "mismatched_idempotency",
+            }:
+                client.execute_operation(
+                    "executor_insert_task_revision", history_parameters
+                )
+                client.execute_operation(
+                    "txn_advance_store_revision",
+                    [
+                        int(head[3]) + 1,
+                        int(head[0]),
+                        int(head[3]),
+                        int(head[2]),
+                    ],
+                )
+                client.execute_operation(
+                    "txn_record_idempotency",
+                    [
+                        command.idempotency_key,
+                        command.command_kind.value,
+                        command.command_id,
+                        command.store_id,
+                        command.session_id,
+                        (
+                            "sha256:forged"
+                            if attack == "mismatched_idempotency"
+                            else result_digest({})
+                        ),
+                        recorded_at,
+                        None,
+                        "{}",
+                    ],
+                )
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.commit()
+            else:
+                client.execute_operation(
+                    "txn_advance_store_revision",
+                    [
+                        int(head[3]) + 1,
+                        int(head[0]),
+                        int(head[3]),
+                        int(head[2]),
+                    ],
+                )
+                client.execute_operation(
+                    "txn_record_idempotency",
+                    [
+                        command.idempotency_key,
+                        command.command_kind.value,
+                        command.command_id,
+                        command.store_id,
+                        command.session_id,
+                        result_digest({}),
+                        recorded_at,
+                        None,
+                        "{}",
+                    ],
+                )
+                with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                    client.commit()
+        assert denied.value.error_code == "authorization_denied"
+    finally:
+        client.close()
+    task_row = owner_connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()
+    assert task_row is not None
+    assert (task_row[0], task_row[1]) == baseline_task
+    assert owner_connection.execute(
+        "SELECT COUNT(*) FROM task_revisions "
+        "WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()[0] == baseline_history_count
+    assert owner_connection.execute(
+        "SELECT revision FROM store_generations ORDER BY generation DESC LIMIT 1"
+    ).fetchone()[0] == int(head[3])
+    assert owner_connection.execute(
+        "SELECT COUNT(*) FROM idempotency_records WHERE idempotency_key = ?",
+        [command.idempotency_key],
+    ).fetchone()[0] == 0
+    gateway.stop()
+    owner_connection.close()
+
+
+def test_retry_cooldown_extension_rejects_bool_for_integer_identity() -> None:
+    extension = {
+        "schema": typed_owner.TYPED_RETRY_COOLDOWN_SCHEMA,
+        "task_cid": "task:typed-owner",
+        "expected_task_revision": 0,
+        "attempt_id": "attempt:one",
+        "claim_id": "claim:one",
+        "lease_id": "lease:one",
+        "owner_session_id": "owner:one",
+        "attempt_number": 1,
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "delay_ms": 100,
+        "started_at_ms": 1_000,
+        "retry_not_before_ms": 1_100,
+        "selection_penalty": 0,
+        "consecutive_failures": 1,
+        "reason": "bounded retry",
+        "expected_queue_revision": -1,
+        "expected_queue_attempt": 0,
+    }
+    parameters = {
+        **extension,
+        "operation": "task.retry.cooldown.record",
+        "expected_task_status": "in_progress",
+        "resolution_cid": content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": extension["started_at_ms"],
+            }
+        ),
+        "extension_schema": typed_owner.TYPED_RETRY_COOLDOWN_SCHEMA,
+        "extension_json": canonical_json_bytes(extension).decode("utf-8"),
+    }
+    assert typed_owner._validated_retry_cooldown_parameters(parameters)
+
+    forged_extension = {**extension, "fencing_token": True}
+    forged = {
+        **parameters,
+        "extension_json": canonical_json_bytes(forged_extension).decode(
+            "utf-8"
+        ),
+    }
+    with pytest.raises(
+        TypedStateOwnerAuthorizationError,
+        match="extension or resolution identity differs",
+    ):
+        typed_owner._validated_retry_cooldown_parameters(forged)
+
+    dead_extension = {
+        **extension,
+        "delay_ms": 0,
+        "retry_not_before_ms": extension["started_at_ms"],
+        "reason": typed_owner.TYPED_DATABASE_CLAIM_RECOVERY_REASON,
+    }
+    dead_recovery = {
+        **dead_extension,
+        "operation": typed_owner.TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        "expected_task_status": "in_progress",
+        "resolution_cid": content_identity(
+            {
+                "typed_retry_cooldown": dead_extension,
+                "started_at_ms": dead_extension["started_at_ms"],
+            }
+        ),
+        "extension_schema": typed_owner.TYPED_RETRY_COOLDOWN_SCHEMA,
+        "extension_json": canonical_json_bytes(dead_extension).decode(
+            "utf-8"
+        ),
+        "status": "retrying",
+        "body_json": (
+            '{"completion_receipt":{},"completion_receipt":{"forged":true}}'
+        ),
+    }
+    with pytest.raises(
+        TypedStateOwnerAuthorizationError,
+        match="dead claim recovery task body is malformed",
+    ):
+        typed_owner._validated_dead_claim_recovery_parameters(dead_recovery)
+
+
+@pytest.mark.parametrize("attack", ("unknown_field", "duplicate_body_key"))
+def test_receipt_command_admission_rejects_nonclosed_json_or_fields(
+    tmp_path: Path,
+    attack: str,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, owner_connection = _gateway(db, socket_path)
+    client_id = f"client:receipt-admission:{attack}"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=(
+            *_task_grant_operations(),
+            "executor_cas_task_status_receipt",
+            "executor_insert_task_revision",
+        ),
+        allowed_command_operations=("task.status.cas.receipt",),
+        peer_pid=os.getpid(),
+    )
+    client = TypedStateOwnerConnection(
+        socket_path=socket_path,
+        token=token,
+        client_id=client_id,
+        process_birth_id=f"birth:receipt-admission:{attack}",
+        store_id="control.duckdb",
+    )
+    head = client.execute_operation("load_store_generation").fetchone()
+    assert head is not None
+    parameters: dict[str, Any] = {
+        "operation": "task.status.cas.receipt",
+        "task_cid": "task:typed-owner",
+        "expected_task_revision": 0,
+        "status": "claimed",
+        "body_json": (
+            '{"completion_receipt":{},"completion_receipt":{"forged":true}}'
+            if attack == "duplicate_body_key"
+            else "{}"
+        ),
+    }
+    if attack == "unknown_field":
+        parameters["forged"] = True
+    command = StateCommand(
+        command_id=f"command:receipt-admission:{attack}",
+        command_kind=CommandKind.CLAIM,
+        store_id="control.duckdb",
+        session_id=client.session_id,
+        expected_generation=int(head[0]),
+        expected_revision=int(head[3]),
+        fence_epoch=int(head[2]),
+        idempotency_key=f"idempotency:receipt-admission:{attack}",
+        parameters=parameters,
+    )
+    try:
+        client.prepare_command(command)
+        with pytest.raises(TypedStateOwnerRemoteError) as denied:
+            client.execute("BEGIN TRANSACTION")
+        assert denied.value.error_code == "authorization_denied"
+    finally:
+        client.close()
+        gateway.stop()
+        owner_connection.close()
+
+
+def test_expected_receipt_owner_rejects_bool_for_integer_identity(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    current_body_json = canonical_json_bytes(
+        {"completion_receipt": {"fencing_token": 1}}
+    ).decode("utf-8")
+    with open_duckdb_connection(db) as seed:
+        seed.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [current_body_json, "task:typed-owner"],
+        )
+    gateway, owner_connection = _gateway(db, socket_path)
+    client_id = "client:receipt-bool-int"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=(
+            *_task_grant_operations(),
+            "executor_cas_task_status_receipt",
+            "executor_insert_task_revision",
+        ),
+        allowed_command_operations=("task.status.cas.receipt",),
+        peer_pid=os.getpid(),
+    )
+    client = TypedStateOwnerConnection(
+        socket_path=socket_path,
+        token=token,
+        client_id=client_id,
+        process_birth_id="birth:receipt-bool-int",
+        store_id="control.duckdb",
+    )
+    head = client.execute_operation("load_store_generation").fetchone()
+    assert head is not None
+    command = StateCommand(
+        command_id="command:receipt-bool-int",
+        command_kind=CommandKind.CLAIM,
+        store_id="control.duckdb",
+        session_id=client.session_id,
+        expected_generation=int(head[0]),
+        expected_revision=int(head[3]),
+        fence_epoch=int(head[2]),
+        idempotency_key="idempotency:receipt-bool-int",
+        parameters={
+            "operation": "task.status.cas.receipt",
+            "task_cid": "task:typed-owner",
+            "expected_task_revision": 0,
+            "status": "claimed",
+            "body_json": current_body_json,
+            "expected_control_receipt_json": canonical_json_bytes(
+                {"fencing_token": True}
+            ).decode("utf-8"),
+        },
+    )
+    try:
+        client.prepare_command(command)
+        client.execute("BEGIN TRANSACTION")
+        with pytest.raises(TypedStateOwnerRemoteError) as denied:
+            client.execute_operation(
+                "executor_cas_task_status_receipt",
+                [
+                    "claimed",
+                    1,
+                    "1970-01-01T00:00:01Z",
+                    current_body_json,
+                    "task:typed-owner",
+                    0,
+                ],
+            )
+        assert denied.value.error_code == "authorization_denied"
+    finally:
+        client.close()
+        task_row = owner_connection.execute(
+            "SELECT status, revision FROM tasks WHERE task_cid = ?",
+            ["task:typed-owner"],
+        ).fetchone()
+        assert task_row is not None
+        assert (task_row[0], task_row[1]) == ("ready", 0)
+        gateway.stop()
+        owner_connection.close()
+
+
+def test_stale_store_revision_is_rejected_before_domain_mutation(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    with open_duckdb_connection(db) as seed:
+        seed.execute("UPDATE store_generations SET revision = revision + 1")
+    gateway, owner_connection = _gateway(db, socket_path)
+    client_id = "client:stale-store-seal"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=_task_grant_operations(),
+        allowed_command_operations=("task.status.cas",),
+        peer_pid=os.getpid(),
+    )
+    client = TypedStateOwnerConnection(
+        socket_path=socket_path,
+        token=token,
+        client_id=client_id,
+        process_birth_id="birth:stale-store-seal",
+        store_id="control.duckdb",
+    )
+    head = client.execute_operation("load_store_generation").fetchone()
+    assert head is not None and int(head[3]) == 1
+    command = StateCommand(
+        command_id="command:stale-store-seal",
+        command_kind=CommandKind.CLAIM,
+        store_id="control.duckdb",
+        session_id=client.session_id,
+        expected_generation=int(head[0]),
+        expected_revision=0,
+        fence_epoch=int(head[2]),
+        idempotency_key="idempotency:stale-store-seal",
+        parameters={
+            "operation": "task.status.cas",
+            "task_cid": "task:typed-owner",
+            "expected_task_revision": 0,
+            "status": "claimed",
+        },
+    )
+    try:
+        client.prepare_command(command)
+        with pytest.raises(OptimisticConflictError):
+            client.execute("BEGIN TRANSACTION")
+    finally:
+        client.close()
+        task_row = owner_connection.execute(
+            "SELECT status, revision FROM tasks WHERE task_cid = ?",
+            ["task:typed-owner"],
+        ).fetchone()
+        assert task_row is not None
+        assert (task_row[0], task_row[1]) == ("ready", 0)
+        assert owner_connection.execute(
+            "SELECT revision FROM store_generations"
+        ).fetchone()[0] == 1
+        gateway.stop()
+        owner_connection.close()
