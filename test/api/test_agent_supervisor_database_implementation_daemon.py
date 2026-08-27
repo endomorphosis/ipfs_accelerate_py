@@ -6217,8 +6217,29 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
             "fence_epoch",
             "attempt_number",
             "claimed_from_revision",
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+            "task_prefix",
             "consumed_attempt_retry_source_attempt_id",
             "consumed_attempt_retry_seed",
+        }
+        assert {
+            field: source_claim_receipt[field]
+            for field in (
+                "task_shard_count",
+                "task_shard_index",
+                "strict_task_sharding",
+                "idle_lane_work_stealing",
+                "task_prefix",
+            )
+        } == {
+            "task_shard_count": daemon.task_shard_count,
+            "task_shard_index": daemon.task_shard_index,
+            "strict_task_sharding": daemon.strict_task_sharding,
+            "idle_lane_work_stealing": daemon.idle_lane_work_stealing,
+            "task_prefix": daemon.task_prefix,
         }
         assert source_claim_receipt[
             "consumed_attempt_retry_source_attempt_id"

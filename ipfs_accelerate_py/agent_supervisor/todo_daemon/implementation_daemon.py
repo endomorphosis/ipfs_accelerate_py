@@ -103280,8 +103280,23 @@ class DatabaseImplementationDaemon:
             "fencing_token",
             "fence_epoch",
         }
+        claim_policy_fields = {
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+            "task_prefix",
+        }
+        expected_claim_policy = {
+            "task_shard_count": self.task_shard_count,
+            "task_shard_index": self.task_shard_index,
+            "strict_task_sharding": self.strict_task_sharding,
+            "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            "task_prefix": self.task_prefix,
+        }
         source_claim_expected_fields = {
             *claim_identity_fields,
+            *claim_policy_fields,
             "attempt_number",
             "claimed_from_revision",
             "consumed_attempt_retry_source_attempt_id",
@@ -103289,6 +103304,7 @@ class DatabaseImplementationDaemon:
         }
         target_claim_expected_fields = {
             *claim_identity_fields,
+            *claim_policy_fields,
             "attempt_number",
             "claimed_from_revision",
             "protected_preservation_source_attempt_id",
@@ -103408,6 +103424,11 @@ class DatabaseImplementationDaemon:
             or any(
                 source_claim_receipt.get(field) != expected
                 for field, expected in source_identity.items()
+            )
+            or any(
+                type(source_claim_receipt.get(field)) is not type(expected)
+                or source_claim_receipt.get(field) != expected
+                for field, expected in expected_claim_policy.items()
             )
             or source_claim_receipt.get("attempt_number")
             != int(source_attempt.attempt_number)
@@ -103545,6 +103566,11 @@ class DatabaseImplementationDaemon:
             or any(
                 target_claim_receipt.get(field) != expected
                 for field, expected in target_identity.items()
+            )
+            or any(
+                type(target_claim_receipt.get(field)) is not type(expected)
+                or target_claim_receipt.get(field) != expected
+                for field, expected in expected_claim_policy.items()
             )
             or target_claim_receipt.get("attempt_number")
             != int(target_attempt.attempt_number)
