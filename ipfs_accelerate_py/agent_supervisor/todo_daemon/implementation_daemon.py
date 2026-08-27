@@ -90660,9 +90660,13 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    from ..runtime.multi_supervisor_runner import (
+        preload_sealed_native_dependency_from_environment,
+    )
     from ..runtime.process_security import harden_state_authority_process
 
     harden_state_authority_process()
+    preload_sealed_native_dependency_from_environment()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

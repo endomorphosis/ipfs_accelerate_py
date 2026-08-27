@@ -17,6 +17,11 @@ def main() -> int:
     """Redeem authority before importing the large implementation module."""
 
     harden_state_authority_process()
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        preload_sealed_native_dependency_from_environment,
+    )
+
+    preload_sealed_native_dependency_from_environment()
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         main as implementation_main,
     )

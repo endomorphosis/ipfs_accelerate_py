@@ -8671,6 +8671,7 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        native_pass_fds: tuple[int, ...] = ()
         if self.config.plan_bound_dispatch:
             child_environment = {
                 str(name): str(value)
@@ -8694,6 +8695,15 @@ class PortalImplementationSupervisor:
                     native_dependency,
                     system_dependency_directories_json=system_directories,
                 )
+            )
+            native_pass_fds = (native_dependency.descriptor.descriptor,)
+        else:
+            from ..runtime.multi_supervisor_runner import (
+                apply_sealed_native_dependency_to_child_environment,
+            )
+
+            native_pass_fds = apply_sealed_native_dependency_to_child_environment(
+                child_environment
             )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
@@ -8731,11 +8741,11 @@ class PortalImplementationSupervisor:
                 sorted(
                     {
                         *state_authority_pass_fds(child_environment),
+                        *native_pass_fds,
                         *(
                             (
                                 self.config.accepted_control_plane_descriptor,
                                 retained_interpreter.descriptor,
-                                native_dependency.descriptor.descriptor,
                             )
                             if self.config.plan_bound_dispatch
                             else ()
@@ -19378,9 +19388,23 @@ class PortalImplementationSupervisor:
                     )
                 )
             else:
+                from ..runtime.multi_supervisor_runner import (
+                    apply_sealed_native_dependency_to_child_environment,
+                )
+
                 env = os.environ.copy()
                 env.update(managed_environment)
-                pass_fds = state_authority_pass_fds(env)
+                native_pass_fds = (
+                    apply_sealed_native_dependency_to_child_environment(env)
+                )
+                pass_fds = tuple(
+                    sorted(
+                        {
+                            *state_authority_pass_fds(env),
+                            *native_pass_fds,
+                        }
+                    )
+                )
             process = launch_process_child(
                 command,
                 cwd=self.config.repo_root,

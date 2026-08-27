@@ -15,6 +15,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
 PROCESS_SECURITY_MODULE = "ipfs_accelerate_py.agent_supervisor.runtime.process_security"
+NATIVE_PRELOAD_MODULE = (
+    "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner"
+)
 IMPLEMENTATION_MODULE = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
 
 
@@ -37,6 +40,11 @@ def test_entry_hardens_before_importing_implementation_supervisor() -> None:
         for node in main_function.body
         if isinstance(node, ast.ImportFrom) and node.module == IMPLEMENTATION_MODULE
     )
+    native_preload_import = next(
+        node
+        for node in main_function.body
+        if isinstance(node, ast.ImportFrom) and node.module == NATIVE_PRELOAD_MODULE
+    )
     harden_call = next(
         node
         for node in main_function.body
@@ -45,9 +53,19 @@ def test_entry_hardens_before_importing_implementation_supervisor() -> None:
         and isinstance(node.value.func, ast.Name)
         and node.value.func.id == "harden_state_authority_process"
     )
+    native_preload_call = next(
+        node
+        for node in main_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "preload_sealed_native_dependency_from_environment"
+    )
 
     assert process_security_import.lineno < harden_call.lineno
-    assert harden_call.lineno < implementation_import.lineno
+    assert harden_call.lineno < native_preload_import.lineno
+    assert native_preload_import.lineno < native_preload_call.lineno
+    assert native_preload_call.lineno < implementation_import.lineno
     assert not any(
         isinstance(node, ast.ImportFrom) and node.module == IMPLEMENTATION_MODULE
         for node in tree.body

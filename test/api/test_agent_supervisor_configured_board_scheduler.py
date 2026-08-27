@@ -1858,6 +1858,18 @@ def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
         "_capture_owned_popen_process_identity",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.delenv(
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_FD_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        multi_runner_module.SEALED_SYSTEM_DEPENDENCY_DIRS_ENV,
+        raising=False,
+    )
     inherited_read, inherited_write = os.pipe()
     try:
         process = multi_runner_module.start_track(
@@ -1874,6 +1886,68 @@ def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
     assert process.pid == os.getpid()
     assert captured["pass_fds"] == ()
     assert captured["command"] == [sys.executable, str(script)]
+
+
+def test_ordinary_track_forwards_active_sealed_native_dependency_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = tmp_path / "ordinary-supervisor.py"
+    script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    track = multi_runner_module.SupervisorTrack(
+        name="ordinary-native-track",
+        script_path=script,
+        log_path=tmp_path / "ordinary-native.log",
+        supervisor_pid_path=tmp_path / "ordinary-native.pid",
+        daemon_pid_path=tmp_path / "ordinary-native-daemon.pid",
+        supervisor_status_path=tmp_path / "ordinary-native-status.json",
+    )
+    captured: dict[str, object] = {}
+    native_fd = 77
+    native_env = {
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_FD_ENV: str(native_fd),
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV: "sealed-native",
+        multi_runner_module.SEALED_SYSTEM_DEPENDENCY_DIRS_ENV: "[]",
+    }
+    native = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=native_fd),
+    )
+
+    def capture_popen(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return SimpleNamespace(pid=os.getpid())
+
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", capture_popen)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_capture_owned_popen_process_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "optional_active_sealed_native_dependency",
+        lambda _environment: (native, "[]"),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "sealed_native_dependency_environment",
+        lambda *_args, **_kwargs: dict(native_env),
+    )
+    process = multi_runner_module.start_track(
+        track,
+        repo_root=tmp_path,
+        common_args=(),
+        python_executable=sys.executable,
+        output=lambda _message: None,
+    )
+    assert process.pid == os.getpid()
+    assert captured["command"] == [sys.executable, str(script)]
+    assert native_fd in captured["pass_fds"]
+    child_env = captured["env"]
+    assert isinstance(child_env, dict)
+    for name, value in native_env.items():
+        assert child_env[name] == value
 
 
 def test_accepted_tree_entries_ignore_hostile_python_import_authority(

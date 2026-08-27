@@ -830,6 +830,71 @@ def admit_sealed_native_dependency_environment(
     return launch, system_value
 
 
+def optional_active_sealed_native_dependency(
+    environment: Mapping[str, str],
+) -> tuple[AgentSupervisorNativeDependencyLaunch, str] | None:
+    """Return the active sealed DuckDB launch when the parent forwarded it.
+
+    Absence of every native-launch field is a no-op so hermetic tests that
+    never admitted DuckDB keep their current birth.  A partial envelope is
+    still fail-closed through ``admit_sealed_native_dependency_environment``.
+    """
+
+    fd_text = str(environment.get(SEALED_NATIVE_DEPENDENCY_FD_ENV, "") or "").strip()
+    launch_text = str(
+        environment.get(SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV, "") or ""
+    ).strip()
+    dirs_text = str(
+        environment.get(SEALED_SYSTEM_DEPENDENCY_DIRS_ENV, "") or ""
+    ).strip()
+    if not fd_text and not launch_text and not dirs_text:
+        return None
+    return admit_sealed_native_dependency_environment(environment)
+
+
+def preload_sealed_native_dependency_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> object | None:
+    """Load the sealed DuckDB public alias before a cold supervisor import."""
+
+    source = os.environ if environment is None else environment
+    fd_text = str(source.get(SEALED_NATIVE_DEPENDENCY_FD_ENV, "") or "").strip()
+    launch_text = str(
+        source.get(SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV, "") or ""
+    ).strip()
+    if not fd_text and not launch_text:
+        return None
+    from ipfs_accelerate_py.agent_implementation_route import (
+        preload_agent_supervisor_native_dependency_from_bootstrap,
+    )
+
+    return preload_agent_supervisor_native_dependency_from_bootstrap(
+        fd_text,
+        launch_text,
+    )
+
+
+def apply_sealed_native_dependency_to_child_environment(
+    environment: MutableMapping[str, str],
+    *,
+    parent_environment: Mapping[str, str] | None = None,
+) -> tuple[int, ...]:
+    """Copy an already-preloaded native launch into a child env and pass_fds."""
+
+    source = os.environ if parent_environment is None else parent_environment
+    admitted = optional_active_sealed_native_dependency(source)
+    if admitted is None:
+        return ()
+    launch, directories = admitted
+    environment.update(
+        sealed_native_dependency_environment(
+            launch,
+            system_dependency_directories_json=directories,
+        )
+    )
+    return (launch.descriptor.descriptor,)
+
+
 def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
     retained = retain_control_plane_interpreter(python_executable)
     try:
@@ -6656,6 +6721,21 @@ def start_track(
             if str(os.environ.get(name, "") or "").strip()
         }
     )
+    if native_dependency is None:
+        admitted_native = optional_active_sealed_native_dependency(os.environ)
+        if admitted_native is not None:
+            native_dependency, system_dependency_directories = admitted_native
+    native_pass_fds: tuple[int, ...] = ()
+    if native_dependency is not None:
+        launch_environment.update(
+            sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=(
+                    system_dependency_directories
+                ),
+            )
+        )
+        native_pass_fds = (native_dependency.descriptor.descriptor,)
     if plan_bound_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
         # repository root.  Build a positive environment in the parent before
@@ -6748,12 +6828,12 @@ def start_track(
                     sorted(
                         {
                             *authority_descriptors,
+                            *native_pass_fds,
                             *(
                                 (
                                     gate_read_fd,
                                     accepted_control_plane_descriptor,
                                     retained_interpreter.descriptor,
-                                    native_dependency.descriptor.descriptor,
                                 )
                                 if plan_bound_dispatch and gate_read_fd is not None
                                 else ()
