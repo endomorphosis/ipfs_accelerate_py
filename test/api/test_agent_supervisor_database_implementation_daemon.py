@@ -13166,6 +13166,100 @@ def test_typed_retrying_reuse_requires_exact_task_queue_validation() -> None:
     assert calls == ["validate"]
 
 
+def test_retrying_cooldown_repair_payload_follows_control_receipt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    receipt = {
+        "operation": "database_portal_validation_retry_recovery",
+        "attempt_id": "attempt:stale-cooldown",
+        "claim_id": "claim:stale-cooldown",
+        "lease_id": "lease:stale-cooldown",
+        "owner_session_id": "session:stale-cooldown",
+        "attempt_number": 629,
+        "fencing_token": 629,
+        "fence_epoch": 629,
+        "queue_reason": (
+            "database_portal_retry:attempt:stale-cooldown:"
+            "portal_pending_merge_claim_retry"
+        ),
+        "backoff_ms": 0,
+        "retry_not_before_ms": 1_000,
+        "control_expected_revision": 12,
+    }
+    task = SimpleNamespace(
+        task_cid="task:stale-cooldown",
+        task_alias="PCSM-010",
+        status="retrying",
+        revision=13,
+        body={"completion_receipt": receipt},
+    )
+    payload = TypedDatabaseTaskSource._retrying_cooldown_repair_payload(task)
+    assert payload == {
+        "task_cid": "task:stale-cooldown",
+        "expected_task_revision": 12,
+        "expected_task_status": "retrying",
+        "attempt_id": "attempt:stale-cooldown",
+        "claim_id": "claim:stale-cooldown",
+        "lease_id": "lease:stale-cooldown",
+        "owner_session_id": "session:stale-cooldown",
+        "attempt_number": 629,
+        "fencing_token": 629,
+        "fence_epoch": 629,
+        "delay_ms": 0,
+        "reason": receipt["queue_reason"],
+        "now_ms": 1_000,
+    }
+    stale = dict(receipt)
+    stale["control_expected_revision"] = 8
+    task.body = {"completion_receipt": stale}
+    assert TypedDatabaseTaskSource._retrying_cooldown_repair_payload(task) is None
+
+
+def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
+    calls: list[str] = []
+
+    class _TypedSource:
+        @staticmethod
+        def repair_retrying_cooldown_bindings() -> list[dict[str, object]]:
+            calls.append("repair")
+            return [
+                {
+                    "task_cid": "task:stale-cooldown",
+                    "task_alias": "PCSM-010",
+                    "changed": True,
+                    "reason": "retrying_cooldown_rebound_to_control_receipt",
+                }
+            ]
+
+    daemon = SimpleNamespace(
+        task_source=_TypedSource(),
+        _require_execution_authority=lambda _name: None,
+    )
+    outcomes = DatabaseImplementationDaemon.reconcile_retrying_cooldown_bindings(
+        daemon
+    )
+    assert calls == ["repair"]
+    assert outcomes == [
+        {
+            "task_cid": "task:stale-cooldown",
+            "task_alias": "PCSM-010",
+            "changed": True,
+            "reason": "retrying_cooldown_rebound_to_control_receipt",
+        }
+    ]
+
+    empty = SimpleNamespace(
+        task_source=SimpleNamespace(),
+        _require_execution_authority=lambda _name: None,
+    )
+    assert (
+        DatabaseImplementationDaemon.reconcile_retrying_cooldown_bindings(empty)
+        == []
+    )
+
+
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:

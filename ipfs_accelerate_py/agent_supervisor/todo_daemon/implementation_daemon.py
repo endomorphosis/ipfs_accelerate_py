@@ -86920,6 +86920,7 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": [],
             "terminal_retry_reconciliations": [],
             "terminal_portal_reconciliations": [],
+            "retrying_cooldown_repairs": [],
             "protected_path_recovery_reconciliations": [],
             "external_protected_checkout_recovery_reconciliations": [],
             "inflight_process_recovery_reconciliations": [],
@@ -110071,6 +110072,39 @@ class DatabaseImplementationDaemon:
             if outcome.get("changed") is not False
         )
 
+    def reconcile_retrying_cooldown_bindings(self) -> list[dict[str, Any]]:
+        """Rebound a stale typed cooldown onto the current retrying receipt.
+
+        Blocked recovery writes status CAS and cooldown as two owner commands.
+        A crash or ART-index fatal between them leaves ``tasks.status=retrying``
+        with an older lease identity.  ``ready_tasks`` then used to fail-close
+        the whole board.  Repair from the durable completion receipt instead.
+        """
+
+        self._require_execution_authority("retrying cooldown lineage repair")
+        repair = getattr(
+            self.task_source,
+            "repair_retrying_cooldown_bindings",
+            None,
+        )
+        if not callable(repair):
+            return []
+        outcomes = repair()
+        if outcomes is None:
+            return []
+        if not isinstance(outcomes, (list, tuple)):
+            raise DatabaseImplementationAuthorityError(
+                "retrying cooldown repair returned a malformed receipt"
+            )
+        repaired: list[dict[str, Any]] = []
+        for item in outcomes:
+            if not isinstance(item, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "retrying cooldown repair returned a malformed receipt"
+                )
+            repaired.append(dict(item))
+        return repaired
+
     def reconcile_terminal_retry_states(self) -> list[dict[str, Any]]:
         """Finish retry control transitions left incomplete by a crash.
 
@@ -112552,6 +112586,9 @@ class DatabaseImplementationDaemon:
         terminal_portal_reconciliations = self._run_reconciliation_step(
             self.reconcile_terminal_portal_failures
         )
+        retrying_cooldown_repairs = self._run_reconciliation_step(
+            self.reconcile_retrying_cooldown_bindings
+        )
         terminal_retry_reconciliations = self._run_reconciliation_step(
             self.reconcile_terminal_retry_states
         )
@@ -112591,6 +112628,9 @@ class DatabaseImplementationDaemon:
             + len(unknown_callback_reopens)
             + self._reconciliation_outcome_count(
                 terminal_portal_reconciliations
+            )
+            + self._reconciliation_outcome_count(
+                retrying_cooldown_repairs
             )
             + self._reconciliation_outcome_count(
                 terminal_retry_reconciliations
@@ -112734,6 +112774,7 @@ class DatabaseImplementationDaemon:
                     "terminal_portal_reconciliations": (
                         terminal_portal_reconciliations
                     ),
+                    "retrying_cooldown_repairs": retrying_cooldown_repairs,
                     "protected_path_recovery_reconciliations": (
                         protected_path_recovery_reconciliations
                     ),
@@ -112789,6 +112830,7 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "retrying_cooldown_repairs": retrying_cooldown_repairs,
                 "protected_path_recovery_reconciliations": (
                     protected_path_recovery_reconciliations
                 ),
@@ -112834,6 +112876,7 @@ class DatabaseImplementationDaemon:
             "unknown_callback_reopens": unknown_callback_reopens,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "retrying_cooldown_repairs": retrying_cooldown_repairs,
             "protected_path_recovery_reconciliations": (
                 protected_path_recovery_reconciliations
             ),

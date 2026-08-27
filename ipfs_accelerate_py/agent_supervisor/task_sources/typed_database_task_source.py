@@ -701,17 +701,10 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "retry cooldown projection contains a foreign task"
                     )
-                for record, _identity in records:
-                    if record.status == "retrying":
-                        cooldown = cooldowns.get(record.task_cid)
-                        if cooldown is None:
-                            raise TaskSourceIntegrityError(
-                                "retrying task has no typed cooldown receipt"
-                            )
-                        self._validate_retrying_cooldown_binding(
-                            record,
-                            cooldown,
-                        )
+                # A stale or missing cooldown must not fail-close the whole
+                # ready snapshot.  Unbound retrying rows stay unready until
+                # repair_retrying_cooldown_bindings rewrites the lease from
+                # the current control receipt.
                 return snapshot_row, records, revision, MappingProxyType(cooldowns)
         raise TaskSourceConflictError(
             "typed task/cooldown projection changed during bounded snapshot"
@@ -776,6 +769,94 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retrying task receipt differs from its typed cooldown"
             )
+
+    def _retrying_cooldown_is_current(
+        self,
+        task: TaskRecord,
+        cooldown: Mapping[str, Any] | None,
+    ) -> bool:
+        """True only when the lease cooldown matches this retrying receipt."""
+
+        if cooldown is None or task.status != "retrying":
+            return False
+        try:
+            self._validate_retrying_cooldown_binding(task, cooldown)
+        except TaskSourceIntegrityError:
+            return False
+        return True
+
+    @staticmethod
+    def _retrying_cooldown_repair_payload(
+        task: TaskRecord,
+    ) -> dict[str, Any] | None:
+        """Reproduce the typed cooldown from the current retrying receipt."""
+
+        if task.status != "retrying":
+            return None
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return None
+        operation = receipt.get("operation")
+        if (
+            type(operation) is not str
+            or operation not in TYPED_RETRYING_RECEIPT_OPERATIONS
+        ):
+            return None
+        expected_task_revision = int(task.revision) - 1
+        if expected_task_revision < 0:
+            return None
+        attempt_id = receipt.get("attempt_id")
+        claim_id = receipt.get("claim_id")
+        lease_id = receipt.get("lease_id")
+        owner_session_id = receipt.get("owner_session_id")
+        queue_reason = receipt.get("queue_reason")
+        attempt_number = receipt.get("attempt_number")
+        fencing_token = receipt.get("fencing_token")
+        fence_epoch = receipt.get("fence_epoch")
+        delay_ms = receipt.get("backoff_ms")
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            any(
+                type(value) is not str or not value.strip()
+                for value in (
+                    attempt_id,
+                    claim_id,
+                    lease_id,
+                    owner_session_id,
+                    queue_reason,
+                )
+            )
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                for value in (attempt_number, fencing_token, fence_epoch)
+            )
+            or isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or delay_ms < 0
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < delay_ms
+            or receipt.get("control_expected_revision") != expected_task_revision
+        ):
+            return None
+        return {
+            "task_cid": str(task.task_cid),
+            "expected_task_revision": expected_task_revision,
+            "expected_task_status": "retrying",
+            "attempt_id": str(attempt_id),
+            "claim_id": str(claim_id),
+            "lease_id": str(lease_id),
+            "owner_session_id": str(owner_session_id),
+            "attempt_number": int(attempt_number),
+            "fencing_token": int(fencing_token),
+            "fence_epoch": int(fence_epoch),
+            "delay_ms": int(delay_ms),
+            "reason": str(queue_reason),
+            "now_ms": int(retry_not_before_ms) - int(delay_ms),
+        }
 
     def _snapshot_from_material(
         self,
@@ -1204,11 +1285,16 @@ class TypedDatabaseTaskSource:
         ready: list[TaskRecord] = []
         for record in records:
             identities = {record.task_cid, record.task_alias}
+            cooldown = cooldowns.get(record.task_cid)
             if (
                 identities & (completed | blocked)
                 or record.status not in _READY_STATUSES
+                or (
+                    record.status == "retrying"
+                    and not self._retrying_cooldown_is_current(record, cooldown)
+                )
                 or int(
-                    cooldowns.get(record.task_cid, {}).get(
+                    (cooldown or {}).get(
                         "retry_not_before_ms",
                         0,
                     )
@@ -1876,6 +1962,53 @@ class TypedDatabaseTaskSource:
         raise TaskSourceConflictError(
             "typed retrying task/cooldown changed during bounded validation"
         )
+
+    def repair_retrying_cooldown_bindings(self) -> tuple[Mapping[str, Any], ...]:
+        """Rewrite a stale cooldown onto the current retrying control receipt.
+
+        Blocked recovery CAS-then-cooldown is two owner commands.  If the
+        cooldown write fails after the task is already retrying, the lease
+        can still name an older fence.  Rebound it from the durable receipt
+        instead of leaving ``ready_tasks`` unable to admit that row.
+        """
+
+        page = self.list_tasks(
+            status="retrying",
+            limit=TASK_SOURCE_MAX_QUERY_LIMIT,
+        )
+        outcomes: list[Mapping[str, Any]] = []
+        for task in page.tasks:
+            try:
+                row = self._retry_cooldown_row(task.task_cid)
+            except TaskSourceIntegrityError:
+                row = None
+            if self._retrying_cooldown_is_current(task, row):
+                continue
+            payload = self._retrying_cooldown_repair_payload(task)
+            if payload is None:
+                outcomes.append(
+                    MappingProxyType(
+                        {
+                            "task_cid": str(task.task_cid),
+                            "task_alias": str(task.task_alias),
+                            "changed": False,
+                            "reason": "retrying_cooldown_repair_unavailable",
+                        }
+                    )
+                )
+                continue
+            receipt = self.record_task_retry_cooldown(**payload)
+            outcomes.append(
+                MappingProxyType(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": str(task.task_alias),
+                        "changed": bool(receipt.changed),
+                        "reason": "retrying_cooldown_rebound_to_control_receipt",
+                    }
+                )
+            )
+        return tuple(outcomes)
 
     def validate_strict_resume_requeue_attempt_floor(
         self,
