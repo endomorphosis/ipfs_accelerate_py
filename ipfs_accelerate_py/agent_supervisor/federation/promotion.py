@@ -1280,15 +1280,20 @@ def _decode_control_parity_report(payload: dict[str, Any]) -> tuple[str, str]:
     # comparison rejects bool/int equality tricks and any invented field while
     # preserving the intentionally different CLI and MCP envelopes.
     expected_cli = federation_cli_discovery_manifest()
+    operation_prefix = "federation."
+    expected_tools: dict[str, str] = {}
+    for operation in sorted(expected_cli["commands"].values()):
+        if not operation.startswith(operation_prefix):
+            raise PromotionGateError("CASF-035 operation prefix differs")
+        expected_tools[
+            "federation_" + operation[len(operation_prefix) :]
+        ] = operation
     expected_mcp = {
         "schema": _CONTROL_MCP_DISCOVERY_SCHEMA,
         "interface": _CONTROL_MCP_INTERFACE,
         "category": "agent_supervisor",
         "dispatch": expected_cli["dispatch"],
-        "tools": {
-            "federation_" + operation.removeprefix("federation."): operation
-            for operation in sorted(expected_cli["commands"].values())
-        },
+        "tools": expected_tools,
         "request_schemas": expected_cli["request_schemas"],
         "result_schema": _CONTROL_MCP_RESULT_SCHEMA,
         "error_schema": _CONTROL_MCP_ERROR_SCHEMA,
