@@ -86947,6 +86947,11 @@ _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS = frozenset(
         "fence_epoch",
         "attempt_number",
         "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
         "post_merge_completion_recovery_source_attempt_id",
         "post_merge_completion_recovery_seed",
     }
@@ -87015,6 +87020,11 @@ _DATABASE_ORDINARY_CLAIM_FIELDS = frozenset(
         "fence_epoch",
         "attempt_number",
         "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
     }
 )
 _DATABASE_COMPLETE_RECEIPT_FIELDS = frozenset(
