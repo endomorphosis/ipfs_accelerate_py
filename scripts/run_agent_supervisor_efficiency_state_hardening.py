@@ -92,6 +92,9 @@ ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND: Final = (
 ASEH_R19_HISTORICAL_LIVE_LAUNCHER_COMMAND: Final = (
     "internal-r19-historical-live-launcher"
 )
+ASEH_R30_GIT_GUARD_LAUNCHER_COMMAND: Final = (
+    "internal-r30-git-guard-launcher"
+)
 ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r19-historical-live-execution@1"
@@ -139,6 +142,10 @@ ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
 ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r29-historical-live-policy-admission@1"
+)
+ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r30-historical-live-policy-admission@1"
 )
 ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -250,6 +257,22 @@ ASEH_R29_R28_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA: Final = (
 ASEH_R29_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r29-authorization-attempt@1"
+)
+ASEH_R30_R29_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r30-r29-authorization-failure-evidence@1"
+)
+ASEH_R30_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r30-authorization-attempt@1"
+)
+ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r30-durable-candidate-witness@1"
+)
+ASEH_R30_CANDIDATE_GIT_GUARD_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r30-candidate-git-guard@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -3289,6 +3312,127 @@ REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_NON_SUCCESS: Fi
     "change, validation reduction, live database or DuckLake effect, provider "
     "effect, or self-authorized promotion is rejected."
 )
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-candidate-git-epoch-guard-transition@1"
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD: Final = (
+    "1f8c856f3124e999436d772e3104d0c96c6ceed8"
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE: Final = (
+    "0e9de938c802cc57bdf275e68e7110fef9a8a375"
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+ASEH_R30_PUBLISHED_R27_BASE_HEAD: Final = ASEH_R29_PUBLISHED_R27_BASE_HEAD
+ASEH_R30_PUBLISHED_R27_BASE_TREE: Final = ASEH_R29_PUBLISHED_R27_BASE_TREE
+ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS: Final = (
+    ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+)
+ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID: Final = (
+    ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+)
+ASEH_R30_FAILED_R29_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:ca637f18d84676a32ec647798a14b2198fa60a82d92bfb80c92fe3ebf442b523"
+)
+ASEH_R30_FAILED_R29_VALIDATION_MATRIX_CID: Final = (
+    "sha256:c2c118eada08a129c611b76b5b66839c9b366eb31fc9e37c8e9f5350aab0ccbd"
+)
+ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID: Final = (
+    "sha256:fac6425d16f0031d2bdc6e92a09c51e51c38b033f82a2bb93f56498855d18b17"
+)
+ASEH_R30_FAILED_R29_CANDIDATE_WITNESS_CID: Final = (
+    "sha256:89e373550c8a282aaa62b36a71d79defe0650598c78fb157927c188a264bfb41"
+)
+ASEH_R30_FAILED_R29_STARTED_AT: Final = 1787784126.6929624
+ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV: Final = (
+    ASEH_R29_FAILED_R28_AUTHORIZATION_ARGV
+)
+ASEH_R30_FAILED_R29_SOURCE_BLOB_OID: Final = (
+    "40ef368a641393975e57b649a8c0f2135c4721e8"
+)
+ASEH_R30_FAILED_R29_SOURCE_SHA256: Final = (
+    "sha256:7dda3aa4f05790bcdb2001a449c84dd797f3628246a5f7fa4f61c25d2ff41e61"
+)
+ASEH_R30_FAILED_R29_SCOPE_FUNCTION_SHA256: Final = (
+    "sha256:114a3a07acec0abb7f86d96baac9b46c6473d9b79e4bdc5e40b555e0c02f690d"
+)
+ASEH_R30_FAILED_R29_CAPABILITY_FUNCTION_SHA256: Final = (
+    "sha256:9bd28e8b9f9f40899458ad5606b696fc55c95ed0fa136bab1825c74ff6402e43"
+)
+ASEH_R30_FAILED_R29_WITNESS_FUNCTION_SHA256: Final = (
+    "sha256:52e48162c3fc70664fd4976361b659047f2fbba5ba47a451f873b5fd05c2c992"
+)
+ASEH_R30_FAILED_R29_ASSERT_FUNCTION_SHA256: Final = (
+    "sha256:573f86dc8341004b99a29debfb9f31e5888779a7a492b79d2b9a4f4963a3a394"
+)
+ASEH_R30_FAILED_R29_AUTHORIZER_FUNCTION_SHA256: Final = (
+    "sha256:80259e4d0d2fec5ce260b36c9e149a56bc0656371b01ac66dc599a3be602173c"
+)
+ASEH_R30_FAILED_R29_POST_GC_WITNESS_CID: Final = (
+    "sha256:7007ba210b84ac47a9f221c8f7afc0be5e3f890bf3cbb66946e699c6d899211f"
+)
+ASEH_R30_EMPTY_BYTES_SHA256: Final = (
+    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+        "-k",
+        (
+            "aseh_r27_ or aseh_r28_ or aseh_r29_ or aseh_r30_ or "
+            "delegates_r28_before_suffix_admission or "
+            "delegates_r29_before or delegates_r30_before or entry_"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue through one exact R30 child after R29 authorization failed "
+    "without a receipt, while preserving R29 as a non-retried attempt"
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS: Final = (
+    "The exact R30 Git child retains immutable R1-R27 receipts, binds the "
+    "failed R28 and R29 attempts without retrying either revision, holds a "
+    "Git-native prepared candidate-ref and index guard throughout its strict "
+    "authorization witness, and seals the complete R27-to-R30 delta."
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_NON_SUCCESS: Final = (
+    "Any R28 or R29 receipt or retry; absent or changed R29 attempt; different "
+    "R27 receipt, R29 candidate, error, source proof, guard protocol, immediate "
+    "or effective changed path; failed guard health, validation reduction, "
+    "database, DuckLake, provider, or self-promotion effect is rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -3345,6 +3489,10 @@ ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS: Final = (
 ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS: Final = (
     *ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS,
     ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID,
+)
+ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS: Final = (
+    *ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS,
+    ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID,
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -3429,6 +3577,10 @@ ASEH_R28_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA,
+)
+ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -3589,6 +3741,28 @@ REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_RECEIPT_FIELDS:
             "unreceipted_effective_changed_paths",
             "unreceipted_effective_patch_digest",
             "authorization_attempt",
+        }
+    )
+)
+REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS
+    | frozenset(
+        {
+            "r27_initial_health_failure_evidence",
+            "r28_authorization_failure_evidence",
+            "r29_authorization_failure_evidence",
+            "r29_authorization_attempt",
+            "published_r27_base_head",
+            "published_r27_base_tree",
+            "failed_unpublished_r28_head",
+            "failed_unpublished_r28_tree",
+            "failed_unpublished_r29_head",
+            "failed_unpublished_r29_tree",
+            "unreceipted_effective_changed_paths",
+            "unreceipted_effective_patch_digest",
+            "authorization_attempt",
+            "durable_candidate_witness",
+            "candidate_git_guard",
         }
     )
 )
@@ -6583,6 +6757,511 @@ def _validate_r29_r28_authorization_failure_evidence(
     return evidence
 
 
+def _r30_expected_r29_authorization_attempt() -> dict[str, Any]:
+    """Return the exact persisted R29 attempt without reconstructing v1 bytes."""
+
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R29_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 29,
+        "candidate_head": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD,
+        "candidate_tree": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE,
+        "published_r27_receipt_cid": ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID,
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r28_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": (
+            ASEH_R30_FAILED_R29_VALIDATION_EXECUTOR_CONTRACT_CID
+        ),
+        "candidate_authorization_witness_cid": (
+            ASEH_R30_FAILED_R29_CANDIDATE_WITNESS_CID
+        ),
+        "attempt_state": "started_before_validator_or_live_effect",
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": ASEH_R30_FAILED_R29_STARTED_AT,
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    if attempt["attempt_cid"] != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID:
+        raise OperatorError("closed R29 authorization attempt identity drifted")
+    return attempt
+
+
+def _validate_r30_failed_r29_authorization_attempt(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 failed R29 authorization attempt is invalid")
+    attempt = dict(value)
+    if attempt != _r30_expected_r29_authorization_attempt():
+        raise OperatorError("R30 failed R29 authorization attempt differs")
+    return attempt
+
+
+def _r30_expected_r29_authorization_failure_evidence() -> dict[str, Any]:
+    """Bind the observed R29 failure without promoting an inferred GC actor."""
+
+    attempt = _r30_expected_r29_authorization_attempt()
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R30_R29_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "published_parent_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "published_parent_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+        "published_parent_receipt_cid": ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID,
+        "failed_candidate_head": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+        ),
+        "failed_candidate_parent_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "attempted_transition_revision": 29,
+        "attempted_executor_contract_cid": (
+            ASEH_R30_FAILED_R29_VALIDATION_EXECUTOR_CONTRACT_CID
+        ),
+        "attempted_validation_matrix_cid": (
+            ASEH_R30_FAILED_R29_VALIDATION_MATRIX_CID
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "authorization_attempt_cid": attempt["attempt_cid"],
+        "ok": False,
+        "exit_code": 1,
+        "error_type": "OperatorError",
+        "error_message": (
+            "R11 candidate changed across authorization boundary: "
+            "sealed receipt validation scope exit"
+        ),
+        "stdout_classification": "structured_operator_json",
+        "stderr_classification": "empty",
+        "raw_stream_bytes_preserved": False,
+        "stdout_digest": None,
+        "stderr_digest": None,
+        "digest_availability": "unavailable_raw_stream_bytes_not_preserved",
+        "r29_receipt_published": False,
+        "r29_retry_authorized": False,
+        "validator_effect": "observed_started_completion_not_admitted",
+        "validator_completion": "unavailable_scope_exit_may_mask_body_error",
+        "historical_live_effect": "none_observed",
+        "provider_effect": "none_observed",
+        "database_effect": "none_observed",
+        "ducklake_effect": "none_observed",
+        "effect_observation_authority": "non_authoritative_operator_report",
+        "post_failure_observation": {
+            "head": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD,
+            "tree": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE,
+            "clean_status": True,
+            "index_matches_current_head": True,
+            "pre_failure_index_digest_available": False,
+            "witness_difference_fields": (
+                "unavailable_pre_witness_body_not_persisted"
+            ),
+            "head_reflog_size_bytes": 0,
+            "branch_reflog_size_bytes": 0,
+            "head_reflog_sha256": ASEH_R30_EMPTY_BYTES_SHA256,
+            "branch_reflog_sha256": ASEH_R30_EMPTY_BYTES_SHA256,
+            "current_witness_cid": ASEH_R30_FAILED_R29_POST_GC_WITNESS_CID,
+            "mutating_actor": "unavailable",
+            "cause_classification": (
+                "inferred_shared_git_reflog_housekeeping_between_strict_v1_"
+                "witness_boundaries"
+            ),
+        },
+        "source_proof": {
+            "candidate_head": (
+                REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+            ),
+            "candidate_tree": (
+                REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+            ),
+            "source_path": "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+            "source_blob_oid": ASEH_R30_FAILED_R29_SOURCE_BLOB_OID,
+            "source_sha256": ASEH_R30_FAILED_R29_SOURCE_SHA256,
+            "scope_function_sha256": ASEH_R30_FAILED_R29_SCOPE_FUNCTION_SHA256,
+            "capability_function_sha256": (
+                ASEH_R30_FAILED_R29_CAPABILITY_FUNCTION_SHA256
+            ),
+            "witness_function_sha256": (
+                ASEH_R30_FAILED_R29_WITNESS_FUNCTION_SHA256
+            ),
+            "assert_function_sha256": ASEH_R30_FAILED_R29_ASSERT_FUNCTION_SHA256,
+            "authorizer_function_sha256": (
+                ASEH_R30_FAILED_R29_AUTHORIZER_FUNCTION_SHA256
+            ),
+            "failure_boundary": "sealed receipt validation scope exit",
+            "strict_reflog_digest_fields": [
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            ],
+        },
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _validate_r30_r29_authorization_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 R29 authorization failure evidence is invalid")
+    evidence = dict(value)
+    expected = _r30_expected_r29_authorization_failure_evidence()
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if (
+        evidence != expected
+        or evidence.get("schema")
+        != ASEH_R30_R29_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA
+        or evidence.get("r29_receipt_published") is not False
+        or evidence.get("r29_retry_authorized") is not False
+        or evidence.get("validator_completion")
+        != "unavailable_scope_exit_may_mask_body_error"
+        or evidence_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R30 R29 authorization failure evidence differs")
+    return evidence
+
+
+def _validate_candidate_git_branch_ref(value: Any) -> str:
+    """Return one attached, path-safe local branch reference."""
+
+    branch_ref = str(value or "")
+    prefix = "refs/heads/"
+    suffix = branch_ref.removeprefix(prefix)
+    parts = suffix.split("/")
+    if (
+        not branch_ref.startswith(prefix)
+        or not suffix
+        or any(
+            not part
+            or part in {".", ".."}
+            or part.endswith(".lock")
+            or re.fullmatch(r"[A-Za-z0-9._-]+", part) is None
+            for part in parts
+        )
+    ):
+        raise OperatorError("candidate Git branch reference is unsafe")
+    return branch_ref
+
+
+def _r30_candidate_git_guard_protocol(candidate_head: str) -> dict[str, Any]:
+    """Return the one closed Git-native protocol admitted by R30."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None:
+        raise OperatorError("R30 candidate Git guard protocol head is invalid")
+    git = str(TRUSTED_GIT)
+    return {
+        "reference_argv": [git, "update-ref", "--stdin"],
+        "reference_commands": [
+            "start",
+            f"verify HEAD {candidate_head}",
+            "prepare",
+        ],
+        "index_argv": [git, "update-index", "--stdin"],
+        "retirement_command": "abort",
+        "launcher": {
+            "mechanism": "fresh_interpreter_traceme_exact_exec_v1",
+            "operation_allowlist": ["update-ref", "update-index"],
+        },
+        "git_environment": _trusted_git_environment(),
+        "parent_loss_cleanup": {
+            "mechanism": (
+                "exact_parent_pdeathsig_sigcont_plus_protocol_eof_v1"
+            ),
+            "signal": "SIGCONT",
+            "stdin_writer": "sole_parent_cloexec_fd",
+            "reference_eof_result": "abort_prepared_transaction",
+            "index_eof_result": "finish_unchanged_transaction",
+            "fallback": None,
+        },
+        "lock_ownership_observation": {
+            "mechanism": "ptrace_syscall_stop_fd_table_v1",
+            "options": [
+                "PTRACE_O_TRACESYSGOOD",
+                "PTRACE_O_TRACEEXIT",
+            ],
+            "resume_request": "PTRACE_SYSCALL",
+            "fallback": None,
+        },
+    }
+
+
+def _validate_r30_candidate_git_guard_record(
+    value: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 candidate Git guard record is invalid")
+    record = dict(value)
+    fields = {
+        "schema",
+        "candidate_head",
+        "candidate_tree",
+        "branch_ref",
+        "owner_pid",
+        "owner_thread_id",
+        "reference_pid",
+        "index_pid",
+        "reference_process_birth",
+        "index_process_birth",
+        "session_id",
+        "prepared_at_ns",
+        "state",
+        "protocol_cid",
+        "head_lock_identity",
+        "branch_lock_identity",
+        "index_lock_identity",
+        "packed_refs_lock_absent_before_guard_start",
+        "guard_cid",
+    }
+    owner_pid = record.get("owner_pid")
+    reference_pid = record.get("reference_pid")
+    index_pid = record.get("index_pid")
+    reference_birth = record.get("reference_process_birth")
+    index_birth = record.get("index_process_birth")
+    birth_fields = {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+    births_are_exact = all(
+        isinstance(birth, Mapping)
+        and set(birth) == birth_fields
+        and type(birth.get("pid")) is int
+        and int(birth["pid"]) > 1
+        and type(birth.get("start_time_ticks")) is int
+        and int(birth["start_time_ticks"]) > 0
+        and re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}",
+            str(birth.get("boot_id") or ""),
+        )
+        is not None
+        and type(birth.get("parent_pid")) is int
+        and birth.get("parent_pid") == owner_pid
+        for birth in (reference_birth, index_birth)
+    )
+    raw_lock_identities = [
+        record.get("head_lock_identity"),
+        record.get("branch_lock_identity"),
+        record.get("index_lock_identity"),
+    ]
+    locks_are_exact = all(
+        isinstance(identity, list)
+        and len(identity) == 8
+        and all(type(item) is int for item in identity)
+        and int(identity[0]) >= 0
+        and int(identity[1]) > 0
+        and stat.S_ISREG(int(identity[2]))
+        and not stat.S_ISLNK(int(identity[2]))
+        and int(identity[3]) == os.geteuid()
+        and int(identity[4]) == 1
+        and int(identity[5]) >= 0
+        and int(identity[6]) >= 0
+        and int(identity[7]) >= 0
+        and stat.S_IMODE(int(identity[2])) & 0o002 == 0
+        for identity in raw_lock_identities
+    )
+    lock_inode_keys = {
+        (int(identity[0]), int(identity[1]))
+        for identity in raw_lock_identities
+        if isinstance(identity, list)
+        and len(identity) >= 2
+        and all(type(item) is int for item in identity[:2])
+    }
+    unsigned = dict(record)
+    guard_cid = str(unsigned.pop("guard_cid", "") or "")
+    if (
+        set(record) != fields
+        or record.get("schema") != ASEH_R30_CANDIDATE_GIT_GUARD_SCHEMA
+        or record.get("candidate_head") != candidate_head
+        or record.get("candidate_tree") != candidate_tree
+        or _validate_candidate_git_branch_ref(record.get("branch_ref"))
+        != record.get("branch_ref")
+        or any(
+            type(record.get(name)) is not int or int(record[name]) <= 0
+            for name in (
+                "owner_pid",
+                "owner_thread_id",
+                "reference_pid",
+                "index_pid",
+                "prepared_at_ns",
+                "session_id",
+            )
+        )
+        or owner_pid <= 1
+        or reference_pid <= 1
+        or index_pid <= 1
+        or len({owner_pid, reference_pid, index_pid}) != 3
+        or record.get("state") != "prepared_verify_only"
+        or not births_are_exact
+        or reference_birth.get("pid") != reference_pid
+        or index_birth.get("pid") != index_pid
+        or reference_birth.get("boot_id") != index_birth.get("boot_id")
+        or record.get("packed_refs_lock_absent_before_guard_start") is not True
+        or not locks_are_exact
+        or len(lock_inode_keys) != 3
+        or record.get("protocol_cid")
+        != _identity(_r30_candidate_git_guard_protocol(candidate_head))
+        or guard_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R30 candidate Git guard record differs")
+    return record
+
+
+def _r30_authorization_attempt_record(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    started_at: float,
+) -> dict[str, Any]:
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    if (
+        witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("authorization_v1_witness_cid") != _identity(witness)
+        or durable.get("authorization_guard_cid") != guard.get("guard_cid")
+        or type(started_at) not in {int, float}
+        or not math.isfinite(float(started_at))
+        or float(started_at) <= 0.0
+    ):
+        raise OperatorError("R30 authorization attempt identity is invalid")
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R30_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 30,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "published_r27_receipt_cid": ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID,
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r29_head": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        ),
+        "failed_r29_authorization_attempt_cid": (
+            ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": _identity(
+            _r30_sealed_receipt_validation_executor_contract()
+        ),
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "candidate_git_guard_cid": guard["guard_cid"],
+        "attempt_state": "started_after_git_guard_before_validator_or_live_effect",
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": float(started_at),
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    return _validate_r30_authorization_attempt_record(
+        attempt,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+    )
+
+
+def _validate_r30_authorization_attempt_record(
+    value: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 authorization attempt is invalid")
+    attempt = dict(value)
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    unsigned = dict(attempt)
+    attempt_cid = str(unsigned.pop("attempt_cid", "") or "")
+    required = {
+        "schema", "program_id", "task_id", "transition_revision",
+        "candidate_head", "candidate_tree", "published_r27_receipt_cid",
+        "failed_unpublished_r28_head", "failed_unpublished_r29_head",
+        "failed_r29_authorization_attempt_cid", "authorization_argv",
+        "validation_executor_contract_cid",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid", "candidate_git_guard_cid",
+        "attempt_state", "retry_authorized", "validator_effect",
+        "historical_live_effect", "provider_effect", "database_effect",
+        "ducklake_effect", "started_at", "attempt_cid",
+    }
+    if (
+        set(attempt) != required
+        or attempt.get("schema") != ASEH_R30_AUTHORIZATION_ATTEMPT_SCHEMA
+        or attempt.get("program_id") != PROGRAM
+        or attempt.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or attempt.get("transition_revision") != 30
+        or attempt.get("candidate_head") != candidate_head
+        or attempt.get("candidate_tree") != candidate_tree
+        or attempt.get("published_r27_receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or attempt.get("failed_unpublished_r28_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or attempt.get("failed_unpublished_r29_head")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        or attempt.get("failed_r29_authorization_attempt_cid")
+        != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        or attempt.get("authorization_argv")
+        != list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV)
+        or attempt.get("validation_executor_contract_cid")
+        != _identity(_r30_sealed_receipt_validation_executor_contract())
+        or attempt.get("candidate_authorization_witness_cid") != _identity(witness)
+        or attempt.get("durable_candidate_witness_cid") != durable.get("witness_cid")
+        or attempt.get("candidate_git_guard_cid") != guard.get("guard_cid")
+        or attempt.get("attempt_state")
+        != "started_after_git_guard_before_validator_or_live_effect"
+        or attempt.get("retry_authorized") is not False
+        or any(
+            attempt.get(name) != "not_observed_at_attempt_creation"
+            for name in (
+                "validator_effect", "historical_live_effect", "provider_effect",
+                "database_effect", "ducklake_effect",
+            )
+        )
+        or type(attempt.get("started_at")) not in {int, float}
+        or not math.isfinite(float(attempt["started_at"]))
+        or float(attempt["started_at"]) <= 0.0
+        or attempt_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R30 authorization attempt differs")
+    return attempt
+
+
 def _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
     payload: Mapping[str, Any],
 ) -> str:
@@ -7040,6 +7719,209 @@ def _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id
     return receipt_id
 
 
+def _repair_candidate_git_epoch_guard_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed R30 direct-R27 receipt after failed R28/R29."""
+
+    witness_value = payload.get("candidate_authorization_witness")
+    durable_value = payload.get("durable_candidate_witness")
+    guard_value = payload.get("candidate_git_guard")
+    policy_value = payload.get("historical_live_policy_admission")
+    historical_value = payload.get("historical_live_execution_evidence")
+    failure_value = payload.get("projection_recovery_failure_evidence")
+    preflight_value = payload.get("r25_preflight_failure_evidence")
+    proof_value = payload.get("projection_recovery_prestart_admission")
+    terminal_value = payload.get("r26_terminal_failure_evidence")
+    r27_failure_value = payload.get("r27_initial_health_failure_evidence")
+    r28_failure_value = payload.get("r28_authorization_failure_evidence")
+    r29_failure_value = payload.get("r29_authorization_failure_evidence")
+    r29_attempt_value = payload.get("r29_authorization_attempt")
+    attempt_value = payload.get("authorization_attempt")
+    witness = dict(witness_value) if isinstance(witness_value, Mapping) else {}
+    durable = (
+        _validate_r30_durable_candidate_witness(durable_value)
+        if isinstance(durable_value, Mapping)
+        else None
+    )
+    if isinstance(durable, Mapping) and witness:
+        durable = _assert_r30_durable_candidate_witness(
+            durable,
+            active_authorization_witness=witness,
+        )
+    guard = (
+        _validate_r30_candidate_git_guard_record(
+            guard_value,
+            candidate_head=str(payload.get("repair_head") or ""),
+            candidate_tree=str(payload.get("repair_tree") or ""),
+        )
+        if isinstance(guard_value, Mapping)
+        else None
+    )
+    policy = (
+        _validate_r30_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    historical = (
+        dict(historical_value) if isinstance(historical_value, Mapping) else {}
+    )
+    unsigned_historical = dict(historical)
+    historical_cid = str(unsigned_historical.pop("evidence_cid", "") or "")
+    failure = (
+        _validate_r25_projection_recovery_failure_evidence(failure_value)
+        if isinstance(failure_value, Mapping)
+        else None
+    )
+    preflight = (
+        _validate_r26_r25_preflight_failure_evidence(preflight_value)
+        if isinstance(preflight_value, Mapping)
+        else None
+    )
+    proof = (
+        _validate_r26_projection_recovery_prestart_admission(
+            proof_value,
+            expected_failure_evidence_cid=(
+                str(failure.get("evidence_cid") or "")
+                if isinstance(failure, Mapping)
+                else ""
+            ),
+            expected_preflight_failure_evidence_cid=(
+                str(preflight.get("evidence_cid") or "")
+                if isinstance(preflight, Mapping)
+                else ""
+            ),
+        )
+        if isinstance(proof_value, Mapping)
+        else None
+    )
+    terminal = (
+        _validate_r27_r26_terminal_failure_evidence(terminal_value)
+        if isinstance(terminal_value, Mapping)
+        else None
+    )
+    r27_failure = (
+        _validate_r28_r27_initial_health_failure_evidence(r27_failure_value)
+        if isinstance(r27_failure_value, Mapping)
+        else None
+    )
+    r28_failure = (
+        _validate_r29_r28_authorization_failure_evidence(r28_failure_value)
+        if isinstance(r28_failure_value, Mapping)
+        else None
+    )
+    r29_failure = (
+        _validate_r30_r29_authorization_failure_evidence(r29_failure_value)
+        if isinstance(r29_failure_value, Mapping)
+        else None
+    )
+    r29_attempt = (
+        _validate_r30_failed_r29_authorization_attempt(r29_attempt_value)
+        if isinstance(r29_attempt_value, Mapping)
+        else None
+    )
+    attempt = (
+        _validate_r30_authorization_attempt_record(
+            attempt_value,
+            candidate_head=str(payload.get("repair_head") or ""),
+            candidate_tree=str(payload.get("repair_tree") or ""),
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable_value,
+            candidate_git_guard=guard_value,
+        )
+        if (
+            isinstance(attempt_value, Mapping)
+            and isinstance(durable_value, Mapping)
+            and isinstance(guard_value, Mapping)
+        )
+        else None
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 30
+        or payload.get("previous_receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or payload.get("published_r27_base_head")
+        != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+        or payload.get("published_r27_base_tree")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or payload.get("failed_unpublished_r28_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or payload.get("failed_unpublished_r28_tree")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        or payload.get("failed_unpublished_r29_head")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        or payload.get("failed_unpublished_r29_tree")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+        or payload.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("unreceipted_effective_patch_digest") or ""),
+        )
+        is None
+        or payload.get("terminal_success_criteria")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r30_sealed_receipt_validation_executor_contract()
+        or not witness
+        or not isinstance(durable, Mapping)
+        or not isinstance(guard, Mapping)
+        or not isinstance(policy, Mapping)
+        or not all(
+            isinstance(value, Mapping)
+            for value in (
+                failure,
+                preflight,
+                proof,
+                terminal,
+                r27_failure,
+                r28_failure,
+                r29_failure,
+                r29_attempt,
+                attempt,
+            )
+        )
+        or durable.get("authorization_v1_witness_cid") != _identity(witness)
+        or durable.get("authorization_guard_cid") != guard.get("guard_cid")
+        or type(payload.get("authorized_at")) not in {int, float}
+        or not math.isfinite(float(payload["authorized_at"]))
+        or float(payload["authorized_at"]) < float(attempt["started_at"])
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(witness)
+        or policy.get("durable_candidate_witness_cid")
+        != durable.get("witness_cid")
+        or historical.get("schema") != ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        or historical.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or historical.get("authorizing_receipt_cid") is not None
+        or historical.get("returncode") != 0
+        or historical.get("terminal_class") != "verified_success"
+        or historical_cid != _identity(unsigned_historical)
+    ):
+        raise OperatorError("bootstrap repair R30 guard receipt schema is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair R30 guard receipt CID is invalid")
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -7279,6 +8161,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r29 = globals().get(
         "REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS"
     )
+    r30 = globals().get(
+        "REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -7296,6 +8181,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r27,) if isinstance(r27, Sequence) else ()),
         *((r28,) if isinstance(r28, Sequence) else ()),
         *((r29,) if isinstance(r29, Sequence) else ()),
+        *((r30,) if isinstance(r30, Sequence) else ()),
     )
 
 
@@ -8574,6 +9460,74 @@ def _r29_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "scope": (
                 "r29_authorization_pre_duckdb_and_materialized_launch_"
                 "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r30_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend published R27 while sealing both failed one-shot children."""
+
+    parent = _r27_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R27_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R27 validation contract drifted")
+    failed_r29 = _r29_sealed_receipt_validation_executor_contract()
+    if _identity(failed_r29) != ASEH_R30_FAILED_R29_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("unpublished R29 validation contract drifted")
+    matrix = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r30_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r30-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 30,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "unpublished_r28_executor_contract_cid": (
+                ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+            ),
+            "unpublished_r29_executor_contract_cid": (
+                ASEH_R30_FAILED_R29_VALIDATION_EXECUTOR_CONTRACT_CID
+            ),
+            "failed_r29_authorization_attempt_cid": (
+                ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+            ),
+            "scope": (
+                "r30_guarded_authorization_pre_duckdb_and_materialized_"
+                "launch_admission_only"
             ),
         }
     )
@@ -10867,6 +11821,235 @@ def _admit_r29_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r30_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate R30's guarded policy on the published R27 live route."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid",
+        "failed_r29_authorization_attempt_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_cid = str(unsigned.pop("policy_admission_cid", "") or "")
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid",
+        "failed_r29_authorization_attempt_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 30
+        or supplied.get("authorization_basis")
+        != (
+            "validated_r1_r27_chain_plus_failed_r29_attempt_plus_guarded_"
+            "r30_candidate_witness"
+        )
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or supplied.get("candidate_base_head")
+        != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(supplied.get(field) or "")
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("failed_r29_authorization_attempt_cid")
+        != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        or supplied.get("executor_contract_cid")
+        != _identity(_r27_historical_live_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R30 historical live policy admission differs")
+    return supplied
+
+
+def _r30_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R30 authority on R27 under one guarded strict-v1 epoch."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R30 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r27_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head") != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+    ):
+        raise OperatorError("R30 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    _assert_r30_durable_candidate_witness(
+        durable,
+        active_authorization_witness=witness,
+    )
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("head") != candidate_head
+        or durable.get("tree") != candidate_tree
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R30 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    expected_contract = _r27_historical_live_validation_executor_contract()
+    if admitted_contract != expected_contract:
+        raise OperatorError("R30 historical live executor contract differs")
+    admission: dict[str, Any] = {
+        "schema": ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 30,
+        "authorization_basis": (
+            "validated_r1_r27_chain_plus_failed_r29_attempt_plus_guarded_"
+            "r30_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "failed_r29_authorization_attempt_cid": (
+            ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r30_historical_live_policy_admission_record(admission)
+
+
+def _admit_r30_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R30's exact guarded direct-R27 policy."""
+
+    supplied = _validate_r30_historical_live_policy_admission_record(value)
+    expected = _r30_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+        durable_candidate_witness=durable_candidate_witness,
+    )
+    if supplied != expected:
+        raise OperatorError("R30 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -10893,6 +12076,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 28
     if schema == ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 29
+    if schema == ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 30
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -11097,6 +12282,9 @@ def _r19_active_policy_scope(
     authorizing_receipt_cid: str | None,
     lifecycle_lock_identity: Mapping[str, Any],
     pre_effect_guard: Callable[[], None] | None = None,
+    active_candidate_head: str | None = None,
+    active_candidate_tree: str | None = None,
+    active_candidate_authorization_witness: Mapping[str, str] | None = None,
 ) -> Any:
     """Expose one typed, fenced R19 policy for one exact live call."""
 
@@ -11121,11 +12309,12 @@ def _r19_active_policy_scope(
         27: _validate_r27_historical_live_policy_admission_record,
         28: _validate_r28_historical_live_policy_admission_record,
         29: _validate_r29_historical_live_policy_admission_record,
+        30: _validate_r30_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
     if (
-        (revision == 29 and not callable(pre_effect_guard))
-        or (revision != 29 and pre_effect_guard is not None)
+        (revision in {29, 30} and not callable(pre_effect_guard))
+        or (revision not in {29, 30} and pre_effect_guard is not None)
     ):
         raise OperatorError(
             "historical live pre-effect guard differs from policy revision"
@@ -11135,11 +12324,48 @@ def _r19_active_policy_scope(
         lifecycle_lock_identity,
         require_current_owner=True,
     )
+    # R29's published receipt and execution-evidence schema are immutable.
+    # Only R30 introduces a distinct durable policy anchor plus active executor
+    # endpoint; silently broadening R29 here would make sealed R29 receipts
+    # impossible to admit after an owner restart.
+    dual_endpoint_policy = revision == 30
+    active_witness = (
+        dict(active_candidate_authorization_witness)
+        if isinstance(active_candidate_authorization_witness, Mapping)
+        else None
+    )
+    active_binding = (
+        {
+            "candidate_head": active_candidate_head,
+            "candidate_tree": active_candidate_tree,
+            "candidate_authorization_witness_cid": _identity(active_witness),
+        }
+        if dual_endpoint_policy and active_witness is not None
+        else None
+    )
     if (
-        policy.get("candidate_head") != executor.candidate_head
-        or policy.get("candidate_tree") != executor.candidate_tree
-        or policy.get("candidate_authorization_witness_cid")
-        != _identity(witness)
+        (
+            dual_endpoint_policy
+            and (
+                active_binding is None
+                or active_candidate_head != executor.candidate_head
+                or active_candidate_tree != executor.candidate_tree
+                or active_binding["candidate_authorization_witness_cid"]
+                != _identity(witness)
+            )
+        )
+        or (
+            not dual_endpoint_policy
+            and (
+                active_candidate_head is not None
+                or active_candidate_tree is not None
+                or active_candidate_authorization_witness is not None
+                or policy.get("candidate_head") != executor.candidate_head
+                or policy.get("candidate_tree") != executor.candidate_tree
+                or policy.get("candidate_authorization_witness_cid")
+                != _identity(witness)
+            )
+        )
         or policy.get("executor_contract_cid") != _identity(contract)
         or (
             authorizing_receipt_cid is not None
@@ -11158,6 +12384,7 @@ def _r19_active_policy_scope(
         "authorizing_receipt_cid": authorizing_receipt_cid,
         "lifecycle_lock_identity": lifecycle_lock,
         "pre_effect_guard": pre_effect_guard,
+        "active_candidate_binding": active_binding,
         "consumed": False,
     }
     _ASEH_ACTIVE_R19_POLICY = active
@@ -11498,6 +12725,27 @@ def _r29_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r30_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R30 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R30 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -11546,6 +12794,7 @@ def _admit_sealed_receipt_validation_executor_contract(
     r27 = _r27_sealed_receipt_validation_executor_contract()
     r28 = _r28_sealed_receipt_validation_executor_contract()
     r29 = _r29_sealed_receipt_validation_executor_contract()
+    r30 = _r30_sealed_receipt_validation_executor_contract()
     contracts = (
         r16,
         r17,
@@ -11561,6 +12810,7 @@ def _admit_sealed_receipt_validation_executor_contract(
         r27,
         r28,
         r29,
+        r30,
     )
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
@@ -11583,6 +12833,7 @@ def _admit_sealed_receipt_validation_executor_contract(
                 _r27_validation_executor_class,
                 _r28_validation_executor_class,
                 _r29_validation_executor_class,
+                _r30_validation_executor_class,
             ),
             strict=True,
         )
@@ -17290,6 +18541,10 @@ def _validate_r19_historical_live_execution_evidence(
     stdout_digest: str,
     stderr_digest: str,
     authorizing_receipt_cid: str | None,
+    durable_candidate_witness: Mapping[str, Any] | None = None,
+    active_candidate_head: str | None = None,
+    active_candidate_tree: str | None = None,
+    active_candidate_authorization_witness: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Purely validate the complete typed evidence emitted by the R19 route."""
 
@@ -17488,7 +18743,7 @@ def _validate_r19_historical_live_execution_evidence(
         }
         fields = (
             base_fields | {"foreign_recovery_ownership"}
-            if revision in {27, 28, 29}
+            if revision in {27, 28, 29, 30}
             else base_fields
         )
         script_identity = result.get("script_identity")
@@ -17567,7 +18822,7 @@ def _validate_r19_historical_live_execution_evidence(
             raise OperatorError(
                 "R19 historical live detached-effect entry is invalid"
             )
-        if revision in {27, 28, 29}:
+        if revision in {27, 28, 29, 30}:
             ownership = result.get("foreign_recovery_ownership")
             if ownership is not None:
                 base_item = {
@@ -17596,7 +18851,7 @@ def _validate_r19_historical_live_execution_evidence(
             or result.get("schema")
             != (
                 ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
-                if revision in {27, 28, 29}
+                if revision in {27, 28, 29, 30}
                 else ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
             )
             or entries
@@ -17632,9 +18887,9 @@ def _validate_r19_historical_live_execution_evidence(
         27: _admit_r27_historical_live_policy_admission,
         28: _admit_r28_historical_live_policy_admission,
         29: _admit_r29_historical_live_policy_admission,
+        30: _admit_r30_historical_live_policy_admission,
     }[revision]
-    policy = policy_admitter(
-        policy_admission,
+    policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
         prior_chain=prior_chain,
         candidate_head=candidate_head,
@@ -17642,6 +18897,15 @@ def _validate_r19_historical_live_execution_evidence(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
+    if revision == 30:
+        if not isinstance(durable_candidate_witness, Mapping):
+            raise OperatorError("R30 durable live witness is absent")
+        policy_arguments["durable_candidate_witness"] = (
+            durable_candidate_witness
+        )
+    elif durable_candidate_witness is not None:
+        raise OperatorError("durable live witness is outside R30 authority")
+    policy = policy_admitter(policy_admission, **policy_arguments)
     if not isinstance(evidence, Mapping):
         raise OperatorError("R19 historical live execution evidence is invalid")
     supplied = dict(evidence)
@@ -17680,12 +18944,61 @@ def _validate_r19_historical_live_execution_evidence(
         "terminal_class",
         "evidence_cid",
     }
+    expected_active_binding: dict[str, Any] | None = None
+    if revision == 30:
+        if all(
+            value is None
+            for value in (
+                active_candidate_head,
+                active_candidate_tree,
+                active_candidate_authorization_witness,
+            )
+        ):
+            active_candidate_head = candidate_head
+            active_candidate_tree = candidate_tree
+            active_candidate_authorization_witness = (
+                candidate_authorization_witness
+            )
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", str(active_candidate_head or ""))
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{40}", str(active_candidate_tree or "")
+            )
+            is None
+            or not isinstance(
+                active_candidate_authorization_witness,
+                Mapping,
+            )
+        ):
+            raise OperatorError(
+                "R30 historical live active binding is invalid"
+            )
+        expected_active_binding = {
+            "candidate_head": active_candidate_head,
+            "candidate_tree": active_candidate_tree,
+            "candidate_authorization_witness_cid": _identity(
+                dict(active_candidate_authorization_witness)
+            ),
+        }
+        fields.add("active_candidate_binding")
+    elif any(
+        value is not None
+        for value in (
+            active_candidate_head,
+            active_candidate_tree,
+            active_candidate_authorization_witness,
+        )
+    ):
+        raise OperatorError(
+            "historical live active binding is outside R30"
+        )
     if (
         set(supplied) != fields
         or supplied.get("schema")
         != (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29}
+            if revision in {27, 28, 29, 30}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         )
         or supplied.get("executor_class")
@@ -17715,6 +19028,8 @@ def _validate_r19_historical_live_execution_evidence(
         != policy.get("candidate_tree")
         or supplied.get("policy_candidate_authorization_witness_cid")
         != policy.get("candidate_authorization_witness_cid")
+        or supplied.get("active_candidate_binding")
+        != expected_active_binding
         or not is_digest(environment_identity)
         or supplied.get("environment_identity") != environment_identity
         or type(returncode) is not int
@@ -17914,7 +19229,7 @@ def _validate_r19_historical_live_execution_evidence(
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28, 29}
+        if revision in {27, 28, 29, 30}
         else _r19_admit_stable_unrelated_baseline
     )
     baseline_admitter(
@@ -18049,17 +19364,19 @@ def _r19_release_historical_live_waiter(
     revision: int,
     pre_effect_guard: Callable[[], None] | None,
 ) -> None:
-    """Run R29's last identity gate immediately before the live effect."""
+    """Run the one-shot revision's last gate before the live effect."""
 
     if type(release_write) is not int or release_write < 0:
         raise OperatorError("R19 historical live release descriptor is invalid")
-    if revision == 29:
+    if revision in {29, 30}:
         if not callable(pre_effect_guard):
-            raise OperatorError("R29 historical live pre-effect guard is absent")
+            raise OperatorError(
+                f"R{revision} historical live pre-effect guard is absent"
+            )
         pre_effect_guard()
     elif pre_effect_guard is not None:
         raise OperatorError(
-            "historical live pre-effect guard is outside R29 authority"
+            "historical live pre-effect guard is outside one-shot authority"
         )
     if os.write(release_write, b"1") != 1:
         raise OperatorError("R19 historical live release was incomplete")
@@ -18110,6 +19427,7 @@ def _run_r19_historical_live_validation(
         ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 27,
         ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 28,
         ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 29,
+        ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 30,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -18123,15 +19441,34 @@ def _run_r19_historical_live_validation(
         27: _validate_r27_historical_live_policy_admission_record,
         28: _validate_r28_historical_live_policy_admission_record,
         29: _validate_r29_historical_live_policy_admission_record,
+        30: _validate_r30_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
     pre_effect_guard = active_policy.get("pre_effect_guard")
+    active_candidate_binding = active_policy.get("active_candidate_binding")
+    expected_active_candidate_binding = None
+    if revision == 30:
+        expected_active_candidate_binding = {
+            "candidate_head": executor.candidate_head,
+            "candidate_tree": executor.candidate_tree,
+            "candidate_authorization_witness_cid": _identity(
+                json.loads(executor.authorization_witness_json)
+            ),
+        }
     if (
-        (revision == 29 and not callable(pre_effect_guard))
-        or (revision != 29 and pre_effect_guard is not None)
+        (revision in {29, 30} and not callable(pre_effect_guard))
+        or (revision not in {29, 30} and pre_effect_guard is not None)
+        or (
+            revision == 30
+            and active_candidate_binding != expected_active_candidate_binding
+        )
+        or (
+            revision != 30
+            and active_candidate_binding is not None
+        )
     ):
         raise OperatorError(
-            "historical live pre-effect guard differs from active policy"
+            "historical live active binding differs from active policy"
         )
     lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
         active_policy["lifecycle_lock_identity"]
@@ -18201,7 +19538,7 @@ def _run_r19_historical_live_validation(
             docker_snapshot=before_docker,
             working_directory=working_directory,
         )
-        if revision in {27, 28, 29}
+        if revision in {27, 28, 29, 30}
         else _r19_detached_effect_snapshot()
     )
     time.sleep(0.05)
@@ -18211,12 +19548,12 @@ def _run_r19_historical_live_validation(
             docker_snapshot=confirmed_docker,
             working_directory=working_directory,
         )
-        if revision in {27, 28, 29}
+        if revision in {27, 28, 29, 30}
         else _r19_detached_effect_snapshot()
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28, 29}
+        if revision in {27, 28, 29, 30}
         else _r19_admit_stable_unrelated_baseline
     )
     baseline_admitter(
@@ -18242,7 +19579,7 @@ def _run_r19_historical_live_validation(
             before_detached=before_detached,
             working_directory=working_directory,
         )
-        if revision in {27, 28, 29}
+        if revision in {27, 28, 29, 30}
         else _r19_terminal_scope_guard(
             before_docker=before_docker,
             before_detached=before_detached,
@@ -18485,7 +19822,7 @@ def _run_r19_historical_live_validation(
     evidence: dict[str, Any] = {
         "schema": (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29}
+            if revision in {27, 28, 29, 30}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         ),
         "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
@@ -18498,11 +19835,11 @@ def _run_r19_historical_live_validation(
         "declared_command_executed": True,
         "validation_subject_head": validation_subject_head,
         "validation_subject_tree": validation_subject_tree,
-        "policy_candidate_head": executor.candidate_head,
-        "policy_candidate_tree": executor.candidate_tree,
-        "policy_candidate_authorization_witness_cid": _identity(
-            authorization_witness
-        ),
+        "policy_candidate_head": policy_admission["candidate_head"],
+        "policy_candidate_tree": policy_admission["candidate_tree"],
+        "policy_candidate_authorization_witness_cid": policy_admission[
+            "candidate_authorization_witness_cid"
+        ],
         "environment_identity": environment_identity,
         "interpreter_identity": interpreter_identity,
         "ready": ready,
@@ -18530,6 +19867,8 @@ def _run_r19_historical_live_validation(
             "verified_success" if returncode == 0 else "verified_failure"
         ),
     }
+    if revision == 30:
+        evidence["active_candidate_binding"] = active_candidate_binding
     evidence["evidence_cid"] = _identity(evidence)
     completed = subprocess.CompletedProcess(
         declared,
@@ -18554,22 +19893,54 @@ def _qualify_r19_historical_live_policy(
     policy_admission: Mapping[str, Any] | None,
     authorizing_receipt_cid: str | None,
     pre_effect_guard: Callable[[], None] | None = None,
+    durable_candidate_witness: Mapping[str, Any] | None = None,
+    active_candidate_head: str | None = None,
+    active_candidate_tree: str | None = None,
+    active_candidate_authorization_witness: Mapping[str, str] | None = None,
     _revision: int = 19,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}:
         raise OperatorError("historical live policy revision is invalid")
     if (
-        (_revision == 29 and not callable(pre_effect_guard))
-        or (_revision != 29 and pre_effect_guard is not None)
+        (_revision in {29, 30} and not callable(pre_effect_guard))
+        or (_revision not in {29, 30} and pre_effect_guard is not None)
+        or (
+            _revision == 30
+            and (
+                re.fullmatch(
+                    r"[0-9a-f]{40}", str(active_candidate_head or "")
+                )
+                is None
+                or re.fullmatch(
+                    r"[0-9a-f]{40}", str(active_candidate_tree or "")
+                )
+                is None
+                or not isinstance(
+                    active_candidate_authorization_witness,
+                    Mapping,
+                )
+            )
+        )
+        or (
+            _revision != 30
+            and any(
+                value is not None
+                for value in (
+                    active_candidate_head,
+                    active_candidate_tree,
+                    active_candidate_authorization_witness,
+                )
+            )
+        )
     ):
         raise OperatorError(
-            "historical live pre-effect guard differs from qualification revision"
+            "historical live active binding differs from qualification revision"
         )
     executor_contract = (
         _r27_historical_live_validation_executor_contract()
-        if _revision in {27, 28, 29}
+        if _revision in {27, 28, 29, 30}
         else _r19_sealed_receipt_validation_executor_contract()
     )
     policy_builder = {
@@ -18584,6 +19955,7 @@ def _qualify_r19_historical_live_policy(
         27: _r27_historical_live_policy_admission,
         28: _r28_historical_live_policy_admission,
         29: _r29_historical_live_policy_admission,
+        30: _r30_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -18597,8 +19969,9 @@ def _qualify_r19_historical_live_policy(
         27: _admit_r27_historical_live_policy_admission,
         28: _admit_r28_historical_live_policy_admission,
         29: _admit_r29_historical_live_policy_admission,
+        30: _admit_r30_historical_live_policy_admission,
     }[_revision]
-    computed_policy = policy_builder(
+    policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
         prior_chain=prior_chain,
         candidate_head=candidate_head,
@@ -18606,20 +19979,19 @@ def _qualify_r19_historical_live_policy(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
+    if _revision == 30:
+        if not isinstance(durable_candidate_witness, Mapping):
+            raise OperatorError("R30 durable policy witness is absent")
+        policy_arguments["durable_candidate_witness"] = (
+            durable_candidate_witness
+        )
+    elif durable_candidate_witness is not None:
+        raise OperatorError("durable policy witness is outside R30 authority")
+    computed_policy = policy_builder(**policy_arguments)
     policy = (
         computed_policy
         if policy_admission is None
-        else policy_admitter(
-            policy_admission,
-            bootstrap_receipt_id=bootstrap_receipt_id,
-            prior_chain=prior_chain,
-            candidate_head=candidate_head,
-            candidate_tree=candidate_tree,
-            candidate_authorization_witness=(
-                candidate_authorization_witness
-            ),
-            executor_contract=executor_contract,
-        )
+        else policy_admitter(policy_admission, **policy_arguments)
     )
     command = _r11_historical_live_docker_command()
     with _offline_database_guard(paths), _exact_candidate_validation_checkout(
@@ -18638,6 +20010,11 @@ def _qualify_r19_historical_live_policy(
                 authorizing_receipt_cid=authorizing_receipt_cid,
                 lifecycle_lock_identity=lifecycle_lock,
                 pre_effect_guard=pre_effect_guard,
+                active_candidate_head=active_candidate_head,
+                active_candidate_tree=active_candidate_tree,
+                active_candidate_authorization_witness=(
+                    active_candidate_authorization_witness
+                ),
             ):
                 completed = _run(
                     command,
@@ -18686,6 +20063,12 @@ def _qualify_r19_historical_live_policy(
                     stdout_digest=stdout_digest,
                     stderr_digest=stderr_digest,
                     authorizing_receipt_cid=authorizing_receipt_cid,
+                    durable_candidate_witness=durable_candidate_witness,
+                    active_candidate_head=active_candidate_head,
+                    active_candidate_tree=active_candidate_tree,
+                    active_candidate_authorization_witness=(
+                        active_candidate_authorization_witness
+                    ),
                 )
             )
             if completed.returncode != 0:
@@ -19021,6 +20404,82 @@ def _qualify_r29_pre_duckdb_historical_live_policy(
     )
 
 
+def _qualify_r30_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    authorization_attempt: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_authorization_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R30 through R27 under one fresh prepared Git epoch."""
+
+    sealed_attempt = json.loads(_canonical_json(authorization_attempt))
+    sealed_receipt = (
+        None
+        if authorization_receipt is None
+        else json.loads(_canonical_json(authorization_receipt))
+    )
+    sealed_witness = dict(candidate_authorization_witness)
+    sealed_durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    sealed_guard = dict(candidate_git_guard)
+    sealed_active_witness = dict(active_candidate_authorization_witness)
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=candidate_head,
+        authorization_candidate_tree=candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+
+    def pre_effect_guard() -> None:
+        _assert_r30_historical_live_effect_admission(
+            paths=paths,
+            authorization_attempt=sealed_attempt,
+            authorization_candidate_head=candidate_head,
+            authorization_candidate_tree=candidate_tree,
+            authorization_candidate_witness=sealed_witness,
+            durable_candidate_witness=sealed_durable,
+            candidate_git_guard=sealed_guard,
+            authorization_receipt=sealed_receipt,
+            authorizing_receipt_cid=authorizing_receipt_cid,
+            active_candidate_head=active_candidate_head,
+            active_candidate_tree=active_candidate_tree,
+            active_candidate_witness=sealed_active_witness,
+            continuity_admission=sealed_continuity,
+        )
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        durable_candidate_witness=sealed_durable,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        pre_effect_guard=pre_effect_guard,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+        active_candidate_authorization_witness=sealed_active_witness,
+        _revision=30,
+    )
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -19091,6 +20550,14 @@ def _trusted_git_environment() -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_NO_REPLACE_OBJECTS": "1",
+        # Repository-local hooks and fsmonitor commands are external-effect
+        # paths, not observations.  Disable both at Git's highest-precedence
+        # command configuration for every sealed Git invocation.
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "core.hooksPath",
+        "GIT_CONFIG_VALUE_0": os.devnull,
+        "GIT_CONFIG_KEY_1": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_1": "false",
         "LC_ALL": "C",
         "LANG": "C",
     }
@@ -19109,6 +20576,10 @@ def _trusted_git_executable() -> str:
             | getattr(os, "O_NOFOLLOW", 0),
         )
         try:
+            executable_admission = _r16_admit_unprivileged_executable_fd(
+                descriptor,
+                expected_path=TRUSTED_GIT,
+            )
             opened = os.fstat(descriptor)
             digest = hashlib.sha256()
             while True:
@@ -19134,6 +20605,8 @@ def _trusted_git_executable() -> str:
         or opened.st_uid != 0
         or opened.st_nlink != 1
         or opened.st_size <= 0
+        or executable_admission.get("path") != str(TRUSTED_GIT)
+        or opened.st_mode & (stat.S_ISUID | stat.S_ISGID)
         or stat.S_IMODE(opened.st_mode) & 0o022
         or any(getattr(lexical, field) != getattr(opened, field) for field in fields)
         or any(getattr(after, field) != getattr(opened, field) for field in fields)
@@ -19170,6 +20643,1596 @@ def _git_bytes(*args: str, cwd: Path | None = None) -> bytes:
         stderr = completed.stderr.decode("utf-8", errors="replace")
         raise OperatorError(f"git {' '.join(args)} failed: {stderr[-1000:]}")
     return completed.stdout
+
+
+@dataclass(frozen=True)
+class _CandidateGitGuard:
+    """Live Git-owned exclusion for one candidate ref and worktree index."""
+
+    owner_pid: int
+    owner_thread_id: int
+    candidate_head: str
+    candidate_tree: str
+    branch_ref: str
+    reference_process: subprocess.Popen[bytes]
+    index_process: subprocess.Popen[bytes]
+    head_lock_path: Path
+    branch_lock_path: Path
+    index_lock_path: Path
+    packed_refs_lock_path: Path
+    head_lock_identity: tuple[int, ...]
+    branch_lock_identity: tuple[int, ...]
+    index_lock_identity: tuple[int, ...]
+    reference_process_birth: Mapping[str, Any]
+    index_process_birth: Mapping[str, Any]
+    control_parent_identities: Mapping[str, tuple[int, ...]]
+    session_id: int
+    record: Mapping[str, Any]
+
+
+@dataclass
+class _GitGuardSyscallTrace:
+    """Exact Git-child lock provenance retained across fatal child exit."""
+
+    process: subprocess.Popen[bytes]
+    expected_argv: tuple[str, ...]
+    expected_birth: Mapping[str, Any]
+    expected_session_id: int
+    lock_paths: Mapping[str, Path]
+    owned_lock_identities: dict[str, tuple[int, ...]]
+    active: bool = True
+    stopped: bool = False
+    pending_signal: int = 0
+
+
+_ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
+_GIT_GUARD_PTRACE: Any | None = None
+_PTRACE_TRACEME: Final = 0
+_PTRACE_CONT: Final = 7
+_PTRACE_SYSCALL: Final = 24
+_PTRACE_DETACH: Final = 17
+_PTRACE_SETOPTIONS: Final = 0x4200
+_PTRACE_O_TRACESYSGOOD: Final = 0x00000001
+_PTRACE_O_TRACEEXIT: Final = 0x00000040
+_PTRACE_EVENT_EXIT: Final = 6
+_GIT_GUARD_JOB_CONTROL_SIGNALS: Final = frozenset(
+    {
+        int(signal.SIGSTOP),
+        int(signal.SIGTSTP),
+        int(signal.SIGTTIN),
+        int(signal.SIGTTOU),
+    }
+)
+
+
+def _git_guard_lock_identity(path: Path) -> tuple[int, ...]:
+    """Return one exact, owner-only Git lock identity without following it."""
+
+    try:
+        observed = os.lstat(path)
+    except OSError as exc:
+        raise OperatorError("candidate Git guard lock is unavailable") from exc
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+        or observed.st_nlink != 1
+        or stat.S_IMODE(observed.st_mode) & 0o002
+    ):
+        raise OperatorError("candidate Git guard lock identity is unsafe")
+    return (
+        int(observed.st_dev),
+        int(observed.st_ino),
+        int(observed.st_mode),
+        int(observed.st_uid),
+        int(observed.st_nlink),
+        int(observed.st_size),
+        int(observed.st_mtime_ns),
+        int(observed.st_ctime_ns),
+    )
+
+
+def _git_guard_observed_lock_identity(path: Path) -> tuple[int, ...] | None:
+    """Observe one lock name without assigning its inode to this guard."""
+
+    try:
+        observed = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise OperatorError(
+            "candidate Git guard lock namespace is unavailable"
+        ) from exc
+    return (
+        int(observed.st_dev),
+        int(observed.st_ino),
+        int(observed.st_mode),
+        int(observed.st_uid),
+        int(observed.st_nlink),
+        int(observed.st_size),
+        int(observed.st_mtime_ns),
+        int(observed.st_ctime_ns),
+    )
+
+
+def _git_guard_directory_identity(path: Path) -> tuple[int, ...]:
+    """Bind one same-UID, non-symlink Git control directory."""
+
+    try:
+        observed = os.lstat(path)
+    except OSError as exc:
+        raise OperatorError(
+            "candidate Git guard control directory is unavailable"
+        ) from exc
+    if (
+        not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) & 0o002
+    ):
+        raise OperatorError("candidate Git guard control directory is unsafe")
+    return (
+        int(observed.st_dev),
+        int(observed.st_ino),
+        int(observed.st_mode),
+        int(observed.st_uid),
+    )
+
+
+def _git_guard_control_path(specification: str) -> Path:
+    raw = _git("rev-parse", "--git-path", specification)
+    candidate = Path(raw)
+    path = candidate if candidate.is_absolute() else ROOT / candidate
+    absolute = Path(os.path.abspath(path))
+    try:
+        parent = absolute.parent.resolve(strict=True)
+    except OSError as exc:
+        raise OperatorError(
+            "candidate Git guard control path is unavailable"
+        ) from exc
+    if absolute.name in {"", ".", ".."} or "/" in absolute.name:
+        raise OperatorError("candidate Git guard control path is unsafe")
+    _git_guard_directory_identity(parent)
+    return parent / absolute.name
+
+
+def _git_guard_ptrace_function() -> Any:
+    """Return the process-local libc ptrace entry point with a closed ABI."""
+
+    global _GIT_GUARD_PTRACE
+    if _GIT_GUARD_PTRACE is None:
+        function = ctypes.CDLL(None, use_errno=True).ptrace
+        function.argtypes = (
+            ctypes.c_uint,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        )
+        function.restype = ctypes.c_long
+        _GIT_GUARD_PTRACE = function
+    return _GIT_GUARD_PTRACE
+
+
+def _git_guard_ptrace_call(
+    request: int,
+    pid: int,
+    *,
+    data: int = 0,
+    boundary: str,
+) -> None:
+    """Apply one non-peeking ptrace request or fail closed."""
+
+    ctypes.set_errno(0)
+    result = _git_guard_ptrace_function()(
+        request,
+        pid,
+        None,
+        ctypes.c_void_p(data),
+    )
+    if result != 0:
+        error = ctypes.get_errno()
+        raise OperatorError(
+            f"candidate Git guard ptrace failed: {boundary}"
+        ) from OSError(error, os.strerror(error))
+
+
+def _git_guard_trace_capture_locks(
+    trace: _GitGuardSyscallTrace,
+) -> None:
+    """Capture only path inodes open in this exact syscall-stopped child."""
+
+    owned = _git_guard_exact_child_owned_inodes(
+        trace.process,
+        expected_argv=trace.expected_argv,
+        expected_birth=trace.expected_birth,
+        expected_session_id=trace.expected_session_id,
+    )
+    for name, path in trace.lock_paths.items():
+        observed = _git_guard_observed_lock_identity(path)
+        if observed is None or observed[:2] not in owned:
+            continue
+        identity = _git_guard_lock_identity(path)
+        if (
+            identity != _git_guard_observed_lock_identity(path)
+            or identity[:2] != observed[:2]
+        ):
+            raise OperatorError(
+                "candidate Git traced lock changed during binding"
+            )
+        prior = trace.owned_lock_identities.get(name)
+        if prior is not None and prior[:2] != identity[:2]:
+            raise OperatorError(
+                "candidate Git traced lock inode changed"
+            )
+        # Metadata can settle between open and close syscall stops.  Preserve
+        # the same proven inode while retaining its latest exact identity for
+        # guarded cleanup after a fatal exit.
+        trace.owned_lock_identities[name] = identity
+
+
+def _git_guard_ptrace_delivery_signal(
+    stop_signal: int,
+    event: int,
+    *,
+    own_sigstop: bool,
+) -> int:
+    """Preserve real delivery stops while consuming ptrace-only stops."""
+
+    if event == 0 and stop_signal == (int(signal.SIGTRAP) | 0x80):
+        return 0
+    if event == _PTRACE_EVENT_EXIT and stop_signal == int(signal.SIGTRAP):
+        return 0
+    if event != 0:
+        raise OperatorError("candidate Git ptrace event is not admitted")
+    if own_sigstop and stop_signal == int(signal.SIGSTOP):
+        return 0
+    return stop_signal
+
+
+def _git_guard_fail_traced_stop(
+    trace: _GitGuardSyscallTrace,
+    *,
+    message: str,
+    observer: Callable[[], None] | None = None,
+) -> None:
+    """Capture, kill, and reap one unadmitted traced-child stop."""
+
+    failure = OperatorError(message)
+    try:
+        _git_guard_trace_capture_locks(trace)
+        if observer is not None:
+            observer()
+    except BaseException as exc:
+        failure.add_note(
+            "candidate Git unadmitted-stop capture also failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    try:
+        _git_guard_force_retire_trace(trace)
+        if observer is not None:
+            observer()
+    except BaseException as exc:
+        failure.add_note(
+            "candidate Git unadmitted-stop retirement also failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    raise failure
+
+
+def _git_guard_trace_advance(
+    trace: _GitGuardSyscallTrace,
+    *,
+    observer: Callable[[], None] | None = None,
+) -> None:
+    """Advance one kernel-attributed syscall/exit stop without losing it."""
+
+    if not trace.active:
+        if observer is not None:
+            observer()
+        return
+    try:
+        waited_pid, status = os.waitpid(
+            trace.process.pid,
+            os.WNOHANG | os.WUNTRACED,
+        )
+    except ChildProcessError as exc:
+        raise OperatorError(
+            "candidate Git traced child wait authority was lost"
+        ) from exc
+    if waited_pid == 0:
+        if observer is not None:
+            observer()
+        return
+    if waited_pid != trace.process.pid:
+        raise OperatorError("candidate Git traced child PID differs")
+    if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+        trace.process.returncode = os.waitstatus_to_exitcode(status)
+        trace.active = False
+        trace.stopped = False
+        if observer is not None:
+            observer()
+        return
+    if not os.WIFSTOPPED(status):
+        raise OperatorError("candidate Git traced child state differs")
+    stop_signal = os.WSTOPSIG(status)
+    event = status >> 16
+    trace.stopped = True
+    try:
+        trace.pending_signal = _git_guard_ptrace_delivery_signal(
+            stop_signal,
+            event,
+            own_sigstop=False,
+        )
+    except OperatorError:
+        _git_guard_fail_traced_stop(
+            trace,
+            message="candidate Git ptrace event is not admitted",
+            observer=observer,
+        )
+    if event == 0 and stop_signal in _GIT_GUARD_JOB_CONTROL_SIGNALS:
+        _git_guard_fail_traced_stop(
+            trace,
+            message="candidate Git external job-control stop is not admitted",
+            observer=observer,
+        )
+    _git_guard_trace_capture_locks(trace)
+    if observer is not None:
+        observer()
+    _git_guard_ptrace_call(
+        _PTRACE_SYSCALL,
+        trace.process.pid,
+        data=trace.pending_signal,
+        boundary="syscall resume",
+    )
+    trace.stopped = False
+    trace.pending_signal = 0
+
+
+def _git_guard_force_retire_trace(
+    trace: _GitGuardSyscallTrace,
+) -> None:
+    """Kill and reap a tracee whose ordinary detach could not complete."""
+
+    if not trace.active:
+        return
+    retirement_errors: list[BaseException] = []
+    try:
+        if _r16_exact_process_birth(trace.process.pid) != dict(
+            trace.expected_birth
+        ):
+            raise OperatorError(
+                "candidate Git failed-detach child birth differs"
+            )
+        os.kill(trace.process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except BaseException as exc:
+        retirement_errors.append(exc)
+    if trace.stopped:
+        try:
+            _git_guard_ptrace_call(
+                _PTRACE_CONT,
+                trace.process.pid,
+                boundary="failed-detach kill resume",
+            )
+        except BaseException as exc:
+            retirement_errors.append(exc)
+        else:
+            trace.stopped = False
+            trace.pending_signal = 0
+    deadline = time.monotonic() + 10.0
+    capture_errors: list[BaseException] = []
+    while trace.active:
+        if time.monotonic() >= deadline:
+            raise OperatorError(
+                "candidate Git failed-detach retirement expired"
+            ) from (capture_errors + retirement_errors or [None])[0]
+        if trace.stopped:
+            try:
+                _git_guard_ptrace_call(
+                    _PTRACE_CONT,
+                    trace.process.pid,
+                    boundary="failed-detach retry resume",
+                )
+            except BaseException as exc:
+                retirement_errors.append(exc)
+            else:
+                trace.stopped = False
+                trace.pending_signal = 0
+        try:
+            waited_pid, status = os.waitpid(
+                trace.process.pid,
+                os.WNOHANG | os.WUNTRACED,
+            )
+        except ChildProcessError as exc:
+            raise OperatorError(
+                "candidate Git failed-detach wait authority was lost"
+            ) from exc
+        if waited_pid == 0:
+            time.sleep(0.0001)
+            continue
+        if waited_pid != trace.process.pid:
+            raise OperatorError(
+                "candidate Git failed-detach PID differs"
+            )
+        if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+            trace.process.returncode = os.waitstatus_to_exitcode(status)
+            trace.active = False
+            trace.stopped = False
+            trace.pending_signal = 0
+            # PTRACE_CONT after SIGKILL is best-effort so a denied tracer can
+            # still reap. Capture failures are retained because they can hide
+            # a lock inode that the caller must not unlink.
+            if capture_errors:
+                raise OperatorError(
+                    "candidate Git failed-detach retirement had errors"
+                ) from capture_errors[0]
+            return
+        if not os.WIFSTOPPED(status):
+            raise OperatorError(
+                "candidate Git failed-detach state differs"
+            )
+        trace.stopped = True
+        trace.pending_signal = 0
+        try:
+            _git_guard_trace_capture_locks(trace)
+        except BaseException as exc:
+            capture_errors.append(exc)
+        try:
+            _git_guard_ptrace_call(
+                _PTRACE_CONT,
+                trace.process.pid,
+                boundary="failed-detach traced kill",
+            )
+        except BaseException as exc:
+            retirement_errors.append(exc)
+        else:
+            trace.stopped = False
+            trace.pending_signal = 0
+
+
+def _git_guard_detach_trace(
+    trace: _GitGuardSyscallTrace,
+    *,
+    observer: Callable[[], None] | None = None,
+    require_live: bool,
+) -> None:
+    """Stop, capture, and detach one exact tracee before ordinary Popen use."""
+
+    if not trace.active:
+        if require_live:
+            raise OperatorError("candidate Git traced child exited early")
+        if observer is not None:
+            observer()
+        return
+    if not trace.stopped:
+        deadline = time.monotonic() + 10.0
+        while trace.active and not trace.stopped:
+            try:
+                waited_pid, status = os.waitpid(
+                    trace.process.pid,
+                    os.WNOHANG | os.WUNTRACED,
+                )
+            except ChildProcessError as exc:
+                raise OperatorError(
+                    "candidate Git trace detach lost wait authority"
+                ) from exc
+            if waited_pid == 0:
+                now = time.monotonic()
+                if now >= deadline:
+                    failure = OperatorError(
+                        "candidate Git trace detach deadline expired"
+                    )
+                    try:
+                        _git_guard_force_retire_trace(trace)
+                        if observer is not None:
+                            observer()
+                    except BaseException as exc:
+                        failure.add_note(
+                            "candidate Git detach-deadline retirement also "
+                            f"failed: {type(exc).__name__}: {exc}"
+                        )
+                    raise failure
+                time.sleep(0.0001)
+                continue
+            if waited_pid != trace.process.pid:
+                raise OperatorError(
+                    "candidate Git trace detach PID differs"
+                )
+            if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+                trace.process.returncode = os.waitstatus_to_exitcode(status)
+                trace.active = False
+                break
+            if not os.WIFSTOPPED(status):
+                raise OperatorError(
+                    "candidate Git trace detach state differs"
+                )
+            stop_signal = os.WSTOPSIG(status)
+            event = status >> 16
+            trace.stopped = True
+            try:
+                trace.pending_signal = _git_guard_ptrace_delivery_signal(
+                    stop_signal,
+                    event,
+                    own_sigstop=False,
+                )
+            except OperatorError:
+                _git_guard_fail_traced_stop(
+                    trace,
+                    message="candidate Git ptrace event is not admitted",
+                    observer=observer,
+                )
+            if event == 0 and stop_signal in _GIT_GUARD_JOB_CONTROL_SIGNALS:
+                _git_guard_fail_traced_stop(
+                    trace,
+                    message=(
+                        "candidate Git external job-control stop is not admitted"
+                    ),
+                    observer=observer,
+                )
+            if event != 0 or trace.pending_signal != 0:
+                _git_guard_trace_capture_locks(trace)
+                if observer is not None:
+                    observer()
+                _git_guard_ptrace_call(
+                    _PTRACE_SYSCALL,
+                    trace.process.pid,
+                    data=trace.pending_signal,
+                    boundary="detach pending-stop resume",
+                )
+                trace.stopped = False
+                trace.pending_signal = 0
+                continue
+            # The only remaining stop is a TRACESYSGOOD syscall boundary.
+            break
+    if not trace.active:
+        if observer is not None:
+            observer()
+        if require_live:
+            raise OperatorError("candidate Git traced child exited early")
+        return
+    capture_error: BaseException | None = None
+    try:
+        _git_guard_trace_capture_locks(trace)
+        if observer is not None:
+            observer()
+    except BaseException as exc:
+        capture_error = exc
+    try:
+        _git_guard_ptrace_call(
+            _PTRACE_DETACH,
+            trace.process.pid,
+            data=trace.pending_signal,
+            boundary="trace detach",
+        )
+    except BaseException as detach_error:
+        try:
+            _git_guard_force_retire_trace(trace)
+            if observer is not None:
+                observer()
+        except BaseException as retirement_error:
+            detach_error.add_note(
+                "candidate Git failed-detach retirement also failed: "
+                f"{type(retirement_error).__name__}: {retirement_error}"
+            )
+        raise
+    else:
+        trace.active = False
+        trace.stopped = False
+        trace.pending_signal = 0
+    if capture_error is not None:
+        raise capture_error
+
+
+def _r30_git_guard_launcher(
+    *,
+    operation: str,
+    expected_parent_pid: int,
+    expected_parent_start_time_ticks: int,
+    expected_parent_boot_id: str,
+) -> int:
+    """Arm traced EOF cleanup in a fresh interpreter, then exact-exec Git."""
+
+    if (
+        operation not in {"update-ref", "update-index"}
+        or expected_parent_pid <= 1
+        or expected_parent_start_time_ticks <= 0
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            expected_parent_boot_id,
+        )
+        is None
+    ):
+        raise OperatorError("R30 Git guard launcher grammar differs")
+
+    def require_exact_parent(boundary: str) -> None:
+        if os.getppid() != expected_parent_pid:
+            raise OperatorError(
+                f"R30 Git guard parent changed {boundary}"
+            )
+        birth = _r16_exact_process_birth(expected_parent_pid)
+        if (
+            birth.get("start_time_ticks")
+            != expected_parent_start_time_ticks
+            or birth.get("boot_id") != expected_parent_boot_id
+        ):
+            raise OperatorError(
+                f"R30 Git guard parent birth differs {boundary}"
+            )
+
+    require_exact_parent("before its loss fence")
+    git = Path(_trusted_git_executable())
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            git,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        admission = _r16_admit_unprivileged_executable_fd(
+            descriptor,
+            expected_path=git,
+        )
+        if admission.get("path") != str(git):
+            raise OperatorError("R30 Git guard executable differs")
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        ctypes.set_errno(0)
+        if libc.prctl(1, int(signal.SIGCONT), 0, 0, 0) != 0:
+            error = ctypes.get_errno()
+            raise OperatorError(
+                "R30 Git guard parent-loss fence failed"
+            ) from OSError(error, os.strerror(error))
+        observed_signal = ctypes.c_int(0)
+        ctypes.set_errno(0)
+        if (
+            libc.prctl(
+                2,
+                ctypes.byref(observed_signal),
+                0,
+                0,
+                0,
+            )
+            != 0
+            or observed_signal.value != int(signal.SIGCONT)
+        ):
+            error = ctypes.get_errno()
+            raise OperatorError(
+                "R30 Git guard parent-loss fence verification failed"
+            ) from OSError(error, os.strerror(error))
+        require_exact_parent("while its loss fence was armed")
+
+        ctypes.set_errno(0)
+        if _git_guard_ptrace_function()(
+            _PTRACE_TRACEME,
+            0,
+            None,
+            None,
+        ) != 0:
+            error = ctypes.get_errno()
+            raise OperatorError(
+                "R30 Git guard trace setup failed"
+            ) from OSError(error, os.strerror(error))
+        require_exact_parent("immediately before exact exec")
+        command = (str(git), operation, "--stdin")
+        os.execve(descriptor, command, _trusted_git_environment())
+    except OSError as exc:
+        raise OperatorError(
+            "R30 Git guard exact exec is unavailable"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    raise OperatorError("R30 Git guard exact exec returned")
+
+
+def _git_guard_force_retire_initial_stop(
+    process: subprocess.Popen[bytes],
+) -> None:
+    """Kill/reap a child after waitpid exposed an unclassified first stop."""
+
+    try:
+        os.kill(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    deadline = time.monotonic() + 10.0
+    stopped = True
+    errors: list[BaseException] = []
+    while True:
+        if time.monotonic() >= deadline:
+            raise OperatorError(
+                "candidate Git initial-stop retirement expired"
+            ) from (errors[0] if errors else None)
+        if stopped:
+            try:
+                _git_guard_ptrace_call(
+                    _PTRACE_CONT,
+                    process.pid,
+                    boundary="initial-stop kill resume",
+                )
+            except BaseException as exc:
+                errors.append(exc)
+            else:
+                stopped = False
+        try:
+            waited_pid, status = os.waitpid(
+                process.pid,
+                os.WNOHANG | os.WUNTRACED,
+            )
+        except ChildProcessError as exc:
+            raise OperatorError(
+                "candidate Git initial-stop wait authority was lost"
+            ) from exc
+        if waited_pid == 0:
+            time.sleep(0.0001)
+            continue
+        if waited_pid != process.pid:
+            raise OperatorError("candidate Git initial-stop PID differs")
+        if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+            process.returncode = os.waitstatus_to_exitcode(status)
+            return
+        if not os.WIFSTOPPED(status):
+            raise OperatorError("candidate Git initial-stop state differs")
+        stopped = True
+
+
+def _start_traced_git_guard_process(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    expected_session_id: int,
+    lock_paths: Mapping[str, Path],
+) -> tuple[subprocess.Popen[bytes], _GitGuardSyscallTrace]:
+    """Exec Git under syscall-stop provenance before its first lock open."""
+
+    command = tuple(argv)
+    if (
+        command not in {
+            (_trusted_git_executable(), "update-ref", "--stdin"),
+            (_trusted_git_executable(), "update-index", "--stdin"),
+        }
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        raise OperatorError("candidate Git trace command is not admitted")
+    parent_birth = _r16_exact_process_birth(os.getpid())
+    launcher = (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-I",
+        str(Path(__file__).resolve(strict=True)),
+        ASEH_R30_GIT_GUARD_LAUNCHER_COMMAND,
+        "--operation",
+        command[1],
+        "--expected-parent-pid",
+        str(os.getpid()),
+        "--expected-parent-start-time-ticks",
+        str(parent_birth["start_time_ticks"]),
+        "--expected-parent-boot-id",
+        str(parent_birth["boot_id"]),
+    )
+
+    process: subprocess.Popen[bytes] | None = None
+    trace: _GitGuardSyscallTrace | None = None
+    traced_stop = False
+    try:
+        process = subprocess.Popen(
+            launcher,
+            cwd=cwd,
+            env=dict(env),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
+        if process.stdin is None or os.get_inheritable(process.stdin.fileno()):
+            raise OperatorError(
+                "candidate Git guard stdin writer is not sole-CLOEXEC"
+            )
+        deadline = time.monotonic() + 10.0
+        while True:
+            waited_pid, status = os.waitpid(
+                process.pid,
+                os.WNOHANG | os.WUNTRACED,
+            )
+            if waited_pid == process.pid:
+                break
+            if waited_pid != 0 or time.monotonic() >= deadline:
+                raise OperatorError(
+                    "candidate Git initial trace stop is unavailable"
+                )
+            time.sleep(0.0001)
+        if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+            process.returncode = os.waitstatus_to_exitcode(status)
+            raise OperatorError("candidate Git initial trace child exited")
+        if not os.WIFSTOPPED(status):
+            raise OperatorError("candidate Git initial trace stop differs")
+        traced_stop = True
+        if (
+            os.WSTOPSIG(status) != int(signal.SIGTRAP)
+            or status >> 16 != 0
+        ):
+            raise OperatorError("candidate Git initial trace stop differs")
+        birth = _r16_exact_process_birth(process.pid)
+        trace = _GitGuardSyscallTrace(
+            process=process,
+            expected_argv=command,
+            expected_birth=birth,
+            expected_session_id=expected_session_id,
+            lock_paths=dict(lock_paths),
+            owned_lock_identities={},
+            stopped=True,
+        )
+        _git_guard_exact_child_owned_inodes(
+            process,
+            expected_argv=command,
+            expected_birth=birth,
+            expected_session_id=expected_session_id,
+        )
+        _git_guard_ptrace_call(
+            _PTRACE_SETOPTIONS,
+            process.pid,
+            data=_PTRACE_O_TRACESYSGOOD | _PTRACE_O_TRACEEXIT,
+            boundary="trace options",
+        )
+        _git_guard_ptrace_call(
+            _PTRACE_SYSCALL,
+            process.pid,
+            boundary="initial syscall resume",
+        )
+        trace.stopped = False
+        return process, trace
+    except BaseException as exc:
+        retirement_error: BaseException | None = None
+        if process is not None:
+            try:
+                if trace is not None:
+                    _git_guard_force_retire_trace(trace)
+                elif traced_stop:
+                    _git_guard_force_retire_initial_stop(process)
+                else:
+                    _terminate_git_guard_process(process)
+            except BaseException as cleanup_exc:
+                retirement_error = cleanup_exc
+        if process is None and isinstance(exc, OperatorError):
+            failure: BaseException = exc
+        else:
+            failure = OperatorError(
+                "candidate Git syscall tracing is unavailable"
+            )
+            failure.__cause__ = exc
+        if retirement_error is not None:
+            failure.add_note(
+                "candidate Git trace startup retirement also failed: "
+                f"{type(retirement_error).__name__}: {retirement_error}"
+            )
+        raise failure
+
+
+def _git_guard_write(
+    process: subprocess.Popen[bytes],
+    payload: bytes,
+    *,
+    trace: _GitGuardSyscallTrace | None = None,
+) -> None:
+    if trace is not None:
+        _git_guard_trace_advance(trace)
+        unavailable = process.returncode is not None
+    else:
+        unavailable = process.poll() is not None
+    if process.stdin is None or unavailable:
+        raise OperatorError("candidate Git guard process is unavailable")
+    try:
+        process.stdin.write(payload)
+        process.stdin.flush()
+    except (BrokenPipeError, OSError) as exc:
+        raise OperatorError("candidate Git guard protocol write failed") from exc
+
+
+def _git_guard_read_line(
+    process: subprocess.Popen[bytes],
+    *,
+    expected: bytes,
+    observer: Callable[[], None] | None = None,
+    trace: _GitGuardSyscallTrace | None = None,
+) -> None:
+    if process.stdout is None:
+        raise OperatorError("candidate Git guard protocol is unavailable")
+    descriptor = process.stdout.fileno()
+    deadline = time.monotonic() + 10.0
+    payload = bytearray()
+    while b"\n" not in payload and len(payload) <= 1024:
+        if trace is not None:
+            _git_guard_trace_advance(trace, observer=observer)
+        elif observer is not None:
+            observer()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
+            break
+        try:
+            readable, _, _ = select.select(
+                [descriptor], [], [], min(remaining, 0.0001)
+            )
+        except OSError as exc:
+            raise OperatorError(
+                "candidate Git guard protocol wait failed"
+            ) from exc
+        if not readable:
+            continue
+        try:
+            chunk = os.read(descriptor, 1025 - len(payload))
+        except OSError as exc:
+            raise OperatorError(
+                "candidate Git guard protocol read failed"
+            ) from exc
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if trace is not None:
+            _git_guard_trace_advance(trace, observer=observer)
+        elif observer is not None:
+            observer()
+    observed = bytes(payload)
+    if observed != expected:
+        raise OperatorError("candidate Git guard protocol differs")
+
+
+def _git_guard_exact_child_owned_inodes(
+    process: subprocess.Popen[bytes],
+    *,
+    expected_argv: Sequence[str],
+    expected_birth: Mapping[str, Any],
+    expected_session_id: int,
+) -> set[tuple[int, int]]:
+    """Read exact open inodes without consuming a traced-child wait stop."""
+
+    if (
+        _r16_exact_process_birth(process.pid) != dict(expected_birth)
+        or os.getsid(process.pid) != expected_session_id
+    ):
+        raise OperatorError("candidate Git guard child birth differs")
+    try:
+        executable = Path(os.readlink(f"/proc/{process.pid}/exe")).resolve(
+            strict=True
+        )
+        argv = [
+            item.decode("utf-8", errors="strict")
+            for item in Path(f"/proc/{process.pid}/cmdline")
+            .read_bytes()
+            .split(b"\0")
+            if item
+        ]
+        descriptor_directory = Path(f"/proc/{process.pid}/fd")
+        owned = {
+            (int(value.st_dev), int(value.st_ino))
+            for entry in descriptor_directory.iterdir()
+            if (value := entry.stat()).st_ino > 0
+        }
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError(
+            "candidate Git guard child identity is unavailable"
+        ) from exc
+    if (
+        executable != Path(_trusted_git_executable()).resolve(strict=True)
+        or argv != list(expected_argv)
+        or _r16_exact_process_birth(process.pid) != dict(expected_birth)
+        or os.getsid(process.pid) != expected_session_id
+    ):
+        raise OperatorError("candidate Git guard child identity differs")
+    return owned
+
+
+def _git_guard_child_owns_locks(
+    process: subprocess.Popen[bytes],
+    *,
+    expected_argv: Sequence[str],
+    expected_birth: Mapping[str, Any],
+    expected_session_id: int,
+    lock_identities: Sequence[tuple[int, ...]],
+) -> None:
+    """Bind exact Git-owned lock inodes to one admitted live child birth."""
+
+    if process.poll() is not None:
+        raise OperatorError("candidate Git guard child birth differs")
+    owned = _git_guard_exact_child_owned_inodes(
+        process,
+        expected_argv=expected_argv,
+        expected_birth=expected_birth,
+        expected_session_id=expected_session_id,
+    )
+    if (
+        any(
+            (identity[0], identity[1]) not in owned
+            for identity in lock_identities
+        )
+        or process.poll() is not None
+    ):
+        raise OperatorError("candidate Git guard child lock ownership differs")
+
+
+def _git_guard_drain_after_exit(process: subprocess.Popen[bytes]) -> None:
+    """Require a retired Git guard child to leave no hidden protocol output."""
+
+    if process.poll() is None:
+        raise OperatorError("candidate Git guard child remains live")
+    stdout = b"" if process.stdout is None else process.stdout.read(65_537)
+    stderr = b"" if process.stderr is None else process.stderr.read(65_537)
+    if stdout or stderr or len(stdout) > 65_536 or len(stderr) > 65_536:
+        raise OperatorError("candidate Git guard child emitted unexpected output")
+
+
+def _terminate_git_guard_process(process: subprocess.Popen[bytes]) -> None:
+    """Close, terminate if needed, and always reap one exact Git child."""
+
+    if process.stdin is not None and not process.stdin.closed:
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
+    if process.poll() is None:
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+            except OSError as exc:
+                raise OperatorError(
+                    "candidate Git guard child could not terminate"
+                ) from exc
+            try:
+                process.wait(timeout=4.0)
+            except subprocess.TimeoutExpired:
+                # The caller retains the exact lock inode identities and can
+                # safely retire those names only after this exact child dies.
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                except OSError as exc:
+                    raise OperatorError(
+                        "candidate Git guard child could not be killed"
+                    ) from exc
+                try:
+                    process.wait(timeout=5.0)
+                except subprocess.TimeoutExpired as exc:
+                    raise OperatorError(
+                        "candidate Git guard child was not reaped"
+                    ) from exc
+    if process.poll() is None:
+        raise OperatorError("candidate Git guard child remains live")
+
+
+def _unlink_exact_git_guard_lock(
+    path: Path,
+    *,
+    expected_identity: tuple[int, ...],
+    expected_parent_identity: tuple[int, ...],
+) -> None:
+    """Retire only an exact stale lock after its Git child is dead."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_fd = os.open(path.parent, flags)
+    except OSError as exc:
+        raise OperatorError(
+            "candidate Git guard lock parent is unavailable"
+        ) from exc
+    try:
+        parent = os.fstat(directory_fd)
+        parent_identity = (
+            int(parent.st_dev),
+            int(parent.st_ino),
+            int(parent.st_mode),
+            int(parent.st_uid),
+        )
+        if parent_identity != expected_parent_identity:
+            raise OperatorError("candidate Git guard lock parent changed")
+        try:
+            observed = os.stat(
+                path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        identity = (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_mode),
+            int(observed.st_uid),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_mtime_ns),
+            int(observed.st_ctime_ns),
+        )
+        if identity != expected_identity or stat.S_ISLNK(observed.st_mode):
+            raise OperatorError("candidate Git guard lock identity changed")
+        os.unlink(path.name, dir_fd=directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _validate_candidate_git_guard_health(
+    guard: _CandidateGitGuard,
+    *,
+    boundary: str,
+) -> dict[str, Any]:
+    """Require both Git-native guards and all three exact locks to remain live."""
+
+    if (
+        _ASEH_CANDIDATE_GIT_GUARD is not guard
+        or os.getpid() != guard.owner_pid
+        or threading.get_ident() != guard.owner_thread_id
+        or guard.reference_process.poll() is not None
+        or guard.index_process.poll() is not None
+        or os.getsid(os.getpid()) != guard.session_id
+        or _git_guard_lock_identity(guard.head_lock_path)
+        != guard.head_lock_identity
+        or _git_guard_lock_identity(guard.branch_lock_path)
+        != guard.branch_lock_identity
+        or _git_guard_lock_identity(guard.index_lock_path)
+        != guard.index_lock_identity
+        or any(
+            _git_guard_directory_identity(Path(name)) != identity
+            for name, identity in guard.control_parent_identities.items()
+        )
+        or _git("symbolic-ref", "-q", "HEAD") != guard.branch_ref
+        or _git("rev-parse", "HEAD") != guard.candidate_head
+        or _git("rev-parse", guard.branch_ref) != guard.candidate_head
+        or _git("rev-parse", "HEAD^{tree}") != guard.candidate_tree
+    ):
+        raise OperatorError(f"candidate Git guard differs: {boundary}")
+    _git_guard_child_owns_locks(
+        guard.reference_process,
+        expected_argv=[_trusted_git_executable(), "update-ref", "--stdin"],
+        expected_birth=guard.reference_process_birth,
+        expected_session_id=guard.session_id,
+        lock_identities=(),
+    )
+    _git_guard_child_owns_locks(
+        guard.index_process,
+        expected_argv=[_trusted_git_executable(), "update-index", "--stdin"],
+        expected_birth=guard.index_process_birth,
+        expected_session_id=guard.session_id,
+        lock_identities=(guard.index_lock_identity,),
+    )
+    return dict(guard.record)
+
+
+@contextmanager
+def _prepared_candidate_git_guard(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> Any:
+    """Hold Git-native ref and index transactions across candidate admission."""
+
+    global _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        _ASEH_CANDIDATE_GIT_GUARD is not None
+        or threading.current_thread() is not threading.main_thread()
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+    ):
+        raise OperatorError("candidate Git guard is contended or malformed")
+    branch_ref = _validate_candidate_git_branch_ref(
+        _git("symbolic-ref", "-q", "HEAD")
+    )
+    if (
+        _git("rev-parse", branch_ref) != candidate_head
+        or _git("rev-parse", "HEAD") != candidate_head
+        or _git("rev-parse", "HEAD^{tree}") != candidate_tree
+    ):
+        raise OperatorError("candidate Git guard branch identity differs")
+    head_lock = _git_guard_control_path("HEAD.lock")
+    branch_lock = _git_guard_control_path(f"{branch_ref}.lock")
+    index_lock = _git_guard_control_path("index.lock")
+    packed_lock = _git_guard_control_path("packed-refs.lock")
+    control_parent_identities = {
+        str(path.parent): _git_guard_directory_identity(path.parent)
+        for path in (head_lock, branch_lock, index_lock, packed_lock)
+    }
+    contention_deadline = time.monotonic() + 10.0
+    while any(
+        os.path.lexists(path)
+        for path in (head_lock, branch_lock, index_lock)
+    ):
+        if time.monotonic() >= contention_deadline:
+            raise OperatorError("candidate Git guard is contended")
+        time.sleep(0.05)
+    # A repository-wide pack/gc transaction is foreign to this worktree.
+    # Let normal maintenance drain before preparing our narrower loose-ref
+    # transaction, without ever claiming or unlinking its shared lock.
+    maintenance_deadline = time.monotonic() + 60.0
+    while os.path.lexists(packed_lock):
+        if time.monotonic() >= maintenance_deadline:
+            raise OperatorError(
+                "candidate Git guard is waiting on repository maintenance"
+            )
+        time.sleep(0.05)
+    if any(
+        _git_guard_directory_identity(Path(name)) != identity
+        for name, identity in control_parent_identities.items()
+    ):
+        raise OperatorError("candidate Git guard namespace changed")
+    initial_index_entries_digest = _identity(
+        _git_bytes("ls-files", "--stage", "-z")
+    )
+    initial_index_flags_digest = _ordinary_git_index_flags_digest()
+
+    git = _trusted_git_executable()
+    environment = _trusted_git_environment()
+    reference: subprocess.Popen[bytes] | None = None
+    index: subprocess.Popen[bytes] | None = None
+    reference_trace: _GitGuardSyscallTrace | None = None
+    index_trace: _GitGuardSyscallTrace | None = None
+    guard: _CandidateGitGuard | None = None
+    head_identity: tuple[int, ...] | None = None
+    branch_identity: tuple[int, ...] | None = None
+    index_identity: tuple[int, ...] | None = None
+    reference_birth: Mapping[str, Any] | None = None
+    index_birth: Mapping[str, Any] | None = None
+    session_id = os.getsid(os.getpid())
+    body_error: BaseException | None = None
+    cleanup_errors: list[BaseException] = []
+
+    def observe_reference_locks() -> None:
+        nonlocal head_identity, branch_identity
+        if reference_trace is None:
+            return
+        captured_head = reference_trace.owned_lock_identities.get("head")
+        captured_branch = reference_trace.owned_lock_identities.get("branch")
+        if captured_head is not None:
+            if head_identity is not None and head_identity[:2] != captured_head[:2]:
+                raise OperatorError("candidate Git HEAD lock inode changed")
+            head_identity = captured_head
+        if captured_branch is not None:
+            if (
+                branch_identity is not None
+                and branch_identity[:2] != captured_branch[:2]
+            ):
+                raise OperatorError("candidate Git branch lock inode changed")
+            branch_identity = captured_branch
+        if (
+            head_identity is not None
+            and branch_identity is not None
+            and head_identity[:2] == branch_identity[:2]
+        ):
+            raise OperatorError(
+                "candidate Git reference locks are not distinct"
+            )
+
+    def observe_index_lock() -> None:
+        nonlocal index_identity
+        if index_trace is None:
+            return
+        captured = index_trace.owned_lock_identities.get("index")
+        if captured is None:
+            return
+        if index_identity is not None and index_identity[:2] != captured[:2]:
+            raise OperatorError("candidate Git index lock inode changed")
+        index_identity = captured
+
+    try:
+        reference, reference_trace = _start_traced_git_guard_process(
+            (git, "update-ref", "--stdin"),
+            cwd=ROOT,
+            env=environment,
+            expected_session_id=session_id,
+            lock_paths={"head": head_lock, "branch": branch_lock},
+        )
+        reference_birth = reference_trace.expected_birth
+        if reference_birth.get("parent_pid") != os.getpid():
+            raise OperatorError("candidate Git reference guard is not a child")
+        _git_guard_write(reference, b"start\n", trace=reference_trace)
+        _git_guard_read_line(
+            reference,
+            expected=b"start: ok\n",
+            trace=reference_trace,
+        )
+        _git_guard_write(
+            reference,
+            f"verify HEAD {candidate_head}\nprepare\n".encode("ascii"),
+            trace=reference_trace,
+        )
+        _git_guard_read_line(
+            reference,
+            expected=b"prepare: ok\n",
+            observer=observe_reference_locks,
+            trace=reference_trace,
+        )
+        _git_guard_detach_trace(
+            reference_trace,
+            observer=observe_reference_locks,
+            require_live=True,
+        )
+        if head_identity is None or branch_identity is None:
+            raise OperatorError(
+                "candidate Git reference guard ownership is incomplete"
+            )
+        observed_head_identity = _git_guard_lock_identity(head_lock)
+        observed_branch_identity = _git_guard_lock_identity(branch_lock)
+        if (
+            head_identity != observed_head_identity
+            or branch_identity != observed_branch_identity
+        ):
+            raise OperatorError(
+                "candidate Git reference lock changed after prepare"
+            )
+        if head_identity[:2] == branch_identity[:2]:
+            raise OperatorError(
+                "candidate Git reference locks are not distinct"
+            )
+        _git_guard_child_owns_locks(
+            reference,
+            expected_argv=[git, "update-ref", "--stdin"],
+            expected_birth=reference_birth,
+            expected_session_id=session_id,
+            # Prepared update-ref closes the lock descriptors after recording
+            # the transaction. Exact pre-absence plus the successful prepare
+            # reply binds these retained path identities to this child.
+            lock_identities=(),
+        )
+
+        index, index_trace = _start_traced_git_guard_process(
+            (git, "update-index", "--stdin"),
+            cwd=ROOT,
+            env=environment,
+            expected_session_id=session_id,
+            lock_paths={"index": index_lock},
+        )
+        index_birth = index_trace.expected_birth
+        if index_birth.get("parent_pid") != os.getpid():
+            raise OperatorError("candidate Git index guard is not a child")
+        deadline = time.monotonic() + 10.0
+        while index_identity is None:
+            _git_guard_trace_advance(
+                index_trace,
+                observer=observe_index_lock,
+            )
+            if index.returncode is not None or time.monotonic() >= deadline:
+                raise OperatorError("candidate Git index guard did not prepare")
+            time.sleep(0.0001)
+        _git_guard_detach_trace(
+            index_trace,
+            observer=observe_index_lock,
+            require_live=True,
+        )
+        if index_identity != _git_guard_lock_identity(index_lock):
+            raise OperatorError(
+                "candidate Git index lock changed after binding"
+            )
+        _git_guard_child_owns_locks(
+            index,
+            expected_argv=[git, "update-index", "--stdin"],
+            expected_birth=index_birth,
+            expected_session_id=session_id,
+            lock_identities=(index_identity,),
+        )
+        prepared_at_ns = time.time_ns()
+        record: dict[str, Any] = {
+            "schema": ASEH_R30_CANDIDATE_GIT_GUARD_SCHEMA,
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "branch_ref": branch_ref,
+            "owner_pid": os.getpid(),
+            "owner_thread_id": threading.get_ident(),
+            "reference_pid": reference.pid,
+            "index_pid": index.pid,
+            "reference_process_birth": reference_birth,
+            "index_process_birth": index_birth,
+            "session_id": session_id,
+            "prepared_at_ns": prepared_at_ns,
+            "state": "prepared_verify_only",
+            "protocol_cid": _identity(
+                _r30_candidate_git_guard_protocol(candidate_head)
+            ),
+            "head_lock_identity": list(head_identity),
+            "branch_lock_identity": list(branch_identity),
+            "index_lock_identity": list(index_identity),
+            "packed_refs_lock_absent_before_guard_start": True,
+        }
+        record["guard_cid"] = _identity(record)
+        guard = _CandidateGitGuard(
+            owner_pid=os.getpid(),
+            owner_thread_id=threading.get_ident(),
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            branch_ref=branch_ref,
+            reference_process=reference,
+            index_process=index,
+            head_lock_path=head_lock,
+            branch_lock_path=branch_lock,
+            index_lock_path=index_lock,
+            packed_refs_lock_path=packed_lock,
+            head_lock_identity=head_identity,
+            branch_lock_identity=branch_identity,
+            index_lock_identity=index_identity,
+            reference_process_birth=reference_birth,
+            index_process_birth=index_birth,
+            control_parent_identities=control_parent_identities,
+            session_id=session_id,
+            record=record,
+        )
+        _ASEH_CANDIDATE_GIT_GUARD = guard
+        _validate_candidate_git_guard_health(guard, boundary="scope entry")
+        yield guard
+    except BaseException as exc:
+        body_error = exc
+        raise
+    finally:
+        _ASEH_CANDIDATE_GIT_GUARD = None
+        for trace, observer in (
+            (reference_trace, observe_reference_locks),
+            (index_trace, observe_index_lock),
+        ):
+            if trace is None or not trace.active:
+                continue
+            try:
+                _git_guard_detach_trace(
+                    trace,
+                    observer=observer,
+                    require_live=False,
+                )
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+        if reference is not None:
+            try:
+                if reference.poll() is not None:
+                    raise OperatorError(
+                        "candidate Git reference guard exited before retirement"
+                    )
+                _git_guard_write(reference, b"abort\n")
+                _git_guard_read_line(reference, expected=b"abort: ok\n")
+                if reference.stdin is not None:
+                    reference.stdin.close()
+                if reference.wait(timeout=10.0) != 0:
+                    raise OperatorError(
+                        "candidate Git reference guard retirement failed"
+                    )
+                _git_guard_drain_after_exit(reference)
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+            finally:
+                try:
+                    _terminate_git_guard_process(reference)
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+        if index is not None:
+            try:
+                if index.poll() is not None:
+                    raise OperatorError(
+                        "candidate Git index guard exited before retirement"
+                    )
+                if index.stdin is not None:
+                    index.stdin.close()
+                if index.wait(timeout=10.0) != 0:
+                    raise OperatorError(
+                        "candidate Git index guard retirement failed"
+                    )
+                _git_guard_drain_after_exit(index)
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+            finally:
+                try:
+                    _terminate_git_guard_process(index)
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+
+        owned_locks = (
+            (head_lock, head_identity, reference),
+            (branch_lock, branch_identity, reference),
+            (index_lock, index_identity, index),
+        )
+        for lock_path, lock_identity, owner_process in owned_locks:
+            if lock_identity is None:
+                continue
+            try:
+                if (
+                    _git_guard_observed_lock_identity(lock_path)
+                    != lock_identity
+                ):
+                    # A successor may legitimately acquire the same pathname
+                    # after our child removes its inode.  It is never ours to
+                    # wait for, unlink, or report as failed retirement.
+                    continue
+                if owner_process is None or owner_process.poll() is None:
+                    raise OperatorError(
+                        "candidate Git guard lock owner remains live"
+                    )
+                _unlink_exact_git_guard_lock(
+                    lock_path,
+                    expected_identity=lock_identity,
+                    expected_parent_identity=control_parent_identities[
+                        str(lock_path.parent)
+                    ],
+                )
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+        for lock_path, lock_identity, _owner_process in owned_locks:
+            if (
+                lock_identity is None
+                and _git_guard_observed_lock_identity(lock_path) is not None
+            ):
+                cleanup_errors.append(
+                    OperatorError(
+                        "candidate Git guard left an unbound partial lock"
+                    )
+                )
+        try:
+            if (
+                any(
+                    identity is not None
+                    and _git_guard_observed_lock_identity(path) == identity
+                    for path, identity, _owner in owned_locks
+                )
+                or any(
+                    _git_guard_directory_identity(Path(name)) != identity
+                    for name, identity in control_parent_identities.items()
+                )
+                or _git("symbolic-ref", "-q", "HEAD") != branch_ref
+                or _git("rev-parse", "HEAD") != candidate_head
+                or _git("rev-parse", branch_ref) != candidate_head
+                or _git("rev-parse", "HEAD^{tree}") != candidate_tree
+                or _git("status", "--porcelain=v1", "--untracked-files=all")
+                or _identity(_git_bytes("ls-files", "--stage", "-z"))
+                != initial_index_entries_digest
+                or _ordinary_git_index_flags_digest()
+                != initial_index_flags_digest
+            ):
+                raise OperatorError(
+                    "candidate Git endpoint changed during guard retirement"
+                )
+        except BaseException as exc:
+            cleanup_errors.append(exc)
+        if cleanup_errors and body_error is not None:
+            for cleanup_error in cleanup_errors:
+                body_error.add_note(
+                    "candidate Git guard cleanup also failed: "
+                    f"{type(cleanup_error).__name__}: {cleanup_error}"
+                )
+        elif cleanup_errors:
+            failure = OperatorError("candidate Git guard cleanup failed")
+            for cleanup_error in cleanup_errors[1:]:
+                failure.add_note(
+                    f"{type(cleanup_error).__name__}: {cleanup_error}"
+                )
+            raise failure from cleanup_errors[0]
+
+
+@contextmanager
+def _repair_authorization_candidate_git_guard_if_required(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+) -> Any:
+    """Fence only the direct R30 child; preserve closed R1-R29 behavior."""
+
+    r30_receipt_path = paths.get(
+        "repair_candidate_git_epoch_guard_transition_receipt"
+    )
+    r30_attempt_path = paths.get(
+        "repair_candidate_git_epoch_guard_authorization_attempt"
+    )
+    if not isinstance(r30_receipt_path, Path) or not isinstance(
+        r30_attempt_path, Path
+    ):
+        yield None
+        return
+    if _git("show", "-s", "--format=%P", candidate_head).split() != [
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+    ]:
+        yield None
+        return
+    with _prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as guard:
+        yield guard
 
 
 def _git_changed_paths(base: str, target: str) -> tuple[str, ...]:
@@ -19328,6 +22391,19 @@ def _assert_candidate_authorization_witness(
     expected_tree: str,
     boundary: str,
 ) -> None:
+    guard = _ASEH_CANDIDATE_GIT_GUARD
+    if guard is not None:
+        if (
+            guard.candidate_head != expected_head
+            or guard.candidate_tree != expected_tree
+        ):
+            raise OperatorError(
+                "candidate Git guard is outside authorization witness authority"
+            )
+        _validate_candidate_git_guard_health(
+            guard,
+            boundary=f"before {boundary}",
+        )
     observed = _candidate_authorization_witness(
         expected_head=expected_head,
         expected_tree=expected_tree,
@@ -19336,6 +22412,128 @@ def _assert_candidate_authorization_witness(
         raise OperatorError(
             f"R11 candidate changed across authorization boundary: {boundary}"
         )
+    if guard is not None:
+        _validate_candidate_git_guard_health(
+            guard,
+            boundary=f"after {boundary}",
+        )
+
+
+def _r30_durable_candidate_witness(
+    *,
+    authorization_witness: Mapping[str, str],
+    candidate_git_guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind semantic endpoint state while leaving reflogs epoch-local."""
+
+    witness = dict(authorization_witness)
+    guard = dict(candidate_git_guard)
+    fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != fields
+        or guard.get("schema") != ASEH_R30_CANDIDATE_GIT_GUARD_SCHEMA
+        or guard.get("candidate_head") != witness.get("head")
+        or guard.get("candidate_tree") != witness.get("tree")
+        or guard.get("branch_ref") != witness.get("branch_ref")
+        or guard.get("state") != "prepared_verify_only"
+        or guard.get("guard_cid")
+        != _identity({key: value for key, value in guard.items() if key != "guard_cid"})
+    ):
+        raise OperatorError("R30 durable candidate witness input differs")
+    durable: dict[str, Any] = {
+        "schema": ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA,
+        "head": witness["head"],
+        "tree": witness["tree"],
+        "branch_ref": witness["branch_ref"],
+        "index_entries_digest": witness["index_entries_digest"],
+        "index_flags_digest": witness["index_flags_digest"],
+        "status_digest": witness["status_digest"],
+        "authorization_v1_witness_cid": _identity(witness),
+        "authorization_guard_cid": guard["guard_cid"],
+        "reflog_binding": "strict_v1_authorization_epoch_only",
+    }
+    durable["witness_cid"] = _identity(durable)
+    return _validate_r30_durable_candidate_witness(durable)
+
+
+def _validate_r30_durable_candidate_witness(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R30 durable candidate witness is invalid")
+    witness = dict(value)
+    fields = {
+        "schema",
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "authorization_v1_witness_cid",
+        "authorization_guard_cid",
+        "reflog_binding",
+        "witness_cid",
+    }
+    unsigned = dict(witness)
+    witness_cid = str(unsigned.pop("witness_cid", "") or "")
+    if (
+        set(witness) != fields
+        or witness.get("schema") != ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA
+        or re.fullmatch(r"[0-9a-f]{40}", str(witness.get("head") or "")) is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(witness.get("tree") or "")) is None
+        or _validate_candidate_git_branch_ref(witness.get("branch_ref"))
+        != witness.get("branch_ref")
+        or witness.get("status_digest") != _identity(b"")
+        or witness.get("reflog_binding") != "strict_v1_authorization_epoch_only"
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(witness.get(name) or ""))
+            is None
+            for name in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "authorization_v1_witness_cid",
+                "authorization_guard_cid",
+            )
+        )
+        or witness_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R30 durable candidate witness differs")
+    return witness
+
+
+def _assert_r30_durable_candidate_witness(
+    durable_value: Mapping[str, Any],
+    *,
+    active_authorization_witness: Mapping[str, str],
+) -> dict[str, Any]:
+    """Match a fresh guarded v1 epoch to the durable semantic endpoint."""
+
+    durable = _validate_r30_durable_candidate_witness(durable_value)
+    active = dict(active_authorization_witness)
+    if any(
+        durable.get(name) != active.get(name)
+        for name in (
+            "head",
+            "tree",
+            "branch_ref",
+            "index_entries_digest",
+            "index_flags_digest",
+            "status_digest",
+        )
+    ):
+        raise OperatorError("R30 durable candidate endpoint changed")
+    return durable
 
 
 def _admit_exact_r13_transition_chain(
@@ -19939,6 +23137,46 @@ def _admit_exact_r29_transition_chain(
         str(item.get("receipt_cid") or "") for item in chain[:-1]
     ) != ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS:
         raise OperatorError("R29 historical receipt vector differs")
+    return chain
+
+
+def _admit_exact_r30_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R27 plus adjacent R30, never failed R28/R29."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R30 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    last_index = len(ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = (
+            None if index == 0 else (30 if index == last_index else index + 1)
+        )
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R30 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R30 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("R30 historical receipt vector differs")
     return chain
 
 
@@ -20656,6 +23894,111 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R28 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r30_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r27_admitted = chain[-2]
+        active_admitted = chain[-1]
+        durable = (
+            transition.get("durable_candidate_witness")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        guard = (
+            transition.get("candidate_git_guard")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        failure_evidence_cid = (
+            transition.get("projection_recovery_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        preflight_failure_evidence_cid = (
+            transition.get("r25_preflight_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        recovery_admission = (
+            _validate_r26_projection_recovery_prestart_admission(
+                admission.get("projection_recovery_prestart_admission"),
+                expected_failure_evidence_cid=str(
+                    failure_evidence_cid or ""
+                ),
+                expected_preflight_failure_evidence_cid=str(
+                    preflight_failure_evidence_cid or ""
+                ),
+            )
+            if isinstance(
+                admission.get("projection_recovery_prestart_admission"),
+                Mapping,
+            )
+            else None
+        )
+        projection_matches_events = admission.get("projection_matches_events")
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or transition.get("base_head")
+            != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+            or transition.get("published_r27_base_head")
+            != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+            or transition.get("published_r27_base_tree")
+            != ASEH_R30_PUBLISHED_R27_BASE_TREE
+            or transition.get("failed_unpublished_r29_head")
+            != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+            or transition.get("unreceipted_effective_changed_paths")
+            != list(ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+            or not isinstance(transition.get("authorization_attempt"), Mapping)
+            or not isinstance(durable, Mapping)
+            or not isinstance(guard, Mapping)
+            or r27_admitted.get("receipt_cid")
+            != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r27_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r27_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or transition.get("r29_authorization_attempt_cid")
+            != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+            or transition.get("r29_authorization_failure_evidence_cid")
+            != _r30_expected_r29_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+            or (
+                isinstance(recovery_admission, Mapping)
+                and transition.get(
+                    "projection_recovery_prestart_semantic_admission_cid"
+                )
+                != recovery_admission.get("semantic_admission_cid")
+            )
+            or type(projection_matches_events) is not bool
+            or (
+                projection_matches_events is False
+                and (
+                    not isinstance(recovery_admission, Mapping)
+                    or admission.get("projection_cid")
+                    != recovery_admission.get("before_projection_cid")
+                    or admission.get("event_cursor")
+                    != recovery_admission.get("before_event_watermark")
+                )
+            )
+            or (
+                projection_matches_events is True
+                and recovery_admission is not None
+            )
+        ):
+            raise OperatorError(
+                "current R30 candidate lacks its exact admitted validation seal"
+            )
     elif parents == [
         REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
     ]:
@@ -20758,6 +24101,58 @@ def _assert_exact_run_launch_admission(
     else:
         transition = admission.get("repair_transition")
         continuity = admission.get("canonical_continuity")
+        if (
+            isinstance(transition, Mapping)
+            and transition.get("schema")
+            == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+        ):
+            chain = _admit_exact_r30_transition_chain(
+                admission.get("repair_transition_chain")
+            )
+            active_admitted = chain[-1]
+            if (
+                len(parents) != 2
+                or transition.get("repair_head") == candidate_head
+                or transition.get("repair_head")
+                != active_admitted.get("repair_head")
+                or transition.get("receipt_cid")
+                != active_admitted.get("receipt_cid")
+                or transition.get("r29_authorization_attempt_cid")
+                != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+                or not isinstance(continuity, Mapping)
+                or not isinstance(continuity.get("repair_to_current"), Mapping)
+                or admission.get("historical_live_authorizing_receipt_cid")
+                != transition.get("receipt_cid")
+                or type(admission.get("projection_matches_events")) is not bool
+            ):
+                raise OperatorError(
+                    "current descendant lacks its retained R30 validation seal"
+                )
+            continuity_edge = continuity.get(
+                "sealed_owner_foreign_recovery_waiter_admission_to_"
+                "candidate_git_epoch_guard"
+            )
+            if (
+                not isinstance(continuity_edge, Mapping)
+                or dict(continuity_edge) != dict(transition)
+            ):
+                raise OperatorError(
+                    "current descendant lacks its explicit R27-to-R30 edge"
+                )
+            _validate_r29_historical_live_effect_continuity(
+                continuity["repair_to_current"],
+                authorization_candidate_head=str(transition["repair_head"]),
+                authorization_candidate_tree=str(transition["repair_tree"]),
+                active_candidate_head=candidate_head,
+                active_candidate_tree=candidate_tree,
+            )
+            _git(
+                "merge-base",
+                "--is-ancestor",
+                str(transition["repair_head"]),
+                candidate_head,
+            )
+            return
         chain = _admit_exact_r29_transition_chain(
             admission.get("repair_transition_chain")
         )
@@ -21108,6 +24503,17 @@ def _r29_validation_working_tree_scope(command: Sequence[str]) -> str:
         == REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS[
             -2
         ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r30_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R30 board check on the guarded worktree."""
+
+    if (
+        tuple(command)
+        == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -22243,10 +25649,10 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R29 repair matrix against committed bytes."""
+    """Run the bounded R16-R30 repair matrix against committed bytes."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
     }:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
@@ -22254,7 +25660,14 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 29:
+    if _revision == 30:
+        matrix = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r30_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r30_validation_working_tree_scope
+        executor_class_for = _r30_validation_executor_class
+    elif _revision == 29:
         matrix = (
             REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
         )
@@ -22815,6 +26228,22 @@ def _run_repair_sealed_validation_contract_dispatch_correction_transition_valida
     )
 
 
+def _run_repair_candidate_git_epoch_guard_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded direct-R27 R30 suffix under its prepared Git epoch."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=30,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -23174,6 +26603,16 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-sealed-validation-contract-dispatch-correction-"
         "authorization-attempt.json"
+    )
+    result["repair_candidate_git_epoch_guard_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-candidate-git-epoch-guard-transition.json"
+    )
+    result["repair_candidate_git_epoch_guard_authorization_attempt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-candidate-git-epoch-guard-authorization-attempt.json"
     )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
@@ -25382,6 +28821,24 @@ def _validate_repair_sealed_validation_contract_dispatch_correction_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=29,
+    )
+
+
+def _validate_repair_candidate_git_epoch_guard_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit R30 directly on immutable R27, never failed R28 or R29."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=30,
     )
 
 
@@ -28065,14 +31522,35 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R29 suffix."""
+    """Admit one immutable transition in the exact R16-R30 suffix."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30
     }:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 29:
+    if _revision == 30:
+        receipt_id = _repair_candidate_git_epoch_guard_transition_receipt_id(
+            receipt
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        changed_paths_value = (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_AUTHORITY
+        commands = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r30_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+        executor_class_for = _r30_validation_executor_class
+        scope_for = _r30_validation_working_tree_scope
+    elif _revision == 29:
         receipt_id = (
             _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
                 receipt
@@ -28501,7 +31979,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         != [
             (
                 "ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"
-                if _revision == 29
+                if _revision in {29, 30}
                 else f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"
             )
         ]
@@ -28565,6 +32043,33 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     ):
         raise OperatorError(
             "bootstrap repair R29 unreceipted effective Git proof differs"
+        )
+    if _revision == 30 and (
+        _git("show", "-s", "--format=%P", base_head).split()
+        != [
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ]
+        or _git("rev-parse", f"{ASEH_R30_PUBLISHED_R27_BASE_HEAD}^{{tree}}")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or receipt.get("published_r27_base_head")
+        != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+        or receipt.get("published_r27_base_tree")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or receipt.get("failed_unpublished_r28_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or receipt.get("failed_unpublished_r28_tree")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        or receipt.get("failed_unpublished_r29_head") != base_head
+        or receipt.get("failed_unpublished_r29_tree") != base_tree
+        or _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+        != ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        or receipt.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or receipt.get("unreceipted_effective_patch_digest")
+        != _git_patch_digest(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair R30 unreceipted effective Git proof differs"
         )
     expected_witness_fields = {
         "head",
@@ -28838,7 +32343,33 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "authorization_attempt": dict(receipt["authorization_attempt"]),
             }
         )
-    if _revision in {26, 27, 28, 29}:
+    if _revision == 30:
+        transition_result.update(
+            {
+                "published_r27_base_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+                "published_r27_base_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+                "failed_unpublished_r28_head": (
+                    REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+                ),
+                "failed_unpublished_r28_tree": (
+                    REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+                ),
+                "failed_unpublished_r29_head": base_head,
+                "failed_unpublished_r29_tree": base_tree,
+                "unreceipted_effective_changed_paths": list(
+                    ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+                ),
+                "unreceipted_effective_patch_digest": str(
+                    receipt.get("unreceipted_effective_patch_digest") or ""
+                ),
+                "authorization_attempt": dict(receipt["authorization_attempt"]),
+                "durable_candidate_witness": dict(
+                    receipt["durable_candidate_witness"]
+                ),
+                "candidate_git_guard": dict(receipt["candidate_git_guard"]),
+            }
+        )
+    if _revision in {26, 27, 28, 29, 30}:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
             _validate_r25_projection_recovery_failure_evidence(failure_value)
@@ -28886,7 +32417,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         transition_result[
             "projection_recovery_prestart_semantic_admission_cid"
         ] = recovery["semantic_admission_cid"]
-        if _revision in {27, 28, 29}:
+        if _revision in {27, 28, 29, 30}:
             terminal_value = receipt.get("r26_terminal_failure_evidence")
             terminal = (
                 _validate_r27_r26_terminal_failure_evidence(terminal_value)
@@ -28898,7 +32429,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result["r26_terminal_failure_evidence_cid"] = (
                 terminal["evidence_cid"]
             )
-        if _revision in {28, 29}:
+        if _revision in {28, 29, 30}:
             r27_failure_value = receipt.get(
                 "r27_initial_health_failure_evidence"
             )
@@ -28934,6 +32465,49 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result[
                 "r28_authorization_failure_evidence_cid"
             ] = r28_failure["evidence_cid"]
+        if _revision == 30:
+            r28_failure_value = receipt.get(
+                "r28_authorization_failure_evidence"
+            )
+            r29_failure_value = receipt.get(
+                "r29_authorization_failure_evidence"
+            )
+            r29_attempt_value = receipt.get("r29_authorization_attempt")
+            r28_failure = (
+                _validate_r29_r28_authorization_failure_evidence(
+                    r28_failure_value
+                )
+                if isinstance(r28_failure_value, Mapping)
+                else None
+            )
+            r29_failure = (
+                _validate_r30_r29_authorization_failure_evidence(
+                    r29_failure_value
+                )
+                if isinstance(r29_failure_value, Mapping)
+                else None
+            )
+            r29_attempt = (
+                _validate_r30_failed_r29_authorization_attempt(
+                    r29_attempt_value
+                )
+                if isinstance(r29_attempt_value, Mapping)
+                else None
+            )
+            if not all(
+                isinstance(value, Mapping)
+                for value in (r28_failure, r29_failure, r29_attempt)
+            ):
+                raise OperatorError("R30 failed authorization evidence is absent")
+            transition_result[
+                "r28_authorization_failure_evidence_cid"
+            ] = r28_failure["evidence_cid"]
+            transition_result[
+                "r29_authorization_failure_evidence_cid"
+            ] = r29_failure["evidence_cid"]
+            transition_result["r29_authorization_attempt_cid"] = (
+                r29_attempt["attempt_cid"]
+            )
     elif _revision == 25:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
@@ -29654,6 +33228,93 @@ def _r29_population_requires_policy(
     )
 
 
+def _r30_candidate_requires_policy(*, head: str, tree: str) -> bool:
+    """Recognize the exact committed R30 child from its Git identity."""
+
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD]
+        and _git(
+            "show",
+            "-s",
+            "--format=%P",
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD,
+        ).split()
+        == [
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ]
+        and _git(
+            "show",
+            "-s",
+            "--format=%P",
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD,
+        ).split()
+        == [ASEH_R30_PUBLISHED_R27_BASE_HEAD]
+        and _git(
+            "rev-parse",
+            f"{REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD}^{{tree}}",
+        )
+        == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+        and _git(
+            "rev-parse",
+            f"{REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD}^{{tree}}",
+        )
+        == REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        and _git("rev-parse", f"{ASEH_R30_PUBLISHED_R27_BASE_HEAD}^{{tree}}")
+        == ASEH_R30_PUBLISHED_R27_BASE_TREE
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_CHANGED_PATHS
+        and _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head)
+        == ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    )
+
+
+def _r30_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R30 child before its receipt exists."""
+
+    return _r30_candidate_requires_policy(
+        head=str(population.get("source_head") or ""),
+        tree=str(population.get("repository_tree_id") or ""),
+    )
+
+
+def _r30_launch_requires_git_guard(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+) -> bool:
+    """Guard exact R30 and every current tree retaining its receipt."""
+
+    receipt_path = paths.get(
+        "repair_candidate_git_epoch_guard_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_candidate_git_epoch_guard_authorization_attempt"
+    )
+    if not isinstance(receipt_path, Path) or not isinstance(
+        attempt_path, Path
+    ):
+        return False
+    if _r30_candidate_requires_policy(
+        head=candidate_head,
+        tree=candidate_tree,
+    ):
+        return True
+    return not _r29_receipt_name_is_absent(receipt_path)
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -29697,6 +33358,16 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     r29_path = paths.get(
         "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
     )
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    if isinstance(r30_path, Path) and (
+        r30_path.is_file() or _r30_population_requires_policy(population)
+    ):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
     if isinstance(r29_path, Path) and (
         r29_path.is_file() or _r29_population_requires_policy(population)
     ):
@@ -31488,6 +35159,217 @@ def _recheck_r29_admission_r28_receipt_absence(
             raise OperatorError("R29 owner-start authorization attempt differs")
 
 
+def _assert_r30_failed_one_shot_state(
+    *,
+    paths: Mapping[str, Path],
+    expected_r30_attempt: Mapping[str, Any] | None = None,
+    expected_r30_receipt: Mapping[str, Any] | None = None,
+    expected_r30_receipt_cid: str | None = None,
+) -> dict[str, Any]:
+    """Keep failed R28/R29 immutable and admit no retry alias."""
+
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
+    )
+    r29_attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt"
+    )
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    r30_attempt_path = paths.get(
+        "repair_candidate_git_epoch_guard_authorization_attempt"
+    )
+    if not all(
+        isinstance(path, Path)
+        for path in (
+            r28_path,
+            r29_path,
+            r29_attempt_path,
+            r30_path,
+            r30_attempt_path,
+        )
+    ):
+        raise OperatorError("R30 one-shot evidence paths are absent")
+    _assert_r29_unpublished_r28_receipt_absent(r28_path)
+    if not _r29_receipt_name_is_absent(r29_path):
+        raise OperatorError("R30 requires the failed R29 receipt to remain absent")
+    failed_attempt = _validate_r30_failed_r29_authorization_attempt(
+        _secure_runtime_json(
+            r29_attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+    )
+    if expected_r30_receipt_cid is None:
+        if expected_r30_receipt is not None or not _r29_receipt_name_is_absent(
+            r30_path
+        ):
+            raise OperatorError("R30 transition receipt appeared before publication")
+    else:
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_r30_receipt_cid) is None:
+            raise OperatorError("R30 transition receipt CID is invalid")
+        observed_receipt = _secure_runtime_json(
+            r30_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if (
+            _repair_candidate_git_epoch_guard_transition_receipt_id(
+                observed_receipt
+            )
+            != expected_r30_receipt_cid
+            or (
+                expected_r30_receipt is not None
+                and observed_receipt
+                != json.loads(_canonical_json(expected_r30_receipt))
+            )
+        ):
+            raise OperatorError("R30 transition receipt changed")
+    if expected_r30_attempt is None:
+        with _anchored_directory_descriptor(
+            r30_attempt_path.parent
+        ) as directory_fd:
+            if not _r21_path_absent(directory_fd, r30_attempt_path.name):
+                raise OperatorError(
+                    "R30 authorization attempt already exists; retry is denied"
+                )
+    else:
+        observed_attempt = _secure_runtime_json(
+            r30_attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if observed_attempt != json.loads(_canonical_json(expected_r30_attempt)):
+            raise OperatorError("R30 authorization attempt changed")
+    return failed_attempt
+
+
+def _assert_r30_historical_live_effect_admission(
+    *,
+    paths: Mapping[str, Path],
+    authorization_attempt: Mapping[str, Any],
+    authorization_candidate_head: str,
+    authorization_candidate_tree: str,
+    authorization_candidate_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> None:
+    """Revalidate R30 one-shot evidence at the live-effect release."""
+
+    durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    stored_guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+    )
+    attempt = _validate_r30_authorization_attempt_record(
+        authorization_attempt,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+        candidate_authorization_witness=authorization_candidate_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=stored_guard,
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=attempt,
+        expected_r30_receipt=authorization_receipt,
+        expected_r30_receipt_cid=authorizing_receipt_cid,
+    )
+    continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=authorization_candidate_head,
+        authorization_candidate_tree=authorization_candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+    if continuity is None:
+        _assert_r30_durable_candidate_witness(
+            durable,
+            active_authorization_witness=active_candidate_witness,
+        )
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != active_candidate_head
+        or active_guard.candidate_tree != active_candidate_tree
+    ):
+        raise OperatorError("R30 live effect lacks a fresh prepared Git guard")
+    _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="immediately before R30 historical live effect release",
+    )
+    _assert_candidate_authorization_witness(
+        active_candidate_witness,
+        expected_head=active_candidate_head,
+        expected_tree=active_candidate_tree,
+        boundary="immediately before R30 historical live effect release",
+    )
+
+
+def _recheck_r30_owner_start_authority(
+    *,
+    paths: Mapping[str, Path],
+    launch_admission: Mapping[str, Any],
+) -> None:
+    """Keep R30 failed-attempt and guarded receipt authority exact."""
+
+    transition = launch_admission.get("repair_transition")
+    if not (
+        isinstance(transition, Mapping)
+        and transition.get("schema")
+        == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+    ):
+        return
+    attempt = transition.get("authorization_attempt")
+    witness = transition.get("candidate_authorization_witness")
+    durable = transition.get("durable_candidate_witness")
+    guard = transition.get("candidate_git_guard")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (attempt, witness, durable, guard)
+    ):
+        raise OperatorError("R30 owner-start authority is absent")
+    admitted_attempt = _validate_r30_authorization_attempt_record(
+        attempt,
+        candidate_head=str(transition.get("repair_head") or ""),
+        candidate_tree=str(transition.get("repair_tree") or ""),
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=admitted_attempt,
+        expected_r30_receipt=None,
+        expected_r30_receipt_cid=str(transition.get("receipt_cid") or ""),
+    )
+
+
+def _recheck_active_owner_start_authority(
+    *,
+    paths: Mapping[str, Path],
+    launch_admission: Mapping[str, Any],
+) -> None:
+    """Recheck the exact active suffix without weakening older revisions."""
+
+    _recheck_r29_admission_r28_receipt_absence(
+        paths=paths,
+        launch_admission=launch_admission,
+    )
+    _recheck_r30_owner_start_authority(
+        paths=paths,
+        launch_admission=launch_admission,
+    )
+
+
 def _complete_r29_historical_live_prequalification(
     *,
     paths: Mapping[str, Path],
@@ -31773,6 +35655,276 @@ def _prequalify_r29_historical_live_launch(
     if is_descendant:
         return bundle
     return _complete_r29_historical_live_prequalification(
+        paths=paths,
+        bundle=bundle,
+        continuity_admission=None,
+    )
+
+
+def _complete_r30_historical_live_prequalification(
+    *,
+    paths: Mapping[str, Path],
+    bundle: Mapping[str, Any],
+    continuity_admission: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Release R30 live work after fresh epoch and suffix admission."""
+
+    receipt = bundle.get("receipt")
+    prior_chain = bundle.get("prior_chain")
+    transition = bundle.get("transition")
+    stored_policy = bundle.get("stored_policy_admission")
+    stored_evidence = bundle.get("stored_evidence")
+    attempt = bundle.get("authorization_attempt")
+    active_witness = bundle.get("active_source_witness")
+    receipt_cid = str(bundle.get("receipt_cid") or "")
+    active_head = str(bundle.get("active_source_head") or "")
+    active_tree = str(bundle.get("active_source_tree") or "")
+    if (
+        not isinstance(receipt, Mapping)
+        or not isinstance(prior_chain, list)
+        or not isinstance(transition, Mapping)
+        or not isinstance(stored_policy, Mapping)
+        or not isinstance(stored_evidence, Mapping)
+        or not isinstance(attempt, Mapping)
+        or not isinstance(active_witness, Mapping)
+        or bundle.get("fresh_evidence") is not None
+    ):
+        raise OperatorError("R30 historical live prequalification is incomplete")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    stored_witness = transition.get("candidate_authorization_witness")
+    durable = transition.get("durable_candidate_witness")
+    stored_guard = transition.get("candidate_git_guard")
+    is_descendant = active_head != anchor_head or active_tree != anchor_tree
+    if (
+        not isinstance(stored_witness, Mapping)
+        or not isinstance(durable, Mapping)
+        or not isinstance(stored_guard, Mapping)
+        or bundle.get("receipt_anchor_is_current") is not (not is_descendant)
+        or bundle.get("historical_live_deferred") is not is_descendant
+    ):
+        raise OperatorError("R30 historical live source identity differs")
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=anchor_head,
+        authorization_candidate_tree=anchor_tree,
+        active_candidate_head=active_head,
+        active_candidate_tree=active_tree,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r30_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=str(bundle.get("bootstrap_receipt_id") or ""),
+            prior_chain=prior_chain,
+            candidate_head=anchor_head,
+            candidate_tree=anchor_tree,
+            candidate_authorization_witness=stored_witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=stored_guard,
+            policy_admission=stored_policy,
+            authorizing_receipt_cid=receipt_cid,
+            authorization_attempt=attempt,
+            authorization_receipt=receipt,
+            active_candidate_head=active_head,
+            active_candidate_tree=active_tree,
+            active_candidate_authorization_witness=active_witness,
+            continuity_admission=sealed_continuity,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        active_witness,
+        expected_head=active_head,
+        expected_tree=active_tree,
+        boundary="after R30 live qualification on the active source",
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=attempt,
+        expected_r30_receipt=receipt,
+        expected_r30_receipt_cid=receipt_cid,
+    )
+    if (
+        admitted_policy != stored_policy
+        or fresh_evidence.get("active_policy_cid")
+        != stored_policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R30 historical live receipt changed during prequalification"
+        )
+    result = dict(bundle)
+    result["policy_admission"] = admitted_policy
+    result["fresh_evidence"] = fresh_evidence
+    result["historical_live_deferred"] = False
+    result["historical_live_effect_continuity"] = sealed_continuity
+    return result
+
+
+def _prequalify_r30_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R30 under a fresh prepared epoch before canonical DuckDB."""
+
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    if not isinstance(r30_path, Path):
+        return None
+    exact_candidate = _r30_population_requires_policy(population)
+    if _r29_receipt_name_is_absent(r30_path):
+        _assert_r30_failed_one_shot_state(paths=paths)
+        if exact_candidate:
+            raise OperatorError(
+                "active R30 historical-live policy receipt is absent"
+            )
+        return None
+    prior_chain = _load_exact_r27_receipt_chain(paths)
+    r27_receipt = prior_chain[-1]
+    receipt = _secure_runtime_json(
+        r30_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = _repair_candidate_git_epoch_guard_transition_receipt_id(
+        receipt
+    )
+    transition = _validate_repair_candidate_git_epoch_guard_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=r27_receipt,
+        rerun_validations=False,
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    stored_witness = transition.get("candidate_authorization_witness")
+    durable = transition.get("durable_candidate_witness")
+    stored_guard = transition.get("candidate_git_guard")
+    attempt = transition.get("authorization_attempt")
+    if (
+        any(
+            re.fullmatch(r"[0-9a-f]{40}", value) is None
+            for value in (current_head, current_tree, anchor_head, anchor_tree)
+        )
+        or _git("rev-parse", f"{current_head}^{{tree}}") != current_tree
+        or not all(
+            isinstance(value, Mapping)
+            for value in (stored_witness, durable, stored_guard, attempt)
+        )
+    ):
+        raise OperatorError(
+            "active R30 historical-live policy does not bind the current tree"
+        )
+    admitted_attempt = _validate_r30_authorization_attempt_record(
+        attempt,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=stored_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=stored_guard,
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=admitted_attempt,
+        expected_r30_receipt=receipt,
+        expected_r30_receipt_cid=receipt_cid,
+    )
+    is_descendant = current_head != anchor_head or current_tree != anchor_tree
+    if is_descendant:
+        _git("merge-base", "--is-ancestor", anchor_head, current_head)
+        if len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
+            raise OperatorError(
+                "R30 descendant live qualification requires a merge commit"
+            )
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != current_head
+        or active_guard.candidate_tree != current_tree
+    ):
+        raise OperatorError("R30 launch prequalification Git guard is absent")
+    _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="before R30 launch witness",
+    )
+    active_witness = _candidate_authorization_witness(
+        expected_head=current_head,
+        expected_tree=current_tree,
+    )
+    if not is_descendant:
+        _assert_r30_durable_candidate_witness(
+            durable,
+            active_authorization_witness=active_witness,
+        )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r27_historical_live_validation_executor_contract()
+    stored_policy_value = receipt.get("historical_live_policy_admission")
+    stored_policy = _admit_r30_historical_live_policy_admission(
+        stored_policy_value if isinstance(stored_policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=stored_witness,
+        executor_contract=executor_contract,
+        durable_candidate_witness=durable,
+    )
+    stored_evidence_value = receipt.get("historical_live_execution_evidence")
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError("active R30 stored live evidence is absent")
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=stored_policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=stored_witness,
+        durable_candidate_witness=durable,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    exact_chain = _admit_exact_r30_transition_chain([*prior_chain, receipt])
+    bundle = {
+        "receipt": receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": stored_policy,
+        "stored_policy_admission": stored_policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": None,
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "authorization_attempt": admitted_attempt,
+        "candidate_authorization_witness_cid": _identity(stored_witness),
+        "policy_candidate_witness_cid": _identity(stored_witness),
+        "active_source_witness": dict(active_witness),
+        "active_source_witness_cid": _identity(active_witness),
+        "active_source_head": current_head,
+        "active_source_tree": current_tree,
+        "receipt_anchor_is_current": not is_descendant,
+        "historical_live_deferred": is_descendant,
+        "historical_live_effect_continuity": None,
+        "r28_receipt_absent": True,
+        "r29_receipt_absent": True,
+        "r29_authorization_attempt_cid": (
+            ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+    }
+    if is_descendant:
+        return bundle
+    return _complete_r30_historical_live_prequalification(
         paths=paths,
         bundle=bundle,
         continuity_admission=None,
@@ -32229,6 +36381,7 @@ def _read_continuity_state(
     r27_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r28_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r29_projection_recovery_prequalification: Mapping[str, Any] | None = None,
+    r30_projection_recovery_prequalification: Mapping[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
@@ -32243,7 +36396,8 @@ def _read_continuity_state(
         with _offline_merge_queue_guard(paths) as queue_database:
             recovery_admission: dict[str, Any] | None = None
             r26_projection_bundle = (
-                r29_projection_recovery_prequalification
+                r30_projection_recovery_prequalification
+                or r29_projection_recovery_prequalification
                 or r28_projection_recovery_prequalification
                 or r27_projection_recovery_prequalification
                 or r26_projection_recovery_prequalification
@@ -32522,75 +36676,80 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
         paths
     ) as authorization_directory_fd:
         candidate_head, candidate_tree = _assert_clean_tree(board)
-        anchor = _r14_native_seal_anchor(
-            paths,
-            current_head=candidate_head,
-        )
-        if anchor is None:
-            return _authorize_repair_transition_locked(
-                board=board,
-                config=_config,
-                paths=paths,
-                authorization_directory_fd=authorization_directory_fd,
+        with _repair_authorization_candidate_git_guard_if_required(
+            paths=paths,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        ):
+            anchor = _r14_native_seal_anchor(
+                paths,
+                current_head=candidate_head,
             )
-        authorization_witness = _candidate_authorization_witness(
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-        )
-        qualification_home = _build_aseh_qualification_home(paths)
-        interpreter = None
-        native_dependency = None
-        try:
-            interpreter = retain_control_plane_interpreter(
-                ASEH_RECEIPT_VALIDATION_PYTHON
-            )
-            native_dependency = _seal_r11_native_dependency(
-                paths=paths,
-                candidate_head=str(anchor["head"]),
-                candidate_tree=str(anchor["tree"]),
-                candidate_authorization_witness=dict(anchor["witness"]),
-                launch_admission=None,
-                active_candidate_head=candidate_head,
-                active_candidate_tree=candidate_tree,
-                active_candidate_authorization_witness=(
-                    authorization_witness
-                ),
-            )
-            system_directories_json = (
-                trusted_system_dependency_directories_json()
-            )
-            with _sealed_receipt_validation_executor_scope(
-                interpreter=interpreter,
-                native_dependency=native_dependency,
-                system_dependency_directories_json=(
-                    system_directories_json
-                ),
-                candidate_head=candidate_head,
-                candidate_tree=candidate_tree,
-                authorization_witness=authorization_witness,
-                base_environment=_sealed_owner_delegation_environment(
-                    qualification_home
-                ),
-            ):
+            if anchor is None:
                 return _authorize_repair_transition_locked(
                     board=board,
                     config=_config,
                     paths=paths,
-                    authorization_directory_fd=(
-                        authorization_directory_fd
+                    authorization_directory_fd=authorization_directory_fd,
+                )
+            authorization_witness = _candidate_authorization_witness(
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+            )
+            qualification_home = _build_aseh_qualification_home(paths)
+            interpreter = None
+            native_dependency = None
+            try:
+                interpreter = retain_control_plane_interpreter(
+                    ASEH_RECEIPT_VALIDATION_PYTHON
+                )
+                native_dependency = _seal_r11_native_dependency(
+                    paths=paths,
+                    candidate_head=str(anchor["head"]),
+                    candidate_tree=str(anchor["tree"]),
+                    candidate_authorization_witness=dict(anchor["witness"]),
+                    launch_admission=None,
+                    active_candidate_head=candidate_head,
+                    active_candidate_tree=candidate_tree,
+                    active_candidate_authorization_witness=(
+                        authorization_witness
                     ),
                 )
-        finally:
-            if native_dependency is not None:
-                try:
-                    os.close(native_dependency.descriptor.descriptor)
-                except OSError:
-                    pass
-            if interpreter is not None:
-                try:
-                    os.close(interpreter.descriptor)
-                except OSError:
-                    pass
+                system_directories_json = (
+                    trusted_system_dependency_directories_json()
+                )
+                with _sealed_receipt_validation_executor_scope(
+                    interpreter=interpreter,
+                    native_dependency=native_dependency,
+                    system_dependency_directories_json=(
+                        system_directories_json
+                    ),
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    authorization_witness=authorization_witness,
+                    base_environment=_sealed_owner_delegation_environment(
+                        qualification_home
+                    ),
+                ):
+                    return _authorize_repair_transition_locked(
+                        board=board,
+                        config=_config,
+                        paths=paths,
+                        authorization_directory_fd=(
+                            authorization_directory_fd
+                        ),
+                    )
+            finally:
+                if native_dependency is not None:
+                    try:
+                        os.close(native_dependency.descriptor.descriptor)
+                    except OSError:
+                        pass
+                if interpreter is not None:
+                    try:
+                        os.close(interpreter.descriptor)
+                    except OSError:
+                        pass
 
 
 def _authorize_repair_sealed_owner_identity_transition_if_applicable(
@@ -36598,6 +40757,22 @@ def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
+        r30_result = (
+            _authorize_repair_candidate_git_epoch_guard_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r30_result is not None:
+            return r30_result
         r29_result = (
             _authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
                 board=board,
@@ -37076,6 +41251,431 @@ def _authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_a
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R28 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_candidate_git_epoch_guard_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize exact R30 on R27 without retrying failed R28 or R29."""
+
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    attempt_path = paths.get(
+        "repair_candidate_git_epoch_guard_authorization_attempt"
+    )
+    if not isinstance(r30_path, Path) or not isinstance(attempt_path, Path):
+        return None
+    if r30_path.parent != attempt_path.parent or not _same_namespace_identity(
+        os.fstat(authorization_directory_fd),
+        os.stat(r30_path.parent, follow_symlinks=False),
+    ):
+        raise OperatorError("R30 authorization evidence directory differs")
+    prior_chain = _admit_exact_r27_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("bootstrap repair R30 prior vector differs")
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+        or previous_transition.get("repair_tree")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or previous_transition.get("receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+    ):
+        raise OperatorError("bootstrap repair R30 prior chain differs")
+
+    r30_receipt_absent = _r29_receipt_name_is_absent(
+        r30_path,
+        authorization_directory_fd=authorization_directory_fd,
+    )
+    if not r30_receipt_absent:
+        receipt = _secure_runtime_json(
+            r30_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_candidate_git_epoch_guard_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
+        attempt_value = receipt.get("authorization_attempt")
+        witness = receipt.get("candidate_authorization_witness")
+        durable = receipt.get("durable_candidate_witness")
+        guard = receipt.get("candidate_git_guard")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (attempt_value, witness, durable, guard)
+        ):
+            raise OperatorError("R30 authorization evidence is absent")
+        admitted_attempt = _validate_r30_authorization_attempt_record(
+            attempt_value,
+            candidate_head=str(receipt.get("repair_head") or ""),
+            candidate_tree=str(receipt.get("repair_tree") or ""),
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=guard,
+        )
+        _assert_r30_failed_one_shot_state(
+            paths=paths,
+            expected_r30_attempt=admitted_attempt,
+            expected_r30_receipt=receipt,
+            expected_r30_receipt_cid=str(receipt.get("receipt_cid") or ""),
+        )
+        if receipt.get("repair_head") == head:
+            rerun_transition = (
+                _validate_repair_candidate_git_epoch_guard_transition(
+                    receipt,
+                    bootstrap=bootstrap,
+                    previous_receipt=previous_receipt,
+                    rerun_validations=True,
+                )
+            )
+            if rerun_transition != transition:
+                raise OperatorError("R30 idempotent validation changed receipt")
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r30_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+            or admitted_repair.get("receipt_cid") != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or admitted_continuity.get(
+                "sealed_owner_foreign_recovery_waiter_admission_to_"
+                "candidate_git_epoch_guard"
+            )
+            != admitted_repair
+            or current_admission.get("historical_live_authorizing_receipt_cid")
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError("current admission does not retain R30")
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission["runtime_source_head"],
+        }
+
+    base_head = REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R30 base tree differs")
+    if _git("show", "-s", "--format=%P", base_head).split() != [
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    ]:
+        raise OperatorError("bootstrap repair R30 failed-R29 parent differs")
+    if _git("show", "-s", "--format=%P", (
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )).split() != [ASEH_R30_PUBLISHED_R27_BASE_HEAD]:
+        raise OperatorError("bootstrap repair R30 failed-R28 parent differs")
+    if _git(
+        "rev-parse",
+        f"{REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD}^{{tree}}",
+    ) != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE:
+        raise OperatorError("bootstrap repair R30 failed-R28 tree differs")
+    if _git("rev-parse", f"{ASEH_R30_PUBLISHED_R27_BASE_HEAD}^{{tree}}") != (
+        ASEH_R30_PUBLISHED_R27_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R30 published R27 tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R30 changed paths differ")
+    if _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head) != (
+        ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R30 effective changed paths differ")
+    source_path = "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+    if (
+        _git("rev-parse", f"{base_head}:{source_path}")
+        != ASEH_R30_FAILED_R29_SOURCE_BLOB_OID
+        or _identity(_git_bytes("show", f"{base_head}:{source_path}"))
+        != ASEH_R30_FAILED_R29_SOURCE_SHA256
+    ):
+        raise OperatorError("bootstrap repair R30 failed-R29 source differs")
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != head
+        or active_guard.candidate_tree != candidate_tree
+    ):
+        raise OperatorError("R30 authorization Git guard is absent")
+    candidate_git_guard = _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="before R30 authorization witness",
+    )
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    durable_witness = _r30_durable_candidate_witness(
+        authorization_witness=authorization_witness,
+        candidate_git_guard=candidate_git_guard,
+    )
+    r27_failure_evidence = _r28_r27_initial_health_failure_evidence(paths=paths)
+    r28_failure_evidence = _validate_r29_r28_authorization_failure_evidence(
+        _r29_expected_r28_authorization_failure_evidence()
+    )
+    r29_failure_evidence = _validate_r30_r29_authorization_failure_evidence(
+        _r30_expected_r29_authorization_failure_evidence()
+    )
+    failed_r29_attempt = _assert_r30_failed_one_shot_state(paths=paths)
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R30 failure evidence before attempt",
+    )
+    authorization_attempt = _r30_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=authorization_witness,
+        durable_candidate_witness=durable_witness,
+        candidate_git_guard=candidate_git_guard,
+        started_at=time.time(),
+    )
+    _atomic_json_create(
+        attempt_path,
+        authorization_attempt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=authorization_attempt,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R30 attempt before validation",
+    )
+    validation_results = (
+        _run_repair_candidate_git_epoch_guard_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=authorization_attempt,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R30 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r30_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            durable_candidate_witness=durable_witness,
+            candidate_git_guard=candidate_git_guard,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+            authorization_attempt=authorization_attempt,
+            authorization_receipt=None,
+            active_candidate_head=head,
+            active_candidate_tree=candidate_tree,
+            active_candidate_authorization_witness=authorization_witness,
+            continuity_admission=None,
+        )
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=authorization_attempt,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R30 live qualification before receipt publication",
+    )
+    inherited_names = (
+        "projection_recovery_failure_evidence",
+        "r25_preflight_failure_evidence",
+        "projection_recovery_prestart_admission",
+        "r26_terminal_failure_evidence",
+    )
+    inherited: dict[str, Mapping[str, Any]] = {}
+    for name in inherited_names:
+        value = previous_receipt.get(name)
+        if not isinstance(value, Mapping):
+            raise OperatorError(f"R30 inherited {name} is absent")
+        inherited[name] = value
+    receipt: dict[str, Any] = {
+        "schema": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R30",
+        "program_id": PROGRAM,
+        "transition_revision": 30,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE,
+        "published_r27_base_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "published_r27_base_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r28_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "failed_unpublished_r29_head": base_head,
+        "failed_unpublished_r29_tree": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "unreceipted_effective_changed_paths": list(
+            ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+        "unreceipted_effective_patch_digest": _git_patch_digest(
+            ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+            head,
+        ),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "durable_candidate_witness": durable_witness,
+        "candidate_git_guard": candidate_git_guard,
+        "sealed_validation_executor_contract": (
+            _r30_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        **{name: dict(value) for name, value in inherited.items()},
+        "r27_initial_health_failure_evidence": r27_failure_evidence,
+        "r28_authorization_failure_evidence": r28_failure_evidence,
+        "r29_authorization_failure_evidence": r29_failure_evidence,
+        "r29_authorization_attempt": failed_r29_attempt,
+        "authorization_attempt": authorization_attempt,
+        "terminal_success_criteria": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_candidate_git_epoch_guard_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    if (
+        _r28_r27_initial_health_failure_evidence(paths=paths)
+        != r27_failure_evidence
+        or _r29_expected_r28_authorization_failure_evidence()
+        != r28_failure_evidence
+        or _r30_expected_r29_authorization_failure_evidence()
+        != r29_failure_evidence
+    ):
+        raise OperatorError("R30 failure evidence changed before publication")
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=authorization_attempt,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R30 receipt publication",
+    )
+    _atomic_json_create(
+        r30_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_r30_failed_one_shot_state(
+        paths=paths,
+        expected_r30_attempt=authorization_attempt,
+        expected_r30_receipt=receipt,
+        expected_r30_receipt_cid=receipt["receipt_cid"],
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R30 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -39794,19 +44394,47 @@ def _admit_materialized_launch(
     config: Mapping[str, Any],
     paths: Mapping[str, Path],
 ) -> dict[str, Any]:
-    """Rebind the offline task store to the exact current sealed source."""
+    """Acquire R30's fresh Git epoch before any launch live effect."""
 
     population = _population(board, config)
+    if _ASEH_CANDIDATE_GIT_GUARD is None and _r30_launch_requires_git_guard(
+        paths=paths,
+        candidate_head=str(population["source_head"]),
+        candidate_tree=str(population["repository_tree_id"]),
+    ):
+        with _prepared_candidate_git_guard(
+            candidate_head=str(population["source_head"]),
+            candidate_tree=str(population["repository_tree_id"]),
+        ):
+            return _admit_materialized_launch(
+                board,
+                config,
+                paths,
+            )
     bootstrap = _secure_runtime_json(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r29_prequalification = _prequalify_r29_historical_live_launch(
-        paths=paths, population=population, bootstrap=bootstrap
+    r30_prequalification = _prequalify_r30_historical_live_launch(
+        paths=paths,
+        population=population,
+        bootstrap=bootstrap,
+    )
+    r29_prequalification = (
+        None
+        if r30_prequalification is not None
+        else _prequalify_r29_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
+    )
+    active_suffix_prequalification = (
+        r30_prequalification or r29_prequalification
     )
     r28_prequalification = (
         None
-        if r29_prequalification is not None
+        if active_suffix_prequalification is not None
         else _prequalify_r28_historical_live_launch(
             paths=paths,
             population=population,
@@ -39816,7 +44444,7 @@ def _admit_materialized_launch(
     r27_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
         )
         else _prequalify_r27_historical_live_launch(
@@ -39828,7 +44456,7 @@ def _admit_materialized_launch(
     r26_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
         )
@@ -39841,7 +44469,7 @@ def _admit_materialized_launch(
     r25_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -39853,7 +44481,7 @@ def _admit_materialized_launch(
     r24_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -39868,7 +44496,7 @@ def _admit_materialized_launch(
     r23_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -39884,7 +44512,7 @@ def _admit_materialized_launch(
     r22_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -39901,7 +44529,7 @@ def _admit_materialized_launch(
     r21_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -39919,7 +44547,7 @@ def _admit_materialized_launch(
     r20_prequalification = (
         None
         if (
-            r29_prequalification is not None
+            active_suffix_prequalification is not None
             or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
@@ -40005,6 +44633,7 @@ def _admit_materialized_launch(
             r27_projection_recovery_prequalification=r27_prequalification,
             r28_projection_recovery_prequalification=r28_prequalification,
             r29_projection_recovery_prequalification=r29_prequalification,
+            r30_projection_recovery_prequalification=r30_prequalification,
         )
         base_proof = _admit_canonical_merge_suffix(
             board,
@@ -40111,6 +44740,9 @@ def _admit_materialized_launch(
             sealed_validation_contract_dispatch_correction_transition: (
                 dict[str, Any] | None
             ) = None
+            candidate_git_epoch_guard_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -40131,6 +44763,7 @@ def _admit_materialized_launch(
             r27_receipt: dict[str, Any] | None = None
             r28_receipt: dict[str, Any] | None = None
             r29_receipt: dict[str, Any] | None = None
+            r30_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -41198,7 +45831,9 @@ def _admit_materialized_launch(
                 )
             r27_reconstruction = r27_prequalification
             direct_r27_child_prequalification = (
-                r29_prequalification or r28_prequalification
+                r30_prequalification
+                or r29_prequalification
+                or r28_prequalification
             )
             if direct_r27_child_prequalification is not None:
                 raw_direct_r27_prior = direct_r27_child_prequalification.get(
@@ -41211,7 +45846,15 @@ def _admit_materialized_launch(
                     or not isinstance(raw_direct_r27_prior[-1], Mapping)
                     or not isinstance(raw_direct_r27_prior[-2], Mapping)
                 ):
-                    revision = "R29" if r29_prequalification is not None else "R28"
+                    revision = (
+                        "R30"
+                        if r30_prequalification is not None
+                        else (
+                            "R29"
+                            if r29_prequalification is not None
+                            else "R28"
+                        )
+                    )
                     raise OperatorError(f"{revision} prior R27 chain differs")
                 inherited_r27 = raw_direct_r27_prior[-1]
                 inherited_r26 = raw_direct_r27_prior[-2]
@@ -41539,6 +46182,41 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_validation_contract_dispatch_correction_transition
                 )
+            if r30_prequalification is not None:
+                raw_r30_transition = r30_prequalification.get("transition")
+                raw_r30_receipt = r30_prequalification.get("receipt")
+                raw_r30_prior_chain = r30_prequalification.get("prior_chain")
+                if (
+                    sealed_owner_foreign_recovery_waiter_admission_transition
+                    is None
+                    or r27_receipt is None
+                    or not isinstance(raw_r30_transition, Mapping)
+                    or not isinstance(raw_r30_receipt, Mapping)
+                    or not isinstance(raw_r30_prior_chain, list)
+                    or len(raw_r30_prior_chain)
+                    != len(ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r30_prior_chain[-1] != r27_receipt
+                    or raw_r30_transition.get("base_head")
+                    != REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+                    or raw_r30_transition.get("previous_receipt_cid")
+                    != sealed_owner_foreign_recovery_waiter_admission_transition.get(
+                        "receipt_cid"
+                    )
+                    or r30_prequalification.get("r28_receipt_absent") is not True
+                    or r30_prequalification.get("r29_receipt_absent") is not True
+                    or r30_prequalification.get(
+                        "r29_authorization_attempt_cid"
+                    )
+                    != ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+                ):
+                    raise OperatorError(
+                        "R30 Git epoch guard does not extend admitted R27"
+                    )
+                candidate_git_epoch_guard_transition = dict(
+                    raw_r30_transition
+                )
+                r30_receipt = dict(raw_r30_receipt)
+                active_transition = candidate_git_epoch_guard_transition
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
@@ -41647,6 +46325,19 @@ def _admit_materialized_launch(
                     "active R28 scheduler-exit repair policy receipt is absent"
                 )
             if (
+                candidate_git_epoch_guard_transition is None
+                and isinstance(
+                    paths.get(
+                        "repair_candidate_git_epoch_guard_transition_receipt"
+                    ),
+                    Path,
+                )
+                and _r30_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R30 Git-epoch-guard policy receipt is absent"
+                )
+            if (
                 sealed_validation_contract_dispatch_correction_transition
                 is None
                 and isinstance(
@@ -41670,6 +46361,17 @@ def _admit_materialized_launch(
                 task_outputs=outputs,
                 completed_requests=requests,
             )
+            if (
+                r30_prequalification is not None
+                and r30_prequalification.get("historical_live_deferred") is True
+            ):
+                r30_prequalification = (
+                    _complete_r30_historical_live_prequalification(
+                        paths=paths,
+                        bundle=r30_prequalification,
+                        continuity_admission=current_proof,
+                    )
+                )
             if (
                 r29_prequalification is not None
                 and r29_prequalification.get("historical_live_deferred") is True
@@ -41786,6 +46488,7 @@ def _admit_materialized_launch(
                             and r27_prequalification is None
                             and r28_prequalification is None
                             and r29_prequalification is None
+                            and r30_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -41823,6 +46526,7 @@ def _admit_materialized_launch(
                                     and r27_prequalification is None
                                     and r28_prequalification is None
                                     and r29_prequalification is None
+                                    and r30_prequalification is None
                                 )
                                 or r22_receipt is None
                             ):
@@ -41861,6 +46565,7 @@ def _admit_materialized_launch(
                                         and r27_prequalification is None
                                         and r28_prequalification is None
                                         and r29_prequalification is None
+                                        and r30_prequalification is None
                                     )
                                     or r23_receipt is None
                                 ):
@@ -41899,6 +46604,7 @@ def _admit_materialized_launch(
                                             and r27_prequalification is None
                                             and r28_prequalification is None
                                             and r29_prequalification is None
+                                            and r30_prequalification is None
                                         )
                                         or r24_receipt is None
                                     ):
@@ -42099,6 +46805,48 @@ def _admit_materialized_launch(
                                                         _validate_repair_sealed_validation_contract_dispatch_correction_transition
                                                     )
                                                     launch_previous_receipt = r27_receipt
+                                                if (
+                                                    candidate_git_epoch_guard_transition
+                                                    is not None
+                                                ):
+                                                    if (
+                                                        r30_prequalification is None
+                                                        or r30_receipt is None
+                                                        or r30_prequalification.get(
+                                                            "r28_receipt_absent"
+                                                        )
+                                                        is not True
+                                                        or r30_prequalification.get(
+                                                            "r29_receipt_absent"
+                                                        )
+                                                        is not True
+                                                    ):
+                                                        raise OperatorError(
+                                                            "R30 pre-DuckDB qualification "
+                                                            "bundle is absent"
+                                                        )
+                                                    repair_transition_chain.append(
+                                                        candidate_git_epoch_guard_transition
+                                                    )
+                                                    launch_chain = (
+                                                        _admit_exact_r30_transition_chain(
+                                                            repair_transition_chain
+                                                        )
+                                                    )
+                                                    launch_bundle = r30_prequalification
+                                                    launch_receipt = r30_receipt
+                                                    launch_transition = (
+                                                        candidate_git_epoch_guard_transition
+                                                    )
+                                                    launch_path = paths.get(
+                                                        "repair_candidate_git_"
+                                                        "epoch_guard_transition_"
+                                                        "receipt"
+                                                    )
+                                                    launch_validator = (
+                                                        _validate_repair_candidate_git_epoch_guard_transition
+                                                    )
+                                                    launch_previous_receipt = r27_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
@@ -42110,6 +46858,13 @@ def _admit_materialized_launch(
                             paths=paths,
                             launch_bundle=launch_bundle,
                         )
+                    if launch_bundle is r30_prequalification:
+                        _recheck_r30_owner_start_authority(
+                            paths=paths,
+                            launch_admission={
+                                "repair_transition": launch_transition,
+                            },
+                        )
                     late_receipt = _secure_runtime_json(
                         launch_path,
                         max_bytes=STATUS_RECEIPT_MAX_BYTES,
@@ -42118,12 +46873,21 @@ def _admit_materialized_launch(
                         late_receipt,
                         bootstrap=bootstrap,
                         previous_receipt=launch_previous_receipt,
-                        rerun_validations=True,
+                        rerun_validations=(
+                            launch_bundle is not r30_prequalification
+                        ),
                     )
                     if launch_bundle is r29_prequalification:
                         _assert_r29_launch_r28_receipt_absent(
                             paths=paths,
                             launch_bundle=launch_bundle,
+                        )
+                    if launch_bundle is r30_prequalification:
+                        _recheck_r30_owner_start_authority(
+                            paths=paths,
+                            launch_admission={
+                                "repair_transition": launch_transition,
+                            },
                         )
                     early_exact_chain = launch_bundle.get("exact_chain")
                     policy_admission = launch_bundle.get(
@@ -42133,6 +46897,18 @@ def _admit_materialized_launch(
                         "stored_evidence"
                     )
                     fresh_evidence = launch_bundle.get("fresh_evidence")
+                    receipt_policy_admission = (
+                        launch_bundle.get("stored_policy_admission")
+                        if launch_bundle is r30_prequalification
+                        else policy_admission
+                    )
+                    expected_policy_witness_cid = (
+                        launch_bundle.get("policy_candidate_witness_cid")
+                        if launch_bundle is r30_prequalification
+                        else launch_bundle.get(
+                            "candidate_authorization_witness_cid"
+                        )
+                    )
                     if (
                         late_receipt != launch_receipt
                         or late_transition != launch_transition
@@ -42141,7 +46917,7 @@ def _admit_materialized_launch(
                         or not isinstance(stored_evidence, Mapping)
                         or not isinstance(fresh_evidence, Mapping)
                         or late_receipt.get("historical_live_policy_admission")
-                        != policy_admission
+                        != receipt_policy_admission
                         or late_receipt.get("historical_live_execution_evidence")
                         != stored_evidence
                         or [item.get("receipt_cid") for item in launch_chain]
@@ -42153,9 +46929,7 @@ def _admit_materialized_launch(
                         != policy_admission.get("policy_admission_cid")
                         or fresh_evidence.get("authorizing_receipt_cid")
                         != launch_bundle.get("receipt_cid")
-                        or launch_bundle.get(
-                            "candidate_authorization_witness_cid"
-                        )
+                        or expected_policy_witness_cid
                         != policy_admission.get(
                             "candidate_authorization_witness_cid"
                         )
@@ -42372,6 +47146,11 @@ def _admit_materialized_launch(
                     "sealed_owner_foreign_recovery_waiter_admission_to_"
                     "sealed_validation_contract_dispatch_correction"
                 ] = sealed_validation_contract_dispatch_correction_transition
+            if candidate_git_epoch_guard_transition is not None:
+                continuity[
+                    "sealed_owner_foreign_recovery_waiter_admission_to_"
+                    "candidate_git_epoch_guard"
+                ] = candidate_git_epoch_guard_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -42424,6 +47203,7 @@ def _admit_materialized_launch(
         or r27_prequalification is not None
         or r28_prequalification is not None
         or r29_prequalification is not None
+        or r30_prequalification is not None
     ):
         admission["projection_matches_events"] = integrity[
             "projection_matches_events"
@@ -42432,6 +47212,11 @@ def _admit_materialized_launch(
         _assert_r29_launch_r28_receipt_absent(
             paths=paths,
             launch_bundle=r29_prequalification,
+        )
+    if r30_prequalification is not None:
+        _recheck_r30_owner_start_authority(
+            paths=paths,
+            launch_admission=admission,
         )
     admission["admission_cid"] = _identity(admission)
     return admission
@@ -44273,7 +49058,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority through exact R29."""
+    """Project unchanged R23 permission authority through retained R30."""
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
@@ -44297,6 +49082,39 @@ def _r23_owner_start_permission_context_from_launch_admission(
     exact_r29 = parents == [
         REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
     ]
+    exact_r30 = parents == [
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+    ]
+    admission_mapping = (
+        launch_admission if isinstance(launch_admission, Mapping) else {}
+    )
+    transition_hint = admission_mapping.get("repair_transition")
+    continuity_hint = admission_mapping.get("canonical_continuity")
+    retained_r30 = (
+        not exact_r30
+        and len(parents) == 2
+        and isinstance(transition_hint, Mapping)
+        and transition_hint.get("schema")
+        == REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+        and re.fullmatch(
+            r"[0-9a-f]{40}",
+            str(transition_hint.get("repair_head") or ""),
+        )
+        is not None
+        and transition_hint.get("repair_head") != candidate_head
+        and isinstance(continuity_hint, Mapping)
+        and isinstance(continuity_hint.get("repair_to_current"), Mapping)
+        and admission_mapping.get("historical_live_authorizing_receipt_cid")
+        == transition_hint.get("receipt_cid")
+    )
+    if retained_r30:
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition_hint["repair_head"]),
+            candidate_head,
+        )
+    r30_route = exact_r30 or retained_r30
     if not any(
         (
             exact_r23,
@@ -44306,6 +49124,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             exact_r27,
             exact_r28,
             exact_r29,
+            r30_route,
         )
     ):
         return None
@@ -44316,7 +49135,11 @@ def _r23_owner_start_permission_context_from_launch_admission(
     if admission_cid != _identity(unsigned_admission):
         raise OperatorError("R23 materialized launch admission CID differs")
     chain = (
-        _admit_exact_r29_transition_chain(
+        _admit_exact_r30_transition_chain(
+            launch_admission.get("repair_transition_chain")
+        )
+        if r30_route
+        else _admit_exact_r29_transition_chain(
             launch_admission.get("repair_transition_chain")
         )
         if exact_r29
@@ -44347,9 +49170,68 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     transition = launch_admission.get("repair_transition")
     current_witness = dict(candidate_authorization_witness)
+    if r30_route:
+        if retained_r30:
+            if not isinstance(transition, Mapping) or not isinstance(
+                continuity_hint, Mapping
+            ):
+                raise OperatorError(
+                    "R30 descendant owner-start continuity is absent"
+                )
+            continuity_edge = continuity_hint.get(
+                "sealed_owner_foreign_recovery_waiter_admission_to_"
+                "candidate_git_epoch_guard"
+            )
+            if (
+                not isinstance(continuity_edge, Mapping)
+                or dict(continuity_edge) != dict(transition)
+            ):
+                raise OperatorError(
+                    "R30 descendant owner-start R27-to-R30 edge differs"
+                )
+            _validate_r29_historical_live_effect_continuity(
+                continuity_hint["repair_to_current"],
+                authorization_candidate_head=str(transition["repair_head"]),
+                authorization_candidate_tree=str(transition["repair_tree"]),
+                active_candidate_head=candidate_head,
+                active_candidate_tree=candidate_tree,
+            )
+        durable_value = (
+            transition.get("durable_candidate_witness")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        if not isinstance(durable_value, Mapping):
+            raise OperatorError("R30 owner-start durable witness is absent")
+        if exact_r30:
+            _assert_r30_durable_candidate_witness(
+                durable_value,
+                active_authorization_witness=current_witness,
+            )
+        else:
+            durable = _validate_r30_durable_candidate_witness(durable_value)
+            anchor_witness = transition.get(
+                "candidate_authorization_witness"
+            )
+            if (
+                not isinstance(anchor_witness, Mapping)
+                or durable.get("head") != transition.get("repair_head")
+                or durable.get("tree") != transition.get("repair_tree")
+                or durable.get("authorization_v1_witness_cid")
+                != _identity(dict(anchor_witness))
+            ):
+                raise OperatorError(
+                    "R30 descendant owner-start anchor witness differs"
+                )
+            _assert_candidate_authorization_witness(
+                current_witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary="R30 descendant owner-start permission",
+            )
     r23_authority = (
         chain[-6]
-        if exact_r29 or exact_r28
+        if r30_route or exact_r29 or exact_r28
         else chain[-5]
         if exact_r27
         else chain[-4]
@@ -44362,7 +49244,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     r24_authority = (
         chain[-5]
-        if exact_r29 or exact_r28
+        if r30_route or exact_r29 or exact_r28
         else chain[-4]
         if exact_r27
         else chain[-3]
@@ -44373,7 +49255,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     r25_authority = (
         chain[-4]
-        if exact_r29 or exact_r28
+        if r30_route or exact_r29 or exact_r28
         else chain[-3]
         if exact_r27
         else chain[-2]
@@ -44382,14 +49264,18 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     r26_authority = (
         chain[-3]
-        if exact_r29 or exact_r28
+        if r30_route or exact_r29 or exact_r28
         else chain[-2]
         if exact_r27
         else None
     )
-    r27_authority = chain[-2] if exact_r29 or exact_r28 else None
+    r27_authority = (
+        chain[-2] if r30_route or exact_r29 or exact_r28 else None
+    )
     expected_schema = (
-        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+        if r30_route
+        else REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
         if exact_r29
         else REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA
         if exact_r28
@@ -44404,7 +49290,9 @@ def _r23_owner_start_permission_context_from_launch_admission(
         else REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
     )
     expected_base = (
-        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        if r30_route
+        else REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
         if exact_r29
         else REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
         if exact_r28
@@ -44423,19 +49311,35 @@ def _r23_owner_start_permission_context_from_launch_admission(
         or dict(transition) != dict(chain[-1])
         or transition.get("schema") != expected_schema
         or transition.get("base_head") != expected_base
-        or transition.get("repair_head") != candidate_head
-        or transition.get("repair_tree") != candidate_tree
-        or transition.get("candidate_authorization_witness")
-        != current_witness
+        or (
+            not r30_route
+            and transition.get("candidate_authorization_witness")
+            != current_witness
+        )
+        or (
+            not retained_r30
+            and transition.get("repair_head") != candidate_head
+        )
+        or (
+            not retained_r30
+            and transition.get("repair_tree") != candidate_tree
+        )
         or launch_admission.get("runtime_source_head") != candidate_head
         or launch_admission.get("runtime_repository_tree_id")
         != candidate_tree
         or launch_admission.get("historical_live_authorizing_receipt_cid")
         != transition.get("receipt_cid")
         or (
-            exact_r29
+            (r30_route or exact_r29)
             and transition.get("r28_authorization_failure_evidence_cid")
             != _r29_expected_r28_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+        )
+        or (
+            r30_route
+            and transition.get("r29_authorization_failure_evidence_cid")
+            != _r30_expected_r29_authorization_failure_evidence().get(
                 "evidence_cid"
             )
         )
@@ -44447,6 +49351,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
                 or exact_r27
                 or exact_r28
                 or exact_r29
+                or r30_route
             )
             and (
                 r23_authority.get("schema")
@@ -44461,7 +49366,14 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r25 or exact_r26 or exact_r27 or exact_r28 or exact_r29)
+            (
+                exact_r25
+                or exact_r26
+                or exact_r27
+                or exact_r28
+                or exact_r29
+                or r30_route
+            )
             and (
                 not isinstance(r24_authority, Mapping)
                 or r24_authority.get("schema")
@@ -44482,7 +49394,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r26 or exact_r27 or exact_r28 or exact_r29)
+            (exact_r26 or exact_r27 or exact_r28 or exact_r29 or r30_route)
             and (
                 not isinstance(r25_authority, Mapping)
                 or r25_authority.get("schema")
@@ -44503,7 +49415,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r27 or exact_r28 or exact_r29)
+            (exact_r27 or exact_r28 or exact_r29 or r30_route)
             and (
                 not isinstance(r26_authority, Mapping)
                 or r26_authority.get("schema")
@@ -44524,7 +49436,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r28 or exact_r29)
+            (exact_r28 or exact_r29 or r30_route)
             and (
                 not isinstance(r27_authority, Mapping)
                 or r27_authority.get("schema")
@@ -45608,10 +50520,6 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
 
     board, _configuration = _load(config_path)
     candidate_head, candidate_tree = _assert_clean_tree(board)
-    authorization_witness = _candidate_authorization_witness(
-        expected_head=candidate_head,
-        expected_tree=candidate_tree,
-    )
     paths = _paths(board)
     candidate_parents = _git(
         "show", "-s", "--format=%P", candidate_head
@@ -45649,11 +50557,42 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
     native_dependency = None
     child: subprocess.Popen[Any] | None = None
     child_start_time_ticks: int | None = None
+    child_returncode: int | None = None
     terminal_read = -1
     terminal_write = -1
     terminal_nonce = ""
     delegate_boot = ""
+    authorization_witness: dict[str, str]
+    launch_git_guard_scope: Any | None = None
+    launch_git_guard_active = False
+
+    def retire_launch_git_guard(
+        exception: tuple[Any, Any, Any] = (None, None, None),
+    ) -> None:
+        nonlocal launch_git_guard_active
+        if not launch_git_guard_active:
+            return
+        launch_git_guard_active = False
+        if launch_git_guard_scope is None:
+            raise OperatorError("R30 parent launch Git guard scope is absent")
+        launch_git_guard_scope.__exit__(*exception)
+
     try:
+        if _r30_launch_requires_git_guard(
+            paths=paths,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        ):
+            launch_git_guard_scope = _prepared_candidate_git_guard(
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            launch_git_guard_scope.__enter__()
+            launch_git_guard_active = True
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
         interpreter = retain_control_plane_interpreter(
             ASEH_RECEIPT_VALIDATION_PYTHON
         )
@@ -45733,6 +50672,9 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             expected_tree=candidate_tree,
             boundary="immediately before sealed owner delegation",
         )
+        # The child takes an independent fresh epoch.  Retiring here avoids
+        # parent/child self-contention while retaining an exact sealed source.
+        retire_launch_git_guard()
         terminal_read, terminal_write = os.pipe2(
             getattr(os, "O_CLOEXEC", 0)
         )
@@ -45848,35 +50790,43 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             )
         return child_returncode
     finally:
+        body_error = sys.exc_info()[1]
+        cleanup_errors: list[BaseException] = []
+        try:
+            retire_launch_git_guard(sys.exc_info())
+        except BaseException as exc:
+            cleanup_errors.append(exc)
         if child is not None:
-            _terminate_dedicated_process_group(
-                child,
-                start_time_ticks=child_start_time_ticks,
-                grace_seconds=10.0,
-            )
-        if sealed is not None:
             try:
-                os.close(sealed.descriptor)
+                _terminate_dedicated_process_group(
+                    child,
+                    start_time_ticks=child_start_time_ticks,
+                    grace_seconds=10.0,
+                )
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+        for descriptor in (
+            None if sealed is None else sealed.descriptor,
+            None if interpreter is None else interpreter.descriptor,
+            (
+                None
+                if native_dependency is None
+                else native_dependency.descriptor.descriptor
+            ),
+            terminal_read,
+            terminal_write,
+        ):
+            if descriptor is None or descriptor < 0:
+                continue
+            try:
+                os.close(descriptor)
             except OSError:
                 pass
-        if interpreter is not None:
-            try:
-                os.close(interpreter.descriptor)
-            except OSError:
-                pass
-        if native_dependency is not None:
-            try:
-                os.close(native_dependency.descriptor.descriptor)
-            except OSError:
-                pass
-        for descriptor in (terminal_read, terminal_write):
-            if descriptor >= 0:
-                try:
-                    os.close(descriptor)
-                except OSError:
-                    pass
         if pin is not None:
-            _cleanup_plan_bound_control_plane(pin, capsule_parent)
+            try:
+                _cleanup_plan_bound_control_plane(pin, capsule_parent)
+            except BaseException as exc:
+                cleanup_errors.append(exc)
         if capsule_parent.exists():
             try:
                 for directory in sorted(
@@ -45892,9 +50842,32 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                 os.chmod(capsule_parent, 0o700)
                 shutil.rmtree(capsule_parent)
             except OSError as exc:
-                raise OperatorError(
-                    "sealed owner capsule cleanup was not observed"
-                ) from exc
+                cleanup_errors.append(
+                    OperatorError(
+                        "sealed owner capsule cleanup was not observed"
+                    )
+                )
+                cleanup_errors[-1].__cause__ = exc
+        if cleanup_errors and body_error is not None:
+            for cleanup_error in cleanup_errors:
+                body_error.add_note(
+                    "sealed owner parent cleanup also failed: "
+                    f"{type(cleanup_error).__name__}: {cleanup_error}"
+                )
+        elif cleanup_errors:
+            failure = OperatorError(
+                (
+                    "sealed owner exited with return code "
+                    f"{child_returncode}; parent cleanup also failed"
+                )
+                if child_returncode not in {None, 0}
+                else "sealed owner parent cleanup failed"
+            )
+            for cleanup_error in cleanup_errors[1:]:
+                failure.add_note(
+                    f"{type(cleanup_error).__name__}: {cleanup_error}"
+                )
+            raise failure from cleanup_errors[0]
 
 
 def _run_supervisor_owner(
@@ -46023,10 +50996,6 @@ def _run_supervisor_owner_impl(
 
     board, _config = _load(config_path)
     candidate_head, candidate_tree = _assert_clean_tree(board)
-    authorization_witness = _candidate_authorization_witness(
-        expected_head=candidate_head,
-        expected_tree=candidate_tree,
-    )
     try:
         control_plane_pin = parse_accepted_control_plane_pin(
             dict(sealed_control_plane_pin)
@@ -46075,60 +51044,93 @@ def _run_supervisor_owner_impl(
     paths = _paths(board)
     if not paths["bootstrap_receipt"].is_file() or not paths["database"].is_file():
         raise OperatorError("materialize the sealed board before starting the owner")
-    _set_sealed_owner_terminal_phase(terminal_phase, "launch_preflight")
-    with _sealed_receipt_validation_executor_scope(
-        interpreter=interpreter,
-        native_dependency=native_dependency,
-        system_dependency_directories_json=(
-            system_dependency_directories_json
-        ),
-        candidate_head=candidate_head,
-        candidate_tree=candidate_tree,
-        authorization_witness=authorization_witness,
-        base_environment=sealed_owner_environment,
-    ):
-        preflight = preflight_configured_board(board)
-        if preflight.get("valid") is not True:
-            raise OperatorError(
-                "configured-board preflight failed: "
-                + json.dumps(preflight.get("errors") or [])
-            )
-        _set_sealed_owner_terminal_phase(
-            terminal_phase,
-            "materialized_launch_admission",
-        )
-        launch_admission = _admit_materialized_launch(board, _config, paths)
-        _assert_exact_run_launch_admission(
-            launch_admission,
+    owner_launch_guard_scope: Any | None = None
+    owner_launch_guard_active = False
+
+    def retire_owner_launch_git_guard(
+        exception: tuple[Any, Any, Any] = (None, None, None),
+    ) -> None:
+        nonlocal owner_launch_guard_active
+        if not owner_launch_guard_active:
+            return
+        owner_launch_guard_active = False
+        if owner_launch_guard_scope is None:
+            raise OperatorError("R30 owner launch Git guard scope is absent")
+        owner_launch_guard_scope.__exit__(*exception)
+
+    try:
+        if _r30_launch_requires_git_guard(
+            paths=paths,
             candidate_head=candidate_head,
             candidate_tree=candidate_tree,
-        )
-        r23_permission_context = (
-            _r23_owner_start_permission_context_from_launch_admission(
-                board=board,
-                launch_admission=launch_admission,
+        ):
+            owner_launch_guard_scope = _prepared_candidate_git_guard(
                 candidate_head=candidate_head,
                 candidate_tree=candidate_tree,
-                candidate_authorization_witness=authorization_witness,
             )
+            owner_launch_guard_scope.__enter__()
+            owner_launch_guard_active = True
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
         )
-    if _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None:
-        raise OperatorError("sealed validation authority survived admission")
-    _recheck_r29_admission_r28_receipt_absence(
-        paths=paths,
-        launch_admission=launch_admission,
-    )
-    server = _build_server(board, paths)
-    stop = threading.Event()
-    failure_event = threading.Event()
-    failure: dict[str, Any] = {}
-    monitor_thread: threading.Thread | None = None
-    scheduler: subprocess.Popen[Any] | None = None
-    scheduler_start_time_ticks: int | None = None
-    owner_started = False
-    prior_environment: dict[str, str | None] = {}
-    shutdown_requested = threading.Event()
-    received_signal: dict[str, int] = {}
+        _set_sealed_owner_terminal_phase(terminal_phase, "launch_preflight")
+        with _sealed_receipt_validation_executor_scope(
+            interpreter=interpreter,
+            native_dependency=native_dependency,
+            system_dependency_directories_json=(
+                system_dependency_directories_json
+            ),
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+            base_environment=sealed_owner_environment,
+        ):
+            preflight = preflight_configured_board(board)
+            if preflight.get("valid") is not True:
+                raise OperatorError(
+                    "configured-board preflight failed: "
+                    + json.dumps(preflight.get("errors") or [])
+                )
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "materialized_launch_admission",
+            )
+            launch_admission = _admit_materialized_launch(board, _config, paths)
+            _assert_exact_run_launch_admission(
+                launch_admission,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            r23_permission_context = (
+                _r23_owner_start_permission_context_from_launch_admission(
+                    board=board,
+                    launch_admission=launch_admission,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    candidate_authorization_witness=authorization_witness,
+                )
+            )
+        if _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None:
+            raise OperatorError("sealed validation authority survived admission")
+        _recheck_active_owner_start_authority(
+            paths=paths,
+            launch_admission=launch_admission,
+        )
+        server = _build_server(board, paths)
+        stop = threading.Event()
+        failure_event = threading.Event()
+        failure: dict[str, Any] = {}
+        monitor_thread: threading.Thread | None = None
+        scheduler: subprocess.Popen[Any] | None = None
+        scheduler_start_time_ticks: int | None = None
+        owner_started = False
+        prior_environment: dict[str, str | None] = {}
+        shutdown_requested = threading.Event()
+        received_signal: dict[str, int] = {}
+    except BaseException:
+        retire_owner_launch_git_guard(sys.exc_info())
+        raise
     with _stop_signal_handlers(shutdown_requested, received_signal):
         try:
             # The owner becomes non-dumpable before it creates the reusable
@@ -46149,7 +51151,7 @@ def _run_supervisor_owner_impl(
                 terminal_phase,
                 "pre_start_quiescence",
             )
-            _recheck_r29_admission_r28_receipt_absence(
+            _recheck_active_owner_start_authority(
                 paths=paths,
                 launch_admission=launch_admission,
             )
@@ -46166,7 +51168,7 @@ def _run_supervisor_owner_impl(
                     terminal_phase=terminal_phase,
                     r23_permission_context=r23_permission_context,
                     pre_start_guard=lambda: (
-                        _recheck_r29_admission_r28_receipt_absence(
+                        _recheck_active_owner_start_authority(
                             paths=paths,
                             launch_admission=launch_admission,
                         )
@@ -46278,6 +51280,10 @@ def _run_supervisor_owner_impl(
                 parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
             )
             try:
+                _recheck_active_owner_start_authority(
+                    paths=paths,
+                    launch_admission=launch_admission,
+                )
                 _assert_candidate_authorization_witness(
                     authorization_witness,
                     expected_head=candidate_head,
@@ -46318,6 +51324,17 @@ def _run_supervisor_owner_impl(
                     expected_executable_descriptor=interpreter.descriptor,
                     expected_argv=argv,
                 )
+                _recheck_active_owner_start_authority(
+                    paths=paths,
+                    launch_admission=launch_admission,
+                )
+                _assert_candidate_authorization_witness(
+                    authorization_witness,
+                    expected_head=candidate_head,
+                    expected_tree=candidate_tree,
+                    boundary="after sealed scheduler birth and handoff",
+                )
+                retire_owner_launch_git_guard()
             except BaseException:
                 scheduler_handoff.close()
                 if scheduler is not None:
@@ -46396,38 +51413,48 @@ def _run_supervisor_owner_impl(
         except OperatorStopRequested as exc:
             return 128 + int(exc.signum)
         finally:
-            stop.set()
-            if scheduler is not None:
-                _terminate_scheduler(
-                    scheduler,
-                    scheduler_start_time_ticks,
-                )
-            if monitor_thread is not None:
-                monitor_thread.join(timeout=2.0)
+            guard_cleanup_error: BaseException | None = None
             try:
-                from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-                    reset_quack_transport_cache,
-                )
+                retire_owner_launch_git_guard(sys.exc_info())
+            except BaseException as exc:
+                guard_cleanup_error = exc
+            try:
+                stop.set()
+                if scheduler is not None:
+                    _terminate_scheduler(
+                        scheduler,
+                        scheduler_start_time_ticks,
+                    )
+                if monitor_thread is not None:
+                    monitor_thread.join(timeout=2.0)
+                try:
+                    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                        reset_quack_transport_cache,
+                    )
 
-                if owner_started and server is not None:
-                    try:
-                        reset_quack_transport_cache()
-                    finally:
-                        server.stop()
-                else:
-                    # A FAILED server has already emergency-cleaned itself.  Its
-                    # stop path requires live identity/lease authority and would
-                    # replace the original start exception with NotRunning.
-                    try:
-                        reset_quack_transport_cache()
-                    except Exception:
-                        pass
-            finally:
-                for name, prior in prior_environment.items():
-                    if prior is None:
-                        os.environ.pop(name, None)
+                    if owner_started and server is not None:
+                        try:
+                            reset_quack_transport_cache()
+                        finally:
+                            server.stop()
                     else:
-                        os.environ[name] = prior
+                        # A FAILED server has already emergency-cleaned itself.
+                        # Its stop path requires live identity/lease authority
+                        # and would replace the original start exception with
+                        # NotRunning.
+                        try:
+                            reset_quack_transport_cache()
+                        except Exception:
+                            pass
+                finally:
+                    for name, prior in prior_environment.items():
+                        if prior is None:
+                            os.environ.pop(name, None)
+                        else:
+                            os.environ[name] = prior
+            finally:
+                if guard_cleanup_error is not None:
+                    raise guard_cleanup_error
 
 
 def _published_replica_binding(
@@ -48825,6 +53852,26 @@ def main(argv: list[str] | None = None) -> int:
     historical_live_launcher.add_argument(
         "--expected-parent-boot-id", required=True
     )
+    git_guard_launcher = commands.add_parser(
+        ASEH_R30_GIT_GUARD_LAUNCHER_COMMAND,
+        help=argparse.SUPPRESS,
+    )
+    git_guard_launcher.add_argument(
+        "--operation",
+        required=True,
+        choices=("update-ref", "update-index"),
+    )
+    git_guard_launcher.add_argument(
+        "--expected-parent-pid", required=True, type=int
+    )
+    git_guard_launcher.add_argument(
+        "--expected-parent-start-time-ticks",
+        required=True,
+        type=int,
+    )
+    git_guard_launcher.add_argument(
+        "--expected-parent-boot-id", required=True
+    )
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
     run.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -48868,6 +53915,15 @@ def main(argv: list[str] | None = None) -> int:
                 logical_argv_sha256=args.logical_argv_sha256,
                 candidate_head=args.candidate_head,
                 candidate_tree=args.candidate_tree,
+                expected_parent_pid=args.expected_parent_pid,
+                expected_parent_start_time_ticks=(
+                    args.expected_parent_start_time_ticks
+                ),
+                expected_parent_boot_id=args.expected_parent_boot_id,
+            )
+        elif args.command == ASEH_R30_GIT_GUARD_LAUNCHER_COMMAND:
+            return _r30_git_guard_launcher(
+                operation=args.operation,
                 expected_parent_pid=args.expected_parent_pid,
                 expected_parent_start_time_ticks=(
                     args.expected_parent_start_time_ticks

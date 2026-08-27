@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import fcntl
+import ctypes
 import errno
+import fcntl
 import hashlib
 import inspect
 import json
@@ -25125,6 +25126,11 @@ def test_aseh_r29_historical_live_qualifier_binds_active_descendant_guard(
 
     assert result == ({"policy": "r29"}, {"evidence": "r29"})
     assert qualification["_revision"] == 29
+    assert not {
+        "active_candidate_head",
+        "active_candidate_tree",
+        "active_candidate_authorization_witness",
+    } & set(qualification)
     assert guard_observation == {
         "paths": {
             "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
@@ -26531,3 +26537,1955 @@ def test_aseh_r29_authorizer_rechecks_r28_after_each_effect_stage(
         if injection_stage == "validation"
         else ["validation", "historical_live"]
     )
+
+
+def test_aseh_r30_git_guard_blocks_candidate_mutation_and_survives_reflog_gc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git_result(*arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+
+    def git(*arguments: str) -> str:
+        completed = git_result(*arguments)
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate base")
+    alternate_head = git("rev-parse", "HEAD")
+    git("commit", "--quiet", "--allow-empty", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    branch_ref = git("symbolic-ref", "-q", "HEAD")
+    git("branch", "same-oid-alias", candidate_head)
+    index_path = Path(git("rev-parse", "--git-path", "index"))
+    if not index_path.is_absolute():
+        index_path = repository / index_path
+    packed_lock = Path(git("rev-parse", "--git-path", "packed-refs.lock"))
+    if not packed_lock.is_absolute():
+        packed_lock = repository / packed_lock
+    initial_index_sha256 = hashlib.sha256(index_path.read_bytes()).hexdigest()
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    with aseh_operator._prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as guard:
+        witness = aseh_operator._candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
+        durable = aseh_operator._r30_durable_candidate_witness(
+            authorization_witness=witness,
+            candidate_git_guard=guard.record,
+        )
+        assert (
+            aseh_operator._validate_r30_candidate_git_guard_record(
+                guard.record,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            == guard.record
+        )
+        invalid_records: list[dict[str, object]] = []
+        invalid_protocol = json.loads(json.dumps(guard.record))
+        invalid_protocol["protocol_cid"] = "sha256:" + ("0" * 64)
+        invalid_records.append(invalid_protocol)
+        reused_pid = json.loads(json.dumps(guard.record))
+        reused_pid["index_pid"] = reused_pid["reference_pid"]
+        reused_pid["index_process_birth"]["pid"] = reused_pid[
+            "reference_pid"
+        ]
+        invalid_records.append(reused_pid)
+        wrong_parent = json.loads(json.dumps(guard.record))
+        wrong_parent["reference_process_birth"]["parent_pid"] += 1
+        invalid_records.append(wrong_parent)
+        duplicate_lock = json.loads(json.dumps(guard.record))
+        duplicate_lock["branch_lock_identity"] = list(
+            duplicate_lock["head_lock_identity"]
+        )
+        invalid_records.append(duplicate_lock)
+        invalid_mode = json.loads(json.dumps(guard.record))
+        invalid_mode["head_lock_identity"][2] = stat.S_IFDIR | 0o700
+        invalid_records.append(invalid_mode)
+        for invalid in invalid_records:
+            invalid["guard_cid"] = aseh_operator._identity(
+                {
+                    key: value
+                    for key, value in invalid.items()
+                    if key != "guard_cid"
+                }
+            )
+            with pytest.raises(aseh_operator.OperatorError, match="record differs"):
+                aseh_operator._validate_r30_candidate_git_guard_record(
+                    invalid,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                )
+        assert guard.head_lock_path.is_file()
+        assert guard.branch_lock_path.is_file()
+        assert guard.index_lock_path.is_file()
+        for arguments in (
+            ("status", "--porcelain=v1", "--untracked-files=all"),
+            ("diff", "--check"),
+            ("rev-parse", "HEAD"),
+            ("ls-files", "--stage"),
+        ):
+            assert git_result(*arguments).returncode == 0
+        assert git_result(
+            "update-ref", branch_ref, alternate_head, candidate_head
+        ).returncode != 0
+        assert git_result(
+            "symbolic-ref", "HEAD", "refs/heads/same-oid-alias"
+        ).returncode != 0
+        scratch = repository / "scratch.txt"
+        scratch.write_text("not admitted\n", encoding="utf-8")
+        try:
+            assert git_result("add", "scratch.txt").returncode != 0
+        finally:
+            scratch.unlink()
+        assert git_result(
+            "reflog", "expire", "--expire=now", "--all"
+        ).returncode != 0
+        packed_lock.write_bytes(b"foreign repository maintenance")
+        packed_identity = os.lstat(packed_lock)
+        aseh_operator._validate_candidate_git_guard_health(
+            guard,
+            boundary="concurrent foreign packed-ref maintenance",
+        )
+        aseh_operator._assert_candidate_authorization_witness(
+            witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="R30 guarded reflog maintenance",
+        )
+
+    assert not guard.head_lock_path.exists()
+    assert not guard.branch_lock_path.exists()
+    assert not guard.index_lock_path.exists()
+    after_packed = os.lstat(packed_lock)
+    assert packed_lock.read_bytes() == b"foreign repository maintenance"
+    assert (after_packed.st_dev, after_packed.st_ino) == (
+        packed_identity.st_dev,
+        packed_identity.st_ino,
+    )
+    packed_lock.unlink()
+    assert hashlib.sha256(index_path.read_bytes()).hexdigest() == initial_index_sha256
+    git("reflog", "expire", "--expire=now", "--all")
+    fresh_witness = aseh_operator._candidate_authorization_witness(
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+    )
+    assert aseh_operator._identity(fresh_witness) != aseh_operator._identity(witness)
+    assert (
+        aseh_operator._assert_r30_durable_candidate_witness(
+            durable,
+            active_authorization_witness=fresh_witness,
+        )
+        == durable
+    )
+
+
+def test_aseh_r30_git_guard_cleanup_preserves_body_error_and_reaps_both_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+
+    original_write = aseh_operator._git_guard_write
+
+    def fail_reference_abort(
+        process: subprocess.Popen[bytes],
+        payload: bytes,
+        *,
+        trace: object | None = None,
+    ) -> None:
+        if payload == b"abort\n":
+            raise OSError("injected reference retirement failure")
+        original_write(process, payload, trace=trace)
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_guard_write",
+        fail_reference_abort,
+    )
+    guard: object | None = None
+    with pytest.raises(RuntimeError, match="guarded body failed") as observed:
+        with aseh_operator._prepared_candidate_git_guard(
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        ) as active_guard:
+            guard = active_guard
+            raise RuntimeError("guarded body failed")
+
+    assert guard is not None
+    assert any(
+        "candidate Git guard cleanup also failed" in note
+        for note in getattr(observed.value, "__notes__", ())
+    )
+    assert guard.reference_process.poll() is not None
+    assert guard.index_process.poll() is not None
+    assert not guard.head_lock_path.exists()
+    assert not guard.branch_lock_path.exists()
+    assert not guard.index_lock_path.exists()
+
+
+@pytest.mark.parametrize("replace_with_successor", [False, True])
+def test_aseh_r30_git_guard_partial_prepare_reaps_without_leaking_locks(
+    replace_with_successor: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    branch_ref = git("symbolic-ref", "-q", "HEAD")
+    head_lock = Path(git("rev-parse", "--git-path", "HEAD.lock"))
+    branch_lock = Path(
+        git("rev-parse", "--git-path", f"{branch_ref}.lock")
+    )
+    for name, path in (("head", head_lock), ("branch", branch_lock)):
+        if not path.is_absolute():
+            path = repository / path
+        if name == "head":
+            head_lock = path
+        else:
+            branch_lock = path
+    index_lock = Path(git("rev-parse", "--git-path", "index.lock"))
+    if not index_lock.is_absolute():
+        index_lock = repository / index_lock
+
+    original_advance = aseh_operator._git_guard_trace_advance
+    original_terminate = aseh_operator._terminate_git_guard_process
+    injected: dict[str, object] = {
+        "process": None,
+        "identity": None,
+        "owned_name": None,
+        "other_absent": False,
+        "successor_identity": None,
+    }
+
+    def kill_at_first_owned_reference_syscall_stop(
+        trace: aseh_operator._GitGuardSyscallTrace,
+        *,
+        observer: object | None = None,
+    ) -> None:
+        def observe_and_kill() -> None:
+            if callable(observer):
+                observer()
+            if (
+                injected["process"] is not None
+                or trace.expected_argv[1:]
+                != ("update-ref", "--stdin")
+                or len(trace.owned_lock_identities) != 1
+            ):
+                return
+            owned_name, identity = next(
+                iter(trace.owned_lock_identities.items())
+            )
+            owned_path = head_lock if owned_name == "head" else branch_lock
+            other_path = branch_lock if owned_name == "head" else head_lock
+            assert (
+                aseh_operator._git_guard_observed_lock_identity(owned_path)
+                == identity
+            )
+            injected.update(
+                process=trace.process,
+                identity=identity,
+                owned_name=owned_name,
+                other_absent=not os.path.lexists(other_path),
+            )
+            trace.process.kill()
+
+        original_advance(trace, observer=observe_and_kill)
+
+    def retire_then_install_foreign_successor(
+        process: subprocess.Popen[bytes],
+    ) -> None:
+        original_terminate(process)
+        if (
+            not replace_with_successor
+            or process is not injected["process"]
+            or injected["successor_identity"] is not None
+        ):
+            return
+        owned_path = (
+            head_lock
+            if injected["owned_name"] == "head"
+            else branch_lock
+        )
+        assert (
+            aseh_operator._git_guard_observed_lock_identity(owned_path)
+            == injected["identity"]
+        )
+        owned_path.unlink()
+        owned_path.write_bytes(b"foreign-successor-lock")
+        injected["successor_identity"] = (
+            aseh_operator._git_guard_observed_lock_identity(owned_path)
+        )
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    with monkeypatch.context() as injection:
+        injection.setattr(
+            aseh_operator,
+            "_git_guard_trace_advance",
+            kill_at_first_owned_reference_syscall_stop,
+        )
+        injection.setattr(
+            aseh_operator,
+            "_terminate_git_guard_process",
+            retire_then_install_foreign_successor,
+        )
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="protocol differs",
+        ):
+            with aseh_operator._prepared_candidate_git_guard(
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            ):
+                pytest.fail("partially prepared guard was admitted")
+
+    assert isinstance(injected["process"], subprocess.Popen)
+    assert injected["process"].poll() is not None
+    assert isinstance(injected["identity"], tuple)
+    assert injected["owned_name"] in {"head", "branch"}
+    assert injected["other_absent"] is True
+    owned_path = (
+        head_lock if injected["owned_name"] == "head" else branch_lock
+    )
+    other_path = branch_lock if owned_path == head_lock else head_lock
+    if replace_with_successor:
+        assert owned_path.read_bytes() == b"foreign-successor-lock"
+        assert (
+            aseh_operator._git_guard_observed_lock_identity(owned_path)
+            == injected["successor_identity"]
+        )
+        assert injected["successor_identity"] != injected["identity"]
+        owned_path.unlink()
+    else:
+        assert not owned_path.exists()
+        assert injected["successor_identity"] is None
+    assert not other_path.exists()
+    assert not index_lock.exists()
+    assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+    with aseh_operator._prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as second_guard:
+        assert aseh_operator._validate_candidate_git_guard_health(
+            second_guard,
+            boundary="second guard after partial crash",
+        )["state"] == "prepared_verify_only"
+
+
+def test_aseh_r30_foreign_reference_locks_after_precheck_are_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    branch_ref = git("symbolic-ref", "-q", "HEAD")
+    head_lock = Path(git("rev-parse", "--git-path", "HEAD.lock"))
+    branch_lock = Path(
+        git("rev-parse", "--git-path", f"{branch_ref}.lock")
+    )
+    if not head_lock.is_absolute():
+        head_lock = repository / head_lock
+    if not branch_lock.is_absolute():
+        branch_lock = repository / branch_lock
+
+    original_write = aseh_operator._git_guard_write
+    injected: dict[str, object] = {"done": False, "identities": {}}
+
+    def inject_foreign_reference_locks(
+        process: subprocess.Popen[bytes],
+        payload: bytes,
+        *,
+        trace: object | None = None,
+    ) -> None:
+        if not injected["done"] and payload.endswith(b"prepare\n"):
+            head_lock.write_bytes(b"foreign-head-lock")
+            branch_lock.write_bytes(b"foreign-branch-lock")
+            injected["done"] = True
+            injected["identities"] = {
+                head_lock: aseh_operator._git_guard_observed_lock_identity(
+                    head_lock
+                ),
+                branch_lock: aseh_operator._git_guard_observed_lock_identity(
+                    branch_lock
+                ),
+            }
+        original_write(process, payload, trace=trace)
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_guard_write",
+        inject_foreign_reference_locks,
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="protocol differs"):
+            with aseh_operator._prepared_candidate_git_guard(
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            ):
+                pytest.fail("foreign reference locks were admitted")
+
+        assert injected["done"] is True
+        identities = injected["identities"]
+        assert isinstance(identities, dict)
+        assert head_lock.read_bytes() == b"foreign-head-lock"
+        assert branch_lock.read_bytes() == b"foreign-branch-lock"
+        assert aseh_operator._git_guard_observed_lock_identity(
+            head_lock
+        ) == identities[head_lock]
+        assert aseh_operator._git_guard_observed_lock_identity(
+            branch_lock
+        ) == identities[branch_lock]
+        assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+    finally:
+        head_lock.unlink(missing_ok=True)
+        branch_lock.unlink(missing_ok=True)
+
+    with aseh_operator._prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as second_guard:
+        assert aseh_operator._validate_candidate_git_guard_health(
+            second_guard,
+            boundary="second guard after foreign contention",
+        )["state"] == "prepared_verify_only"
+
+
+def test_aseh_r30_unavailable_ptrace_fails_without_git_lock_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    branch_ref = git("symbolic-ref", "-q", "HEAD")
+    lock_paths = tuple(
+        Path(git("rev-parse", "--git-path", specification))
+        for specification in (
+            "HEAD.lock",
+            f"{branch_ref}.lock",
+            "index.lock",
+        )
+    )
+    lock_paths = tuple(
+        path if path.is_absolute() else repository / path
+        for path in lock_paths
+    )
+
+    def denied_ptrace(*_arguments: object) -> int:
+        ctypes.set_errno(errno.EPERM)
+        return -1
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_guard_ptrace_function",
+        lambda: denied_ptrace,
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="syscall tracing is unavailable",
+    ):
+        with aseh_operator._prepared_candidate_git_guard(
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        ):
+            pytest.fail("guard without kernel provenance was admitted")
+
+    assert not any(os.path.lexists(path) for path in lock_paths)
+    assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+    protocol = aseh_operator._r30_candidate_git_guard_protocol(
+        candidate_head
+    )
+    assert protocol["lock_ownership_observation"] == {
+        "mechanism": "ptrace_syscall_stop_fd_table_v1",
+        "options": [
+            "PTRACE_O_TRACESYSGOOD",
+            "PTRACE_O_TRACEEXIT",
+        ],
+        "resume_request": "PTRACE_SYSCALL",
+        "fallback": None,
+    }
+
+
+def test_aseh_r30_foreign_git_lock_times_out_without_claiming_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    foreign_lock = Path(git("rev-parse", "--git-path", "index.lock"))
+    if not foreign_lock.is_absolute():
+        foreign_lock = repository / foreign_lock
+    foreign_lock.write_bytes(b"foreign-lock")
+    foreign_identity = os.lstat(foreign_lock)
+    ticks = iter((1.0, 12.0))
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    monkeypatch.setattr(aseh_operator.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(aseh_operator.time, "sleep", lambda _seconds: None)
+    with pytest.raises(aseh_operator.OperatorError, match="contended"):
+        with aseh_operator._prepared_candidate_git_guard(
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        ):
+            pytest.fail("foreign lock was admitted")
+
+    after = os.lstat(foreign_lock)
+    assert foreign_lock.read_bytes() == b"foreign-lock"
+    assert (after.st_dev, after.st_ino) == (
+        foreign_identity.st_dev,
+        foreign_identity.st_ino,
+    )
+    assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+
+
+@pytest.mark.parametrize("entry_kind", ["regular", "dangling_symlink", "fifo"])
+def test_aseh_r30_preexisting_attempt_denies_revision_retry(
+    entry_kind: str,
+    tmp_path: Path,
+) -> None:
+    r29_attempt_path = tmp_path / "repair-r29-attempt.json"
+    r29_attempt_path.write_text(
+        json.dumps(
+            aseh_operator._r30_expected_r29_authorization_attempt(),
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    r29_attempt_path.chmod(0o600)
+    r30_attempt_path = tmp_path / "repair-r30-attempt.json"
+    if entry_kind == "regular":
+        r30_attempt_path.write_text("{}", encoding="utf-8")
+    elif entry_kind == "dangling_symlink":
+        r30_attempt_path.symlink_to("missing-target")
+    else:
+        os.mkfifo(r30_attempt_path)
+    with pytest.raises(aseh_operator.OperatorError, match="retry is denied"):
+        aseh_operator._assert_r30_failed_one_shot_state(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                / "repair-r28.json",
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": tmp_path
+                / "repair-r29.json",
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": r29_attempt_path,
+                "repair_candidate_git_epoch_guard_transition_receipt": tmp_path
+                / "repair-r30.json",
+                "repair_candidate_git_epoch_guard_authorization_attempt": r30_attempt_path,
+            }
+        )
+
+
+@pytest.mark.parametrize("stored_state", ["missing", "corrupt", "mismatch"])
+def test_aseh_r30_idempotent_authorization_checks_attempt_before_rerun(
+    stored_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r30_path = tmp_path / "repair-r30.json"
+    r30_path.write_text("{}", encoding="utf-8")
+    attempt_path = tmp_path / "repair-r30-attempt.json"
+    prior_chain = _aseh_r29_structural_chain()[:-1]
+    prior_chain[-1].update(
+        {
+            "repair_head": aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+            "repair_tree": aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_TREE,
+        }
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    embedded_attempt = {"attempt_cid": "sha256:" + ("1" * 64)}
+    receipt: dict[str, object] = {
+        "repair_head": head,
+        "repair_tree": tree,
+        "candidate_authorization_witness": witness,
+        "durable_candidate_witness": {"durable": True},
+        "candidate_git_guard": {"guard": True},
+        "receipt_cid": "sha256:" + ("2" * 64),
+    }
+    if stored_state != "missing":
+        receipt["authorization_attempt"] = embedded_attempt
+    validator_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: receipt
+        if path == r30_path
+        else {"stored_state": stored_state},
+    )
+
+    def validate(
+        _receipt: object,
+        *,
+        rerun_validations: bool,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        validator_calls.append(rerun_validations)
+        if rerun_validations:
+            pytest.fail("R30 validations reran before attempt admission")
+        return receipt
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_candidate_git_epoch_guard_transition",
+        validate,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_authorization_attempt_record",
+        lambda *_args, **_kwargs: embedded_attempt,
+    )
+
+    def reject_attempt(**_kwargs: object) -> None:
+        raise aseh_operator.OperatorError(
+            f"R30 persisted attempt is {stored_state}"
+        )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r30_failed_one_shot_state",
+        reject_attempt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R30 materialized launch ran before attempt admission"
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R30 Git continuity ran before attempt admission"
+        ),
+    )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="evidence|attempt"):
+            aseh_operator._authorize_repair_candidate_git_epoch_guard_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_candidate_git_epoch_guard_transition_receipt": r30_path,
+                    "repair_candidate_git_epoch_guard_authorization_attempt": attempt_path,
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head=head,
+                previous_receipt=prior_chain[-1],
+                previous_transition=prior_chain[-1],
+                prior_receipt_chain=prior_chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+    assert validator_calls == [False]
+
+
+def _aseh_r30_materialized_chain(
+    *,
+    head: str,
+    tree: str,
+    witness: dict[str, str],
+    durable: dict[str, object],
+) -> list[dict[str, object]]:
+    chain = _aseh_r29_materialized_chain(
+        head=head,
+        tree=tree,
+        witness=witness,
+    )
+    chain[-1].update(
+        {
+            "schema": (
+                aseh_operator
+                .REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+            ),
+            "transition_revision": 30,
+            "base_head": (
+                aseh_operator
+                .REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+            ),
+            "r29_authorization_failure_evidence_cid": (
+                aseh_operator._r30_expected_r29_authorization_failure_evidence()[
+                    "evidence_cid"
+                ]
+            ),
+            "r29_authorization_attempt_cid": (
+                aseh_operator.ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+            ),
+            "durable_candidate_witness": durable,
+            "candidate_git_guard": {"guard_cid": "sha256:" + ("7" * 64)},
+        }
+    )
+    return chain
+
+
+def test_aseh_r30_projects_one_bound_r23_owner_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = (
+        aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+    )
+    head = "c" * 40
+    tree = "d" * 40
+    witness = _aseh_r22_witness(head, tree)
+    durable: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA,
+        "witness_cid": "sha256:" + ("6" * 64),
+    }
+    chain = _aseh_r30_materialized_chain(
+        head=head,
+        tree=tree,
+        witness=witness,
+        durable=durable,
+    )
+    active = chain[-1]
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    durable_calls: list[tuple[object, object]] = []
+
+    def admit_durable(
+        value: object,
+        *,
+        active_authorization_witness: object,
+    ) -> object:
+        durable_calls.append((value, active_authorization_witness))
+        return value
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r30_durable_candidate_witness",
+        admit_durable,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+
+    assert context is not None
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert durable_calls == [(durable, witness)]
+    assert chain[-2]["receipt_cid"] == (
+        aseh_operator.ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+    )
+    assert chain[-6]["receipt_cid"] == (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+
+
+def test_aseh_r30_descendant_retains_r23_owner_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "a" * 40
+    anchor_tree = "b" * 40
+    current_head = "c" * 40
+    current_tree = "d" * 40
+    anchor_witness = _aseh_r22_witness(anchor_head, anchor_tree)
+    current_witness = _aseh_r22_witness(current_head, current_tree)
+    durable: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA,
+        "head": anchor_head,
+        "tree": anchor_tree,
+        "branch_ref": anchor_witness["branch_ref"],
+        "index_entries_digest": anchor_witness["index_entries_digest"],
+        "index_flags_digest": anchor_witness["index_flags_digest"],
+        "status_digest": anchor_witness["status_digest"],
+        "authorization_v1_witness_cid": aseh_operator._identity(
+            anchor_witness
+        ),
+        "authorization_guard_cid": "sha256:" + ("6" * 64),
+        "reflog_binding": "strict_v1_authorization_epoch_only",
+    }
+    durable["witness_cid"] = aseh_operator._identity(durable)
+    chain = _aseh_r30_materialized_chain(
+        head=anchor_head,
+        tree=anchor_tree,
+        witness=anchor_witness,
+        durable=durable,
+    )
+    active = chain[-1]
+    candidate_commit = "e" * 40
+    candidate_tree = "f" * 40
+    continuity_proof: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-canonical-merge-suffix@1"
+        ),
+        "base_head": anchor_head,
+        "target_head": current_head,
+        "target_tree": current_tree,
+        "integrations": [
+            {
+                "request_id": "request-r30-descendant",
+                "task_alias": "ASEH-001",
+                "task_cid": "task-cid-r30-descendant",
+                "candidate_commit": candidate_commit,
+                "candidate_tree": candidate_tree,
+                "integration_commit": current_head,
+                "integration_tree": current_tree,
+                "changed_paths": ["bounded.py"],
+            }
+        ],
+    }
+    continuity_proof["receipt_cid"] = aseh_operator._identity(
+        continuity_proof
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": current_head,
+        "runtime_repository_tree_id": current_tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+        "canonical_continuity": {
+            "repair_to_current": continuity_proof,
+            "sealed_owner_foreign_recovery_waiter_admission_to_"
+            "candidate_git_epoch_guard": active,
+        },
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+
+    def git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", current_head):
+            return f"{anchor_head} {'e' * 40}"
+        if args == (
+            "merge-base",
+            "--is-ancestor",
+            anchor_head,
+            current_head,
+        ):
+            return ""
+        if args == (
+            "rev-parse",
+            f"{candidate_commit}^{{tree}}",
+        ):
+            return candidate_tree
+        if args == (
+            "rev-parse",
+            f"{current_head}^{{tree}}",
+        ):
+            return current_tree
+        raise AssertionError(f"unexpected Git call: {args!r}")
+
+    asserted: list[tuple[object, object]] = []
+
+    def assert_current(
+        value: object,
+        *,
+        expected_head: object,
+        expected_tree: object,
+        boundary: str,
+    ) -> None:
+        asserted.append((expected_head, expected_tree))
+        assert value == current_witness
+        assert boundary
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_current,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+    )
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=current_witness,
+        )
+    )
+
+    assert context is not None
+    assert context["candidate_head"] == current_head
+    assert context["candidate_tree"] == current_tree
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert asserted == [
+        (current_head, current_tree),
+        (current_head, current_tree),
+    ]
+
+    malformed_suffix = json.loads(json.dumps(admission))
+    malformed_suffix["canonical_continuity"]["repair_to_current"] = {
+        "admitted": True
+    }
+    unsigned = dict(malformed_suffix)
+    unsigned.pop("admission_cid")
+    malformed_suffix["admission_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="continuity"):
+        aseh_operator._assert_exact_run_launch_admission(
+            malformed_suffix,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+        )
+
+    missing_edge = json.loads(json.dumps(admission))
+    del missing_edge["canonical_continuity"][
+        "sealed_owner_foreign_recovery_waiter_admission_to_"
+        "candidate_git_epoch_guard"
+    ]
+    unsigned = dict(missing_edge)
+    unsigned.pop("admission_cid")
+    missing_edge["admission_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="R27-to-R30"):
+        aseh_operator._assert_exact_run_launch_admission(
+            missing_edge,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+        )
+
+
+def test_aseh_r30_descendant_restart_defers_live_work_until_continuity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "a" * 40
+    anchor_tree = "b" * 40
+    active_head = "c" * 40
+    active_tree = "d" * 40
+    anchor_witness = _aseh_r22_witness(anchor_head, anchor_tree)
+    active_witness = _aseh_r22_witness(active_head, active_tree)
+    durable: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R30_DURABLE_CANDIDATE_WITNESS_SCHEMA,
+        "witness_cid": "sha256:" + ("5" * 64),
+    }
+    stored_guard = {"guard_cid": "sha256:" + ("6" * 64)}
+    attempt = {"attempt_cid": "sha256:" + ("7" * 64)}
+    policy = {"policy_admission_cid": "sha256:" + ("1" * 64)}
+    stored_evidence = {"stored": "evidence"}
+    receipt = {
+        "authorization_attempt": attempt,
+        "historical_live_policy_admission": policy,
+        "historical_live_execution_evidence": stored_evidence,
+    }
+    transition = {
+        "repair_head": anchor_head,
+        "repair_tree": anchor_tree,
+        "candidate_authorization_witness": anchor_witness,
+        "durable_candidate_witness": durable,
+        "candidate_git_guard": stored_guard,
+        "authorization_attempt": attempt,
+    }
+    r30_path = tmp_path / "repair-r30.json"
+    r30_path.write_text("{}", encoding="utf-8")
+    r30_path.chmod(0o600)
+    receipt_cid = "sha256:" + ("2" * 64)
+    prior_chain = [{"receipt_cid": "sha256:" + ("3" * 64)}]
+    active_guard = SimpleNamespace(
+        candidate_head=active_head,
+        candidate_tree=active_tree,
+    )
+    qualifier_calls: list[dict[str, object]] = []
+    continuity = {"continuity_cid": "sha256:" + ("8" * 64)}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r27_receipt_chain",
+        lambda _paths: prior_chain,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_candidate_git_epoch_guard_transition_receipt_id",
+        lambda _receipt: receipt_cid,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_candidate_git_epoch_guard_transition",
+        lambda *_args, **_kwargs: transition,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_authorization_attempt_record",
+        lambda *_args, **_kwargs: attempt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r30_failed_one_shot_state",
+        lambda **_kwargs: None,
+    )
+
+    def git(*args: str) -> str:
+        if args == ("rev-parse", f"{active_head}^{{tree}}"):
+            return active_tree
+        if args == (
+            "merge-base",
+            "--is-ancestor",
+            anchor_head,
+            active_head,
+        ):
+            return ""
+        if args == ("show", "-s", "--format=%P", active_head):
+            return f"{anchor_head} {'e' * 40}"
+        raise AssertionError(f"unexpected Git call: {args!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_CANDIDATE_GIT_GUARD",
+        active_guard,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_candidate_git_guard_health",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: active_witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _bootstrap: "sha256:" + ("4" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r27_historical_live_validation_executor_contract",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r30_historical_live_policy_admission",
+        lambda *_args, **_kwargs: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r11_validation_environment",
+        lambda _checkout: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r11_command_environment_identity",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_execution_evidence",
+        lambda *_args, **_kwargs: stored_evidence,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_exact_r30_transition_chain",
+        lambda values: list(values),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r30_pre_duckdb_historical_live_policy",
+        lambda **kwargs: qualifier_calls.append(dict(kwargs))
+        or pytest.fail("R30 live work ran before canonical continuity"),
+    )
+    paths = {
+        "repair_candidate_git_epoch_guard_transition_receipt": r30_path,
+    }
+    bundle = aseh_operator._prequalify_r30_historical_live_launch(
+        paths=paths,
+        population={
+            "source_head": active_head,
+            "repository_tree_id": active_tree,
+        },
+        bootstrap={},
+    )
+    assert bundle is not None
+    assert bundle["historical_live_deferred"] is True
+    assert bundle["fresh_evidence"] is None
+    assert qualifier_calls == []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r29_historical_live_effect_continuity",
+        lambda value, **_kwargs: continuity
+        if value == continuity
+        else pytest.fail("R30 continuity admission changed"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r30_pre_duckdb_historical_live_policy",
+        lambda **kwargs: qualifier_calls.append(dict(kwargs))
+        or (
+            policy,
+            {
+                "active_policy_cid": policy["policy_admission_cid"],
+                "authorizing_receipt_cid": receipt_cid,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    completed = aseh_operator._complete_r30_historical_live_prequalification(
+        paths=paths,
+        bundle=bundle,
+        continuity_admission=continuity,
+    )
+
+    assert completed["historical_live_deferred"] is False
+    assert completed["historical_live_effect_continuity"] == continuity
+    assert completed["fresh_evidence"]["authorizing_receipt_cid"] == receipt_cid
+    assert len(qualifier_calls) == 1
+    assert qualifier_calls[0]["candidate_head"] == anchor_head
+    assert qualifier_calls[0]["active_candidate_head"] == active_head
+    assert qualifier_calls[0]["candidate_authorization_witness"] == anchor_witness
+    assert (
+        qualifier_calls[0]["active_candidate_authorization_witness"]
+        == active_witness
+    )
+
+
+def test_aseh_r30_active_policy_binds_anchor_and_current_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_witness = _aseh_r22_witness("a" * 40, "b" * 40)
+    current_witness = _aseh_r22_witness("c" * 40, "d" * 40)
+    contract = {"contract": "historical-live"}
+    policy = {
+        "candidate_head": anchor_witness["head"],
+        "candidate_tree": anchor_witness["tree"],
+        "candidate_authorization_witness_cid": aseh_operator._identity(
+            anchor_witness
+        ),
+        "executor_contract_cid": aseh_operator._identity(contract),
+    }
+    executor = SimpleNamespace(
+        candidate_head=current_witness["head"],
+        candidate_tree=current_witness["tree"],
+        authorization_witness_json=json.dumps(current_witness),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        executor,
+    )
+    monkeypatch.setattr(aseh_operator, "_ASEH_ACTIVE_R19_POLICY", None)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_historical_live_policy_revision",
+        lambda _value: 30,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r19_historical_live_executor_contract",
+        lambda *_args, **_kwargs: contract,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_historical_live_policy_admission_record",
+        lambda _value: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_lock_identity",
+        lambda _value, **_kwargs: {"lock": "admitted"},
+    )
+
+    with aseh_operator._r19_active_policy_scope(
+        policy_admission=policy,
+        executor_contract=contract,
+        authorizing_receipt_cid="sha256:" + ("1" * 64),
+        lifecycle_lock_identity={"lock": "candidate"},
+        pre_effect_guard=lambda: None,
+        active_candidate_head=current_witness["head"],
+        active_candidate_tree=current_witness["tree"],
+        active_candidate_authorization_witness=current_witness,
+    ) as active:
+        assert active["policy_admission"] == policy
+        assert active["active_candidate_binding"] == {
+            "candidate_head": current_witness["head"],
+            "candidate_tree": current_witness["tree"],
+            "candidate_authorization_witness_cid": aseh_operator._identity(
+                current_witness
+            ),
+        }
+        active["consumed"] = True
+
+    assert aseh_operator._ASEH_ACTIVE_R19_POLICY is None
+    source = inspect.getsource(
+        aseh_operator._run_r19_historical_live_validation
+    )
+    assert '"policy_candidate_head": policy_admission["candidate_head"]' in source
+    assert 'evidence["active_candidate_binding"] = active_candidate_binding' in source
+
+
+def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    witness = _aseh_r22_witness("a" * 40, "b" * 40)
+    contract = {"contract": "historical-live"}
+    policy = {
+        "candidate_head": witness["head"],
+        "candidate_tree": witness["tree"],
+        "candidate_authorization_witness_cid": aseh_operator._identity(
+            witness
+        ),
+        "executor_contract_cid": aseh_operator._identity(contract),
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        SimpleNamespace(
+            candidate_head=witness["head"],
+            candidate_tree=witness["tree"],
+            authorization_witness_json=json.dumps(witness),
+        ),
+    )
+    monkeypatch.setattr(aseh_operator, "_ASEH_ACTIVE_R19_POLICY", None)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_historical_live_policy_revision",
+        lambda _value: 29,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r19_historical_live_executor_contract",
+        lambda *_args, **_kwargs: contract,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r29_historical_live_policy_admission_record",
+        lambda _value: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_lock_identity",
+        lambda _value, **_kwargs: {"lock": "admitted"},
+    )
+
+    with aseh_operator._r19_active_policy_scope(
+        policy_admission=policy,
+        executor_contract=contract,
+        authorizing_receipt_cid="sha256:" + ("1" * 64),
+        lifecycle_lock_identity={"lock": "candidate"},
+        pre_effect_guard=lambda: None,
+    ) as active:
+        assert active["active_candidate_binding"] is None
+        active["consumed"] = True
+
+    assert aseh_operator._ASEH_ACTIVE_R19_POLICY is None
+    source = inspect.getsource(
+        aseh_operator._run_r19_historical_live_validation
+    )
+    assert "if revision == 30:" in source
+    assert "if revision in {29, 30}:\n        evidence[" not in source
+
+
+def test_aseh_r29_r30_execution_evidence_shapes_are_closed_and_versioned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "a" * 40
+    anchor_tree = "b" * 40
+    active_head = "c" * 40
+    active_tree = "d" * 40
+    anchor_witness = _aseh_r22_witness(anchor_head, anchor_tree)
+    active_witness = _aseh_r22_witness(active_head, active_tree)
+    contract = {"contract": "historical-live"}
+    environment_identity = "sha256:" + ("1" * 64)
+    stdout_digest = "sha256:" + ("2" * 64)
+    stderr_digest = "sha256:" + ("3" * 64)
+    command = list(aseh_operator._r11_historical_live_docker_command())
+
+    def policy(revision: int) -> dict[str, object]:
+        return {
+            "revision": revision,
+            "policy_admission_cid": "sha256:" + ("4" * 64),
+            "executor_contract_cid": aseh_operator._identity(contract),
+            "logical_argv_sha256": aseh_operator._identity(command),
+            "validation_subject_head": "e" * 40,
+            "validation_subject_tree": "f" * 40,
+            "candidate_head": anchor_head,
+            "candidate_tree": anchor_tree,
+            "candidate_authorization_witness_cid": aseh_operator._identity(
+                anchor_witness
+            ),
+        }
+
+    def evidence(admitted_policy: dict[str, object]) -> dict[str, object]:
+        fields = {
+            "schema",
+            "executor_class",
+            "executor_contract_cid",
+            "active_policy_cid",
+            "authorizing_receipt_cid",
+            "lifecycle_lock_identity",
+            "logical_argv",
+            "logical_argv_sha256",
+            "declared_command_executed",
+            "validation_subject_head",
+            "validation_subject_tree",
+            "policy_candidate_head",
+            "policy_candidate_tree",
+            "policy_candidate_authorization_witness_cid",
+            "environment_identity",
+            "interpreter_identity",
+            "ready",
+            "exact_execution",
+            "observed_descendant_births",
+            "observed_owned_containers",
+            "terminal_live_observed_descendants",
+            "before_docker",
+            "confirmed_before_docker",
+            "before_detached_effects",
+            "confirmed_before_detached_effects",
+            "terminal_docker",
+            "terminal_detached_effects",
+            "dedicated_group_fenced",
+            "returncode",
+            "stdout_digest",
+            "stderr_digest",
+            "terminal_class",
+            "evidence_cid",
+        }
+        result: dict[str, object] = {field: None for field in fields}
+        result.update(
+            {
+                "schema": (
+                    aseh_operator.ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+                ),
+                "executor_class": (
+                    aseh_operator.ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS
+                ),
+                "executor_contract_cid": admitted_policy[
+                    "executor_contract_cid"
+                ],
+                "active_policy_cid": admitted_policy[
+                    "policy_admission_cid"
+                ],
+                "authorizing_receipt_cid": None,
+                "lifecycle_lock_identity": {},
+                "logical_argv": command,
+                "logical_argv_sha256": admitted_policy[
+                    "logical_argv_sha256"
+                ],
+                "declared_command_executed": True,
+                "validation_subject_head": admitted_policy[
+                    "validation_subject_head"
+                ],
+                "validation_subject_tree": admitted_policy[
+                    "validation_subject_tree"
+                ],
+                "policy_candidate_head": anchor_head,
+                "policy_candidate_tree": anchor_tree,
+                "policy_candidate_authorization_witness_cid": (
+                    admitted_policy[
+                        "candidate_authorization_witness_cid"
+                    ]
+                ),
+                "environment_identity": environment_identity,
+                "terminal_live_observed_descendants": [],
+                "dedicated_group_fenced": True,
+                "returncode": 0,
+                "stdout_digest": stdout_digest,
+                "stderr_digest": stderr_digest,
+                "terminal_class": "verified_success",
+            }
+        )
+        return result
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_historical_live_policy_revision",
+        lambda value: int(value["revision"]),
+    )
+    r29_policy = policy(29)
+    r30_policy = policy(30)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r29_historical_live_policy_admission",
+        lambda _value, **_kwargs: r29_policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r30_historical_live_policy_admission",
+        lambda _value, **_kwargs: r30_policy,
+    )
+
+    common = {
+        "bootstrap_receipt_id": "sha256:" + ("5" * 64),
+        "prior_chain": [],
+        "candidate_head": anchor_head,
+        "candidate_tree": anchor_tree,
+        "candidate_authorization_witness": anchor_witness,
+        "executor_contract": contract,
+        "environment_identity": environment_identity,
+        "returncode": 0,
+        "stdout_digest": stdout_digest,
+        "stderr_digest": stderr_digest,
+        "authorizing_receipt_cid": None,
+    }
+    legacy_r29 = evidence(r29_policy)
+    with pytest.raises(aseh_operator.OperatorError, match="lock"):
+        aseh_operator._validate_r19_historical_live_execution_evidence(
+            legacy_r29,
+            policy_admission=r29_policy,
+            **common,
+        )
+    broadened_r29 = {
+        **legacy_r29,
+        "active_candidate_binding": {
+            "candidate_head": active_head,
+            "candidate_tree": active_tree,
+            "candidate_authorization_witness_cid": aseh_operator._identity(
+                active_witness
+            ),
+        },
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="evidence differs"):
+        aseh_operator._validate_r19_historical_live_execution_evidence(
+            broadened_r29,
+            policy_admission=r29_policy,
+            **common,
+        )
+
+    missing_r30_binding = evidence(r30_policy)
+    r30_arguments = {
+        **common,
+        "policy_admission": r30_policy,
+        "durable_candidate_witness": {},
+        "active_candidate_head": active_head,
+        "active_candidate_tree": active_tree,
+        "active_candidate_authorization_witness": active_witness,
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="evidence differs"):
+        aseh_operator._validate_r19_historical_live_execution_evidence(
+            missing_r30_binding,
+            **r30_arguments,
+        )
+    exact_binding = {
+        "candidate_head": active_head,
+        "candidate_tree": active_tree,
+        "candidate_authorization_witness_cid": aseh_operator._identity(
+            active_witness
+        ),
+    }
+    exact_r30 = {
+        **missing_r30_binding,
+        "active_candidate_binding": exact_binding,
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="lock"):
+        aseh_operator._validate_r19_historical_live_execution_evidence(
+            exact_r30,
+            **r30_arguments,
+        )
+    for field, replacement in (
+        ("candidate_head", "0" * 40),
+        ("candidate_tree", "1" * 40),
+        ("candidate_authorization_witness_cid", "sha256:" + ("9" * 64)),
+    ):
+        changed = {
+            **exact_r30,
+            "active_candidate_binding": {
+                **exact_binding,
+                field: replacement,
+            },
+        }
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="evidence differs",
+        ):
+            aseh_operator._validate_r19_historical_live_execution_evidence(
+                changed,
+                **r30_arguments,
+            )
+
+
+def test_aseh_r30_receipt_rejects_policy_witness_not_bound_to_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    witness_cid = aseh_operator._identity(witness)
+    durable = {
+        "witness_cid": "sha256:" + ("1" * 64),
+        "authorization_v1_witness_cid": witness_cid,
+        "authorization_guard_cid": "sha256:" + ("2" * 64),
+    }
+    guard = {"guard_cid": durable["authorization_guard_cid"]}
+    policy = {
+        "bootstrap_receipt_id": "sha256:" + ("3" * 64),
+        "previous_receipt_cid": (
+            aseh_operator.ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        ),
+        "candidate_head": head,
+        "candidate_tree": tree,
+        "candidate_authorization_witness_cid": witness_cid,
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "policy_admission_cid": "sha256:" + ("4" * 64),
+    }
+    historical: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": None,
+        "returncode": 0,
+        "terminal_class": "verified_success",
+    }
+    historical["evidence_cid"] = aseh_operator._identity(historical)
+    attempt = {"started_at": 1.0}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_durable_candidate_witness",
+        lambda _value: durable,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r30_durable_candidate_witness",
+        lambda _value, **_kwargs: durable,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_candidate_git_guard_record",
+        lambda _value, **_kwargs: guard,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_historical_live_policy_admission_record",
+        lambda value: dict(value),
+    )
+    for validator in (
+        "_validate_r25_projection_recovery_failure_evidence",
+        "_validate_r26_r25_preflight_failure_evidence",
+        "_validate_r27_r26_terminal_failure_evidence",
+        "_validate_r28_r27_initial_health_failure_evidence",
+        "_validate_r29_r28_authorization_failure_evidence",
+        "_validate_r30_r29_authorization_failure_evidence",
+        "_validate_r30_failed_r29_authorization_attempt",
+    ):
+        monkeypatch.setattr(
+            aseh_operator,
+            validator,
+            lambda value: dict(value),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_projection_recovery_prestart_admission",
+        lambda value, **_kwargs: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_authorization_attempt_record",
+        lambda _value, **_kwargs: attempt,
+    )
+
+    receipt: dict[str, object] = {
+        field: None
+        for field in (
+            aseh_operator
+            .REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_RECEIPT_FIELDS
+        )
+    }
+    receipt.update(
+        {
+            "schema": (
+                aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SCHEMA
+            ),
+            "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+            "program_id": aseh_operator.PROGRAM,
+            "transition_revision": 30,
+            "bootstrap_receipt_id": policy["bootstrap_receipt_id"],
+            "previous_receipt_cid": (
+                aseh_operator.ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+            ),
+            "published_r27_base_head": (
+                aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_HEAD
+            ),
+            "published_r27_base_tree": (
+                aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_TREE
+            ),
+            "failed_unpublished_r28_head": (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "failed_unpublished_r28_tree": (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "failed_unpublished_r29_head": (
+                aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+            ),
+            "failed_unpublished_r29_tree": (
+                aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+            ),
+            "unreceipted_effective_changed_paths": list(
+                aseh_operator.ASEH_R30_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+            ),
+            "unreceipted_effective_patch_digest": "sha256:" + ("5" * 64),
+            "terminal_success_criteria": (
+                aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS
+            ),
+            "terminal_non_success_criteria": (
+                aseh_operator.REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_NON_SUCCESS
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+            "sealed_validation_executor_contract": (
+                aseh_operator._r30_sealed_receipt_validation_executor_contract()
+            ),
+            "candidate_authorization_witness": witness,
+            "durable_candidate_witness": durable,
+            "candidate_git_guard": guard,
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": historical,
+            "projection_recovery_failure_evidence": {"admitted": True},
+            "r25_preflight_failure_evidence": {"admitted": True},
+            "projection_recovery_prestart_admission": {"admitted": True},
+            "r26_terminal_failure_evidence": {"admitted": True},
+            "r27_initial_health_failure_evidence": {"admitted": True},
+            "r28_authorization_failure_evidence": {"admitted": True},
+            "r29_authorization_failure_evidence": {"admitted": True},
+            "r29_authorization_attempt": {"admitted": True},
+            "authorization_attempt": attempt,
+            "repair_head": head,
+            "repair_tree": tree,
+            "authorized_at": 2.0,
+        }
+    )
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_cid")
+    receipt["receipt_cid"] = aseh_operator._identity(unsigned)
+    assert (
+        aseh_operator._repair_candidate_git_epoch_guard_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    forged = json.loads(json.dumps(receipt))
+    forged_policy = forged["historical_live_policy_admission"]
+    forged_policy["candidate_authorization_witness_cid"] = (
+        "sha256:" + ("9" * 64)
+    )
+    forged_policy["policy_admission_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in forged_policy.items()
+            if key != "policy_admission_cid"
+        }
+    )
+    forged_historical = forged["historical_live_execution_evidence"]
+    forged_historical["active_policy_cid"] = forged_policy[
+        "policy_admission_cid"
+    ]
+    forged_historical["evidence_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in forged_historical.items()
+            if key != "evidence_cid"
+        }
+    )
+    forged["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in forged.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R30 guard receipt"):
+        aseh_operator._repair_candidate_git_epoch_guard_transition_receipt_id(
+            forged
+        )
+
+
+def test_aseh_r27_delegates_r30_before_r29_and_older_suffixes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r30"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_candidate_git_epoch_guard_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R29 ran before R30"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "older suffix admission ran before R30"
+        ),
+    )
+
+    result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+        board=object(),
+        config={},
+        paths={
+            "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+        },
+        bootstrap={},
+        bootstrap_id="bootstrap",
+        head="9" * 40,
+        previous_receipt=r26_chain[-1],
+        previous_transition=r26_chain[-1],
+        prior_receipt_chain=r26_chain,
+        authorization_directory_fd=90,
+    )
+    assert result == sentinel
+
+
+def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
+    parent = inspect.getsource(aseh_operator.run_supervisor)
+    owner = inspect.getsource(aseh_operator._run_supervisor_owner_impl)
+
+    parent_guard = parent.index("launch_git_guard_scope.__enter__()")
+    parent_witness = parent.index(
+        "authorization_witness = _candidate_authorization_witness("
+    )
+    parent_seal = parent.index(
+        "sealed = seal_agent_implementation_control_plane_capsule(pin)"
+    )
+    parent_retire = parent.index("retire_launch_git_guard()")
+    parent_owner_popen = parent.index("child = subprocess.Popen(")
+    assert parent_guard < parent_witness < parent_seal < parent_retire
+    assert parent_retire < parent_owner_popen
+
+    owner_guard = owner.index("owner_launch_guard_scope.__enter__()")
+    owner_witness = owner.index(
+        "authorization_witness = _candidate_authorization_witness("
+    )
+    owner_admission = owner.index(
+        "launch_admission = _admit_materialized_launch("
+    )
+    scheduler_popen = owner.index("scheduler = subprocess.Popen(")
+    scheduler_handoff = owner.index("scheduler_handoff.deliver(")
+    owner_retire = owner.index("retire_owner_launch_git_guard()", scheduler_handoff)
+    initial_health = owner.index("initial_health, last_progress_at =")
+    assert owner_guard < owner_witness < owner_admission < scheduler_popen
+    assert scheduler_popen < scheduler_handoff < owner_retire < initial_health
+    assert "retire_owner_launch_git_guard(sys.exc_info())" in owner
