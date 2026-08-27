@@ -16,6 +16,9 @@ from ipfs_accelerate_py.agent_supervisor.federation.chaos import (
     build_federation_chaos_suite,
     run_closed_federation_chaos_suite,
 )
+from ipfs_accelerate_py.agent_supervisor.federation.cli import (
+    federation_cli_discovery_manifest,
+)
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     FederationBoundsError,
     FederationContractError,
@@ -32,7 +35,15 @@ from ipfs_accelerate_py.agent_supervisor.federation.ducklake_projection import (
     ProjectionRecoveryReceipt,
 )
 from ipfs_accelerate_py.agent_supervisor.federation.fixed_point import FixedPointReceipt
+from ipfs_accelerate_py.agent_supervisor.federation.formal import (
+    FederationFormalIdentity,
+    build_federation_formal_suite,
+    check_federation_formal_suite,
+    run_external_model_checks,
+)
 from ipfs_accelerate_py.agent_supervisor.federation.promotion import (
+    CASF_CONTROL_PARITY_REPORT_SCHEMA,
+    CASF_FORMAL_MODEL_REPORT_SCHEMA,
     DECISION_VALIDATION_SCHEMA,
     FEDERATION_PROMOTION_GATE_INTERFACE,
     MAX_JSON_CONTAINER_ITEMS,
@@ -60,8 +71,18 @@ from ipfs_accelerate_py.agent_supervisor.federation.promotion import (
     required_slots,
     validate_current_decision,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
+    ProverMatrixEntry,
+    ProverMatrixSnapshot,
+)
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_state_model import (
+    ModelCheckBounds,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     content_identity,
+)
+from ipfs_accelerate_py.mcp.tools.agent_supervisor import (
+    federation_control_mcp_discovery_manifest,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -211,6 +232,114 @@ def _control_audit(identity: QualificationIdentity) -> dict[str, object]:
     ).to_dict()
 
 
+def _control_parity(identity: QualificationIdentity) -> dict[str, object]:
+    report: dict[str, object] = {
+        "schema": CASF_CONTROL_PARITY_REPORT_SCHEMA,
+        "source_revision": identity.revision,
+        "source_tree": identity.tree_id,
+        "task_id": "CASF-035",
+        "bounded": True,
+        "authority_created": False,
+        "cli_manifest": federation_cli_discovery_manifest(),
+        "mcp_manifest": federation_control_mcp_discovery_manifest(),
+    }
+    report["report_id"] = content_identity(report)
+    return report
+
+
+def _unavailable_formal_matrix() -> ProverMatrixSnapshot:
+    return ProverMatrixSnapshot(
+        entries=tuple(
+            ProverMatrixEntry(
+                prover_id=prover_id,
+                display_name=prover_id,
+                family="state_machine",
+                absent=True,
+                discovered=False,
+                versioned=False,
+                smoke_tested=False,
+                translation_conformant=False,
+                reconstruction_capable=False,
+                authoritative_for=(),
+                executable_path=None,
+                executable_version=None,
+                package_module=None,
+                package_version=None,
+                reason="not installed",
+            )
+            for prover_id in ("tla_tlc", "apalache")
+        ),
+        generated_at="2026-08-24T00:00:00Z",
+        duration_ms=0,
+        self_tests_requested=False,
+        bounded=True,
+        max_self_tests=2,
+        matrix_timeout_seconds=2.0,
+        documentation_source=None,
+    )
+
+
+def _formal(
+    identity: QualificationIdentity,
+    *,
+    bounds: ModelCheckBounds | None = None,
+) -> dict[str, object]:
+    formal_identity = FederationFormalIdentity(
+        source_revision=identity.revision,
+        source_tree=identity.tree_id,
+        state_schema=identity.schema_id,
+        generation_id=identity.generation_id,
+        policy_id=identity.policy_id,
+        policy_revision=identity.policy_revision,
+        capability_ids=identity.capability_ids,
+        federation_id=identity.federation_id,
+        supervisor_ids=("supervisor:codex", "supervisor:grok-build"),
+        task_id="CASF-036",
+        attempt_id="attempt:casf-036",
+        lease_id="lease:casf-036",
+        fencing_epoch=identity.fencing_epoch,
+        assignment_revision=identity.assignment_revision,
+        worktree_id="worktree:casf-036",
+    )
+    selected_bounds = bounds or ModelCheckBounds(
+        max_steps=12,
+        max_retries=1,
+        max_fence=16,
+        max_tasks=2,
+        max_agents=2,
+        max_states=16,
+        max_transitions=64,
+        max_evidence_ids=1,
+    )
+    suite = build_federation_formal_suite(formal_identity, bounds=selected_bounds)
+    hermetic_receipts = check_federation_formal_suite(suite)
+    report: dict[str, object] = {
+        "schema": CASF_FORMAL_MODEL_REPORT_SCHEMA,
+        "bounded": True,
+        "unbounded_proof": False,
+        "authority_created": False,
+        "identity": formal_identity.to_dict(),
+        "suite": suite.to_dict(),
+        "hermetic_receipts": [item.to_dict() for item in hermetic_receipts],
+        "external_receipts": [
+            item.to_dict()
+            for item in run_external_model_checks(
+                suite,
+                matrix=_unavailable_formal_matrix(),
+                hermetic_receipts=hermetic_receipts,
+            )
+        ],
+    }
+    report["report_id"] = content_identity(report)
+    return report
+
+
+def _reseal_report(report: dict[str, object]) -> dict[str, object]:
+    report.pop("report_id", None)
+    report["report_id"] = content_identity(report)
+    return report
+
+
 def _chaos(identity: QualificationIdentity) -> dict[str, object]:
     chaos_identity = FederationChaosIdentity(
         source_revision=identity.revision,
@@ -305,8 +434,8 @@ def test_current_real_artifacts_truthfully_require_quarantine() -> None:
     assert decision.status is DecisionStatus.BLOCKED
     assert decision.disposition is DecisionDisposition.QUARANTINE_REQUIRED
     assert all(item.status is not ArtifactStatus.PASSED for item in decision.assessments)
-    assert "missing:casf_035_control_parity_report_decoder" in decision.blockers
-    assert "missing:casf_036_formal_report_decoder" in decision.blockers
+    assert "missing:casf_035_control_parity_report" in decision.blockers
+    assert "missing:casf_036_formal_model_report" in decision.blockers
     assert "blocked:casf_037_local_qualification_unavailable" in decision.blockers
     for task in ("casf_038", "casf_039", "casf_040", "casf_041"):
         assert f"unavailable:{task}_live_not_run" in decision.blockers
@@ -430,8 +559,113 @@ def test_artifact_schema_substitution_and_forged_reports_fail_closed() -> None:
     )
 
     assert "invalid:casf_039_benchmark" in decision.blockers
-    assert "unsupported:casf_035_control_parity_report_decoder" in decision.blockers
-    assert "unsupported:casf_036_formal_report_decoder" in decision.blockers
+    assert "invalid:casf_035_control_parity_report" in decision.blockers
+    assert "invalid:casf_036_formal_model_report" in decision.blockers
+
+
+def test_canonical_control_and_formal_reports_decode_but_create_no_authority() -> None:
+    identity = _identity()
+    decision = evaluate_promotion(
+        identity,
+        GateProfile.DUCKDB_QUACK,
+        _bundle(
+            identity,
+            control_parity_report=_control_parity(identity),
+            formal_report=_formal(identity),
+        ),
+    )
+
+    for task, slot, schema in (
+        ("casf_035", EvidenceSlot.CONTROL_PARITY, CASF_CONTROL_PARITY_REPORT_SCHEMA),
+        ("casf_036", EvidenceSlot.FORMAL, CASF_FORMAL_MODEL_REPORT_SCHEMA),
+    ):
+        assessment = _assessment(decision, slot)
+        assert assessment.schema_id == schema
+        assert assessment.status is ArtifactStatus.NONAUTHORITATIVE
+        assert assessment.authoritative is False
+        assert f"missing:{task}_accepted_producer_provenance" in assessment.blockers
+        assert f"missing:{task}_full_qualification_identity_binding" in assessment.blockers
+        assert f"missing:{task}_state_owner_provenance" in assessment.blockers
+
+
+@pytest.mark.parametrize("malformation", ("passed_bit", "mcp_unknown", "bool_as_int"))
+def test_control_parity_decoder_rejects_forged_or_nonexact_wire(
+    malformation: str,
+) -> None:
+    identity = _identity()
+    report = _control_parity(identity)
+    if malformation == "passed_bit":
+        report["passed"] = True
+    else:
+        mcp_manifest = report["mcp_manifest"]
+        assert isinstance(mcp_manifest, dict)
+        if malformation == "mcp_unknown":
+            mcp_manifest["qualification_authority"] = True
+        else:
+            mcp_manifest["shell_out"] = 0
+    _reseal_report(report)
+
+    decision = evaluate_promotion(
+        identity,
+        GateProfile.DUCKDB_QUACK,
+        _bundle(identity, control_parity_report=report),
+    )
+    assert _assessment(decision, EvidenceSlot.CONTROL_PARITY).status is ArtifactStatus.INVALID
+    assert "invalid:casf_035_control_parity_report" in decision.blockers
+
+
+def test_formal_decoder_reconstructs_receipts_and_enforces_closed_bounds() -> None:
+    identity = _identity()
+    forged = _formal(identity)
+    receipts = forged["hermetic_receipts"]
+    assert isinstance(receipts, list) and isinstance(receipts[0], dict)
+    receipts[0]["explored_states"] += 1
+    _reseal_report(forged)
+    decision = evaluate_promotion(
+        identity,
+        GateProfile.DUCKDB_QUACK,
+        _bundle(identity, formal_report=forged),
+    )
+    assert _assessment(decision, EvidenceSlot.FORMAL).status is ArtifactStatus.INVALID
+    assert "invalid:casf_036_formal_model_report" in decision.blockers
+
+    oversized = _formal(
+        identity,
+        bounds=ModelCheckBounds(
+            max_steps=65,
+            max_retries=1,
+            max_fence=16,
+            max_tasks=2,
+            max_agents=2,
+            max_states=16,
+            max_transitions=64,
+            max_evidence_ids=1,
+        ),
+    )
+    decision = evaluate_promotion(
+        identity,
+        GateProfile.DUCKDB_QUACK,
+        _bundle(identity, formal_report=oversized),
+    )
+    assert _assessment(decision, EvidenceSlot.FORMAL).status is ArtifactStatus.INVALID
+    assert "invalid:casf_036_formal_model_report" in decision.blockers
+
+
+def test_control_and_formal_reports_for_another_tree_are_stale() -> None:
+    current = _identity()
+    source = _identity(revision=PREVIOUS_REVISION, tree_id=PREVIOUS_TREE)
+    decision = evaluate_promotion(
+        current,
+        GateProfile.DUCKDB_QUACK,
+        _bundle(
+            current,
+            control_parity_report=_control_parity(source),
+            formal_report=_formal(source),
+        ),
+    )
+
+    assert "stale:casf_035_control_parity_identity" in decision.blockers
+    assert "stale:casf_036_formal_identity" in decision.blockers
 
 
 def test_benchmark_nonpromotion_flags_cannot_be_flipped() -> None:
