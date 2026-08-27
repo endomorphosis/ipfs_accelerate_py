@@ -379,6 +379,35 @@ def test_close_finishes_native_cleanup_after_rollback_failure() -> None:
         connection.execute("SELECT 1")
 
 
+def test_exclusive_file_connection_recovers_after_uncertain_transaction(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "recover.duckdb"
+    with open_duckdb_connection(path) as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.execute("INSERT INTO items VALUES (1)")
+        with connection._execution_condition:
+            connection._poison_locked()
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+        connection.execute("INSERT INTO items VALUES (2)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
+
+
+def test_wrapped_memory_connection_stays_unusable_after_poison() -> None:
+    import duckdb
+
+    raw = duckdb.connect(":memory:")
+    connection = DuckDBConnection.wrap(raw)
+    try:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        with connection._execution_condition:
+            connection._poison_locked()
+        with pytest.raises(DuckDBConnectionPolicyError, match="unusable"):
+            connection.execute("SELECT 1")
+    finally:
+        connection.close()
+
+
 def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
     tmp_path: Path,
 ) -> None:

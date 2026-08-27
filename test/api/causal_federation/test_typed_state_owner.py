@@ -274,6 +274,37 @@ def test_closed_owner_command_is_atomic_and_rolls_back_callback_failure(
         connection.close()
 
 
+def test_gateway_attach_recovers_after_exclusive_owner_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    token, _grant = gateway.issue_grant(
+        client_id="client:recover-after-poison",
+        allowed_operations=_read_operations(),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(socket_path))
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    with connection._execution_condition:
+        connection._poison_locked()
+    client = QuackStateClient(
+        owner_id="client:recover-after-poison",
+        store_id="control.duckdb",
+    )
+    try:
+        client.attach("quack:127.0.0.1:7777", server_id="server:typed-owner-test")
+        generation = client.load_generation()
+        assert int(generation.generation) >= 1
+    finally:
+        client.close()
+        gateway.stop()
+        connection.close()
+
+
 def test_commit_observer_runs_after_owner_transaction_lock_release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

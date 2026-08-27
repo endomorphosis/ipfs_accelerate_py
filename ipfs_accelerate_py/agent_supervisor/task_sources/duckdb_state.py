@@ -626,6 +626,10 @@ class DuckDBConnection:
         self._closed = False
         self._closing_owner = 0
         self._poisoned = False
+        self._memory_limit = memory_limit
+        self._threads = threads
+        self._quack_owner = bool(quack_owner)
+        self._preload_quack_for_state_owner = bool(_preload_quack_for_state_owner)
         self._default_catalog = None
         self._quack_mutation_binding: dict[str, Any] | None = None
         self._quack_mutation_token = ""
@@ -686,6 +690,10 @@ class DuckDBConnection:
         instance._closed = False
         instance._closing_owner = 0
         instance._poisoned = False
+        instance._memory_limit = DEFAULT_MEMORY_LIMIT
+        instance._threads = 1
+        instance._quack_owner = False
+        instance._preload_quack_for_state_owner = False
         instance._lock_context = None
         instance._default_catalog = None
         instance._quack_mutation_binding = None
@@ -736,12 +744,70 @@ class DuckDBConnection:
                 self._closing_owner
                 and self._closing_owner != thread_id
             )
-            or self._poisoned
-            or self._connection is None
         ):
             raise DuckDBConnectionPolicyError(
                 "DuckDB connection is unusable after an uncertain transaction"
             )
+        if self._poisoned or self._connection is None:
+            self._recover_exclusive_handle_locked()
+        if self._poisoned or self._connection is None:
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+
+    def _exclusive_handle_connector(self) -> Any:
+        if bool(getattr(self, "_preload_quack_for_state_owner", False)):
+            return connect_duckdb_quack_owner_with_policy
+        if bool(getattr(self, "_quack_owner", False)):
+            return connect_duckdb_with_quack_owner_policy
+        return connect_duckdb_with_policy
+
+    def _can_recover_exclusive_handle_locked(self) -> bool:
+        """File-backed exclusive owners may reopen after an uncertain native handle."""
+
+        return (
+            not self._closed
+            and not bool(getattr(self, "_pooled", False))
+            and self.path is not None
+            and not self._closing_owner
+        )
+
+    def _recover_exclusive_handle_locked(self) -> None:
+        """Replace a poisoned exclusive native handle while keeping the file lock."""
+
+        if not self._can_recover_exclusive_handle_locked():
+            return
+        raw = self._connection
+        self._connection = None
+        self._quack_pending_mutations = []
+        self._transaction_finished_locked()
+        if raw is not None:
+            try:
+                raw.close()
+            except Exception:
+                pass
+            _unregister_duckdb_wrapper(self, raw)
+        try:
+            import duckdb
+
+            connection = self._exclusive_handle_connector()(
+                duckdb,
+                self.path,
+                configuration={
+                    "threads": getattr(self, "_threads", 1),
+                    "memory_limit": getattr(
+                        self, "_memory_limit", DEFAULT_MEMORY_LIMIT
+                    ),
+                },
+            )
+            _register_duckdb_wrapper(self, connection)
+        except BaseException:
+            self._poisoned = True
+            self._execution_condition.notify_all()
+            raise
+        self._connection = connection
+        self._poisoned = False
+        self._execution_condition.notify_all()
 
     def _poison_locked(self) -> str:
         """Close an uncertain native handle and wake every excluded peer."""

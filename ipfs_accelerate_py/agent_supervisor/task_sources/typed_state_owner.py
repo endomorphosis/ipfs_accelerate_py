@@ -50,6 +50,7 @@ from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
 )
+from .duckdb_state import DuckDBConnectionPolicyError
 from .task_execution_route_policy import TaskExecutionRouteBinding
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
@@ -3582,26 +3583,43 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError("gateway client identity is invalid")
             session_id = f"session:owner:{uuid.uuid4()}"
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            with self._transaction_lock:
-                self._connection.execute(
-                    """
-                    INSERT INTO client_sessions (
-                        session_id, server_id, owner_id, process_birth_id,
-                        attached_at, last_seen_at, fence_epoch, generation,
-                        status, revision
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'attached', 0)
-                    """,
-                    [
-                        session_id,
-                        str(self.identity.get("server_id") or ""),
-                        client_id,
-                        process_birth_id,
-                        now,
-                        now,
-                        int(self.identity.get("fence_epoch") or 0),
-                        int(self.identity.get("generation") or 0),
-                    ],
-                )
+            try:
+                with self._transaction_lock:
+                    self._connection.execute(
+                        """
+                        INSERT INTO client_sessions (
+                            session_id, server_id, owner_id, process_birth_id,
+                            attached_at, last_seen_at, fence_epoch, generation,
+                            status, revision
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'attached', 0)
+                        """,
+                        [
+                            session_id,
+                            str(self.identity.get("server_id") or ""),
+                            client_id,
+                            process_birth_id,
+                            now,
+                            now,
+                            int(self.identity.get("fence_epoch") or 0),
+                            int(self.identity.get("generation") or 0),
+                        ],
+                    )
+            except DuckDBConnectionPolicyError as exc:
+                self._last_error_type = type(exc).__name__
+                try:
+                    _send_frame(
+                        channel,
+                        {
+                            "schema": TYPED_STATE_OWNER_SCHEMA,
+                            "request_id": opened_request_id,
+                            "ok": False,
+                            "error_code": self._error_code(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                except Exception:
+                    pass
+                return
             _send_frame(
                 channel,
                 {
@@ -4104,8 +4122,15 @@ class TypedStateOwnerGateway:
                             "error_type": type(exc).__name__,
                         },
                     )
-        except (OSError, TypedStateOwnerError, ValueError) as exc:
-            # Authentication and protocol failures are deliberately silent.
+        except (
+            OSError,
+            TypedStateOwnerError,
+            ValueError,
+            DuckDBConnectionPolicyError,
+        ) as exc:
+            # Authentication, protocol, and recovered-owner attach failures
+            # stay on this client thread.  The exclusive DuckDB handle is
+            # reopened in-place; a later attach must not dump the thread.
             self._last_error_type = type(exc).__name__
             return
         finally:
