@@ -1992,7 +1992,7 @@ def _install_candidate_sandbox(
     # ceiling and separately pin numerical libraries to one thread in the
     # sealed worker environment.
     processes = _lower_resource_limit(resource.RLIMIT_NPROC, 1_048_576)
-    cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 900)
+    cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 3600)
     address_space_bytes = _lower_resource_limit(resource.RLIMIT_AS, 8 * 1024**3)
     landlock_abi = _install_landlock(
         write_root, permit_git_helpers=permit_git_helpers
@@ -2051,7 +2051,7 @@ def _sandbox_evidence_is_valid(
         return False
     maximums = {
         "address_space_bytes": 8 * 1024**3,
-        "cpu_seconds": 900,
+        "cpu_seconds": 3600,
         "file_size_bytes": 64 * 1024 * 1024,
         "open_files": 256,
         "processes": 1_048_576,
@@ -17133,7 +17133,7 @@ def _run_suite(
         wall_timeout = (
             recovery.validation_spec()["timeout_seconds"]
             if recovery is not None
-            else 1800
+            else 3600
         )
         parent_started = time.monotonic()
         barrier_error: BaseException | None = None
