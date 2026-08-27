@@ -187,7 +187,7 @@ def _install_protected_qualification_completion_fixture(
     prior_receipt = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
-            "typed-database-claim-recovery@1"
+            "typed-database-legacy-unstall-recovery@1"
         ),
         "operation": "database_claim_lost_sidecar_recovery",
     }

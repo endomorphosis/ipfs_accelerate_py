@@ -1632,7 +1632,7 @@ def _validated_protected_qualification_completion_parameters(
         or parameters.get("expected_prior_receipt_operation")
         != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
         or parameters.get("expected_prior_receipt_schema")
-        != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
         or parameters.get("outcome") != "passed"
         or isinstance(revision, bool)
         or not isinstance(revision, int)

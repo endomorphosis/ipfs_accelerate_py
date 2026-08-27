@@ -14562,7 +14562,8 @@ def _complete_protected_qualification_locked(
             preload_agent_supervisor_native_dependency,
         )
 
-        preload_agent_supervisor_native_dependency(live_launch["native_launch"])
+        if "duckdb" not in sys.modules and "_duckdb" not in sys.modules:
+            preload_agent_supervisor_native_dependency(live_launch["native_launch"])
         from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
             process_birth_id,
         )
