@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -11115,6 +11116,23 @@ class PortalImplementationSupervisor:
             self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
+            if (
+                self._uses_supervisor_state_owner_bootstrap()
+                and not self._quack_owner_reachable()
+            ):
+                delay = self._supervisor_loop_recovery_delay_seconds()
+                self._record_event(
+                    "supervisor_waiting_for_state_owner",
+                    {
+                        "quack_endpoint": str(
+                            getattr(self.config.database_program, "quack_endpoint", "")
+                            or ""
+                        ),
+                        "delay_seconds": delay,
+                    },
+                )
+                time.sleep(delay)
+                continue
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
@@ -11188,7 +11206,41 @@ class PortalImplementationSupervisor:
     def _supervisor_loop_recovery_delay_seconds(self) -> float:
         """Back off between outer loop recovery attempts without exceeding one check interval."""
 
+        if (
+            self._uses_supervisor_state_owner_bootstrap()
+            and not self._quack_owner_reachable()
+        ):
+            return max(15.0, min(float(self.config.check_interval) * 3.0, 60.0))
         return max(5.0, min(float(self.config.check_interval), 60.0))
+
+    def _quack_owner_reachable(self) -> bool:
+        """True when the configured loopback Quack owner is accepting connects.
+
+        After launch-supervisor exits it stops the owner but session-detached
+        lane supervisors keep the inherited bootstrap listener FD. Daemons then
+        connect to a socket nobody accept()s (EAGAIN) and the child loop flaps.
+        Do not spawn until the TCP owner is live again.
+        """
+
+        program = self.config.database_program
+        if program is None:
+            return True
+        endpoint = str(program.quack_endpoint or "").strip()
+        if not endpoint.startswith("quack:"):
+            return True
+        rest = endpoint[len("quack:") :]
+        host, separator, port_text = rest.rpartition(":")
+        if separator != ":" or not host or not port_text.isdigit():
+            return True
+        try:
+            probe = socket.create_connection((host, int(port_text)), timeout=1.0)
+        except OSError:
+            return False
+        try:
+            probe.close()
+        except OSError:
+            pass
+        return True
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())

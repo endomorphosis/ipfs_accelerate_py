@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -284,5 +285,47 @@ def test_plan_bound_supervisor_retains_existing_database_adapter_path(
         supervisor.config.plan_bound_dispatch = True
 
         assert supervisor._uses_supervisor_state_owner_bootstrap() is False
+    finally:
+        listener.close()
+
+
+def test_connect_inherited_listener_retries_blockingioerror_until_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    listener = _listener(tmp_path)
+    attempts = {"count": 0}
+
+    def blocked_connect(self: socket.socket, address: object) -> None:
+        attempts["count"] += 1
+        raise BlockingIOError(11, "Resource temporarily unavailable")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked_connect)
+    try:
+        duplicate = os.dup(listener.fileno())
+        started = time.monotonic()
+        with pytest.raises(
+            state_owner_bootstrap.StateOwnerBootstrapError,
+            match="could not be opened",
+        ):
+            state_owner_bootstrap._connect_inherited_listener(
+                duplicate,
+                timeout_seconds=0.3,
+            )
+        assert time.monotonic() - started >= 0.2
+        assert attempts["count"] >= 2
+        assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+    finally:
+        listener.close()
+
+
+def test_supervisor_backs_off_when_quack_owner_is_down(tmp_path: Path) -> None:
+    listener = _listener(tmp_path)
+    try:
+        supervisor = _supervisor(listener, owner_session_id="campaign")
+        supervisor.config.database_program.quack_endpoint = "quack:127.0.0.1:1"
+        supervisor.config.check_interval = 20.0
+        assert supervisor._quack_owner_reachable() is False
+        assert supervisor._supervisor_loop_recovery_delay_seconds() >= 15.0
     finally:
         listener.close()
