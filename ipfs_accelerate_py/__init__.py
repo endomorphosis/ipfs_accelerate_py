@@ -1034,9 +1034,6 @@ class _IPFSAccelerateModule(ModuleType):
         if loaded is not None and loaded is not self:
             ModuleType.__setattr__(self, name, loaded)
             return loaded
-        getattr_fn = namespace.get("__getattr__")
-        if name[:2] != "__" and callable(getattr_fn):
-            return getattr_fn(name)
         raise AttributeError(
             f"module {module_name!r} has no attribute {name!r}"
         )
