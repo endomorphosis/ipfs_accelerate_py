@@ -57793,6 +57793,15 @@ class PortalImplementationDaemon:
             return result
         if result.get("auto_rescue") and result.get("auto_rescue_terminal"):
             return result
+        # Sanitize later strips the live proposal object from public control
+        # records.  Capture the same-attempt replay exception first so stage
+        # rescue cannot treat that exact accepted proposal as globally consumed.
+        same_attempt_replayable_ids = self._same_attempt_replayable_proposal_ids(
+            result,
+            task_id=str(getattr(task, "task_id", "") or ""),
+            repository_tree_id=str(baseline_ref or ""),
+            seed_proposal_ids=replayable_consumed_proposal_ids,
+        )
 
         stage_used = False
         materialize_used = False
@@ -57942,14 +57951,7 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_ids
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
@@ -58018,8 +58020,8 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        same_attempt_replayable_ids
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
@@ -58084,14 +58086,7 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_ids
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
@@ -58213,14 +58208,7 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_ids
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
