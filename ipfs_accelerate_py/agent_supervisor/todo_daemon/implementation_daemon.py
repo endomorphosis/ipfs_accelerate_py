@@ -106571,9 +106571,6 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        retry_transfer_lineage = (
-            self._database_virgin_transfer_lineage_for_transition(task)
-        )
         if (
             callable(record_task_retry_cooldown)
             and task_status == "blocked"
@@ -106585,6 +106582,14 @@ class DatabaseImplementationDaemon:
                 "typed blocked recovery is unavailable without "
                 "coordination-coupled owner authority"
             )
+        lineage_for_transition = getattr(
+            self, "_database_virgin_transfer_lineage_for_transition", None
+        )
+        retry_transfer_lineage = (
+            lineage_for_transition(task)
+            if callable(lineage_for_transition)
+            else {}
+        )
         prior_route_fields = (
             set(prior_control_receipt) & route_fields
             if isinstance(prior_control_receipt, Mapping)
