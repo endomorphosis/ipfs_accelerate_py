@@ -13260,6 +13260,25 @@ def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
     )
 
 
+def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> None:
+    daemon = SimpleNamespace(phase_history=lambda _attempt_id: [])
+    attempt = SimpleNamespace(attempt_id="attempt:missing-failed-phase")
+    assert (
+        DatabaseImplementationDaemon._terminal_portal_failure_reason(
+            daemon,
+            attempt,
+        )
+        is None
+    )
+    assert (
+        DatabaseImplementationDaemon._terminal_retry_evidence(
+            daemon,
+            attempt,
+        )
+        is None
+    )
+
+
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:

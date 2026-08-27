@@ -109275,9 +109275,7 @@ class DatabaseImplementationDaemon:
             if phase.get("phase") == ATTEMPT_PHASE_FAILED
         ]
         if not failed_phases:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
-            )
+            return None
         body = failed_phases[-1].get("body")
         if not isinstance(body, Mapping):
             raise DatabaseImplementationAuthorityError(
@@ -109496,9 +109494,10 @@ class DatabaseImplementationDaemon:
             if phase.get("phase") == ATTEMPT_PHASE_FAILED
         ]
         if not failed_phases:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
-            )
+            # A local failed row can exist after crash/recycle without a
+            # failed-phase receipt.  Reconciliation must skip it instead of
+            # crash-looping the lane before in-progress work can resume.
+            return None
         for phase in reversed(failed_phases):
             body = phase.get("body")
             if not isinstance(body, Mapping):
