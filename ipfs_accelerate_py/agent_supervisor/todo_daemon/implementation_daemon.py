@@ -112274,7 +112274,8 @@ class DatabaseImplementationDaemon:
         self,
         task: Any,
     ) -> dict[str, Any] | None:
-        if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        if status not in {"quarantined", "retrying", "blocked"}:
             return None
         if not self._task_outputs_landed_on_target(task):
             return None
@@ -112316,9 +112317,11 @@ class DatabaseImplementationDaemon:
         }
 
     def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:
-        """Complete quarantined tasks whose declared outputs already landed.
+        """Complete control tasks whose declared outputs already landed.
 
-        Consumed-no-progress work without declared outputs stays quarantined.
+        Quarantined consumed-no-progress work without declared outputs stays
+        quarantined.  Retrying/blocked rows after a merge-train land (PCSM-010)
+        must complete too, or dependents never enter the ready frontier.
         """
 
         if self.repo_root is None:
@@ -112326,7 +112329,10 @@ class DatabaseImplementationDaemon:
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
             return []
-        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
+        page = list_tasks(
+            status=("quarantined", "retrying", "blocked"),
+            limit=TASK_SOURCE_QUERY_LIMIT,
+        )
         tasks = tuple(getattr(page, "tasks", ()) or ())
         outcomes: list[dict[str, Any]] = []
         for task in tasks:

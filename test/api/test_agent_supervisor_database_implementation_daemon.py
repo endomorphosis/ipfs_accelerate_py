@@ -13279,6 +13279,82 @@ def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> 
     )
 
 
+def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() -> None:
+    cas: list[dict[str, object]] = []
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcsm-010",
+            task_alias="PCSM-010",
+            status="retrying",
+            revision=45,
+            body={},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            selected = (
+                {str(status).strip().lower()}
+                if isinstance(status, str)
+                else {str(item).strip().lower() for item in (status or ())}
+            )
+            tasks = (self.task,) if self.task.status in selected else ()
+            return SimpleNamespace(tasks=tasks)
+
+        def get(self, _cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            return None
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        merge_target_ref="HEAD",
+        task_source=source,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_semantic_minification/receipts/PCSM-010.json",
+        ),
+        _record_event=lambda *_args, **_kwargs: None,
+    )
+
+    def cas_status(task_cid, *, expected_revision, new_status, receipt, evidence_digests):
+        cas.append(
+            {
+                "task_cid": task_cid,
+                "expected_revision": expected_revision,
+                "new_status": new_status,
+                "evidence_digests": list(evidence_digests),
+            }
+        )
+        source.task.status = new_status
+        source.task.revision = int(expected_revision) + 1
+        return None
+
+    daemon._cas_task_status_database = cas_status
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+    assert len(outcomes) == 1
+    assert outcomes[0]["completed"] is True
+    assert outcomes[0]["task_alias"] == "PCSM-010"
+    assert outcomes[0]["reason"] == "database_landed_merge_repair"
+    assert cas[0]["new_status"] == "completed"
+    assert cas[0]["expected_revision"] == 45
+
+
 def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         TaskSourceIntegrityError,
