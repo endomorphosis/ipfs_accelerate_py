@@ -156,6 +156,7 @@ from ..merge.worktree_lifecycle import (
     lifecycle_race_result,
     normalize_workspace_path,
     owner_liveness,
+    same_process_owner,
 )
 from ..runtime.event_log import (
     append_jsonl_event,
@@ -39782,33 +39783,14 @@ class PortalImplementationDaemon:
             # worktree exists so peer lanes cannot classify a branch-at-merge-
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
-            try:
-                lifecycle_record = self.worktree_lifecycle.begin_preparing(
-                    task_id=task.task_id,
-                    canonical_task_cid=self._canonical_ref(task),
-                    attempt=attempt,
-                    lane_id=self._worktree_lifecycle_lane_id(),
-                    workspace_path=worktree_path,
-                    branch=branch_name,
-                    merge_target=self._main_branch_name(),
-                    state_dir=str(self.state_path.parent.resolve()),
-                    # Expiry proves neither provider-effect absence nor child
-                    # quiescence. Portal retries may replace only a terminal
-                    # task-attempt claim, never an ambiguous nonterminal one.
-                    allow_replace_stale=False,
-                )
-                self._active_worktree_lifecycle = lifecycle_record
-            except DuplicateAttemptError as exc:
-                return lifecycle_race_result(
-                    reason="worktree_lifecycle_claim_exists",
-                    task_id=task.task_id,
-                    attempt=attempt,
-                    extra={
-                        "error": str(exc)[-1000:],
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                    },
-                )
+            lifecycle_record = self._begin_worktree_lifecycle_preparing(
+                task=task,
+                attempt=attempt,
+                worktree_path=worktree_path,
+                branch_name=branch_name,
+            )
+            if isinstance(lifecycle_record, dict):
+                return lifecycle_record
             seed_plan = (
                 {"reuse_prior_attempt": False}
                 if retry_no_change_probe_only
@@ -64619,6 +64601,91 @@ class PortalImplementationDaemon:
     @staticmethod
     def _managed_cleanup_branch(branch_name: str) -> bool:
         return branch_name.startswith("implementation/") or branch_name.startswith("rescue/worktree/")
+
+    def _begin_worktree_lifecycle_preparing(
+        self,
+        *,
+        task: Any,
+        attempt: int,
+        worktree_path: Path,
+        branch_name: str,
+        merge_target: str = "",
+        allow_replace_stale: bool = False,
+    ) -> WorkspaceLifecycleRecord | dict[str, Any]:
+        """Acquire a preparing claim, reclaiming a dead same-lane leftover first.
+
+        A live claim owned by this process is an in-flight provider, not a
+        leftover to terminalize. Returning ``inflight_process`` keeps the
+        portal in leftover-wait instead of ``worktree_lifecycle_claim_exists``.
+        """
+
+        kwargs = {
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": attempt,
+            "lane_id": self._worktree_lifecycle_lane_id(),
+            "workspace_path": worktree_path,
+            "branch": branch_name,
+            "merge_target": merge_target or self._main_branch_name(),
+            "state_dir": str(self.state_path.parent.resolve()),
+            # Expiry proves neither provider-effect absence nor child
+            # quiescence. Portal retries may replace only a terminal
+            # task-attempt claim, never an ambiguous nonterminal one.
+            "allow_replace_stale": allow_replace_stale,
+        }
+        try:
+            record = self.worktree_lifecycle.begin_preparing(**kwargs)
+        except DuplicateAttemptError:
+            self._reclaim_dead_same_lane_worktree_owners()
+            try:
+                record = self.worktree_lifecycle.begin_preparing(**kwargs)
+            except DuplicateAttemptError as exc:
+                return self._worktree_lifecycle_duplicate_claim_result(
+                    task=task,
+                    attempt=attempt,
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                    error=exc,
+                )
+        self._active_worktree_lifecycle = record
+        return record
+
+    def _worktree_lifecycle_duplicate_claim_result(
+        self,
+        *,
+        task: Any,
+        attempt: int,
+        worktree_path: Path,
+        branch_name: str,
+        error: BaseException,
+    ) -> dict[str, Any]:
+        existing = self.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=self._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=attempt,
+        )
+        reason = "worktree_lifecycle_claim_exists"
+        extra: dict[str, Any] = {
+            "error": str(error)[-1000:],
+            "worktree_path": str(worktree_path),
+            "branch": branch_name,
+        }
+        if existing is not None and existing.is_nonterminal:
+            extra["existing_workspace_path"] = existing.workspace_path
+            extra["existing_owner_pid"] = int(existing.owner.pid)
+            proc_root = self.worktree_lifecycle.proc_root
+            if (
+                same_process_owner(existing.owner, proc_root=proc_root)
+                and owner_liveness(existing.owner, proc_root=proc_root)
+                is OwnerLiveness.ALIVE
+            ):
+                reason = "inflight_process"
+        return lifecycle_race_result(
+            reason=reason,
+            task_id=task.task_id,
+            attempt=attempt,
+            extra=extra,
+        )
 
     def _worktree_lifecycle_lane_id(self) -> str:
         """Return a stable lane identity for lifecycle records."""
@@ -92530,23 +92597,134 @@ class DatabaseImplementationDaemon:
         Age out those rows after the live-attempt window so the board can
         drain after attach contention, a crashed implementer, or a leftover
         CAS.
+
+        After a controlled restart the 4.5h live-attempt window is too long:
+        DuckDB can remain ``in_progress`` with no live worktree owner
+        (PCSM-013 after ``provider_callback_outcome_unknown``). Unstall those
+        orphan gates after startup grace. A live lifecycle owner is left
+        alone even if the control row still says ``retrying``.
         """
 
         self._require_execution_authority("stale in_progress board unstall")
         unstall = getattr(self.task_source, "unstall_stale_in_progress_tasks", None)
-        if not callable(unstall):
+        outcomes: list[dict[str, Any]] = []
+        if callable(unstall):
+            result = unstall()
+            if not isinstance(result, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "task source returned a malformed board unstall receipt"
+                )
+            unstalled = result.get("unstalled") or []
+            if not isinstance(unstalled, list):
+                raise DatabaseImplementationAuthorityError(
+                    "task source returned a malformed board unstall receipt"
+                )
+            outcomes.extend(
+                item for item in unstalled if isinstance(item, Mapping)
+            )
+        outcomes.extend(self._unstall_orphan_in_progress_gates())
+        return outcomes
+
+    def _unstall_orphan_in_progress_gates(self) -> list[dict[str, Any]]:
+        """Retry in_progress rows whose worktree owner is gone."""
+
+        if self.repo_root is None:
             return []
-        result = unstall()
-        if not isinstance(result, Mapping):
-            raise DatabaseImplementationAuthorityError(
-                "task source returned a malformed board unstall receipt"
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            store = WorktreeLifecycleStore(repo_root=self.repo_root)
+        except Exception:
+            return []
+        page = list_tasks(status="in_progress", limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks = tuple(getattr(page, "tasks", ()) or ())
+        now = datetime.now(timezone.utc)
+        outcomes: list[dict[str, Any]] = []
+        for task in tasks:
+            task_cid = str(getattr(task, "task_cid", "") or "").strip()
+            task_id = str(
+                getattr(task, "task_id", "")
+                or getattr(task, "task_alias", "")
+                or ""
+            ).strip()
+            if not task_cid:
+                continue
+            updated = self._parse_control_task_updated_at(
+                getattr(task, "updated_at", None)
             )
-        unstalled = result.get("unstalled") or []
-        if not isinstance(unstalled, list):
-            raise DatabaseImplementationAuthorityError(
-                "task source returned a malformed board unstall receipt"
+            if updated is None:
+                continue
+            age = (now - updated).total_seconds()
+            if age < float(DEFAULT_STARTUP_GRACE_SECONDS):
+                continue
+            record = store.find_nonterminal_for_task(
+                task_id=task_id,
+                canonical_task_cid=task_cid,
             )
-        return [item for item in unstalled if isinstance(item, Mapping)]
+            if record is not None:
+                liveness = owner_liveness(
+                    record.owner,
+                    proc_root=store.proc_root,
+                )
+                if liveness in {OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN}:
+                    continue
+            try:
+                self._cas_task_status_database(
+                    task_cid,
+                    expected_revision=int(getattr(task, "revision", 0) or 0),
+                    new_status="retrying",
+                    receipt={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "database-orphan-in-progress-unstall@1"
+                        ),
+                        "operation": (
+                            "unstall_orphan_in_progress_without_live_lifecycle"
+                        ),
+                        "reason": "in_progress_without_live_worktree_lifecycle_owner",
+                        "task_alias": str(
+                            getattr(task, "task_alias", "") or task_id
+                        ),
+                        "age_seconds": int(age),
+                    },
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": task_cid,
+                        "unstalled": False,
+                        "reason": str(exc)[:500],
+                    }
+                )
+                continue
+            outcomes.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": str(getattr(task, "task_alias", "") or task_id),
+                    "previous_status": "in_progress",
+                    "status": "retrying",
+                    "unstalled": True,
+                    "reason": "in_progress_without_live_worktree_lifecycle_owner",
+                    "age_seconds": int(age),
+                }
+            )
+        return outcomes
+
+    @staticmethod
+    def _parse_control_task_updated_at(value: Any) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
         """Retry gates blocked only by process-death / attach deferral caps.

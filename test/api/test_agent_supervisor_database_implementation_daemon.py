@@ -11262,6 +11262,94 @@ def test_run_once_unstalls_stale_in_progress_gate_and_claims(
         daemon.close()
 
 
+def test_orphan_in_progress_unstall_retries_gate_without_live_claim(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:orphan-unstall",
+        max_task_attempts=3,
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [stale, "task:cid:001"],
+            )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert any(
+            item.get("task_cid") == "task:cid:001"
+            and item.get("reason")
+            == "in_progress_without_live_worktree_lifecycle_owner"
+            for item in unstalled
+        )
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_orphan_in_progress_unstall_leaves_live_lifecycle_owner_alone(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        WorktreeLifecycleStore,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:orphan-live",
+        max_task_attempts=3,
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [stale, "task:cid:001"],
+            )
+        store = WorktreeLifecycleStore(repo_root=repo)
+        store.begin_preparing(
+            task_id="DQP-T001",
+            canonical_task_cid="task:cid:001",
+            attempt=1,
+            lane_id="lane-0",
+            workspace_path=tmp_path / "live-ws",
+            branch="implementation/dqp-t001",
+            merge_target="main",
+            state_dir=str(tmp_path / "state" / "lane-0"),
+        )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert unstalled == []
+        live = daemon.task_source.get("task:cid:001")
+        assert live is not None
+        assert live.status == "in_progress"
+    finally:
+        daemon.close()
+
+
 def test_stale_in_progress_unstall_leaves_live_attempts_alone(
     tmp_path: Path,
 ) -> None:
