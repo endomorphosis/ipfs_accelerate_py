@@ -1529,7 +1529,12 @@ class WorktreeLifecycleStore:
         record: WorkspaceLifecycleRecord | None,
         expected_state_dir: str | Path = "",
     ) -> bool:
-        """True when the record is owned by the caller's exact lane state dir."""
+        """True when the record is owned by this lane, including nested dirs.
+
+        Portal attempts persist ``state_dir`` under the lane state directory.
+        Exact equality therefore misses dead owners after a bounce, and
+        ``worktree_lifecycle_claim_exists`` then fences the task for hours.
+        """
 
         if record is None:
             return False
@@ -1540,7 +1545,15 @@ class WorktreeLifecycleStore:
             return False
         expected = normalize_workspace_path(expected_raw)
         current = normalize_workspace_path(current_raw)
-        return bool(expected and current and expected == current)
+        if not expected or not current:
+            return False
+        if expected == current:
+            return True
+        try:
+            return Path(current).is_relative_to(Path(expected))
+        except (ValueError, OSError, AttributeError):
+            prefix = expected.rstrip("/") + "/"
+            return current.startswith(prefix)
 
     def evaluate_cleanup(
         self,
@@ -1733,9 +1746,9 @@ class WorktreeLifecycleStore:
                 or normalize_workspace_path(current.repo_root) != expected_repo
             ):
                 return None
-            if (
-                not current.state_dir
-                or normalize_workspace_path(current.state_dir) != expected_state
+            if not self._same_lane_state_dir(
+                current,
+                expected_state,
             ):
                 return None
             if (

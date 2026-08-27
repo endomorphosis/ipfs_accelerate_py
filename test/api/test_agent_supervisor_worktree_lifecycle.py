@@ -303,6 +303,47 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert store.load_workspace(live_workspace).is_nonterminal
 
 
+def test_controlled_restart_reclaims_dead_owner_in_nested_portal_state_dir(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-0"
+    portal_state = lane_state / "pcsm_lane_0_database_portal_attempts" / "abc123"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 11,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    workspace = tmp_path / "portal-nested"
+    record = store.begin_preparing(
+        task_id="PCSM-010",
+        canonical_task_cid="cid:pcsm-010",
+        attempt=1,
+        lane_id="lane-0",
+        workspace_path=workspace,
+        branch="implementation/pcsm-010-nested",
+        merge_target="main",
+        state_dir=str(portal_state),
+        owner=dead_owner,
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+    )
+
+    assert [item.task_id for item in recovered] == ["PCSM-010"]
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == record.fence + 1
+
+
 def test_same_lane_cleanup_reclaims_dead_owner_before_lease_expiry(
     tmp_path: Path,
 ) -> None:
