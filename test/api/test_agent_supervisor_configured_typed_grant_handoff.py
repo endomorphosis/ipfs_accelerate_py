@@ -27954,12 +27954,13 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
     source = inspect.getsource(
         aseh_operator._run_r19_historical_live_validation
     )
-    assert "if revision in {30, 31, 32, 33, 34, 35}:" in source
+    assert "if revision in {30, 31, 32, 33, 34, 35, 36}:" in source
     assert "if revision in {29, 30}:\n        evidence[" not in source
     assert "if revision in {29, 30, 31}:\n        evidence[" not in source
     assert "if revision in {30, 31, 32}:\n        evidence[" not in source
     assert "if revision in {30, 31, 32, 33}:\n        evidence[" not in source
     assert "if revision in {30, 31, 32, 33, 34}:\n        evidence[" not in source
+    assert "if revision in {30, 31, 32, 33, 34, 35}:\n        evidence[" not in source
 
 
 def test_aseh_r29_r30_execution_evidence_shapes_are_closed_and_versioned(
@@ -28968,6 +28969,115 @@ def test_aseh_r27_delegates_r35_before_r34(
     assert result == sentinel
 
 
+def test_aseh_r27_delegates_r36_before_r35(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r36"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_foreign_grok_terminal_scope_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_failed_attempt_record_completeness_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R35 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_validation_executor_r33_dispatch_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R34 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_foreign_grok_waiter_set_partition_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R33 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_foreign_grok_waiter_census_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R32 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_native_lane_preload_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R31 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_candidate_git_epoch_guard_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R30 ran before R36"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "older suffix admission ran before R36"
+        ),
+    )
+
+    result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+        board=object(),
+        config={},
+        paths={
+            "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+        },
+        bootstrap={},
+        bootstrap_id="bootstrap",
+        head="9" * 40,
+        previous_receipt=r26_chain[-1],
+        previous_transition=r26_chain[-1],
+        prior_receipt_chain=r26_chain,
+        authorization_directory_fd=90,
+    )
+    assert result == sentinel
+
+
 def test_aseh_r32_admits_observed_grok_detached_container_names() -> None:
     grok = "ipfs-accelerate-grok-841578-" + ("a" * 32)
     codex = "ipfs-accelerate-codex-1737559-" + ("b" * 32)
@@ -28999,6 +29109,7 @@ def test_aseh_r33_partitions_admitted_grok_waiters_in_r27_set() -> None:
     assert aseh_operator._r32_admit_grok_for_revision(33)
     assert aseh_operator._r32_admit_grok_for_revision(34)
     assert aseh_operator._r32_admit_grok_for_revision(35)
+    assert aseh_operator._r32_admit_grok_for_revision(36)
     assert not aseh_operator._r32_admit_grok_for_revision(31)
 
 
@@ -29008,8 +29119,10 @@ def test_aseh_r34_dispatches_r33_and_r34_executor_contracts() -> None:
     )
     assert "_r33_sealed_receipt_validation_executor_contract" in source
     assert "_r34_sealed_receipt_validation_executor_contract" in source
+    assert "_r36_sealed_receipt_validation_executor_contract" in source
     assert "_r33_validation_executor_class" in source
     assert "_r34_validation_executor_class" in source
+    assert "_r36_validation_executor_class" in source
     r33 = aseh_operator._r33_sealed_receipt_validation_executor_contract()
     r34 = aseh_operator._r34_sealed_receipt_validation_executor_contract()
     assert r33["policy_revision"] == 33
@@ -29030,6 +29143,15 @@ def test_aseh_r34_dispatches_r33_and_r34_executor_contracts() -> None:
         ),
     )
     assert admitted_r35 == r35
+    r36 = aseh_operator._r36_sealed_receipt_validation_executor_contract()
+    assert r36["policy_revision"] == 36
+    admitted_r36 = aseh_operator._admit_sealed_receipt_validation_executor_contract(
+        r36,
+        declared=tuple(
+            aseh_operator.REPAIR_FOREIGN_GROK_TERMINAL_SCOPE_TRANSITION_VALIDATIONS[0]
+        ),
+    )
+    assert admitted_r36 == r36
 
 
 def test_aseh_r35_receipt_fields_keep_r32_and_r33_failure_records() -> None:
@@ -29046,6 +29168,68 @@ def test_aseh_r35_receipt_fields_keep_r32_and_r33_failure_records() -> None:
         "failed_unpublished_r34_head",
     ):
         assert name in fields
+
+
+def test_aseh_r36_receipt_fields_keep_r32_through_r35_failure_records() -> None:
+    fields = aseh_operator.REPAIR_FOREIGN_GROK_TERMINAL_SCOPE_TRANSITION_RECEIPT_FIELDS
+    for name in (
+        "r32_authorization_attempt",
+        "r32_authorization_failure_evidence",
+        "r33_authorization_attempt",
+        "r33_authorization_failure_evidence",
+        "r34_authorization_attempt",
+        "r34_authorization_failure_evidence",
+        "r35_authorization_attempt",
+        "r35_authorization_failure_evidence",
+        "failed_unpublished_r32_head",
+        "failed_unpublished_r33_head",
+        "failed_unpublished_r34_head",
+        "failed_unpublished_r35_head",
+    ):
+        assert name in fields
+
+
+def test_aseh_r36_omits_admitted_grok_from_terminal_scope_stable_value() -> None:
+    source = inspect.getsource(aseh_operator._r27_snapshot_stable_value)
+    assert "omit_grok" in source
+    assert "ASEH_R32_GROK_DETACHED_CONTAINER_NAME" in source
+    guard = inspect.getsource(aseh_operator._r27_terminal_scope_guard)
+    assert "omit_grok=admit_grok" in guard
+    grok = "ipfs-accelerate-grok-841578-" + ("a" * 32)
+    codex = "ipfs-accelerate-codex-1737559-" + ("b" * 32)
+    schema = aseh_operator.ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
+    with_grok = {
+        "schema": schema,
+        "entries": [
+            {
+                "target_container_name": codex,
+                "foreign_recovery_ownership": None,
+            },
+            {
+                "target_container_name": grok,
+                "foreign_recovery_ownership": None,
+            },
+        ],
+    }
+    without_grok = {
+        "schema": schema,
+        "entries": [
+            {
+                "target_container_name": codex,
+                "foreign_recovery_ownership": None,
+            },
+        ],
+    }
+    assert aseh_operator._r27_snapshot_stable_value(
+        with_grok, omit_grok=True
+    ) == aseh_operator._r27_snapshot_stable_value(
+        without_grok, omit_grok=True
+    )
+    assert aseh_operator._r27_snapshot_stable_value(
+        with_grok, omit_grok=False
+    ) != aseh_operator._r27_snapshot_stable_value(
+        without_grok, omit_grok=False
+    )
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
