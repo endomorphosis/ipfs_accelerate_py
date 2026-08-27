@@ -274,6 +274,17 @@ def test_closed_owner_command_is_atomic_and_rolls_back_callback_failure(
         connection.close()
 
 
+def test_error_code_preserves_duckdb_fatal_detail() -> None:
+    class FatalException(Exception):
+        pass
+
+    code = TypedStateOwnerGateway._error_code(
+        FatalException("INTERNAL Error: Failed to checkpoint")
+    )
+    assert code.startswith("operation_failed:FatalException:")
+    assert "checkpoint" in code
+
+
 def test_gateway_attach_recovers_after_exclusive_owner_poison(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

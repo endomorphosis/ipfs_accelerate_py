@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import math
 import os
 import re
@@ -51,6 +52,8 @@ from .database_task_source import (
     TaskSourceIntegrityError,
 )
 from .duckdb_state import DuckDBConnectionPolicyError
+
+_OWNER_LOGGER = logging.getLogger(__name__)
 from .task_execution_route_policy import TaskExecutionRouteBinding
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
@@ -4101,6 +4104,27 @@ class TypedStateOwnerGateway:
                         },
                     )
                 except BaseException as exc:
+                    self._last_error_type = type(exc).__name__
+                    if type(exc).__name__ in {
+                        "FatalException",
+                        "InternalException",
+                        "ConnectionException",
+                    } or isinstance(exc, DuckDBConnectionPolicyError):
+                        _OWNER_LOGGER.exception(
+                            "typed owner request %s failed on the exclusive handle",
+                            action,
+                        )
+                        try:
+                            connection = self._connection
+                            with connection._execution_condition:
+                                if not getattr(connection, "_closed", False):
+                                    if not getattr(connection, "_poisoned", False):
+                                        connection._poison_locked()
+                                    connection._recover_exclusive_handle_locked()
+                        except Exception:
+                            _OWNER_LOGGER.exception(
+                                "typed owner failed to reopen the exclusive handle"
+                            )
                     if transaction_active:
                         try:
                             self._connection.rollback()
@@ -7931,6 +7955,15 @@ class TypedStateOwnerGateway:
             return "authorization_denied"
         if isinstance(exc, TypedStateOwnerProtocolError):
             return "protocol_denied"
+        if type(exc).__name__ in {
+            "FatalException",
+            "InternalException",
+            "ConnectionException",
+            "DuckDBConnectionPolicyError",
+        }:
+            detail = " ".join(str(exc).split())[:160]
+            if detail:
+                return f"operation_failed:{type(exc).__name__}:{detail}"
         return "operation_failed"
 
 
