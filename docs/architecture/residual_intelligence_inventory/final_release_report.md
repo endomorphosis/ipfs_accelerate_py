@@ -1,12 +1,536 @@
-# Residual Intelligence current-tree report
+# VRIF Final Release Report
 
-This report is not promotion, completion, or proof-acceptance authority.
+This report is non-authoritative and cannot promote a residual expert.
 
-- Start tree: `tree:start-fixture`
-- End tree: `tree:end-fixture`
-- Corpus admission: `admission:fixture`
-- Promotion eligible: false
-- Rollback target: `tree:start-fixture`
-- Blockers: training_unavailable
-- Unsupported claims: learned, verified, safe, autonomous, token-efficient, production-ready
-- Not run: gpu_live_qualification
+## Lineage
+
+```json
+{
+  "end_tree": "b269dafcccf848714f2202c628cf8a50b357301e",
+  "start_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+}
+```
+
+## Files and Symbols
+
+```json
+{
+  "declared_output_paths": [
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json",
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md",
+    "test/api/residual_intelligence/test_release_report.py"
+  ],
+  "declared_symbols": [
+    "ResidualIntelligenceReleaseReport",
+    "ResidualGapReport",
+    "validate_release_claims"
+  ],
+  "disposition": "current_tracked_blobs_bound",
+  "producer_artifact_bundle_id": "sha256:ded550e6340f82bc3ff18b2164381696fbf259ac39918858487170e061ba512e",
+  "required_report_paths": [
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json",
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+  ]
+}
+```
+
+## Corpus Rights and Splits
+
+```json
+{
+  "admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
+  "corpus_root": "corpus:synthetic:vrif-fixtures-v1",
+  "disposition": "training_unavailable",
+  "hidden_test_bodies_accessed": false,
+  "partitions": [
+    "training",
+    "development",
+    "held_out",
+    "adversarial"
+  ],
+  "privacy_disposition": "public_report_bounded",
+  "source_rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda",
+  "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq"
+}
+```
+
+## Architecture, Tokenizer, Checkpoint, and Training
+
+```json
+{
+  "architecture": "not_selected",
+  "checkpoint": "not_created",
+  "disposition": "training_unavailable",
+  "tokenizer": "no_learned_tokenizer_admitted",
+  "training": "not_attempted"
+}
+```
+
+## Expert Dispositions
+
+```json
+{
+  "AUTHORITY_REQUIREMENT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "CACHE_REUSE_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "CONTEXT_SUFFICIENCY": "CAPABILITY_UNAVAILABLE",
+  "COUNTEREXAMPLE_EXPLANATION": "CAPABILITY_UNAVAILABLE",
+  "DOCUMENTATION_CLAIM_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "EFFECT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "EVIDENCE_RANKING": "CAPABILITY_UNAVAILABLE",
+  "FAILURE_ATTRIBUTION": "CAPABILITY_UNAVAILABLE",
+  "GOAL_REFINEMENT_CANDIDATE": "CAPABILITY_UNAVAILABLE",
+  "HUMAN_ESCALATION_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "LEMMA_SUGGESTION": "CAPABILITY_UNAVAILABLE",
+  "MERGE_CONFLICT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "NOVEL_UNBOUNDED_REASONING": "CAPABILITY_UNAVAILABLE",
+  "PATCH_SKETCH_GENERATION": "CAPABILITY_UNAVAILABLE",
+  "PATCH_TEMPLATE_SELECTION": "CAPABILITY_UNAVAILABLE",
+  "PLAN_BRANCH_RANKING": "CAPABILITY_UNAVAILABLE",
+  "PROCEDURE_HOLE_FILLING": "CAPABILITY_UNAVAILABLE",
+  "PROCEDURE_MATCHING": "CAPABILITY_UNAVAILABLE",
+  "PROOF_SELECTION": "CAPABILITY_UNAVAILABLE",
+  "RETRY_OR_ESCALATE": "CAPABILITY_UNAVAILABLE",
+  "RISK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "TACTIC_SUGGESTION": "CAPABILITY_UNAVAILABLE",
+  "TASK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+  "TEST_SELECTION": "CAPABILITY_UNAVAILABLE"
+}
+```
+
+## Before/After Denominators
+
+```json
+{
+  "after": {
+    "abstain": 96,
+    "accept": 0,
+    "denominators_by_family": {
+      "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+      "CACHE_REUSE_CLASSIFICATION": 4,
+      "CONTEXT_SUFFICIENCY": 4,
+      "COUNTEREXAMPLE_EXPLANATION": 4,
+      "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+      "EFFECT_CLASSIFICATION": 4,
+      "EVIDENCE_RANKING": 4,
+      "FAILURE_ATTRIBUTION": 4,
+      "GOAL_REFINEMENT_CANDIDATE": 4,
+      "HUMAN_ESCALATION_CLASSIFICATION": 4,
+      "LEMMA_SUGGESTION": 4,
+      "MERGE_CONFLICT_CLASSIFICATION": 4,
+      "NOVEL_UNBOUNDED_REASONING": 4,
+      "PATCH_SKETCH_GENERATION": 4,
+      "PATCH_TEMPLATE_SELECTION": 4,
+      "PLAN_BRANCH_RANKING": 4,
+      "PROCEDURE_HOLE_FILLING": 4,
+      "PROCEDURE_MATCHING": 4,
+      "PROOF_SELECTION": 4,
+      "RETRY_OR_ESCALATE": 4,
+      "RISK_CLASSIFICATION": 4,
+      "TACTIC_SUGGESTION": 4,
+      "TASK_CLASSIFICATION": 4,
+      "TEST_SELECTION": 4
+    },
+    "total": 96
+  },
+  "before": {
+    "abstain": 96,
+    "accept": 0,
+    "denominators_by_family": {
+      "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+      "CACHE_REUSE_CLASSIFICATION": 4,
+      "CONTEXT_SUFFICIENCY": 4,
+      "COUNTEREXAMPLE_EXPLANATION": 4,
+      "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+      "EFFECT_CLASSIFICATION": 4,
+      "EVIDENCE_RANKING": 4,
+      "FAILURE_ATTRIBUTION": 4,
+      "GOAL_REFINEMENT_CANDIDATE": 4,
+      "HUMAN_ESCALATION_CLASSIFICATION": 4,
+      "LEMMA_SUGGESTION": 4,
+      "MERGE_CONFLICT_CLASSIFICATION": 4,
+      "NOVEL_UNBOUNDED_REASONING": 4,
+      "PATCH_SKETCH_GENERATION": 4,
+      "PATCH_TEMPLATE_SELECTION": 4,
+      "PLAN_BRANCH_RANKING": 4,
+      "PROCEDURE_HOLE_FILLING": 4,
+      "PROCEDURE_MATCHING": 4,
+      "PROOF_SELECTION": 4,
+      "RETRY_OR_ESCALATE": 4,
+      "RISK_CLASSIFICATION": 4,
+      "TACTIC_SUGGESTION": 4,
+      "TASK_CLASSIFICATION": 4,
+      "TEST_SELECTION": 4
+    },
+    "total": 96
+  }
+}
+```
+
+## Costs and Break-even
+
+```json
+{
+  "break_even": 0,
+  "tokens": 0
+}
+```
+
+## Proof and Validation
+
+```json
+{
+  "benchmark_binding_set_id": "sha256:603b2fdefe4b167a35e52aea8f3786cb98ff7232e02dbc0164869fb7e1958fb2",
+  "benchmark_case_payload_disposition": "payload_unavailable_training_unavailable",
+  "benchmark_case_root": "sha256:63e29f5fd192e0fdbde393c755baa4dd0a032ce46a5c5cdef8171d3da56c24cb",
+  "benchmark_evaluation_disposition": "all_abstain_not_run",
+  "benchmark_freeze_id": "sha256:fb3bfa188c7b9640019d738b0b4c516f3638a627869f86aef6a0a9e51b7b6fb3",
+  "disposition": "owner_receipts_required",
+  "paired_baseline_id": "sha256:ba816281d44f5b445572c8d71fc0534a98729057b9b7ef59ad79788372820eb5",
+  "producer_artifact_bundle_id": "sha256:ded550e6340f82bc3ff18b2164381696fbf259ac39918858487170e061ba512e",
+  "producer_database_portal_validations": "required",
+  "report_authoritative": false,
+  "terminal_database_portal_validation": "required",
+  "validation_commands": [
+    [
+      "python3 -m pytest -q test/api/residual_intelligence/test_release_report.py && python3 scripts/validate_agent_supervisor_residual_intelligence_board.py --check-all"
+    ]
+  ]
+}
+```
+
+## Drift
+
+```json
+{
+  "checkpoint_available": false,
+  "detectors_run": [],
+  "disposition": "not_run_training_unavailable",
+  "evaluated_tree": "b269dafcccf848714f2202c628cf8a50b357301e",
+  "reason_codes": [
+    "no_admitted_checkpoint",
+    "training_unavailable"
+  ],
+  "reference_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+}
+```
+
+## Rollback, Blockers, and Eligibility
+
+```json
+{
+  "blockers": [
+    "training_unavailable"
+  ],
+  "not_run": [
+    "gpu_live_qualification",
+    "promotion",
+    "training"
+  ],
+  "promotion_eligible": false,
+  "report_authority": "non_authoritative",
+  "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da"
+}
+```
+
+## Unsupported Gaps
+
+```json
+{
+  "blockers": [
+    "training_unavailable"
+  ],
+  "not_run": [
+    "gpu_live_qualification",
+    "promotion",
+    "training"
+  ],
+  "unsupported_claims": [
+    "learned",
+    "verified",
+    "safe",
+    "autonomous",
+    "token-efficient",
+    "production-ready"
+  ]
+}
+```
+
+## Complete Machine Report
+
+```json
+{
+  "after": {
+    "abstain": 96,
+    "accept": 0,
+    "denominators_by_family": {
+      "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+      "CACHE_REUSE_CLASSIFICATION": 4,
+      "CONTEXT_SUFFICIENCY": 4,
+      "COUNTEREXAMPLE_EXPLANATION": 4,
+      "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+      "EFFECT_CLASSIFICATION": 4,
+      "EVIDENCE_RANKING": 4,
+      "FAILURE_ATTRIBUTION": 4,
+      "GOAL_REFINEMENT_CANDIDATE": 4,
+      "HUMAN_ESCALATION_CLASSIFICATION": 4,
+      "LEMMA_SUGGESTION": 4,
+      "MERGE_CONFLICT_CLASSIFICATION": 4,
+      "NOVEL_UNBOUNDED_REASONING": 4,
+      "PATCH_SKETCH_GENERATION": 4,
+      "PATCH_TEMPLATE_SELECTION": 4,
+      "PLAN_BRANCH_RANKING": 4,
+      "PROCEDURE_HOLE_FILLING": 4,
+      "PROCEDURE_MATCHING": 4,
+      "PROOF_SELECTION": 4,
+      "RETRY_OR_ESCALATE": 4,
+      "RISK_CLASSIFICATION": 4,
+      "TACTIC_SUGGESTION": 4,
+      "TASK_CLASSIFICATION": 4,
+      "TEST_SELECTION": 4
+    },
+    "total": 96
+  },
+  "architecture_tokenizer_checkpoint": {
+    "architecture": "not_selected",
+    "checkpoint": "not_created",
+    "disposition": "training_unavailable",
+    "tokenizer": "no_learned_tokenizer_admitted",
+    "training": "not_attempted"
+  },
+  "before": {
+    "abstain": 96,
+    "accept": 0,
+    "denominators_by_family": {
+      "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+      "CACHE_REUSE_CLASSIFICATION": 4,
+      "CONTEXT_SUFFICIENCY": 4,
+      "COUNTEREXAMPLE_EXPLANATION": 4,
+      "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+      "EFFECT_CLASSIFICATION": 4,
+      "EVIDENCE_RANKING": 4,
+      "FAILURE_ATTRIBUTION": 4,
+      "GOAL_REFINEMENT_CANDIDATE": 4,
+      "HUMAN_ESCALATION_CLASSIFICATION": 4,
+      "LEMMA_SUGGESTION": 4,
+      "MERGE_CONFLICT_CLASSIFICATION": 4,
+      "NOVEL_UNBOUNDED_REASONING": 4,
+      "PATCH_SKETCH_GENERATION": 4,
+      "PATCH_TEMPLATE_SELECTION": 4,
+      "PLAN_BRANCH_RANKING": 4,
+      "PROCEDURE_HOLE_FILLING": 4,
+      "PROCEDURE_MATCHING": 4,
+      "PROOF_SELECTION": 4,
+      "RETRY_OR_ESCALATE": 4,
+      "RISK_CLASSIFICATION": 4,
+      "TACTIC_SUGGESTION": 4,
+      "TASK_CLASSIFICATION": 4,
+      "TEST_SELECTION": 4
+    },
+    "total": 96
+  },
+  "corpus_admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
+  "corpus_rights_splits": {
+    "admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
+    "corpus_root": "corpus:synthetic:vrif-fixtures-v1",
+    "disposition": "training_unavailable",
+    "hidden_test_bodies_accessed": false,
+    "partitions": [
+      "training",
+      "development",
+      "held_out",
+      "adversarial"
+    ],
+    "privacy_disposition": "public_report_bounded",
+    "source_rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda",
+    "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq"
+  },
+  "costs": {
+    "break_even": 0,
+    "tokens": 0
+  },
+  "drift": {
+    "checkpoint_available": false,
+    "detectors_run": [],
+    "disposition": "not_run_training_unavailable",
+    "evaluated_tree": "b269dafcccf848714f2202c628cf8a50b357301e",
+    "reason_codes": [
+      "no_admitted_checkpoint",
+      "training_unavailable"
+    ],
+    "reference_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+  },
+  "end_tree": "b269dafcccf848714f2202c628cf8a50b357301e",
+  "expert_dispositions": {
+    "AUTHORITY_REQUIREMENT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "CACHE_REUSE_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "CONTEXT_SUFFICIENCY": "CAPABILITY_UNAVAILABLE",
+    "COUNTEREXAMPLE_EXPLANATION": "CAPABILITY_UNAVAILABLE",
+    "DOCUMENTATION_CLAIM_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "EFFECT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "EVIDENCE_RANKING": "CAPABILITY_UNAVAILABLE",
+    "FAILURE_ATTRIBUTION": "CAPABILITY_UNAVAILABLE",
+    "GOAL_REFINEMENT_CANDIDATE": "CAPABILITY_UNAVAILABLE",
+    "HUMAN_ESCALATION_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "LEMMA_SUGGESTION": "CAPABILITY_UNAVAILABLE",
+    "MERGE_CONFLICT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "NOVEL_UNBOUNDED_REASONING": "CAPABILITY_UNAVAILABLE",
+    "PATCH_SKETCH_GENERATION": "CAPABILITY_UNAVAILABLE",
+    "PATCH_TEMPLATE_SELECTION": "CAPABILITY_UNAVAILABLE",
+    "PLAN_BRANCH_RANKING": "CAPABILITY_UNAVAILABLE",
+    "PROCEDURE_HOLE_FILLING": "CAPABILITY_UNAVAILABLE",
+    "PROCEDURE_MATCHING": "CAPABILITY_UNAVAILABLE",
+    "PROOF_SELECTION": "CAPABILITY_UNAVAILABLE",
+    "RETRY_OR_ESCALATE": "CAPABILITY_UNAVAILABLE",
+    "RISK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "TACTIC_SUGGESTION": "CAPABILITY_UNAVAILABLE",
+    "TASK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE",
+    "TEST_SELECTION": "CAPABILITY_UNAVAILABLE"
+  },
+  "files_symbols": {
+    "declared_output_paths": [
+      "docs/architecture/residual_intelligence_inventory/final_release_report.json",
+      "docs/architecture/residual_intelligence_inventory/final_release_report.md",
+      "test/api/residual_intelligence/test_release_report.py"
+    ],
+    "declared_symbols": [
+      "ResidualIntelligenceReleaseReport",
+      "ResidualGapReport",
+      "validate_release_claims"
+    ],
+    "disposition": "current_tracked_blobs_bound",
+    "producer_artifact_bundle_id": "sha256:ded550e6340f82bc3ff18b2164381696fbf259ac39918858487170e061ba512e",
+    "required_report_paths": [
+      "docs/architecture/residual_intelligence_inventory/final_release_report.json",
+      "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+    ]
+  },
+  "gaps": {
+    "blockers": [
+      "training_unavailable"
+    ],
+    "not_run": [
+      "gpu_live_qualification",
+      "promotion",
+      "training"
+    ],
+    "unsupported_claims": [
+      "learned",
+      "verified",
+      "safe",
+      "autonomous",
+      "token-efficient",
+      "production-ready"
+    ]
+  },
+  "producer_artifacts": {
+    "bundle_id": "sha256:ded550e6340f82bc3ff18b2164381696fbf259ac39918858487170e061ba512e",
+    "digest_algorithm": "sha256",
+    "schema": "ipfs_accelerate_py/agent-supervisor/goal-terminal-producer-artifacts@1",
+    "tasks": [
+      {
+        "artifacts": [
+          {
+            "blob_identity": "sha256:1851994f7db86af0cadae8c914c8d4e7510241b3d6555881426fa64ccc866437",
+            "path": "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json"
+          },
+          {
+            "blob_identity": "sha256:c8be87609044bc9f5bfaf96b3b56440d5e7732587643426c977b79544c41732a",
+            "path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/adversarial.py"
+          },
+          {
+            "blob_identity": "sha256:32483d78f54d097b5411d540c94c0f740490cf667411a3c112b336347e98bb5c",
+            "path": "test/api/residual_intelligence/test_adversarial.py"
+          }
+        ],
+        "bundle_id": "sha256:4e988f5f4c3a8a4275250fc2363e71408bb801a6e82fd9e35cb06e0b79f2ffd7",
+        "task_alias": "VRIF-028"
+      },
+      {
+        "artifacts": [
+          {
+            "blob_identity": "sha256:140f47378cc3f9947d506b2974cd96b4a3fd376d3f33c39e2324655626606292",
+            "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"
+          },
+          {
+            "blob_identity": "sha256:0324644e110e2b57adcbec6e0db7769c7718231692f8e3a0c7db3719fb5b7871",
+            "path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cli.py"
+          },
+          {
+            "blob_identity": "sha256:b5c804a24934fcbade490fe04f4360c000ca7bafac86a860093f1bb212fcc12f",
+            "path": "test/api/residual_intelligence/test_control_surface.py"
+          }
+        ],
+        "bundle_id": "sha256:3c0d06b9a55f67d5be6a8badfacc6e09fb65fff58f236371044a6d5dd49eb4b1",
+        "task_alias": "VRIF-029"
+      },
+      {
+        "artifacts": [
+          {
+            "blob_identity": "sha256:7f049b18ab41ed6c2ae4bff6e9dbce3da10ae24917ae71c89cf12b8e3251e258",
+            "path": "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
+          },
+          {
+            "blob_identity": "sha256:c364e3ab25c1a12cbbb66fa1a4b008a7718c3230dc53b11b79b52c77258e2065",
+            "path": "benchmarks/agent_supervisor/residual_intelligence/manifest.json"
+          },
+          {
+            "blob_identity": "sha256:51da34d595e1d7a311abbce8e2a5f13c6c8bda8d436a153c24e6084ea402df00",
+            "path": "test/api/residual_intelligence/test_benchmark.py"
+          }
+        ],
+        "bundle_id": "sha256:fe3ae4318b17d76cfe27b4bd0cb742d13a44423dab2d94fdf91ccf0536d02601",
+        "task_alias": "VRIF-030"
+      },
+      {
+        "artifacts": [
+          {
+            "blob_identity": "sha256:3498b337c620707808c6cedee85af64de894411bd5aee23d657c6ef2ec6a6bfc",
+            "path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/promotion.py"
+          },
+          {
+            "blob_identity": "sha256:3fd9e0867a9d5ec0c847e9098ba5dcc6460bcabecd2c47b2b0e40c7d4038b65d",
+            "path": "test/api/residual_intelligence/test_promotion.py"
+          }
+        ],
+        "bundle_id": "sha256:2699cff942eb209759e4e2f5b042a2e4bc95ee110a22105781efc591f6b4da62",
+        "task_alias": "VRIF-031"
+      }
+    ]
+  },
+  "promotion_eligible": false,
+  "proof_validation": {
+    "benchmark_binding_set_id": "sha256:603b2fdefe4b167a35e52aea8f3786cb98ff7232e02dbc0164869fb7e1958fb2",
+    "benchmark_case_payload_disposition": "payload_unavailable_training_unavailable",
+    "benchmark_case_root": "sha256:63e29f5fd192e0fdbde393c755baa4dd0a032ce46a5c5cdef8171d3da56c24cb",
+    "benchmark_evaluation_disposition": "all_abstain_not_run",
+    "benchmark_freeze_id": "sha256:fb3bfa188c7b9640019d738b0b4c516f3638a627869f86aef6a0a9e51b7b6fb3",
+    "disposition": "owner_receipts_required",
+    "paired_baseline_id": "sha256:ba816281d44f5b445572c8d71fc0534a98729057b9b7ef59ad79788372820eb5",
+    "producer_artifact_bundle_id": "sha256:ded550e6340f82bc3ff18b2164381696fbf259ac39918858487170e061ba512e",
+    "producer_database_portal_validations": "required",
+    "report_authoritative": false,
+    "terminal_database_portal_validation": "required",
+    "validation_commands": [
+      [
+        "python3 -m pytest -q test/api/residual_intelligence/test_release_report.py && python3 scripts/validate_agent_supervisor_residual_intelligence_board.py --check-all"
+      ]
+    ]
+  },
+  "rollback_blocker_eligibility": {
+    "blockers": [
+      "training_unavailable"
+    ],
+    "not_run": [
+      "gpu_live_qualification",
+      "promotion",
+      "training"
+    ],
+    "promotion_eligible": false,
+    "report_authority": "non_authoritative",
+    "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da"
+  },
+  "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da",
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-release-report@2",
+  "start_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+}
+```

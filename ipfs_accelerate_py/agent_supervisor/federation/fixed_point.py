@@ -23,6 +23,7 @@ from .contracts import (
     FederationBinding,
     FederationContractError,
     FederationWorldSnapshot,
+    UnknownNormativeFieldError,
     _identifier,
     _integer,
 )
@@ -162,10 +163,13 @@ class FixedPointDiagnostics:
 
 @dataclass(frozen=True)
 class FixedPointReceipt:
-    """Evidence that the conjunctive predicate holds at an exact watermark."""
+    """Canonical evidence that the conjunctive predicate holds at one watermark."""
 
-    SCHEMA: ClassVar[str] = (
+    LEGACY_SCHEMA: ClassVar[str] = (
         "ipfs_accelerate_py/agent-supervisor/causal-federation/fixed-point-receipt@1"
+    )
+    SCHEMA: ClassVar[str] = (
+        "ipfs_accelerate_py/agent-supervisor/causal-federation/fixed-point-receipt@2"
     )
 
     world_snapshot_ref: str
@@ -176,7 +180,11 @@ class FixedPointReceipt:
     evidence_refs: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        _identifier(self.world_snapshot_ref, "world_snapshot_ref")
+        object.__setattr__(
+            self,
+            "world_snapshot_ref",
+            _identifier(self.world_snapshot_ref, "world_snapshot_ref"),
+        )
         _integer(self.event_watermark, "event_watermark")
         _integer(self.outstanding_required_work, "outstanding_required_work")
         if self.outstanding_required_work != 0:
@@ -187,21 +195,98 @@ class FixedPointReceipt:
         outcome = _identifier(self.outcome, "outcome")
         if outcome not in FIXED_POINT_OUTCOMES:
             raise FixedPointAuthorityError("fixed-point outcome is outside its closed vocabulary")
+        object.__setattr__(self, "outcome", outcome)
         refs = _identifier_tuple(self.evidence_refs, "evidence_refs")
         if not refs:
             raise FederationContractError("fixed-point receipt requires evidence")
+        if len(refs) > 4_096:
+            raise FederationContractError("fixed-point receipt evidence exceeds its bound")
+        if len(refs) != len(set(refs)):
+            raise FederationContractError("fixed-point receipt evidence contains duplicates")
         object.__setattr__(self, "evidence_refs", refs)
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        """Return the one canonical JSON wire representation of this receipt."""
+
+        payload: dict[str, Any] = {
+            "schema": self.SCHEMA,
+            "world_snapshot_ref": self.world_snapshot_ref,
+            "event_watermark": self.event_watermark,
+            "outstanding_required_work": self.outstanding_required_work,
+            "fencing_epoch": self.fencing_epoch,
+            "outcome": self.outcome,
+            "evidence_refs": list(self.evidence_refs),
+        }
+        if include_identity:
+            payload["receipt_id"] = self.cid
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> FixedPointReceipt:
+        """Decode only the exact canonical wire contract and verify its identity."""
+
+        if type(payload) is not dict:
+            raise FederationContractError(
+                "FixedPointReceipt payload must be an exact JSON object"
+            )
+        if any(type(key) is not str for key in payload):
+            raise FederationContractError(
+                "FixedPointReceipt field names must be exact strings"
+            )
+        fields = {
+            "schema",
+            "world_snapshot_ref",
+            "event_watermark",
+            "outstanding_required_work",
+            "fencing_epoch",
+            "outcome",
+            "evidence_refs",
+            "receipt_id",
+        }
+        unknown = set(payload) - fields
+        if unknown:
+            raise UnknownNormativeFieldError(
+                f"FixedPointReceipt has unknown fields: {sorted(unknown)}"
+            )
+        missing = fields - set(payload)
+        if missing:
+            raise FederationContractError(
+                f"FixedPointReceipt is missing fields: {sorted(missing)}"
+            )
+        schema = payload.get("schema")
+        if type(schema) is not str:
+            raise FederationContractError(
+                "FixedPointReceipt.schema must be an exact string"
+            )
+        if schema == cls.LEGACY_SCHEMA:
+            raise FixedPointAuthorityError(
+                "legacy fixed-point receipt v1 is audit-only; re-observation is required"
+            )
+        if schema != cls.SCHEMA:
+            raise FederationContractError(
+                f"FixedPointReceipt.schema must equal {cls.SCHEMA!r}"
+            )
+        evidence_refs = payload.get("evidence_refs")
+        if type(evidence_refs) is not list:
+            raise FederationContractError(
+                "FixedPointReceipt.evidence_refs must be a canonical array"
+            )
+        receipt = cls(
+            world_snapshot_ref=payload.get("world_snapshot_ref"),
+            event_watermark=payload.get("event_watermark"),
+            outstanding_required_work=payload.get("outstanding_required_work"),
+            fencing_epoch=payload.get("fencing_epoch"),
+            outcome=payload.get("outcome"),
+            evidence_refs=tuple(evidence_refs),
+        )
+        receipt_id = payload.get("receipt_id")
+        if type(receipt_id) is not str or receipt_id != receipt.cid:
+            raise FederationContractError("FixedPointReceipt identity mismatches its payload")
+        return receipt
 
     @property
     def cid(self) -> str:
-        return content_identity(
-            {
-                "world_snapshot_ref": self.world_snapshot_ref,
-                "event_watermark": self.event_watermark,
-                "fencing_epoch": self.fencing_epoch,
-                "outcome": self.outcome,
-            }
-        )
+        return content_identity(self.to_dict(include_identity=False))
 
 
 def _identifier_tuple(value: tuple[str, ...], name: str) -> tuple[str, ...]:

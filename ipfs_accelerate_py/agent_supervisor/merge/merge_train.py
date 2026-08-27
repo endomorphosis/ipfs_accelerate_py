@@ -34,7 +34,7 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Final, Iterator, Mapping, Sequence
 
 from ..proof.formal_verification_policy import (
@@ -52,6 +52,7 @@ from .checkout_lock import (
     read_checkout_mutation_lease,
 )
 from .merge_queue import (
+    FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
     MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
     MAX_MERGE_QUEUE_RECORDED_DEFERRALS,
     MergeQueue,
@@ -153,6 +154,9 @@ INTEGRATED_QUARANTINE_AUTO_RECOVERY_DENIAL_REASONS: Final[
         "post_merge_declared_outputs_repair_failed",
         "post_merge_declared_outputs_repair_postcondition_failed",
     }
+)
+FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON: Final[str] = (
+    "false_positive_completion_integration_lineage_unproven"
 )
 
 
@@ -3221,6 +3225,213 @@ class MergeTrain:
         return proof.get("passed") is True
 
     @staticmethod
+    def _request_has_false_positive_completion_reopen(
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether the queue carries the exact closed reopen marker."""
+
+        marker = request.metadata.get("false_positive_completion_reopen")
+        if not isinstance(marker, Mapping):
+            return False
+        previous_target = str(marker.get("previous_target_commit") or "")
+        receipt_id = str(marker.get("train_receipt_id") or "")
+        generation = marker.get("previous_claim_generation")
+        reopened_at = marker.get("reopened_at")
+        return bool(
+            set(marker)
+            == {
+                "schema",
+                "reason",
+                "train_receipt_id",
+                "previous_target_commit",
+                "previous_claim_generation",
+                "reopened_at",
+            }
+            and marker.get("schema")
+            == FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+            and marker.get("reason") == "declared_outputs_not_on_target"
+            and len(previous_target) == 40
+            and all(
+                character in "0123456789abcdef"
+                for character in previous_target
+            )
+            and len(receipt_id) == 71
+            and receipt_id.startswith("sha256:")
+            and all(
+                character in "0123456789abcdef"
+                for character in receipt_id[7:]
+            )
+            and not isinstance(generation, bool)
+            and isinstance(generation, int)
+            and generation >= 0
+            and not isinstance(reopened_at, bool)
+            and isinstance(reopened_at, (int, float))
+            and math.isfinite(float(reopened_at))
+            and float(reopened_at) >= 0
+        )
+
+    def _false_positive_completion_lineage_retry(
+        self,
+        request: MergeRequest,
+    ) -> dict[str, str] | None:
+        """Prove one new target generation may retry a failed lineage check.
+
+        This is deliberately narrower than ordinary integrated-quarantine
+        recovery.  The database bridge owns the false-completion marker and
+        preauthorization; the train additionally binds the terminal callback
+        receipt to that marker and permits one revival only after the target
+        has become a strict verified descendant of the target on which the
+        lineage proof failed.
+        """
+
+        if (
+            request.status != "quarantined"
+            or request.failure_reason
+            != FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+            or not self._request_matches_exact_target(request)
+            or not self._request_has_false_positive_completion_reopen(request)
+        ):
+            return None
+        metadata = (
+            request.metadata
+            if isinstance(request.metadata, Mapping)
+            else {}
+        )
+        marker = metadata.get("false_positive_completion_reopen")
+        quarantine = metadata.get("quarantine")
+        merge_result = (
+            quarantine.get("merge_result")
+            if isinstance(quarantine, Mapping)
+            else None
+        )
+        lineage = (
+            merge_result.get(
+                "false_positive_completion_integration_lineage"
+            )
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        candidate = str(request.commit_sha or "").strip().casefold()
+        baseline = str(metadata.get("baseline_ref") or "").strip().casefold()
+        previous_target = str(
+            marker.get("previous_target_commit")
+            if isinstance(marker, Mapping)
+            else ""
+        ).strip().casefold()
+        failed_target = str(
+            lineage.get("target_commit")
+            if isinstance(lineage, Mapping)
+            else ""
+        ).strip().casefold()
+
+        def commit_id(value: str) -> bool:
+            return bool(
+                len(value) in {40, 64}
+                and all(
+                    character in "0123456789abcdef"
+                    for character in value
+                )
+            )
+
+        if (
+            not isinstance(quarantine, Mapping)
+            or quarantine.get("reason")
+            != FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+            or not isinstance(merge_result, Mapping)
+            or merge_result.get("reason")
+            != FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+            or not isinstance(lineage, Mapping)
+            or lineage.get("passed") is not False
+            or lineage.get("reason")
+            != "false_completion_lineage_history_unbounded"
+            or str(lineage.get("candidate_commit") or "").casefold()
+            != candidate
+            or str(lineage.get("baseline_commit") or "").casefold()
+            != baseline
+            or str(
+                lineage.get("previous_target_commit") or ""
+            ).casefold()
+            != previous_target
+            or lineage.get("previous_declared_output_identity") is not False
+            or lineage.get("current_declared_output_identity") is not True
+            or lineage.get("ancestry")
+            != {
+                "candidate_to_previous_target": 1,
+                "baseline_to_previous_target": 0,
+                "previous_target_to_target": 0,
+                "candidate_to_target": 0,
+            }
+            or not all(
+                commit_id(commit)
+                for commit in (
+                    candidate,
+                    baseline,
+                    previous_target,
+                    failed_target,
+                )
+            )
+        ):
+            return None
+        candidate_shape = self._git(
+            "rev-list", "--parents", "--max-count=1", candidate
+        )
+        candidate_line = candidate_shape.stdout.strip().casefold().split()
+        if (
+            candidate_shape.returncode != 0
+            or candidate_line != [candidate, baseline]
+        ):
+            return None
+        failed_probe = self._git(
+            "rev-parse", "--verify", f"{failed_target}^{{commit}}"
+        )
+        if (
+            failed_probe.returncode != 0
+            or failed_probe.stdout.strip().casefold() != failed_target
+            or self._is_ancestor_state(candidate, previous_target) is not False
+            or self._is_ancestor_state(baseline, previous_target) is not True
+            or self._is_ancestor_state(baseline, candidate) is not True
+            or self._is_ancestor_state(previous_target, failed_target) is not True
+            or self._is_ancestor_state(candidate, failed_target) is not True
+            or self.portal_declared_outputs_match_commit_state(
+                request,
+                previous_target,
+            )
+            is not False
+            or self.portal_declared_outputs_match_commit_state(
+                request,
+                failed_target,
+            )
+            is not True
+        ):
+            return None
+        current_target = str(self._target_commit() or "").strip().casefold()
+        if not commit_id(current_target) or current_target == failed_target:
+            return None
+        current_probe = self._git(
+            "rev-parse", "--verify", f"{current_target}^{{commit}}"
+        )
+        if (
+            current_probe.returncode != 0
+            or current_probe.stdout.strip().casefold() != current_target
+            or self._is_ancestor_state(failed_target, current_target) is not True
+            or self.portal_declared_outputs_match_commit_state(
+                request,
+                current_target,
+            )
+            is not True
+        ):
+            return None
+        # This special revival preserves the already-exhausted counters.  One
+        # callback failure therefore re-quarantines immediately and replaces
+        # the proof target with this generation; equality above forbids
+        # another revival until the target moves.  A crash immediately after
+        # revival leaves the row pending, so it cannot consume a second one.
+        return {
+            "failed_target_commit": failed_target,
+            "target_commit": current_target,
+        }
+
+    @staticmethod
     def _quarantine_auto_recovery_allowed(
         request: MergeRequest,
         *,
@@ -3246,6 +3457,12 @@ class MergeTrain:
             is True
         )
         failure_reason = str(request.failure_reason or "")
+        if (
+            failure_reason
+            == FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+            and not allow_post_merge_declared_output_recovery
+        ):
+            return False
         if (
             allow_post_merge_declared_output_recovery
             and failure_reason == "post_merge_declared_outputs_missing"
@@ -3293,18 +3510,55 @@ class MergeTrain:
             == {task_id: task_cid}
         )
 
-    def _quarantined_portal_outputs_present_on_target(
+    def portal_declared_outputs_match_commit_state(
         self,
         request: MergeRequest,
-    ) -> bool:
-        """Prove every declared candidate output is identical on the target.
+        target: str,
+    ) -> bool | None:
+        """Compare every declared output with one exact commit.
 
-        Path existence alone is not integration evidence: a candidate can
-        modify an output that already existed at the target.  An ancestor is
-        already integrated by definition; otherwise compare the exact Git
-        tree entries so blob/tree identity and file mode must all agree.
+        Merely finding a declared path on a target is not integration
+        evidence: the candidate may replace an already-existing file.  Git's
+        tree diff compares the candidate and target entries, including blob or
+        gitlink object identity, file mode, type changes, and deletion state.
+        Literal top-level pathspecs keep sealed output names from widening the
+        comparison through pathspec magic.  ``None`` distinguishes malformed
+        authority or a Git failure from a proved content mismatch; terminal
+        recovery callers must never negate an indeterminate result into
+        permission to mutate the queue.
         """
 
+        metadata = (
+            request.metadata if isinstance(request.metadata, Mapping) else {}
+        )
+        task_payload = metadata.get("task")
+        if not isinstance(task_payload, Mapping):
+            return None
+        raw_outputs = task_payload.get("outputs")
+        if (
+            not isinstance(raw_outputs, Sequence)
+            or isinstance(raw_outputs, (str, bytes, bytearray))
+            or not raw_outputs
+        ):
+            return None
+        outputs: list[str] = []
+        for item in raw_outputs:
+            if not isinstance(item, str):
+                return None
+            path = item
+            parsed = PurePosixPath(path)
+            if (
+                not path
+                or path == "."
+                or path != parsed.as_posix()
+                or parsed.is_absolute()
+                or ".." in parsed.parts
+                or "\\" in path
+                or "\0" in path
+                or path in outputs
+            ):
+                return None
+            outputs.append(path)
         candidate = str(request.commit_sha or "").strip().casefold()
         if (
             len(candidate) not in {40, 64}
@@ -3313,76 +3567,122 @@ class MergeTrain:
                 for character in candidate
             )
         ):
-            return False
-        resolved = self._git(
+            return None
+        candidate_probe = self._git(
             "rev-parse", "--verify", f"{candidate}^{{commit}}"
         )
         if (
-            resolved.returncode != 0
-            or resolved.stdout.strip().casefold() != candidate
+            candidate_probe.returncode != 0
+            or candidate_probe.stdout.strip().casefold() != candidate
         ):
-            return False
-        target = self._target_commit()
-        if not target:
-            return False
-        if self._is_ancestor(candidate, target):
-            return True
-
-        metadata = (
-            request.metadata if isinstance(request.metadata, Mapping) else {}
+            return None
+        target = str(target or "").strip().casefold()
+        if (
+            len(target) not in {40, 64}
+            or any(
+                character not in "0123456789abcdef"
+                for character in target
+            )
+        ):
+            return None
+        target_probe = self._git(
+            "rev-parse", "--verify", f"{target}^{{commit}}"
         )
-        task_payload = metadata.get("task")
-        if not isinstance(task_payload, Mapping):
-            return False
-        outputs = [
-            str(item).strip()
-            for item in (task_payload.get("outputs") or ())
-            if str(item).strip()
-        ]
-        if not outputs:
-            return False
-
-        def tree_entry_identity(
-            ref: str,
-            path: str,
-        ) -> tuple[str, str, str] | None:
-            result = self._git("ls-tree", "-z", ref, "--", path)
+        if (
+            target_probe.returncode != 0
+            or target_probe.stdout.strip().casefold() != target
+        ):
+            return None
+        def exact_tree_entry(ref: str, path: str) -> str | None:
+            result = self._git(
+                "ls-tree",
+                "--full-tree",
+                "-z",
+                ref,
+                "--",
+                f":(top,literal){path}",
+            )
             if result.returncode != 0:
+                raise RuntimeError("git ls-tree failed")
+            records = [record for record in result.stdout.split("\0") if record]
+            if not records:
                 return None
-            records = [
-                record for record in result.stdout.split("\0") if record
-            ]
             if len(records) != 1:
-                return None
-            header, separator, observed_path = records[0].partition("\t")
-            fields = header.split()
+                raise RuntimeError("git ls-tree returned ambiguous entries")
+            metadata_text, separator, entry_path = records[0].partition("\t")
+            fields = metadata_text.split()
             if (
-                not separator
-                or observed_path != path
+                separator != "\t"
+                or entry_path != path
                 or len(fields) != 3
-                or fields[1] not in {"blob", "tree"}
+                or fields[1] not in {"blob", "tree", "commit"}
             ):
-                return None
-            mode, object_type, object_id = fields
-            return mode, object_type, object_id.casefold()
+                raise RuntimeError("git ls-tree returned a malformed entry")
+            # The exact mode, object type, and object id bind blobs, symlinks,
+            # directories, and gitlinks independently of repository diff
+            # configuration such as diff.ignoreSubmodules.
+            return " ".join(fields)
 
         for path in outputs:
-            candidate_entry = tree_entry_identity(candidate, path)
-            if (
-                candidate_entry is None
-                or tree_entry_identity(target, path) != candidate_entry
-            ):
+            try:
+                candidate_entry = exact_tree_entry(candidate, path)
+                target_entry = exact_tree_entry(target, path)
+            except RuntimeError:
+                return None
+            if candidate_entry is None:
+                # A declared output absent from the sealed candidate cannot
+                # authorize either an integration shortcut or its reversal.
+                return None
+            if target_entry != candidate_entry:
                 return False
         return True
+
+    def portal_declared_outputs_match_commit(
+        self,
+        request: MergeRequest,
+        target: str,
+    ) -> bool:
+        """Return whether all outputs provably match one exact commit."""
+
+        return (
+            self.portal_declared_outputs_match_commit_state(request, target)
+            is True
+        )
+
+    def portal_declared_outputs_match_target(
+        self,
+        request: MergeRequest,
+    ) -> bool:
+        """Return whether declared outputs match the current target commit."""
+
+        return self.portal_declared_outputs_match_commit(
+            request,
+            self._target_commit(),
+        )
 
     def _quarantine_may_auto_recover(self, request: MergeRequest, **kwargs: Any) -> bool:
         if not self._quarantine_auto_recovery_allowed(request, **kwargs):
             return False
+        if (
+            request.status == "quarantined"
+            and request.failure_reason
+            == FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+        ):
+            return bool(
+                kwargs.get("allow_post_merge_declared_output_recovery") is True
+                and self._false_positive_completion_lineage_retry(request)
+                is not None
+            )
+        if (
+            kwargs.get("allow_post_merge_declared_output_recovery") is True
+            and self._request_has_false_positive_completion_reopen(request)
+        ):
+            return True
         if self._quarantined_candidate_is_integrated(request):
             return True
         return (
             self._request_is_database_portal_projection_candidate(request)
-            and self._quarantined_portal_outputs_present_on_target(request)
+            and self.portal_declared_outputs_match_target(request)
         )
 
     @staticmethod
@@ -3440,7 +3740,7 @@ class MergeTrain:
             and self._request_has_invalid_completion_authority_metadata(
                 request
             )
-            and self._quarantined_portal_outputs_present_on_target(request)
+            and self.portal_declared_outputs_match_target(request)
         )
 
     @staticmethod
@@ -3449,6 +3749,13 @@ class MergeTrain:
         *,
         allow_post_merge_declared_output_recovery: bool = False,
     ) -> bool:
+        if (
+            allow_post_merge_declared_output_recovery
+            and MergeTrain._request_has_false_positive_completion_reopen(
+                request
+            )
+        ):
+            return True
         revivals = request.metadata.get("revivals")
         if not isinstance(revivals, list) or not revivals:
             return False
@@ -3583,19 +3890,44 @@ class MergeTrain:
                         ):
                             selected = request
                     elif request.status == "quarantined":
-                        if self._quarantine_may_auto_recover(
-                            request,
-                            allow_post_merge_declared_output_recovery=(
+                        lineage_retry = (
+                            self._false_positive_completion_lineage_retry(
+                                request
+                            )
+                            if (
                                 allow_declared_output_recovery
-                            ),
-                        ):
+                                and request.failure_reason
+                                == FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+                            )
+                            else None
+                        )
+                        may_recover = (
+                            lineage_retry is not None
+                            if request.failure_reason
+                            == FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON
+                            else self._quarantine_may_auto_recover(
+                                request,
+                                allow_post_merge_declared_output_recovery=(
+                                    allow_declared_output_recovery
+                                ),
+                            )
+                        )
+                        if may_recover:
+                            revival_reason = (
+                                "merge train retried false-completion lineage "
+                                "after target advanced "
+                                f"{lineage_retry['failed_target_commit']} -> "
+                                f"{lineage_retry['target_commit']}"
+                                if lineage_retry is not None
+                                else (
+                                    "merge train proved quarantined candidate "
+                                    "already integrated into exact target"
+                                )
+                            )
                             revived = revive(
                                 request.request_id,
-                                reason=(
-                                    "merge train proved quarantined candidate already "
-                                    "integrated into exact target"
-                                ),
-                                reset_failures=True,
+                                reason=revival_reason,
+                                reset_failures=lineage_retry is None,
                             )
                             if (
                                 isinstance(revived, MergeRequest)
@@ -6255,8 +6587,27 @@ class MergeTrain:
             pass
         return bool(owns_claim(request))
 
+    def _is_ancestor_state(
+        self,
+        ancestor: str,
+        descendant: str,
+    ) -> bool | None:
+        """Return exact Git ancestry, preserving command errors as unknown."""
+
+        result = self._git(
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+        )
+        if result.returncode == 0:
+            return True
+        if result.returncode == 1:
+            return False
+        return None
+
     def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
-        return self._git("merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
+        return self._is_ancestor_state(ancestor, descendant) is True
 
     def _dedupe_key(self, canonical: str, commit: str) -> str:
         parts = [canonical, commit]

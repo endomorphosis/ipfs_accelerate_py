@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -295,7 +297,7 @@ def test_run_once_rearms_leftover_wait_budget_exhaustion(
     daemon = _open_daemon(
         tmp_path,
         provider_fn=provider,
-        max_task_attempts=3,
+        max_task_attempts=1,
         clock_ms=lambda: now["ms"],
     )
     try:
@@ -305,6 +307,70 @@ def test_run_once_rearms_leftover_wait_budget_exhaustion(
         assert source is not None
         task = daemon.task_source.get(source.task_cid)
         assert task is not None and task.status == "retrying"
+        phase_row = daemon._require_connection().execute(
+            """
+            SELECT body_json
+            FROM attempt_phases
+            WHERE attempt_id = ? AND phase = 'failed'
+            """,
+            [source.attempt_id],
+        ).fetchone()
+        assert phase_row is not None
+        phase_body = json.loads(str(phase_row[0]))
+        typed = phase_body["typed_deferral"]
+        assert isinstance(typed, dict)
+        matching = [
+            {
+                "attempt_id": source.attempt_id,
+                "attempt_number": int(source.attempt_number),
+                "reason": "worktree_lifecycle_claim_exists",
+                "deferral_fingerprint": str(typed["deferral_fingerprint"]),
+            }
+        ]
+        matching_digest = hashlib.sha256()
+        for identity in matching:
+            encoded = json.dumps(
+                identity,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+            matching_digest.update(len(encoded).to_bytes(8, "big"))
+            matching_digest.update(encoded)
+        budget_body: dict[str, object] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-typed-deferral-budget@1"
+            ),
+            "task_cid": source.task_cid,
+            "task_generation": source.task_cid,
+            "generation_fingerprint": str(typed["generation_fingerprint"]),
+            "current_deferral_fingerprint": str(
+                typed["deferral_fingerprint"]
+            ),
+            "typed_deferral_candidate_count": 1,
+            "typed_deferral_count": 1,
+            "typed_deferral_count_is_lower_bound": False,
+            "verified_typed_deferral_count": 1,
+            "verified_count_complete": True,
+            "max_task_attempts": 1,
+            "exhausted": True,
+            "attempt_consumed": False,
+            "typed_deferral_slot_consumed": True,
+            "matching_attempts": matching,
+            "matching_attempts_digest": (
+                "sha256:" + matching_digest.hexdigest()
+            ),
+            "matching_attempts_truncated": False,
+            "omitted_matching_attempt_count": 0,
+        }
+        budget = {
+            **budget_body,
+            "observation_id": daemon._database_portal_evidence_digest(
+                budget_body
+            ),
+        }
         cas = daemon.task_source.compare_and_set_status
         cas(
             source.task_cid,
@@ -312,18 +378,29 @@ def test_run_once_rearms_leftover_wait_budget_exhaustion(
             status="blocked",
             receipt={
                 "operation": "database_portal_typed_deferral_budget_exhausted",
-                "reason": "typed_portal_deferral_budget_exhausted",
                 "attempt_id": source.attempt_id,
-                "retry_budget": {
-                    "matching_attempts": [
-                        {"reason": "worktree_lifecycle_claim_exists"},
-                        {
-                            "reason": (
-                                "external_protected_checkout_recovery_required"
-                            )
-                        },
-                    ]
+                "attempt_number": int(source.attempt_number),
+                "claim_id": source.claim_id,
+                "lease_id": source.lease_id,
+                "owner_session_id": source.owner_session_id,
+                "fencing_token": int(source.fencing_token),
+                "fence_epoch": int(source.fence_epoch),
+                "execution_phase": "failed",
+                "execution_revision": int(source.revision),
+                "execution_finished_at_ms": source.finished_at_ms,
+                "reason": "typed_portal_deferral_budget_exhausted",
+                "retryable": False,
+                "attempt_consumed": False,
+                "typed_deferral_slot_consumed": True,
+                "retry_budget": budget,
+                "prior_queue_entry_preserved_inactive": True,
+                "coordination": {
+                    "attempt_id": source.attempt_id,
+                    "claim_id": source.claim_id,
+                    "attempt_number": int(source.attempt_number),
                 },
+                "control_expected_status": "retrying",
+                "control_expected_revision": int(task.revision),
             },
         )
         blocked = daemon.task_source.get(source.task_cid)
@@ -448,5 +525,59 @@ def test_automatic_pooled_worktree_recovery_fails_closed_for_foreign_failure(
         assert outcomes[0]["changed"] is False
         assert outcomes[0]["reason"] == "pooled_worktree_create_recovery_not_admitted"
         assert daemon.task_source.get(source_attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_generic_provider_failure_is_not_owned_by_pooled_callback_presence(
+    tmp_path: Path,
+) -> None:
+    """A generation-5-style stale replay follows the generic bounded retry."""
+
+    callback_attempts: list[str] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    def recover(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        callback_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError(
+            "pooled-worktree create recovery requires a pre-dispatch "
+            "worktree-setup failure; observed provider-dispatched "
+            "stale_proposal_replay returncode=78"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        pooled_worktree_create_recovery_fn=recover,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["status"] == "retrying"
+        retried = daemon.task_source.get(source_attempt.task_cid)
+        assert retried is not None and retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_validation_retry_recovery"
+        )
+        assert receipt["evidence_source"] == (
+            "portal_provider_failed_reclassified"
+        )
+
+        callback_count = len(callback_attempts)
+        assert daemon.reconcile_blocked_pooled_worktree_create_recoveries() == []
+        assert len(callback_attempts) == callback_count
+        assert daemon.task_source.get(source_attempt.task_cid).status == "retrying"
     finally:
         daemon.close()

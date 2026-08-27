@@ -24,6 +24,7 @@ provider, or process action.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -87,6 +88,39 @@ INTENT_PLAN_PROJECTION_SCHEMA: Final[str] = (
 INTENT_COMPLETION_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-completion-projection@1"
 )
+GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-completion-authority-spec@1"
+)
+GOAL_COMPLETION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-completion-receipt@1"
+)
+GOAL_ROOT_COMPLETION_GATE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-root-completion-gate@1"
+)
+GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/vrif-runtime-settlement-binding@1"
+)
+GOAL_AUTHORITY_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-authority-projection@1"
+)
+GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-terminal-report-contract@1"
+)
+GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-terminal-report-evidence@2"
+)
+_DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-completion-binding@1"
+)
+_MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+)
+_GOAL_TERMINAL_PRODUCER_ARTIFACTS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-terminal-producer-artifacts@1"
+)
+_GOAL_TERMINAL_PRODUCER_RECEIPT_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/goal-terminal-producer-receipt-binding@1"
+)
 TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
 )
@@ -114,6 +148,7 @@ MAX_PROJECTION_RECORDS: Final[int] = 10_000
 MAX_TASK_PROJECTION_BYTES: Final[int] = 1_048_576
 MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
 MAX_COMPLETION_PROJECTION_BYTES: Final[int] = 16_777_216
+MAX_GOAL_AUTHORITY_PROJECTION_BYTES: Final[int] = 4_194_304
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
@@ -131,6 +166,9 @@ _READY_STATUSES: Final[frozenset[str]] = frozenset(
     }
 )
 _COMPLETED_STATUSES: Final[frozenset[str]] = frozenset({"completed", "skipped", "complete", "done"})
+_SUCCESSFUL_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {"completed", "complete", "done"}
+)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {
         *_COMPLETED_STATUSES,
@@ -150,11 +188,51 @@ _TASK_STATUSES: Final[frozenset[str]] = frozenset(
         "blocked",
     }
 )
+_ACTIVE_ATTEMPT_STATUSES: Final[frozenset[str]] = frozenset(
+    {"started", "running", "in_progress"}
+)
+_TERMINAL_ATTEMPT_STATUSES: Final[frozenset[str]] = frozenset(
+    {"succeeded", "completed", "failed", "cancelled", "released", "expired"}
+)
+_ATTEMPT_STATUSES: Final[frozenset[str]] = frozenset(
+    {*_ACTIVE_ATTEMPT_STATUSES, *_TERMINAL_ATTEMPT_STATUSES}
+)
 _GOAL_OPEN_STATUSES: Final[frozenset[str]] = frozenset(
-    {"open", "active", "reopened", "provisionally_complete", "analysis_inconclusive"}
+    {
+        "open",
+        "active",
+        "reopened",
+        "provisionally_complete",
+        "analysis_inconclusive",
+        "waiting",
+    }
+)
+_GOAL_COMPLETED_STATUSES: Final[frozenset[str]] = frozenset(
+    {"verified_complete", "completed", "complete", "done"}
 )
 _GOAL_CLOSED_STATUSES: Final[frozenset[str]] = frozenset(
-    {"verified_complete", "completed", "complete", "done", "blocked"}
+    {*_GOAL_COMPLETED_STATUSES, "blocked"}
+)
+_GOAL_STATUSES: Final[frozenset[str]] = frozenset(
+    {*_GOAL_OPEN_STATUSES, *_GOAL_CLOSED_STATUSES}
+)
+
+_ROOT_COMPLETION_POLICY_FIELDS: Final[tuple[str, ...]] = (
+    "all_task_dependencies_terminal_required",
+    "goal_completion_contracts_required",
+    "current_tree_required",
+    "active_mutating_claims_empty_required",
+    "merge_queue_settled_required",
+    "blocking_obligations_empty_required",
+    "required_receipts_and_seals_verify",
+    "non_success_terminals_never_report_success",
+    "ducklake_outage_cannot_block_core_completion",
+    "final_report_required",
+)
+_ROOT_TERMINAL_TASK_POLICY_FIELD: Final[str] = "terminal_task_id"
+_TERMINAL_REPORT_VALIDATOR: Final[str] = "DatabasePortalExecutionBridge@1"
+_TERMINAL_REPORT_VALIDATION_ARGV: Final[tuple[str, ...]] = (
+    "portal-supervisor-gates",
 )
 
 # Intent-owned projection tables fully rebuilt from admitted intent events.
@@ -173,7 +251,6 @@ _PROJECTION_TABLES: Final[tuple[str, ...]] = (
     "task_outputs",
     "task_acceptance",
     "task_validations",
-    "task_assignments",
     "task_blocks",
     "task_attempts",
     "completion_receipts",
@@ -286,6 +363,32 @@ def _utc_iso(moment: datetime | None = None) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _event_timestamp(value: Any, *, noun: str) -> str:
+    """Return one producer-canonical UTC event timestamp, or fail closed."""
+
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
+    try:
+        parsed = datetime.fromisoformat(
+            value[:-1] + "+00:00" if value.endswith("Z") else value
+        )
+    except ValueError as exc:
+        raise IntentRepositoryIntegrityError(
+            f"{noun} is not a canonical UTC timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
+    canonical = (
+        parsed.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    if value != canonical:
+        raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
+    return value
 
 
 def _now_ms() -> int:
@@ -626,6 +729,1436 @@ def _content_addressed_projection(
     if len(encoded) > maximum_bytes:
         raise IntentRepositoryBoundsError(f"{noun} exceeds byte bound")
     return MappingProxyType({**normalized, "projection_cid": content_identity(normalized)})
+
+
+def _completion_evidence_projection_on(
+    connection: Any,
+    requested: tuple[str, ...],
+) -> Mapping[str, Any]:
+    """Read one exact completion projection on the caller's MVCC snapshot."""
+
+    if requested:
+        placeholders = ", ".join("?" for _ in requested)
+        task_rows = connection.execute(
+            "SELECT task_cid, status, revision FROM tasks "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid",
+            list(requested),
+        ).fetchall()
+        found = {str(row[0]) for row in task_rows}
+        missing = sorted(set(requested) - found)
+        if missing:
+            raise KeyError(
+                "unknown task_cids in completion projection: "
+                + ", ".join(missing)
+            )
+    else:
+        task_count = int(
+            connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        )
+        if task_count > MAX_PAGE_LIMIT:
+            raise IntentRepositoryBoundsError(
+                "completion projection task count exceeds bound"
+            )
+        task_rows = connection.execute(
+            "SELECT task_cid, status, revision FROM tasks ORDER BY task_cid"
+        ).fetchall()
+
+    projected_task_cids = tuple(str(row[0]) for row in task_rows)
+    if projected_task_cids:
+        placeholders = ", ".join("?" for _ in projected_task_cids)
+        current_receipt_predicate = (
+            "receipt.task_cid IN ("
+            + placeholders
+            + ") AND TRY_CAST(json_extract_string("
+            "TRY_CAST(receipt.body_json AS JSON), '$.revision') AS BIGINT) "
+            "= task.revision"
+        )
+        malformed_revision = connection.execute(
+            "SELECT receipt.task_cid "
+            "FROM completion_receipts AS receipt "
+            f"WHERE receipt.task_cid IN ({placeholders}) AND ("
+            "TRY_CAST(receipt.body_json AS JSON) IS NULL OR "
+            "NOT COALESCE(regexp_full_match(json_extract_string("
+            "TRY_CAST(receipt.body_json AS JSON), '$.revision'), "
+            "'0|[1-9][0-9]*'), FALSE)) "
+            "ORDER BY receipt.task_cid LIMIT 1",
+            list(projected_task_cids),
+        ).fetchone()
+        if malformed_revision is not None:
+            raise IntentRepositoryIntegrityError(
+                "completion projection receipt revision is not a normalized integer "
+                f"for task {malformed_revision[0]}"
+            )
+        duplicate_current = connection.execute(
+            "SELECT receipt.task_cid, COUNT(*) "
+            "FROM completion_receipts AS receipt "
+            "JOIN tasks AS task ON task.task_cid = receipt.task_cid "
+            f"WHERE {current_receipt_predicate} "
+            "GROUP BY receipt.task_cid HAVING COUNT(*) > 1 "
+            "ORDER BY receipt.task_cid LIMIT 1",
+            list(projected_task_cids),
+        ).fetchone()
+        if duplicate_current is not None:
+            raise IntentRepositoryIntegrityError(
+                "completion projection has multiple current-revision receipts "
+                f"for task {duplicate_current[0]}"
+            )
+        receipt_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM completion_receipts AS receipt "
+                "JOIN tasks AS task ON task.task_cid = receipt.task_cid "
+                f"WHERE {current_receipt_predicate}",
+                list(projected_task_cids),
+            ).fetchone()[0]
+        )
+        if receipt_count > MAX_EVIDENCE:
+            raise IntentRepositoryBoundsError(
+                "completion receipt projection count exceeds bound"
+            )
+        receipt_rows = connection.execute(
+            """
+            SELECT receipt.receipt_cid, receipt.task_cid, receipt.goal_cid,
+                   receipt.attempt_id, receipt.claim_cid, receipt.fencing_token,
+                   receipt.completed_at, receipt.validation_run_id,
+                   receipt.evidence_digest, receipt.body_json
+            FROM completion_receipts AS receipt
+            JOIN tasks AS task ON task.task_cid = receipt.task_cid
+            WHERE """
+            + current_receipt_predicate
+            + " ORDER BY receipt.task_cid, receipt.completed_at, receipt.receipt_cid",
+            list(projected_task_cids),
+        ).fetchall()
+    else:
+        receipt_rows = []
+    watermark = int(
+        connection.execute(
+            "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+        ).fetchone()[0]
+    )
+    task_states = [
+        {
+            "task_cid": str(row[0]),
+            "status": str(row[1]),
+            "revision": int(row[2]),
+        }
+        for row in task_rows
+    ]
+    current_revisions = {str(row[0]): int(row[2]) for row in task_rows}
+    completion_receipts: list[dict[str, Any]] = []
+    for row in receipt_rows:
+        task_cid = str(row[1])
+        body = _decode_json(row[9], noun="completion receipt body")
+        if (
+            not isinstance(body, Mapping)
+            or set(body) != {"schema", "receipt", "evidence_digests", "revision"}
+            or body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+            or type(body.get("revision")) is not int
+            or body.get("revision") != current_revisions[task_cid]
+            or not isinstance(body.get("receipt"), Mapping)
+            or not isinstance(body.get("evidence_digests"), list)
+        ):
+            raise IntentRepositoryIntegrityError(
+                "completion projection current-revision receipt is not normalized"
+            )
+        completion_receipts.append(
+            {
+                "receipt_cid": str(row[0]),
+                "task_cid": task_cid,
+                "goal_cid": str(row[2]),
+                "attempt_id": str(row[3] or ""),
+                "claim_cid": str(row[4] or ""),
+                "fencing_token": int(row[5]),
+                "completed_at": str(row[6]),
+                "validation_run_id": str(row[7] or ""),
+                "evidence_digest": str(row[8]),
+                "body": dict(body),
+            }
+        )
+    return _content_addressed_projection(
+        {
+            "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+            "event_watermark": watermark,
+            "task_states": task_states,
+            "completion_receipts": completion_receipts,
+        },
+        maximum_bytes=MAX_COMPLETION_PROJECTION_BYTES,
+        noun="intent completion projection",
+    )
+
+
+def _goal_completion_authority_spec(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one closed, content-addressed goal-completion population.
+
+    The caller that constructs this specification is the state owner.  This
+    validator deliberately accepts no inferred goals, edges, or task aliases:
+    a population mismatch is an integrity error, not an invitation to expand
+    completion authority.
+    """
+
+    raw = _mapping(value, noun="goal completion authority specification")
+    expected_fields = {
+        "schema",
+        "board_namespace",
+        "goal_count",
+        "task_count",
+        "root_goal_cid",
+        "root_goal_alias",
+        "goals",
+        "goal_edges",
+        "tasks",
+        "task_dependencies",
+        "terminal_report_contract",
+        "completion_policy",
+        "receipt_backfill_goal_cids",
+        "authority_spec_id",
+    }
+    if set(raw) != expected_fields or raw.get("schema") != GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA:
+        raise IntentRepositoryIntegrityError(
+            "goal completion authority specification has a non-closed schema"
+        )
+    authority_spec_id = str(raw.get("authority_spec_id") or "")
+    identity_body = dict(raw)
+    identity_body.pop("authority_spec_id", None)
+    if authority_spec_id != content_identity(identity_body):
+        raise IntentRepositoryIntegrityError(
+            "goal completion authority specification identity is invalid"
+        )
+    board_namespace = _identifier(raw.get("board_namespace"), noun="board_namespace")
+    goal_count = _positive_int(raw.get("goal_count"), noun="goal_count")
+    task_count = _positive_int(raw.get("task_count"), noun="task_count")
+    if goal_count > MAX_PAGE_LIMIT or task_count > MAX_PAGE_LIMIT:
+        raise IntentRepositoryBoundsError("goal completion authority population exceeds bound")
+
+    goal_items = _projection_sequence(
+        raw.get("goals"), noun="goal authority goals", maximum=MAX_PAGE_LIMIT
+    )
+    if len(goal_items) != goal_count:
+        raise IntentRepositoryIntegrityError("goal authority goal count is not exact")
+    goals: list[dict[str, Any]] = []
+    goal_cids: set[str] = set()
+    goal_aliases: set[str] = set()
+    for item in goal_items:
+        goal = _mapping(item, noun="goal authority goal")
+        if set(goal) != {
+            "goal_cid",
+            "goal_alias",
+            "parent_goal_cid",
+            "ordinal",
+        }:
+            raise IntentRepositoryIntegrityError("goal authority goal schema is not closed")
+        normalized = {
+            "goal_cid": _identifier(goal.get("goal_cid"), noun="goal_cid"),
+            "goal_alias": _identifier(goal.get("goal_alias"), noun="goal_alias"),
+            "parent_goal_cid": _optional_identifier(
+                goal.get("parent_goal_cid"), noun="parent_goal_cid"
+            ),
+            "ordinal": _nonneg_int(goal.get("ordinal"), noun="goal ordinal"),
+        }
+        if (
+            normalized["goal_cid"] in goal_cids
+            or normalized["goal_alias"] in goal_aliases
+        ):
+            raise IntentRepositoryIntegrityError(
+                "goal authority identities or aliases are duplicated"
+            )
+        goal_cids.add(normalized["goal_cid"])
+        goal_aliases.add(normalized["goal_alias"])
+        goals.append(normalized)
+    goals.sort(key=lambda item: (item["ordinal"], item["goal_alias"], item["goal_cid"]))
+
+    root_goal_cid = _identifier(raw.get("root_goal_cid"), noun="root_goal_cid")
+    root_goal_alias = _identifier(raw.get("root_goal_alias"), noun="root_goal_alias")
+    roots = [item for item in goals if not item["parent_goal_cid"]]
+    if (
+        len(roots) != 1
+        or roots[0]["goal_cid"] != root_goal_cid
+        or roots[0]["goal_alias"] != root_goal_alias
+    ):
+        raise IntentRepositoryIntegrityError("goal authority root identity is not exact")
+    for goal in goals:
+        parent = goal["parent_goal_cid"]
+        if parent and parent not in goal_cids:
+            raise IntentRepositoryIntegrityError("goal authority parent is unknown")
+
+    edge_items = _projection_sequence(
+        raw.get("goal_edges"), noun="goal authority edges", maximum=MAX_DEPENDENCIES
+    )
+    edges: list[dict[str, str]] = []
+    edge_keys: set[tuple[str, str, str]] = set()
+    for item in edge_items:
+        edge = _mapping(item, noun="goal authority edge")
+        if set(edge) != {"parent_goal_cid", "child_goal_cid", "edge_kind"}:
+            raise IntentRepositoryIntegrityError("goal authority edge schema is not closed")
+        normalized_edge = {
+            "parent_goal_cid": _identifier(
+                edge.get("parent_goal_cid"), noun="edge parent_goal_cid"
+            ),
+            "child_goal_cid": _identifier(
+                edge.get("child_goal_cid"), noun="edge child_goal_cid"
+            ),
+            "edge_kind": _identifier(edge.get("edge_kind"), noun="edge_kind"),
+        }
+        if normalized_edge["edge_kind"] not in {"goal_parent", "goal_dependency"}:
+            raise IntentRepositoryIntegrityError("goal authority edge kind is not admitted")
+        if (
+            normalized_edge["parent_goal_cid"] not in goal_cids
+            or normalized_edge["child_goal_cid"] not in goal_cids
+            or normalized_edge["parent_goal_cid"] == normalized_edge["child_goal_cid"]
+        ):
+            raise IntentRepositoryIntegrityError("goal authority edge endpoints are invalid")
+        key = (
+            normalized_edge["parent_goal_cid"],
+            normalized_edge["child_goal_cid"],
+            normalized_edge["edge_kind"],
+        )
+        if key in edge_keys:
+            raise IntentRepositoryIntegrityError("goal authority edges are duplicated")
+        edge_keys.add(key)
+        edges.append(normalized_edge)
+    edges.sort(
+        key=lambda item: (
+            item["edge_kind"],
+            item["parent_goal_cid"],
+            item["child_goal_cid"],
+        )
+    )
+    declared_parent_edges = {
+        (item["parent_goal_cid"], item["goal_cid"], "goal_parent")
+        for item in goals
+        if item["parent_goal_cid"]
+    }
+    observed_parent_edges = {
+        key for key in edge_keys if key[2] == "goal_parent"
+    }
+    if declared_parent_edges != observed_parent_edges:
+        raise IntentRepositoryIntegrityError(
+            "goal authority parent fields and edges disagree"
+        )
+
+    task_items = _projection_sequence(
+        raw.get("tasks"), noun="goal authority tasks", maximum=MAX_PAGE_LIMIT
+    )
+    if len(task_items) != task_count:
+        raise IntentRepositoryIntegrityError("goal authority task count is not exact")
+    tasks: list[dict[str, str]] = []
+    task_cids: set[str] = set()
+    task_aliases: set[str] = set()
+    for item in task_items:
+        task = _mapping(item, noun="goal authority task")
+        if set(task) != {"task_cid", "task_alias", "goal_cid"}:
+            raise IntentRepositoryIntegrityError("goal authority task schema is not closed")
+        normalized_task = {
+            "task_cid": _identifier(task.get("task_cid"), noun="task_cid"),
+            "task_alias": _identifier(task.get("task_alias"), noun="task_alias"),
+            "goal_cid": _identifier(task.get("goal_cid"), noun="task goal_cid"),
+        }
+        if normalized_task["goal_cid"] not in goal_cids:
+            raise IntentRepositoryIntegrityError("goal authority task owns an unknown goal")
+        if (
+            normalized_task["task_cid"] in task_cids
+            or normalized_task["task_alias"] in task_aliases
+        ):
+            raise IntentRepositoryIntegrityError(
+                "goal authority task identities or aliases are duplicated"
+            )
+        task_cids.add(normalized_task["task_cid"])
+        task_aliases.add(normalized_task["task_alias"])
+        tasks.append(normalized_task)
+    tasks.sort(key=lambda item: (item["task_alias"], item["task_cid"]))
+
+    dependency_items = _projection_sequence(
+        raw.get("task_dependencies"),
+        noun="goal authority task dependencies",
+        maximum=MAX_DEPENDENCIES,
+    )
+    task_dependencies: list[dict[str, str]] = []
+    task_dependency_keys: set[tuple[str, str, str]] = set()
+    for item in dependency_items:
+        dependency = _mapping(item, noun="goal authority task dependency")
+        if set(dependency) != {"task_cid", "dependency_task_cid", "kind"}:
+            raise IntentRepositoryIntegrityError(
+                "goal authority task dependency schema is not closed"
+            )
+        normalized_dependency = {
+            "task_cid": _identifier(dependency.get("task_cid"), noun="task_cid"),
+            "dependency_task_cid": _identifier(
+                dependency.get("dependency_task_cid"),
+                noun="dependency_task_cid",
+            ),
+            "kind": _identifier(dependency.get("kind"), noun="task dependency kind"),
+        }
+        if normalized_dependency["kind"] != "depends_on":
+            raise IntentRepositoryIntegrityError(
+                "goal authority task dependency kind is not admitted"
+            )
+        if (
+            normalized_dependency["task_cid"] not in task_cids
+            or normalized_dependency["dependency_task_cid"] not in task_cids
+            or normalized_dependency["task_cid"]
+            == normalized_dependency["dependency_task_cid"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "goal authority task dependency endpoints are invalid"
+            )
+        dependency_key = (
+            normalized_dependency["task_cid"],
+            normalized_dependency["dependency_task_cid"],
+            normalized_dependency["kind"],
+        )
+        if dependency_key in task_dependency_keys:
+            raise IntentRepositoryIntegrityError(
+                "goal authority task dependencies are duplicated"
+            )
+        task_dependency_keys.add(dependency_key)
+        task_dependencies.append(normalized_dependency)
+    task_dependencies.sort(
+        key=lambda item: (
+            item["task_cid"],
+            item["dependency_task_cid"],
+            item["kind"],
+        )
+    )
+
+    task_prerequisites: dict[str, set[str]] = {
+        task_cid: set() for task_cid in task_cids
+    }
+    for dependency in task_dependencies:
+        task_prerequisites[dependency["task_cid"]].add(
+            dependency["dependency_task_cid"]
+        )
+    remaining_tasks = {
+        task_cid: set(prerequisites)
+        for task_cid, prerequisites in task_prerequisites.items()
+    }
+    while remaining_tasks:
+        ready_tasks = sorted(
+            task_cid
+            for task_cid, prerequisites in remaining_tasks.items()
+            if not prerequisites
+        )
+        if not ready_tasks:
+            raise IntentRepositoryIntegrityError(
+                "goal authority task dependency graph contains a cycle"
+            )
+        for task_cid in ready_tasks:
+            remaining_tasks.pop(task_cid)
+        for prerequisites in remaining_tasks.values():
+            prerequisites.difference_update(ready_tasks)
+
+    child_goals = {edge["parent_goal_cid"] for edge in edges if edge["edge_kind"] == "goal_parent"}
+    tasks_by_goal = {goal_cid: 0 for goal_cid in goal_cids}
+    for task in tasks:
+        tasks_by_goal[task["goal_cid"]] += 1
+    for goal_cid, population in tasks_by_goal.items():
+        if goal_cid in child_goals and population:
+            raise IntentRepositoryIntegrityError(
+                "goal authority parent goals cannot also own direct tasks"
+            )
+        if goal_cid not in child_goals and population < 1:
+            raise IntentRepositoryIntegrityError(
+                "goal authority leaf goals require direct task evidence"
+            )
+
+    completion_policy = _mapping(raw.get("completion_policy"), noun="completion_policy")
+    if set(completion_policy) != {
+        *_ROOT_COMPLETION_POLICY_FIELDS,
+        _ROOT_TERMINAL_TASK_POLICY_FIELD,
+    } or any(
+        completion_policy.get(field) is not True for field in _ROOT_COMPLETION_POLICY_FIELDS
+    ):
+        raise IntentRepositoryIntegrityError(
+            "goal authority completion policy is not the exact fail-closed policy"
+        )
+    terminal_task_alias = _identifier(
+        completion_policy.get(_ROOT_TERMINAL_TASK_POLICY_FIELD),
+        noun="completion_policy.terminal_task_id",
+    )
+    terminal_tasks = [item for item in tasks if item["task_alias"] == terminal_task_alias]
+    if len(terminal_tasks) != 1:
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report task is not an exact task binding"
+        )
+    terminal_task = terminal_tasks[0]
+    raw_terminal_contract = _mapping(
+        raw.get("terminal_report_contract"), noun="terminal report contract"
+    )
+    terminal_contract_fields = {
+        "schema",
+        "task_cid",
+        "task_alias",
+        "declared_output_paths",
+        "declared_symbols",
+        "required_report_paths",
+        "producer_output_paths",
+        "producer_validation_commands",
+        "acceptance_criteria",
+        "validation_commands",
+        "contract_id",
+    }
+    if (
+        set(raw_terminal_contract) != terminal_contract_fields
+        or raw_terminal_contract.get("schema")
+        != GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA
+        or raw_terminal_contract.get("task_cid") != terminal_task["task_cid"]
+        or raw_terminal_contract.get("task_alias") != terminal_task_alias
+    ):
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report contract identity is not exact"
+        )
+    declared_output_paths = [
+        _identifier(item, noun="terminal declared output path")
+        for item in _projection_sequence(
+            raw_terminal_contract.get("declared_output_paths"),
+            noun="terminal declared output paths",
+            maximum=MAX_OUTPUTS,
+        )
+    ]
+    required_report_paths = [
+        _identifier(item, noun="terminal required report path")
+        for item in _projection_sequence(
+            raw_terminal_contract.get("required_report_paths"),
+            noun="terminal required report paths",
+            maximum=MAX_OUTPUTS,
+        )
+    ]
+    declared_symbols = [
+        _identifier(item, noun="terminal declared symbol")
+        for item in _projection_sequence(
+            raw_terminal_contract.get("declared_symbols"),
+            noun="terminal declared symbols",
+            maximum=MAX_OUTPUTS,
+        )
+    ]
+    if (
+        len(set(declared_output_paths)) != len(declared_output_paths)
+        or not declared_symbols
+        or len(set(declared_symbols)) != len(declared_symbols)
+        or len(set(required_report_paths)) != len(required_report_paths)
+        or len(required_report_paths) != 2
+        or not set(required_report_paths).issubset(declared_output_paths)
+        or {str(Path(item).suffix).lower() for item in required_report_paths}
+        != {".json", ".md"}
+    ):
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report output contract is invalid"
+        )
+    task_alias_by_cid = {item["task_cid"]: item["task_alias"] for item in tasks}
+    terminal_producer_cids = sorted(
+        {
+            edge["dependency_task_cid"]
+            for edge in task_dependencies
+            if edge["task_cid"] == terminal_task["task_cid"]
+        },
+        key=lambda task_cid: task_alias_by_cid[task_cid],
+    )
+    terminal_producer_aliases = [
+        task_alias_by_cid[task_cid] for task_cid in terminal_producer_cids
+    ]
+    raw_producer_outputs = _mapping(
+        raw_terminal_contract.get("producer_output_paths"),
+        noun="terminal report producer output paths",
+    )
+    if len(terminal_producer_aliases) != 4 or set(raw_producer_outputs) != set(
+        terminal_producer_aliases
+    ):
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report producer population is not exact"
+        )
+    producer_output_paths: dict[str, list[str]] = {}
+    all_producer_paths: set[str] = set()
+    for task_alias in terminal_producer_aliases:
+        paths = [
+            _identifier(item, noun="terminal report producer output path")
+            for item in _projection_sequence(
+                raw_producer_outputs.get(task_alias),
+                noun="terminal report producer output paths",
+                maximum=MAX_OUTPUTS,
+            )
+        ]
+        if (
+            not paths
+            or len(paths) != len(set(paths))
+            or any(path in all_producer_paths for path in paths)
+            or any(path in declared_output_paths for path in paths)
+        ):
+            raise IntentRepositoryIntegrityError(
+                "goal authority terminal report producer output ownership is invalid"
+            )
+        all_producer_paths.update(paths)
+        producer_output_paths[task_alias] = paths
+    raw_producer_validations = _mapping(
+        raw_terminal_contract.get("producer_validation_commands"),
+        noun="terminal report producer validation commands",
+    )
+    if set(raw_producer_validations) != set(terminal_producer_aliases):
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report producer validation population is not exact"
+        )
+    producer_validation_commands: dict[str, list[list[str]]] = {}
+    for task_alias in terminal_producer_aliases:
+        commands: list[list[str]] = []
+        for raw_command in _projection_sequence(
+            raw_producer_validations.get(task_alias),
+            noun="terminal report producer validation commands",
+            maximum=MAX_VALIDATIONS,
+        ):
+            command = [
+                str(part)
+                for part in _projection_sequence(
+                    raw_command,
+                    noun="terminal report producer validation argv",
+                    maximum=MAX_BODY_BYTES,
+                )
+            ]
+            if not command or any(not part for part in command):
+                raise IntentRepositoryIntegrityError(
+                    "terminal report producer validation command is empty"
+                )
+            commands.append(command)
+        if not commands:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer validation contract is absent"
+            )
+        producer_validation_commands[task_alias] = commands
+    acceptance_criteria: list[str] = []
+    for item in _projection_sequence(
+        raw_terminal_contract.get("acceptance_criteria"),
+        noun="terminal acceptance criteria",
+        maximum=MAX_ACCEPTANCE,
+    ):
+        criterion = str(item or "").strip()
+        if not criterion:
+            raise IntentRepositoryIntegrityError(
+                "goal authority terminal acceptance criterion is empty"
+            )
+        acceptance_criteria.append(criterion)
+    if not acceptance_criteria:
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report acceptance contract is absent"
+        )
+    validation_commands: list[list[str]] = []
+    for item in _projection_sequence(
+        raw_terminal_contract.get("validation_commands"),
+        noun="terminal validation commands",
+        maximum=MAX_VALIDATIONS,
+    ):
+        command = [
+            str(part)
+            for part in _projection_sequence(
+                item,
+                noun="terminal validation command argv",
+                maximum=MAX_BODY_BYTES,
+            )
+        ]
+        if not command or any(not part for part in command):
+            raise IntentRepositoryIntegrityError(
+                "goal authority terminal validation command is empty"
+            )
+        validation_commands.append(command)
+    if not validation_commands:
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report validation contract is absent"
+        )
+    terminal_contract = {
+        "schema": GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA,
+        "task_cid": terminal_task["task_cid"],
+        "task_alias": terminal_task_alias,
+        "declared_output_paths": declared_output_paths,
+        "declared_symbols": declared_symbols,
+        "required_report_paths": required_report_paths,
+        "producer_output_paths": producer_output_paths,
+        "producer_validation_commands": producer_validation_commands,
+        "acceptance_criteria": acceptance_criteria,
+        "validation_commands": validation_commands,
+    }
+    terminal_contract["contract_id"] = content_identity(terminal_contract)
+    if raw_terminal_contract.get("contract_id") != terminal_contract["contract_id"]:
+        raise IntentRepositoryIntegrityError(
+            "goal authority terminal report contract identity is invalid"
+        )
+    backfill_items = _projection_sequence(
+        raw.get("receipt_backfill_goal_cids"),
+        noun="goal receipt backfill identities",
+        maximum=MAX_PAGE_LIMIT,
+    )
+    backfills = sorted(
+        {_identifier(item, noun="receipt backfill goal_cid") for item in backfill_items}
+    )
+    if len(backfills) != len(backfill_items) or not set(backfills).issubset(goal_cids):
+        raise IntentRepositoryIntegrityError("goal receipt backfill allowlist is invalid")
+
+    prerequisites: dict[str, set[str]] = {goal_cid: set() for goal_cid in goal_cids}
+    for edge in edges:
+        if edge["edge_kind"] == "goal_parent":
+            prerequisites[edge["parent_goal_cid"]].add(edge["child_goal_cid"])
+        else:
+            prerequisites[edge["child_goal_cid"]].add(edge["parent_goal_cid"])
+    remaining = {key: set(value) for key, value in prerequisites.items()}
+    ordered: list[str] = []
+    ordinal_by_cid = {item["goal_cid"]: item["ordinal"] for item in goals}
+    alias_by_cid = {item["goal_cid"]: item["goal_alias"] for item in goals}
+    while remaining:
+        ready = sorted(
+            (goal_cid for goal_cid, dependencies in remaining.items() if not dependencies),
+            key=lambda goal_cid: (
+                ordinal_by_cid[goal_cid],
+                alias_by_cid[goal_cid],
+                goal_cid,
+            ),
+        )
+        if not ready:
+            raise IntentRepositoryIntegrityError("goal authority graph contains a cycle")
+        for goal_cid in ready:
+            ordered.append(goal_cid)
+            remaining.pop(goal_cid)
+        for dependencies in remaining.values():
+            dependencies.difference_update(ready)
+
+    return {
+        "schema": GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA,
+        "board_namespace": board_namespace,
+        "goal_count": goal_count,
+        "task_count": task_count,
+        "root_goal_cid": root_goal_cid,
+        "root_goal_alias": root_goal_alias,
+        "goals": goals,
+        "goal_edges": edges,
+        "tasks": tasks,
+        "task_dependencies": task_dependencies,
+        "terminal_report_contract": terminal_contract,
+        "completion_policy": {
+            **{field: True for field in _ROOT_COMPLETION_POLICY_FIELDS},
+            _ROOT_TERMINAL_TASK_POLICY_FIELD: terminal_task_alias,
+        },
+        "terminal_task_cid": terminal_task["task_cid"],
+        "receipt_backfill_goal_cids": backfills,
+        "authority_spec_id": authority_spec_id,
+        "topological_goal_cids": ordered,
+    }
+
+
+def _database_portal_completion_binding(value: Mapping[str, Any]) -> dict[str, str]:
+    """Validate the compact Portal-to-canonical completion lineage binding."""
+
+    binding = _mapping(value, noun="database portal completion binding")
+    expected_fields = {
+        "schema",
+        "task_cid",
+        "attempt_id",
+        "binding_id",
+        "portal_receipt_id",
+        "evidence_digest",
+        "baseline_commit",
+        "baseline_tree",
+        "implementation_commit",
+        "completion_event_id",
+        "receipt_id",
+    }
+    if (
+        set(binding) != expected_fields
+        or binding.get("schema") != _DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA
+    ):
+        raise IntentRepositoryIntegrityError(
+            "database portal completion binding schema is not closed"
+        )
+    normalized = {
+        "schema": _DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
+        "task_cid": _identifier(binding.get("task_cid"), noun="portal task_cid"),
+        "attempt_id": _identifier(
+            binding.get("attempt_id"), noun="portal attempt_id"
+        ),
+        "binding_id": _identifier(
+            binding.get("binding_id"), noun="portal binding_id"
+        ),
+        "portal_receipt_id": _identifier(
+            binding.get("portal_receipt_id"), noun="portal receipt identity"
+        ),
+        "evidence_digest": _identifier(
+            binding.get("evidence_digest"), noun="portal evidence digest"
+        ),
+        "baseline_commit": str(binding.get("baseline_commit") or ""),
+        "baseline_tree": str(binding.get("baseline_tree") or ""),
+        "implementation_commit": str(binding.get("implementation_commit") or ""),
+        "completion_event_id": _identifier(
+            binding.get("completion_event_id"), noun="portal completion event identity"
+        ),
+    }
+    for field in (
+        "binding_id",
+        "portal_receipt_id",
+        "evidence_digest",
+        "completion_event_id",
+    ):
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", normalized[field]) is None:
+            raise IntentRepositoryIntegrityError(
+                f"database portal completion binding {field} is malformed"
+            )
+    for field in ("baseline_commit", "baseline_tree", "implementation_commit"):
+        if re.fullmatch(r"[0-9a-f]{40}", normalized[field]) is None:
+            raise IntentRepositoryIntegrityError(
+                f"database portal completion binding {field} is malformed"
+            )
+    expected_receipt_id = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(normalized)
+    ).hexdigest()
+    if binding.get("receipt_id") != expected_receipt_id:
+        raise IntentRepositoryIntegrityError(
+            "database portal completion binding identity is invalid"
+        )
+    normalized["receipt_id"] = expected_receipt_id
+    return normalized
+
+
+def _goal_terminal_producer_artifacts(value: Mapping[str, Any]) -> dict[str, Any]:
+    artifacts = _mapping(value, noun="terminal report producer artifacts")
+    if (
+        set(artifacts) != {"schema", "digest_algorithm", "tasks", "bundle_id"}
+        or artifacts.get("schema") != _GOAL_TERMINAL_PRODUCER_ARTIFACTS_SCHEMA
+        or artifacts.get("digest_algorithm") != "sha256"
+    ):
+        raise IntentRepositoryIntegrityError(
+            "terminal report producer artifact schema is not closed"
+        )
+    normalized_tasks: list[dict[str, Any]] = []
+    task_aliases: set[str] = set()
+    all_paths: set[str] = set()
+    for raw_task in _projection_sequence(
+        artifacts.get("tasks"),
+        noun="terminal report producer artifact tasks",
+        maximum=MAX_DEPENDENCIES,
+    ):
+        task = _mapping(raw_task, noun="terminal report producer artifact task")
+        if set(task) != {"task_alias", "artifacts", "bundle_id"}:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer artifact task schema is not closed"
+            )
+        task_alias = _identifier(
+            task.get("task_alias"), noun="terminal report producer task alias"
+        )
+        if task_alias in task_aliases:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer artifact task is duplicated"
+            )
+        task_aliases.add(task_alias)
+        normalized_artifacts: list[dict[str, str]] = []
+        for raw_artifact in _projection_sequence(
+            task.get("artifacts"),
+            noun="terminal report producer artifact rows",
+            maximum=MAX_OUTPUTS,
+        ):
+            artifact = _mapping(
+                raw_artifact, noun="terminal report producer artifact row"
+            )
+            if set(artifact) != {"path", "blob_identity"}:
+                raise IntentRepositoryIntegrityError(
+                    "terminal report producer artifact row schema is not closed"
+                )
+            path = _identifier(
+                artifact.get("path"), noun="terminal report producer artifact path"
+            )
+            blob_identity = str(artifact.get("blob_identity") or "")
+            if (
+                path in all_paths
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", blob_identity) is None
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "terminal report producer artifact identity is invalid or duplicated"
+                )
+            all_paths.add(path)
+            normalized_artifacts.append(
+                {"path": path, "blob_identity": blob_identity}
+            )
+        normalized_artifacts.sort(key=lambda item: item["path"])
+        if not normalized_artifacts:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer artifact task is empty"
+            )
+        task_body: dict[str, Any] = {
+            "task_alias": task_alias,
+            "artifacts": normalized_artifacts,
+        }
+        task_body["bundle_id"] = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(task_body)
+        ).hexdigest()
+        if task.get("bundle_id") != task_body["bundle_id"]:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer artifact task identity is invalid"
+            )
+        normalized_tasks.append(task_body)
+    normalized_tasks.sort(key=lambda item: item["task_alias"])
+    if not normalized_tasks:
+        raise IntentRepositoryIntegrityError(
+            "terminal report producer artifacts are empty"
+        )
+    normalized: dict[str, Any] = {
+        "schema": _GOAL_TERMINAL_PRODUCER_ARTIFACTS_SCHEMA,
+        "digest_algorithm": "sha256",
+        "tasks": normalized_tasks,
+    }
+    normalized["bundle_id"] = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(normalized)
+    ).hexdigest()
+    if artifacts.get("bundle_id") != normalized["bundle_id"]:
+        raise IntentRepositoryIntegrityError(
+            "terminal report producer artifact bundle identity is invalid"
+        )
+    return normalized
+
+
+def _goal_terminal_producer_receipt_bindings(
+    value: Any,
+    *,
+    producer_receipts: Mapping[str, str],
+    producer_artifacts: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    artifact_bundles = {
+        str(item.get("task_alias") or ""): str(item.get("bundle_id") or "")
+        for item in producer_artifacts.get("tasks", [])
+        if isinstance(item, Mapping)
+    }
+    normalized: list[dict[str, Any]] = []
+    aliases: set[str] = set()
+    for raw_item in _projection_sequence(
+        value,
+        noun="terminal report producer receipt bindings",
+        maximum=MAX_DEPENDENCIES,
+    ):
+        item = _mapping(raw_item, noun="terminal report producer receipt binding")
+        if set(item) != {
+            "schema",
+            "task_alias",
+            "task_cid",
+            "completion_receipt_cid",
+            "portal_completion_binding",
+            "artifact_bundle_id",
+            "binding_id",
+        } or item.get("schema") != _GOAL_TERMINAL_PRODUCER_RECEIPT_BINDING_SCHEMA:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer receipt binding schema is not closed"
+            )
+        task_alias = _identifier(
+            item.get("task_alias"), noun="terminal report producer task alias"
+        )
+        task_cid = _identifier(
+            item.get("task_cid"), noun="terminal report producer task_cid"
+        )
+        completion_receipt_cid = _identifier(
+            item.get("completion_receipt_cid"),
+            noun="terminal report producer completion receipt",
+        )
+        artifact_bundle_id = str(item.get("artifact_bundle_id") or "")
+        portal_binding = _database_portal_completion_binding(
+            _mapping(
+                item.get("portal_completion_binding"),
+                noun="terminal report producer Portal completion binding",
+            )
+        )
+        body: dict[str, Any] = {
+            "schema": _GOAL_TERMINAL_PRODUCER_RECEIPT_BINDING_SCHEMA,
+            "task_alias": task_alias,
+            "task_cid": task_cid,
+            "completion_receipt_cid": completion_receipt_cid,
+            "portal_completion_binding": portal_binding,
+            "artifact_bundle_id": artifact_bundle_id,
+        }
+        body["binding_id"] = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(body)
+        ).hexdigest()
+        if (
+            task_alias in aliases
+            or portal_binding["task_cid"] != task_cid
+            or producer_receipts.get(task_alias) != completion_receipt_cid
+            or artifact_bundles.get(task_alias) != artifact_bundle_id
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_bundle_id) is None
+            or item.get("binding_id") != body["binding_id"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer receipt binding is invalid"
+            )
+        aliases.add(task_alias)
+        normalized.append(body)
+    normalized.sort(key=lambda item: item["task_alias"])
+    if aliases != set(producer_receipts) or aliases != set(artifact_bundles):
+        raise IntentRepositoryIntegrityError(
+            "terminal report producer receipt binding population is not exact"
+        )
+    return normalized
+
+
+def _goal_terminal_report_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
+    evidence = _mapping(value, noun="terminal report evidence")
+    expected_fields = {
+        "schema",
+        "terminal_report_contract_id",
+        "task_cid",
+        "task_alias",
+        "task_revision",
+        "completion_receipt_cid",
+        "completion_evidence_digest",
+        "control_receipt_id",
+        "portal_receipt_id",
+        "portal_completion_binding",
+        "producer_receipts",
+        "producer_artifacts",
+        "producer_receipt_bindings",
+        "validation_run_id",
+        "validation_result_id",
+        "validation_evidence_id",
+        "report_artifacts",
+        "evidence_id",
+    }
+    if (
+        set(evidence) != expected_fields
+        or evidence.get("schema") != GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA
+    ):
+        raise IntentRepositoryIntegrityError(
+            "terminal report evidence schema is not closed"
+        )
+    normalized: dict[str, Any] = {
+        "schema": GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA,
+        "terminal_report_contract_id": _identifier(
+            evidence.get("terminal_report_contract_id"),
+            noun="terminal_report_contract_id",
+        ),
+        "task_cid": _identifier(evidence.get("task_cid"), noun="terminal task_cid"),
+        "task_alias": _identifier(
+            evidence.get("task_alias"), noun="terminal task_alias"
+        ),
+        "task_revision": _positive_int(
+            evidence.get("task_revision"), noun="terminal task revision"
+        ),
+        "completion_receipt_cid": _identifier(
+            evidence.get("completion_receipt_cid"),
+            noun="terminal completion_receipt_cid",
+        ),
+        "completion_evidence_digest": _identifier(
+            evidence.get("completion_evidence_digest"),
+            noun="terminal completion_evidence_digest",
+        ),
+        "control_receipt_id": _identifier(
+            evidence.get("control_receipt_id"), noun="terminal control_receipt_id"
+        ),
+        "portal_receipt_id": _identifier(
+            evidence.get("portal_receipt_id"), noun="terminal portal_receipt_id"
+        ),
+        "portal_completion_binding": _database_portal_completion_binding(
+            _mapping(
+                evidence.get("portal_completion_binding"),
+                noun="terminal portal completion binding",
+            )
+        ),
+        "validation_run_id": _identifier(
+            evidence.get("validation_run_id"), noun="terminal validation_run_id"
+        ),
+        "validation_result_id": _identifier(
+            evidence.get("validation_result_id"),
+            noun="terminal validation_result_id",
+        ),
+        "validation_evidence_id": _identifier(
+            evidence.get("validation_evidence_id"),
+            noun="terminal validation_evidence_id",
+        ),
+    }
+    if re.fullmatch(
+        r"sha256:[0-9a-f]{64}", normalized["portal_receipt_id"]
+    ) is None:
+        raise IntentRepositoryIntegrityError(
+            "terminal report portal receipt identity is malformed"
+        )
+    if (
+        normalized["portal_completion_binding"]["portal_receipt_id"]
+        != normalized["portal_receipt_id"]
+    ):
+        raise IntentRepositoryIntegrityError(
+            "terminal report Portal receipt differs from its completion binding"
+        )
+    raw_producer_receipts = _mapping(
+        evidence.get("producer_receipts"), noun="terminal report producer receipts"
+    )
+    if not 1 <= len(raw_producer_receipts) <= MAX_DEPENDENCIES:
+        raise IntentRepositoryIntegrityError(
+            "terminal report producer receipt population is not bounded and nonempty"
+        )
+    producer_receipts: dict[str, str] = {}
+    for raw_alias, raw_receipt_id in raw_producer_receipts.items():
+        alias = _identifier(raw_alias, noun="terminal report producer task alias")
+        receipt_id = _identifier(
+            raw_receipt_id, noun="terminal report producer receipt identity"
+        )
+        if alias in producer_receipts:
+            raise IntentRepositoryIntegrityError(
+                "terminal report producer receipt aliases are not unique"
+            )
+        producer_receipts[alias] = receipt_id
+    normalized["producer_receipts"] = dict(sorted(producer_receipts.items()))
+    normalized["producer_artifacts"] = _goal_terminal_producer_artifacts(
+        _mapping(
+            evidence.get("producer_artifacts"),
+            noun="terminal report producer artifacts",
+        )
+    )
+    normalized["producer_receipt_bindings"] = (
+        _goal_terminal_producer_receipt_bindings(
+            evidence.get("producer_receipt_bindings"),
+            producer_receipts=normalized["producer_receipts"],
+            producer_artifacts=normalized["producer_artifacts"],
+        )
+    )
+    artifacts: list[dict[str, str]] = []
+    artifact_paths: set[str] = set()
+    for item in _projection_sequence(
+        evidence.get("report_artifacts"),
+        noun="terminal report artifacts",
+        maximum=MAX_OUTPUTS,
+    ):
+        artifact = _mapping(item, noun="terminal report artifact")
+        if set(artifact) != {
+            "path",
+            "blob_identity",
+            "portal_baseline_blob_identity",
+        }:
+            raise IntentRepositoryIntegrityError(
+                "terminal report artifact schema is not closed"
+            )
+        path = _identifier(artifact.get("path"), noun="terminal report artifact path")
+        blob_identity = str(artifact.get("blob_identity") or "")
+        portal_baseline_blob_identity = str(
+            artifact.get("portal_baseline_blob_identity") or ""
+        )
+        if (
+            path in artifact_paths
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", blob_identity) is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", portal_baseline_blob_identity
+            )
+            is None
+            or blob_identity == portal_baseline_blob_identity
+        ):
+            raise IntentRepositoryIntegrityError(
+                "terminal report artifact identity is invalid or unchanged from its "
+                "Portal baseline"
+            )
+        artifact_paths.add(path)
+        artifacts.append(
+            {
+                "path": path,
+                "blob_identity": blob_identity,
+                "portal_baseline_blob_identity": portal_baseline_blob_identity,
+            }
+        )
+    if len(artifacts) != 2:
+        raise IntentRepositoryIntegrityError(
+            "terminal report evidence must bind exactly the JSON and Markdown reports"
+        )
+    normalized["report_artifacts"] = artifacts
+    normalized["evidence_id"] = content_identity(normalized)
+    if evidence.get("evidence_id") != normalized["evidence_id"]:
+        raise IntentRepositoryIntegrityError("terminal report evidence identity is invalid")
+    return normalized
+
+
+def _goal_runtime_settlement_binding(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the compact, content-addressed runtime settlement proof."""
+
+    binding = _mapping(value, noun="VRIF runtime settlement binding")
+    expected_fields = {
+        "schema",
+        "settled",
+        "receipt_cid",
+        "snapshot_cid",
+        "owner_generation",
+        "target",
+        "config_cid",
+        "profile_cid",
+        "lane_snapshot_cids",
+        "merge_queue_receipt_cid",
+        "merge_queue_snapshot_cid",
+        "active_counts",
+        "retired_ready_task_cids",
+        "binding_id",
+    }
+    if (
+        set(binding) != expected_fields
+        or binding.get("schema") != GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA
+        or binding.get("settled") is not True
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding schema or state is not exact"
+        )
+    cid_fields = (
+        "receipt_cid",
+        "snapshot_cid",
+        "config_cid",
+        "profile_cid",
+        "merge_queue_receipt_cid",
+        "merge_queue_snapshot_cid",
+    )
+    if any(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", str(binding.get(field) or ""))
+        is None
+        for field in cid_fields
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding contains an invalid content identity"
+        )
+    owner_generation = _positive_int(
+        binding.get("owner_generation"),
+        noun="VRIF runtime settlement owner generation",
+    )
+    target = _mapping(binding.get("target"), noun="VRIF runtime settlement target")
+    if set(target) != {"binding_schema", "repository_id", "branch"} or target.get(
+        "binding_schema"
+    ) != _MERGE_TARGET_BINDING_SCHEMA:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement target schema is not exact"
+        )
+    repository_id = _identifier(
+        target.get("repository_id"), noun="runtime target repository_id"
+    )
+    branch = _identifier(target.get("branch"), noun="runtime target branch")
+    if re.fullmatch(r"repository:baguqeera[a-z2-7]{52}", repository_id) is None:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement target repository identity is invalid"
+        )
+
+    lane_values = binding.get("lane_snapshot_cids")
+    if (
+        not isinstance(lane_values, list)
+        or len(lane_values) != 4
+        or len(set(lane_values)) != 4
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(item or "")) is None
+            for item in lane_values
+        )
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement must bind four ordered lane snapshots"
+        )
+    active_counts = _mapping(
+        binding.get("active_counts"), noun="VRIF runtime active counts"
+    )
+    if set(active_counts) != {"coordination", "execution", "merge_queue", "total"} or any(
+        type(active_counts.get(field)) is not int or active_counts.get(field) != 0
+        for field in ("coordination", "execution", "merge_queue", "total")
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding is not exactly inactive"
+        )
+    retired_values = binding.get("retired_ready_task_cids")
+    if isinstance(retired_values, (str, bytes, bytearray)) or not isinstance(
+        retired_values, Sequence
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF retired ready task identities must be a sequence"
+        )
+    retired_ready_task_cids = [
+        _identifier(item, noun="retired ready task_cid") for item in retired_values
+    ]
+    if (
+        len(retired_ready_task_cids) > MAX_PAGE_LIMIT
+        or retired_ready_task_cids != sorted(set(retired_ready_task_cids))
+        or any(
+            re.fullmatch(r"baguqeera[a-z2-7]{52}", task_cid) is None
+            for task_cid in retired_ready_task_cids
+        )
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF retired ready task identities are not exact sorted CIDs"
+        )
+    normalized = {
+        **dict(binding),
+        "owner_generation": owner_generation,
+        "target": {
+            "binding_schema": _MERGE_TARGET_BINDING_SCHEMA,
+            "repository_id": repository_id,
+            "branch": branch,
+        },
+        "lane_snapshot_cids": list(lane_values),
+        "active_counts": dict(active_counts),
+        "retired_ready_task_cids": retired_ready_task_cids,
+    }
+    supplied_binding_id = str(normalized.pop("binding_id") or "")
+    normalized["binding_id"] = "sha256:" + hashlib.sha256(
+        _canonical(normalized, noun="VRIF runtime settlement binding").encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    if supplied_binding_id != normalized["binding_id"]:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding identity is invalid"
+        )
+    return normalized
+
+
+def _goal_root_completion_gate(
+    value: Mapping[str, Any],
+    *,
+    authority_spec_id: str,
+) -> dict[str, Any]:
+    gate = _mapping(value, noun="root goal completion gate")
+    expected_fields = {
+        "schema",
+        "authority_spec_id",
+        "source_head",
+        "repository_tree_id",
+        "predecessor_gate_id",
+        "owner_generation",
+        "owner_restart_admission_id",
+        "owner_restart_receipt_id",
+        "completion_policy",
+        "runtime_settlement_binding",
+        "terminal_report_evidence",
+        "gate_id",
+    }
+    if set(gate) != expected_fields or gate.get("schema") != GOAL_ROOT_COMPLETION_GATE_SCHEMA:
+        raise IntentRepositoryIntegrityError("root goal completion gate schema is not closed")
+    if str(gate.get("authority_spec_id") or "") != authority_spec_id:
+        raise IntentRepositoryIntegrityError("root goal completion gate has foreign authority")
+    for field in (
+        "source_head",
+        "repository_tree_id",
+        "owner_restart_admission_id",
+        "owner_restart_receipt_id",
+    ):
+        if not str(gate.get(field) or "").strip():
+            raise IntentRepositoryIntegrityError(
+                f"root goal completion gate is missing {field}"
+            )
+    predecessor_gate_id = _optional_identifier(
+        gate.get("predecessor_gate_id"), noun="predecessor_gate_id"
+    )
+    owner_generation = _positive_int(
+        gate.get("owner_generation"), noun="root gate owner_generation"
+    )
+    runtime_settlement_binding = _goal_runtime_settlement_binding(
+        _mapping(
+            gate.get("runtime_settlement_binding"),
+            noun="root runtime settlement binding",
+        )
+    )
+    if runtime_settlement_binding["owner_generation"] != owner_generation:
+        raise IntentRepositoryIntegrityError(
+            "root gate and runtime settlement owner generations differ"
+        )
+    policy = _mapping(gate.get("completion_policy"), noun="root completion policy")
+    if set(policy) != {
+        *_ROOT_COMPLETION_POLICY_FIELDS,
+        _ROOT_TERMINAL_TASK_POLICY_FIELD,
+    } or any(
+        policy.get(field) is not True for field in _ROOT_COMPLETION_POLICY_FIELDS
+    ) or not str(policy.get(_ROOT_TERMINAL_TASK_POLICY_FIELD) or "").strip():
+        raise IntentRepositoryIntegrityError("root goal completion policy is not exact")
+    terminal_report_evidence = _goal_terminal_report_evidence(
+        _mapping(
+            gate.get("terminal_report_evidence"),
+            noun="root terminal report evidence",
+        )
+    )
+    gate_id = str(gate.get("gate_id") or "")
+    body = dict(gate)
+    body.pop("gate_id", None)
+    if gate_id != content_identity(body):
+        raise IntentRepositoryIntegrityError("root goal completion gate identity is invalid")
+    return {
+        **dict(gate),
+        "predecessor_gate_id": predecessor_gate_id,
+        "owner_generation": owner_generation,
+        "completion_policy": policy,
+        "runtime_settlement_binding": runtime_settlement_binding,
+        "terminal_report_evidence": terminal_report_evidence,
+    }
+
+
+def _goal_completion_receipt(
+    *,
+    authority_spec_id: str,
+    goal_cid: str,
+    goal_alias: str,
+    goal_revision: int,
+    task_receipts: Sequence[Mapping[str, Any]],
+    child_goal_receipts: Sequence[Mapping[str, Any]],
+    dependency_goal_receipts: Sequence[Mapping[str, Any]],
+    receipt_backfill: bool,
+    root_completion_gate: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "schema": GOAL_COMPLETION_RECEIPT_SCHEMA,
+        "authority_spec_id": authority_spec_id,
+        "goal_cid": goal_cid,
+        "goal_alias": goal_alias,
+        "goal_revision": int(goal_revision),
+        "completion_kind": (
+            "preseeded_completion_receipt_backfill"
+            if receipt_backfill
+            else "current_authority_completion"
+        ),
+        "task_receipts": [dict(item) for item in task_receipts],
+        "child_goal_receipts": [dict(item) for item in child_goal_receipts],
+        "dependency_goal_receipts": [dict(item) for item in dependency_goal_receipts],
+        "root_completion_gate": (
+            dict(root_completion_gate) if root_completion_gate is not None else None
+        ),
+    }
+    body["receipt_id"] = content_identity(body)
+    return body
+
+
+def _goal_receipt_has_valid_identity(
+    receipt: Mapping[str, Any],
+    *,
+    authority_spec_id: str,
+    goal_cid: str,
+    goal_alias: str,
+    goal_revision: int,
+    expected_root_completion_gate: Mapping[str, Any] | None,
+) -> bool:
+    """Validate an emitted goal receipt independently of current descendants."""
+
+    fields = {
+        "schema",
+        "authority_spec_id",
+        "goal_cid",
+        "goal_alias",
+        "goal_revision",
+        "completion_kind",
+        "task_receipts",
+        "child_goal_receipts",
+        "dependency_goal_receipts",
+        "root_completion_gate",
+        "receipt_id",
+    }
+    if (
+        set(receipt) != fields
+        or receipt.get("schema") != GOAL_COMPLETION_RECEIPT_SCHEMA
+        or receipt.get("authority_spec_id") != authority_spec_id
+        or receipt.get("goal_cid") != goal_cid
+        or receipt.get("goal_alias") != goal_alias
+        or receipt.get("goal_revision") != goal_revision
+        or receipt.get("completion_kind")
+        not in {
+            "current_authority_completion",
+            "preseeded_completion_receipt_backfill",
+        }
+        or receipt.get("root_completion_gate")
+        != (
+            dict(expected_root_completion_gate)
+            if expected_root_completion_gate is not None
+            else None
+        )
+        or any(
+            not isinstance(receipt.get(name), list)
+            or not all(isinstance(item, Mapping) for item in receipt.get(name, []))
+            for name in (
+                "task_receipts",
+                "child_goal_receipts",
+                "dependency_goal_receipts",
+            )
+        )
+    ):
+        return False
+    body = dict(receipt)
+    receipt_id = str(body.pop("receipt_id", "") or "")
+    return receipt_id == content_identity(body)
 
 
 # ---------------------------------------------------------------------------
@@ -1587,6 +3120,1846 @@ class IntentRepository:
                 "updated_at": str(row[8]),
                 "revision": int(row[9]),
                 "body": _decode_json(row[10], noun="goal body"),
+            }
+        )
+
+    def cas_goal_status(
+        self,
+        *,
+        goal_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> IntentReceipt:
+        """CAS one goal status after child tasks and child goals are complete."""
+
+        gcid = _identifier(goal_cid, noun="goal_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        status_text = _status(new_status, allowed=_GOAL_STATUSES, noun="goal")
+        receipt_map = _mapping(receipt, noun="goal status receipt")
+        now = _utc_iso()
+
+        with self._connection(write=True) as connection:
+            rows = connection.execute(
+                """
+                SELECT goal_cid, goal_alias, objective_id, parent_goal_cid,
+                       ordinal, title, status, revision, body_json
+                FROM goals WHERE goal_cid = ? OR goal_alias = ?
+                ORDER BY goal_cid LIMIT 2
+                """,
+                [gcid, gcid],
+            ).fetchall()
+            if not rows:
+                raise KeyError(gcid)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError("goal CID/alias lookup is ambiguous")
+            goal_row = rows[0]
+            resolved_cid = str(goal_row[0])
+            previous_status = str(goal_row[6])
+            current_revision = int(goal_row[7])
+            if current_revision != expected:
+                raise IntentRepositoryConflictError("goal revision CAS is stale")
+            if previous_status == status_text:
+                return IntentReceipt(
+                    event_id="",
+                    event_type=IntentEventType.GOAL_UPSERTED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now,
+                    subject_id=resolved_cid,
+                    revision=current_revision,
+                    changed=False,
+                    details=MappingProxyType(
+                        {
+                            "goal_cid": resolved_cid,
+                            "goal_alias": str(goal_row[1]),
+                            "status": status_text,
+                            "previous_status": previous_status,
+                        }
+                    ),
+                )
+
+            if status_text in _GOAL_COMPLETED_STATUSES:
+                incomplete_tasks = [
+                    str(item[0] or item[1] or "")
+                    for item in connection.execute(
+                        """
+                        SELECT task_alias, task_cid, status
+                        FROM tasks WHERE goal_cid = ?
+                        ORDER BY ordinal, task_alias
+                        """,
+                        [resolved_cid],
+                    ).fetchall()
+                    if str(item[2] or "").strip().lower() not in _COMPLETED_STATUSES
+                ]
+                incomplete_children = [
+                    str(item[0] or item[1] or "")
+                    for item in connection.execute(
+                        """
+                        SELECT goal_alias, goal_cid, status
+                        FROM goals WHERE parent_goal_cid = ?
+                        ORDER BY ordinal, goal_alias
+                        """,
+                        [resolved_cid],
+                    ).fetchall()
+                    if str(item[2] or "").strip().lower()
+                    not in _GOAL_COMPLETED_STATUSES
+                ]
+                missing = [
+                    *(f"task:{alias}" for alias in incomplete_tasks if alias),
+                    *(f"goal:{alias}" for alias in incomplete_children if alias),
+                ]
+                if missing:
+                    raise IntentCompletionError(
+                        "goal completion refused while children remain open: "
+                        + ", ".join(missing)
+                    )
+
+            revision = current_revision + 1
+            body_map = _decode_json(goal_row[8], noun="goal body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            body_map = dict(body_map)
+            if receipt_map:
+                body_map["completion_receipt"] = receipt_map
+            connection.execute(
+                """
+                UPDATE goals SET status = ?, updated_at = ?, revision = ?,
+                    body_json = ?
+                WHERE goal_cid = ? AND revision = ?
+                """,
+                [
+                    status_text,
+                    now,
+                    revision,
+                    _canonical(body_map, noun="goal body"),
+                    resolved_cid,
+                    current_revision,
+                ],
+            )
+            return self._append_event(
+                connection,
+                event_type=IntentEventType.GOAL_UPSERTED,
+                subject_id=resolved_cid,
+                body={
+                    "goal_cid": resolved_cid,
+                    "goal_alias": str(goal_row[1]),
+                    "objective_id": str(goal_row[2] or ""),
+                    "parent_goal_cid": str(goal_row[3] or ""),
+                    "ordinal": int(goal_row[4]),
+                    "title": str(goal_row[5]),
+                    "previous_status": previous_status,
+                    "status": status_text,
+                    "revision": revision,
+                    "receipt": receipt_map,
+                    "recorded_at": now,
+                    "body": body_map,
+                },
+            )
+
+    @staticmethod
+    def _current_task_completion_binding(
+        task: Mapping[str, Any],
+        receipt_rows: Sequence[Any],
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        """Validate the one receipt bound to a task's current successful revision."""
+
+        task_cid = str(task["task_cid"])
+        task_alias = str(task["task_alias"])
+        task_goal_cid = str(task["goal_cid"])
+        task_revision = int(task["revision"])
+        reasons: list[str] = []
+        status = str(task["status"] or "").strip().lower()
+        if status not in _SUCCESSFUL_TASK_STATUSES:
+            reasons.append(f"task_status_not_successful:{status or 'empty'}")
+            return None, reasons
+        task_body = task.get("body")
+        task_body = task_body if isinstance(task_body, Mapping) else {}
+        current_control_receipt = task_body.get("completion_receipt")
+        if not isinstance(current_control_receipt, Mapping) or not current_control_receipt:
+            reasons.append("task_current_control_receipt_missing")
+            return None, reasons
+
+        matches: list[dict[str, Any]] = []
+        for row in receipt_rows:
+            if str(row[1]) != task_cid:
+                continue
+            body = _decode_json(row[9], noun="task completion receipt body")
+            if not isinstance(body, Mapping) or body.get("revision") != task_revision:
+                continue
+            matches.append(
+                {
+                    "receipt_cid": str(row[0]),
+                    "task_cid": str(row[1]),
+                    "goal_cid": str(row[2]),
+                    "evidence_digest": str(row[8]),
+                    "body": dict(body),
+                }
+            )
+        if len(matches) != 1:
+            reasons.append("task_current_completion_receipt_population_not_exact")
+            return None, reasons
+        observed = matches[0]
+        body = observed["body"]
+        control_receipt = body.get("receipt")
+        evidence_digests = body.get("evidence_digests")
+        if (
+            body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+            or not isinstance(control_receipt, Mapping)
+            or not control_receipt
+            or not isinstance(evidence_digests, list)
+            or dict(control_receipt) != dict(current_control_receipt)
+            or observed["goal_cid"] != task_goal_cid
+        ):
+            reasons.append("task_current_completion_receipt_body_invalid")
+            return None, reasons
+        expected_evidence_digest = content_identity(
+            {
+                "task_cid": task_cid,
+                "revision": task_revision,
+                "receipt": dict(control_receipt),
+                "evidence_digests": list(evidence_digests),
+            }
+        )
+        expected_receipt_cid = content_identity(
+            {
+                "namespace": "completion-receipt",
+                "task_cid": task_cid,
+                "revision": task_revision,
+                "evidence_digest": expected_evidence_digest,
+            }
+        )
+        if (
+            observed["evidence_digest"] != expected_evidence_digest
+            or observed["receipt_cid"] != expected_receipt_cid
+        ):
+            reasons.append("task_current_completion_receipt_identity_invalid")
+            return None, reasons
+        return (
+            {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "task_revision": task_revision,
+                "completion_receipt_cid": expected_receipt_cid,
+                "completion_evidence_digest": expected_evidence_digest,
+                "control_receipt_id": content_identity(dict(control_receipt)),
+            },
+            reasons,
+        )
+
+    @staticmethod
+    def _goal_settlement_counts(connection: Any) -> dict[str, int]:
+        """Return fail-closed counts for mutable work that must be settled."""
+
+        # Each mutable relation has an intentionally closed vocabulary.  A
+        # positive-only filter (for example, ``state = 'accepted'``) is unsafe
+        # because an unrecognised state silently disappears from the gate.  We
+        # group the finite state/marker surface and make every unknown value or
+        # impossible finish/release marker a typed, projected gate failure.
+        # Empty vocabularies are deliberate: those normalized tables currently
+        # have no compatible canonical writer.  Similarly named lane and queue
+        # sidecars have different schemas and are settled by the separate
+        # guarded runtime receipt; admitting their vocabularies here would
+        # invent an adapter and hide orphaned canonical rows.
+        relation_specs = (
+            (
+                "active_task_blocks",
+                "task_blocks",
+                "state",
+                frozenset({"active"}),
+                frozenset({"cleared"}),
+                "cleared_at",
+                frozenset({"cleared"}),
+            ),
+            (
+                "active_task_assignments",
+                "task_assignments",
+                "state",
+                frozenset(),
+                frozenset(),
+                "released_at",
+                frozenset(),
+            ),
+            (
+                "active_task_claims",
+                "task_claims",
+                "state",
+                frozenset(),
+                frozenset(),
+                "released_at",
+                frozenset(),
+            ),
+            (
+                "active_resource_claims",
+                "resource_claims",
+                "state",
+                frozenset(),
+                frozenset(),
+                None,
+                frozenset(),
+            ),
+            (
+                "active_path_claims",
+                "path_claims",
+                "state",
+                frozenset(),
+                frozenset(),
+                None,
+                frozenset(),
+            ),
+            (
+                "active_leases",
+                "leases",
+                "state",
+                frozenset({"accepted"}),
+                frozenset({"released", "expired", "completed"}),
+                None,
+                frozenset(),
+            ),
+            (
+                "active_maintenance_leases",
+                "maintenance_leases",
+                "state",
+                frozenset({"active"}),
+                frozenset({"released"}),
+                "released_at",
+                frozenset({"released"}),
+            ),
+            (
+                "active_effect_claims",
+                "effect_claims",
+                "state",
+                frozenset(),
+                frozenset(),
+                None,
+                frozenset(),
+            ),
+            (
+                "running_task_attempts",
+                "task_attempts",
+                "status",
+                _ACTIVE_ATTEMPT_STATUSES,
+                _TERMINAL_ATTEMPT_STATUSES,
+                "finished_at",
+                _TERMINAL_ATTEMPT_STATUSES,
+            ),
+            (
+                "running_attempt_phases",
+                "attempt_phases",
+                "status",
+                frozenset(),
+                frozenset(),
+                "exited_at",
+                frozenset(),
+            ),
+            (
+                "running_provider_invocations",
+                "provider_invocations",
+                "status",
+                frozenset(),
+                frozenset(),
+                "finished_at",
+                frozenset(),
+            ),
+            (
+                "running_validation_runs",
+                "validation_runs",
+                "status",
+                frozenset(),
+                frozenset({"passed", "failed", "error", "skipped"}),
+                "finished_at",
+                frozenset({"passed", "failed", "error", "skipped"}),
+            ),
+            (
+                "running_merge_attempts",
+                "merge_attempts",
+                "status",
+                frozenset(),
+                frozenset(),
+                "finished_at",
+                frozenset(),
+            ),
+            (
+                "active_refill_epochs",
+                "refill_epochs",
+                "status",
+                frozenset(),
+                frozenset(),
+                "finished_at",
+                frozenset(),
+            ),
+            (
+                "pending_recovery_actions",
+                "recovery_actions",
+                "status",
+                frozenset(),
+                frozenset(),
+                None,
+                frozenset(),
+            ),
+            (
+                "unsettled_merge_queue_entries",
+                "merge_queue_entries",
+                "status",
+                frozenset(),
+                frozenset(),
+                None,
+                frozenset(),
+            ),
+        )
+        counts: dict[str, int] = {}
+        invalid_total = 0
+        for (
+            count_name,
+            table,
+            vocabulary_column,
+            active_states,
+            terminal_states,
+            marker_column,
+            marker_required_states,
+        ) in relation_specs:
+            marker_expression = (
+                "CASE WHEN NULLIF(TRIM(COALESCE(CAST("
+                f"{marker_column} AS VARCHAR), '')), '') IS NULL THEN 0 ELSE 1 END"
+                if marker_column is not None
+                else "0"
+            )
+            rows = connection.execute(
+                f"SELECT {vocabulary_column}, {marker_expression} AS marker_set, "
+                f"COUNT(*) FROM {table} GROUP BY {vocabulary_column}, marker_set"
+            ).fetchall()
+            active_count = 0
+            invalid_count = 0
+            for row in rows:
+                raw_state = str(row[0] or "")
+                state = raw_state.strip().lower()
+                marker_set = int(row[1] or 0) == 1
+                row_count = int(row[2] or 0)
+                if raw_state != state or state not in active_states | terminal_states:
+                    invalid_count += row_count
+                    continue
+                if state in active_states:
+                    active_count += row_count
+                    if marker_set:
+                        invalid_count += row_count
+                elif state in marker_required_states and not marker_set:
+                    invalid_count += row_count
+            counts[count_name] = active_count
+            counts[f"invalid_{table}_rows"] = invalid_count
+            invalid_total += invalid_count
+        counts["invalid_settlement_rows"] = invalid_total
+        return counts
+
+    @classmethod
+    def _goal_authority_state_on(
+        cls,
+        connection: Any,
+        specification: Mapping[str, Any],
+        *,
+        candidate_root_completion_gate: Mapping[str, Any] | None = None,
+        root_gate_context: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        spec = _goal_completion_authority_spec(specification)
+        goal_rows = connection.execute(
+            """
+            SELECT goal_cid, goal_alias, objective_id, parent_goal_cid,
+                   ordinal, title, status, revision, body_json
+            FROM goals ORDER BY ordinal, goal_alias, goal_cid
+            """
+        ).fetchall()
+        task_rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+            FROM tasks ORDER BY task_alias, task_cid
+            """
+        ).fetchall()
+        edge_rows = connection.execute(
+            """
+            SELECT parent_goal_cid, child_goal_cid, edge_kind
+            FROM goal_edges ORDER BY edge_kind, parent_goal_cid, child_goal_cid
+            """
+        ).fetchall()
+        dependency_rows = connection.execute(
+            """
+            SELECT task_cid, dependency_task_cid, kind
+            FROM task_dependencies ORDER BY task_cid, dependency_task_cid, kind
+            """
+        ).fetchall()
+        receipt_rows = connection.execute(
+            """
+            SELECT receipt_cid, task_cid, goal_cid, attempt_id,
+                   claim_cid, fencing_token, completed_at,
+                   validation_run_id, evidence_digest, body_json
+            FROM completion_receipts
+            ORDER BY task_cid, completed_at, receipt_cid
+            """
+        ).fetchall()
+        goal_receipt_event_rows = connection.execute(
+            "SELECT body_json FROM domain_events WHERE event_type = ? "
+            "ORDER BY global_sequence",
+            [IntentEventType.GOAL_UPSERTED.value],
+        ).fetchall()
+
+        expected_goal_rows = [
+            (
+                item["goal_cid"],
+                item["goal_alias"],
+                item["parent_goal_cid"],
+                int(item["ordinal"]),
+            )
+            for item in spec["goals"]
+        ]
+        observed_goal_rows = [
+            (str(row[0]), str(row[1]), str(row[3] or ""), int(row[4]))
+            for row in goal_rows
+        ]
+        if observed_goal_rows != expected_goal_rows:
+            raise IntentRepositoryIntegrityError(
+                "database goal population differs from exact completion authority"
+            )
+        expected_task_rows = [
+            (item["task_cid"], item["task_alias"], item["goal_cid"])
+            for item in spec["tasks"]
+        ]
+        observed_task_rows = [
+            (str(row[0]), str(row[1]), str(row[2])) for row in task_rows
+        ]
+        if observed_task_rows != expected_task_rows:
+            raise IntentRepositoryIntegrityError(
+                "database task population differs from exact goal authority"
+            )
+        observed_edges = [
+            {
+                "parent_goal_cid": str(row[0]),
+                "child_goal_cid": str(row[1]),
+                "edge_kind": str(row[2]),
+            }
+            for row in edge_rows
+        ]
+        if observed_edges != spec["goal_edges"]:
+            raise IntentRepositoryIntegrityError(
+                "database goal edges differ from exact completion authority"
+            )
+        observed_task_dependencies = [
+            {
+                "task_cid": str(row[0]),
+                "dependency_task_cid": str(row[1]),
+                "kind": str(row[2]),
+            }
+            for row in dependency_rows
+        ]
+        if observed_task_dependencies != spec["task_dependencies"]:
+            raise IntentRepositoryIntegrityError(
+                "database task dependencies differ from exact completion authority"
+            )
+
+        terminal_task_cid = spec["terminal_task_cid"]
+        terminal_output_rows = connection.execute(
+            "SELECT path FROM task_outputs WHERE task_cid = ? ORDER BY ordinal, path",
+            [terminal_task_cid],
+        ).fetchall()
+        terminal_acceptance_rows = connection.execute(
+            "SELECT criterion FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
+            [terminal_task_cid],
+        ).fetchall()
+        terminal_validation_rows = connection.execute(
+            "SELECT argv_json FROM task_validations WHERE task_cid = ? ORDER BY ordinal",
+            [terminal_task_cid],
+        ).fetchall()
+        observed_terminal_outputs = [str(row[0]) for row in terminal_output_rows]
+        observed_terminal_acceptance = [
+            str(row[0]) for row in terminal_acceptance_rows
+        ]
+        observed_terminal_validations: list[list[str]] = []
+        for row in terminal_validation_rows:
+            argv = _decode_json(row[0], noun="terminal validation argv")
+            if (
+                isinstance(argv, (str, bytes, bytearray))
+                or not isinstance(argv, Sequence)
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "database terminal validation argv is malformed"
+                )
+            observed_terminal_validations.append([str(part) for part in argv])
+        terminal_contract = spec["terminal_report_contract"]
+        if (
+            observed_terminal_outputs
+            != terminal_contract["declared_output_paths"]
+            or observed_terminal_acceptance
+            != terminal_contract["acceptance_criteria"]
+            or observed_terminal_validations
+            != terminal_contract["validation_commands"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "database terminal report contract differs from exact completion authority"
+            )
+        spec_task_cid_by_alias = {
+            item["task_alias"]: item["task_cid"] for item in spec["tasks"]
+        }
+        for producer_alias, expected_paths in terminal_contract[
+            "producer_output_paths"
+        ].items():
+            producer_task_cid = spec_task_cid_by_alias[producer_alias]
+            producer_rows = connection.execute(
+                "SELECT path FROM task_outputs WHERE task_cid = ? ORDER BY ordinal",
+                [producer_task_cid],
+            ).fetchall()
+            if [str(row[0]) for row in producer_rows] != expected_paths:
+                raise IntentRepositoryIntegrityError(
+                    "database terminal report producer outputs differ from exact authority"
+                )
+            producer_validation_rows = connection.execute(
+                "SELECT argv_json FROM task_validations "
+                "WHERE task_cid = ? ORDER BY ordinal",
+                [producer_task_cid],
+            ).fetchall()
+            observed_producer_validations: list[list[str]] = []
+            for row in producer_validation_rows:
+                argv = _decode_json(row[0], noun="producer task validation argv")
+                if (
+                    not isinstance(argv, Sequence)
+                    or isinstance(argv, (str, bytes, bytearray))
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "database producer validation argv is malformed"
+                    )
+                observed_producer_validations.append([str(part) for part in argv])
+            if observed_producer_validations != terminal_contract[
+                "producer_validation_commands"
+            ][producer_alias]:
+                raise IntentRepositoryIntegrityError(
+                    "database terminal report producer validations differ from exact authority"
+                )
+
+        tasks: dict[str, dict[str, Any]] = {}
+        task_alias_by_cid: dict[str, str] = {}
+        for row in task_rows:
+            body = _decode_json(row[5], noun="task body")
+            task = {
+                "task_cid": str(row[0]),
+                "task_alias": str(row[1]),
+                "goal_cid": str(row[2]),
+                "status": str(row[3]),
+                "revision": int(row[4]),
+                "body": body if isinstance(body, Mapping) else {},
+            }
+            tasks[task["task_cid"]] = task
+            task_alias_by_cid[task["task_cid"]] = task["task_alias"]
+        task_bindings: dict[str, dict[str, Any] | None] = {}
+        task_reasons: dict[str, list[str]] = {}
+        for task_cid, task in tasks.items():
+            binding, reasons = cls._current_task_completion_binding(task, receipt_rows)
+            task_bindings[task_cid] = binding
+            task_reasons[task_cid] = reasons
+
+        dependency_failures: list[dict[str, str]] = []
+        for row in dependency_rows:
+            owner = str(row[0])
+            dependency = str(row[1])
+            kind = str(row[2])
+            if owner not in tasks or dependency not in tasks:
+                dependency_failures.append(
+                    {
+                        "task_cid": owner,
+                        "dependency_task_cid": dependency,
+                        "kind": kind,
+                        "reason": "unknown_task_dependency_endpoint",
+                    }
+                )
+                continue
+            if task_bindings.get(dependency) is None:
+                dependency_failures.append(
+                    {
+                        "task_cid": owner,
+                        "dependency_task_cid": dependency,
+                        "kind": kind,
+                        "reason": "dependency_not_successfully_receipted",
+                    }
+                )
+
+        settlement_counts = cls._goal_settlement_counts(connection)
+        terminal_task = tasks[spec["terminal_task_cid"]]
+        terminal_task_binding = task_bindings.get(spec["terminal_task_cid"])
+        terminal_producer_task_cids = sorted(
+            {
+                edge["dependency_task_cid"]
+                for edge in spec["task_dependencies"]
+                if edge["task_cid"] == spec["terminal_task_cid"]
+            },
+            key=lambda task_cid: task_alias_by_cid[task_cid],
+        )
+        terminal_producer_receipts = {
+            task_alias_by_cid[task_cid]: str(
+                task_bindings[task_cid]["completion_receipt_cid"]
+            )
+            for task_cid in terminal_producer_task_cids
+            if task_bindings.get(task_cid) is not None
+        }
+        terminal_producer_receipts_satisfied = bool(
+            len(terminal_producer_task_cids) == 4
+            and len(terminal_producer_receipts)
+            == len(terminal_producer_task_cids)
+        )
+        terminal_producer_portal_bindings: dict[str, dict[str, str]] = {}
+        portal_validation_fields = {
+            "outcome",
+            "evidence_digest",
+            "argv",
+            "validator",
+            "task_cid",
+            "attempt_id",
+            "portal_receipt_id",
+            "portal_completion_binding",
+        }
+        replayed_portal_validation_fields = portal_validation_fields | {"replayed"}
+        for producer_task_cid in terminal_producer_task_cids:
+            producer_task = tasks[producer_task_cid]
+            producer_alias = task_alias_by_cid[producer_task_cid]
+            producer_control_receipt = producer_task["body"].get(
+                "completion_receipt"
+            )
+            producer_validation = (
+                producer_control_receipt.get("validation")
+                if isinstance(producer_control_receipt, Mapping)
+                else None
+            )
+            producer_portal_binding: dict[str, str] | None = None
+            if isinstance(producer_validation, Mapping) and isinstance(
+                producer_validation.get("portal_completion_binding"), Mapping
+            ):
+                try:
+                    producer_portal_binding = _database_portal_completion_binding(
+                        producer_validation["portal_completion_binding"]
+                    )
+                except IntentRepositoryError:
+                    producer_portal_binding = None
+            producer_receipt_bodies = [
+                _decode_json(row[9], noun="producer completion receipt body")
+                for row in receipt_rows
+                if task_bindings.get(producer_task_cid) is not None
+                and str(row[0])
+                == str(task_bindings[producer_task_cid]["completion_receipt_cid"])
+            ]
+            producer_evidence_digests = (
+                producer_receipt_bodies[0].get("evidence_digests")
+                if len(producer_receipt_bodies) == 1
+                and isinstance(producer_receipt_bodies[0], Mapping)
+                else None
+            )
+            if (
+                task_bindings.get(producer_task_cid) is not None
+                and isinstance(producer_control_receipt, Mapping)
+                and producer_control_receipt.get("operation") == "database_complete"
+                and isinstance(producer_validation, Mapping)
+                and (
+                    set(producer_validation) == portal_validation_fields
+                    or (
+                        set(producer_validation)
+                        == replayed_portal_validation_fields
+                        and type(producer_validation.get("replayed")) is bool
+                    )
+                )
+                and producer_validation.get("outcome") == "passed"
+                and producer_validation.get("argv")
+                == list(_TERMINAL_REPORT_VALIDATION_ARGV)
+                and producer_validation.get("validator")
+                == _TERMINAL_REPORT_VALIDATOR
+                and producer_validation.get("task_cid") == producer_task_cid
+                and producer_validation.get("attempt_id")
+                == producer_control_receipt.get("attempt_id")
+                and producer_validation.get("evidence_digest")
+                == producer_control_receipt.get("evidence_digest")
+                and producer_portal_binding is not None
+                and producer_portal_binding["task_cid"] == producer_task_cid
+                and producer_portal_binding["attempt_id"]
+                == producer_control_receipt.get("attempt_id")
+                and producer_portal_binding["portal_receipt_id"]
+                == producer_validation.get("portal_receipt_id")
+                and producer_portal_binding["evidence_digest"]
+                == producer_control_receipt.get("evidence_digest")
+                and isinstance(producer_evidence_digests, list)
+                and producer_evidence_digests
+                == [producer_control_receipt.get("evidence_digest")]
+            ):
+                terminal_producer_portal_bindings[producer_alias] = (
+                    producer_portal_binding
+                )
+        terminal_producer_portal_bindings_satisfied = bool(
+            len(terminal_producer_portal_bindings)
+            == len(terminal_producer_task_cids)
+            == 4
+        )
+        terminal_control_receipt = terminal_task["body"].get("completion_receipt")
+        terminal_validation = (
+            terminal_control_receipt.get("validation")
+            if isinstance(terminal_control_receipt, Mapping)
+            else None
+        )
+        terminal_portal_completion_binding: dict[str, str] | None = None
+        if isinstance(terminal_validation, Mapping) and isinstance(
+            terminal_validation.get("portal_completion_binding"), Mapping
+        ):
+            try:
+                terminal_portal_completion_binding = (
+                    _database_portal_completion_binding(
+                        terminal_validation["portal_completion_binding"]
+                    )
+                )
+            except IntentRepositoryError:
+                terminal_portal_completion_binding = None
+        terminal_receipt_body: Mapping[str, Any] | None = None
+        if terminal_task_binding is not None:
+            matching_terminal_receipts: list[Mapping[str, Any]] = []
+            for row in receipt_rows:
+                if str(row[0]) != str(
+                    terminal_task_binding["completion_receipt_cid"]
+                ):
+                    continue
+                decoded = _decode_json(row[9], noun="terminal completion receipt body")
+                if isinstance(decoded, Mapping):
+                    matching_terminal_receipts.append(decoded)
+            if len(matching_terminal_receipts) == 1:
+                terminal_receipt_body = matching_terminal_receipts[0]
+        terminal_evidence_digests = (
+            terminal_receipt_body.get("evidence_digests")
+            if isinstance(terminal_receipt_body, Mapping)
+            else None
+        )
+        terminal_validation_lineage: dict[str, str] | None = None
+        if (
+            isinstance(terminal_control_receipt, Mapping)
+            and isinstance(terminal_validation, Mapping)
+        ):
+            validation_run_rows = [
+                tuple(row[index] for index in range(5))
+                for row in connection.execute(
+                    """
+                    SELECT run_id, attempt_id, status, command_digest, body_json
+                    FROM validation_runs
+                    WHERE task_cid = ?
+                    ORDER BY run_id
+                    """,
+                    [terminal_task["task_cid"]],
+                ).fetchall()
+            ]
+            validation_result_rows = [
+                tuple(row[index] for index in range(5))
+                for row in connection.execute(
+                    """
+                    SELECT run_id, result_id, outcome, evidence_digest, body_json
+                    FROM validation_results
+                    WHERE task_cid = ?
+                    ORDER BY run_id, result_id
+                    """,
+                    [terminal_task["task_cid"]],
+                ).fetchall()
+            ]
+            # Quack materializes each remote scan independently and cannot execute
+            # the corresponding two-table streaming join.  Preserve every match
+            # (including duplicates) so ambiguous lineage still fails closed below.
+            validation_lineage_rows = sorted(
+                (
+                    (*run_row, *result_row[1:])
+                    for run_row in validation_run_rows
+                    for result_row in validation_result_rows
+                    if str(run_row[0]) == str(result_row[0])
+                ),
+                key=lambda row: (str(row[0]), str(row[5])),
+            )
+            matching_validation_lineage: list[dict[str, str]] = []
+            expected_validation_body = dict(terminal_validation)
+            expected_validation_run_body = {
+                "argv": list(_TERMINAL_REPORT_VALIDATION_ARGV),
+                **expected_validation_body,
+            }
+            for row in validation_lineage_rows:
+                run_body = _decode_json(row[4], noun="terminal validation run body")
+                result_body = _decode_json(
+                    row[8], noun="terminal validation result body"
+                )
+                if (
+                    str(row[1]) != str(terminal_control_receipt.get("attempt_id") or "")
+                    or str(row[2]) != "passed"
+                    or str(row[3])
+                    != content_identity(
+                        {"argv": list(_TERMINAL_REPORT_VALIDATION_ARGV)}
+                    )
+                    or run_body != expected_validation_run_body
+                    or str(row[6]) != "passed"
+                    or str(row[7])
+                    != str(terminal_control_receipt.get("evidence_digest") or "")
+                    or result_body != expected_validation_body
+                ):
+                    continue
+                expected_evidence_id = content_identity(
+                    {
+                        "task_cid": terminal_task["task_cid"],
+                        "evidence_kind": "validation",
+                        "digest": str(row[7]),
+                        "run_id": str(row[0]),
+                    }
+                )
+                evidence_rows = connection.execute(
+                    """
+                    SELECT evidence_id, evidence_kind, digest, body_json
+                    FROM evidence_nodes
+                    WHERE task_cid = ? AND evidence_id = ?
+                    """,
+                    [terminal_task["task_cid"], expected_evidence_id],
+                ).fetchall()
+                if len(evidence_rows) != 1:
+                    continue
+                evidence_row = evidence_rows[0]
+                evidence_body = _decode_json(
+                    evidence_row[3], noun="terminal validation evidence body"
+                )
+                if (
+                    str(evidence_row[0]) != expected_evidence_id
+                    or str(evidence_row[1]) != "validation"
+                    or str(evidence_row[2]) != str(row[7])
+                    or evidence_body
+                    != {
+                        "run_id": str(row[0]),
+                        "result_id": str(row[5]),
+                        "argv": list(_TERMINAL_REPORT_VALIDATION_ARGV),
+                        "outcome": "passed",
+                    }
+                ):
+                    continue
+                matching_validation_lineage.append(
+                    {
+                        "validation_run_id": str(row[0]),
+                        "validation_result_id": str(row[5]),
+                        "validation_evidence_id": expected_evidence_id,
+                    }
+                )
+            if len(matching_validation_lineage) == 1:
+                terminal_validation_lineage = matching_validation_lineage[0]
+        terminal_production_receipt_satisfied = bool(
+            terminal_task_binding is not None
+            and isinstance(terminal_control_receipt, Mapping)
+            and terminal_control_receipt.get("operation") == "database_complete"
+            and isinstance(terminal_validation, Mapping)
+            and terminal_validation.get("outcome") == "passed"
+            and terminal_validation.get("argv")
+            == list(_TERMINAL_REPORT_VALIDATION_ARGV)
+            and terminal_validation.get("validator") == _TERMINAL_REPORT_VALIDATOR
+            and terminal_validation.get("task_cid") == terminal_task["task_cid"]
+            and terminal_validation.get("attempt_id")
+            == terminal_control_receipt.get("attempt_id")
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(terminal_validation.get("portal_receipt_id") or ""),
+            )
+            is not None
+            and terminal_validation.get("evidence_digest")
+            == terminal_control_receipt.get("evidence_digest")
+            and terminal_portal_completion_binding is not None
+            and terminal_portal_completion_binding["task_cid"]
+            == terminal_task["task_cid"]
+            and terminal_portal_completion_binding["attempt_id"]
+            == terminal_control_receipt.get("attempt_id")
+            and terminal_portal_completion_binding["portal_receipt_id"]
+            == terminal_validation.get("portal_receipt_id")
+            and terminal_portal_completion_binding["evidence_digest"]
+            == terminal_control_receipt.get("evidence_digest")
+            and isinstance(terminal_evidence_digests, list)
+            and len(terminal_evidence_digests) == 1
+            and terminal_evidence_digests[0]
+            == terminal_control_receipt.get("evidence_digest")
+            and terminal_validation_lineage is not None
+        )
+        database_gates = {
+            "exact_goal_population": True,
+            "exact_goal_edges": True,
+            "exact_task_population": True,
+            "all_tasks_successful": all(
+                str(task["status"] or "").strip().lower()
+                in _SUCCESSFUL_TASK_STATUSES
+                for task in tasks.values()
+            ),
+            "all_current_task_receipts_valid": all(
+                binding is not None for binding in task_bindings.values()
+            ),
+            "all_task_dependencies_successful": not dependency_failures,
+            "settlement_state_integrity": (
+                settlement_counts["invalid_settlement_rows"] == 0
+            ),
+            "blocking_obligations_empty": all(
+                settlement_counts[name] == 0
+                for name in (
+                    "active_task_blocks",
+                    "active_refill_epochs",
+                    "pending_recovery_actions",
+                )
+            ),
+            "active_mutating_claims_empty": all(
+                settlement_counts[name] == 0
+                for name in (
+                    "active_task_assignments",
+                    "active_task_claims",
+                    "active_resource_claims",
+                    "active_path_claims",
+                    "active_leases",
+                    "active_maintenance_leases",
+                    "active_effect_claims",
+                )
+            ),
+            "attempts_and_validations_settled": all(
+                settlement_counts[name] == 0
+                for name in (
+                    "running_task_attempts",
+                    "running_attempt_phases",
+                    "running_provider_invocations",
+                    "running_validation_runs",
+                    "running_merge_attempts",
+                )
+            ),
+            "merge_queue_settled": settlement_counts["unsettled_merge_queue_entries"] == 0,
+            "runtime_settlement_gate_satisfied": False,
+            "retired_ready_tasks_satisfied": False,
+            "terminal_report_contract_satisfied": True,
+            "terminal_report_completion_receipt_satisfied": (
+                terminal_production_receipt_satisfied
+            ),
+            "terminal_report_validation_lineage_satisfied": (
+                terminal_validation_lineage is not None
+            ),
+            "terminal_report_producer_receipts_satisfied": (
+                terminal_producer_receipts_satisfied
+            ),
+            "terminal_report_producer_portal_bindings_satisfied": (
+                terminal_producer_portal_bindings_satisfied
+            ),
+            "terminal_report_producer_artifacts_satisfied": False,
+            "terminal_report_producer_receipt_bindings_satisfied": False,
+            "terminal_report_gate_satisfied": False,
+            "ducklake_non_authoritative": True,
+        }
+
+        goals_by_cid: dict[str, dict[str, Any]] = {}
+        for row in goal_rows:
+            body = _decode_json(row[8], noun="goal body")
+            goals_by_cid[str(row[0])] = {
+                "goal_cid": str(row[0]),
+                "goal_alias": str(row[1]),
+                "objective_id": str(row[2] or ""),
+                "parent_goal_cid": str(row[3] or ""),
+                "ordinal": int(row[4]),
+                "title": str(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "body": body if isinstance(body, Mapping) else {},
+            }
+        emitted_goal_receipts: set[tuple[str, int, str]] = set()
+        for event_row in goal_receipt_event_rows:
+            envelope = _decode_json(event_row[0], noun="goal receipt event")
+            event_body = envelope.get("body") if isinstance(envelope, Mapping) else None
+            emitted_receipt = (
+                event_body.get("receipt")
+                if isinstance(event_body, Mapping)
+                else None
+            )
+            if not isinstance(emitted_receipt, Mapping):
+                continue
+            try:
+                emitted_goal_receipts.add(
+                    (
+                        str(event_body.get("goal_cid") or ""),
+                        int(event_body.get("revision") or 0),
+                        _canonical(emitted_receipt, noun="emitted goal receipt"),
+                    )
+                )
+            except (TypeError, ValueError, IntentRepositoryError):
+                continue
+        direct_tasks: dict[str, list[str]] = {
+            item["goal_cid"]: [] for item in spec["goals"]
+        }
+        for task in spec["tasks"]:
+            direct_tasks[task["goal_cid"]].append(task["task_cid"])
+        child_goals: dict[str, list[str]] = {
+            item["goal_cid"]: [] for item in spec["goals"]
+        }
+        dependency_goals: dict[str, list[str]] = {
+            item["goal_cid"]: [] for item in spec["goals"]
+        }
+        for edge in spec["goal_edges"]:
+            if edge["edge_kind"] == "goal_parent":
+                child_goals[edge["parent_goal_cid"]].append(edge["child_goal_cid"])
+            else:
+                dependency_goals[edge["child_goal_cid"]].append(
+                    edge["parent_goal_cid"]
+                )
+
+        candidate_gate: dict[str, Any] | None = None
+        if candidate_root_completion_gate is not None:
+            candidate_gate = _goal_root_completion_gate(
+                candidate_root_completion_gate,
+                authority_spec_id=spec["authority_spec_id"],
+            )
+            if candidate_gate.get("completion_policy") != spec["completion_policy"]:
+                raise IntentRepositoryIntegrityError(
+                    "candidate root completion gate policy differs from its authority spec"
+                )
+        goal_bindings: dict[str, dict[str, Any] | None] = {}
+        goal_reasons: dict[str, list[str]] = {}
+        completion_inputs: dict[str, dict[str, Any]] = {}
+        goal_projection: list[dict[str, Any]] = []
+        ready_goal_cids: list[str] = []
+        invalid_goal_cids: list[str] = []
+        incomplete_goal_cids: list[str] = []
+        backfill_allowlist = set(spec["receipt_backfill_goal_cids"])
+        terminal_report_gate_evidence: Mapping[str, Any] | None = None
+
+        for goal_cid in spec["topological_goal_cids"]:
+            goal = goals_by_cid[goal_cid]
+            reasons: list[str] = []
+            task_receipt_values: list[dict[str, Any]] = []
+            for task_cid in sorted(
+                direct_tasks[goal_cid], key=lambda value: task_alias_by_cid[value]
+            ):
+                binding = task_bindings.get(task_cid)
+                if binding is None:
+                    reasons.extend(
+                        f"task:{task_alias_by_cid[task_cid]}:{reason}"
+                        for reason in task_reasons[task_cid]
+                    )
+                else:
+                    task_receipt_values.append(dict(binding))
+
+            child_receipts: list[dict[str, Any]] = []
+            for child_cid in sorted(
+                child_goals[goal_cid], key=lambda value: goals_by_cid[value]["goal_alias"]
+            ):
+                binding = goal_bindings.get(child_cid)
+                if binding is None:
+                    reasons.append(
+                        f"child_goal:{goals_by_cid[child_cid]['goal_alias']}:"
+                        "current_receipt_missing_or_invalid"
+                    )
+                else:
+                    child_receipts.append(dict(binding))
+            dependency_receipts: list[dict[str, Any]] = []
+            for dependency_cid in sorted(
+                dependency_goals[goal_cid],
+                key=lambda value: goals_by_cid[value]["goal_alias"],
+            ):
+                binding = goal_bindings.get(dependency_cid)
+                if binding is None:
+                    reasons.append(
+                        f"dependency_goal:{goals_by_cid[dependency_cid]['goal_alias']}:"
+                        "current_receipt_missing_or_invalid"
+                    )
+                else:
+                    dependency_receipts.append(dict(binding))
+
+            status = str(goal["status"] or "").strip().lower()
+            completed = status in _GOAL_COMPLETED_STATUSES
+            stored_receipt = goal["body"].get("completion_receipt")
+            is_root = goal_cid == spec["root_goal_cid"]
+            stored_root_gate: dict[str, Any] | None = None
+            if (
+                is_root
+                and isinstance(stored_receipt, Mapping)
+                and isinstance(stored_receipt.get("root_completion_gate"), Mapping)
+            ):
+                try:
+                    stored_root_gate = _goal_root_completion_gate(
+                        stored_receipt["root_completion_gate"],
+                        authority_spec_id=spec["authority_spec_id"],
+                    )
+                    if stored_root_gate.get("completion_policy") != spec["completion_policy"]:
+                        raise IntentRepositoryIntegrityError(
+                            "stored root completion gate policy differs from its authority spec"
+                        )
+                except IntentRepositoryError:
+                    reasons.append("root_completion_gate_invalid")
+            root_gate_for_current_receipt = (
+                stored_root_gate if is_root and completed else candidate_gate if is_root else None
+            )
+            if is_root:
+                candidate_gate_admitted = bool(
+                    candidate_gate is not None
+                    and (
+                        (
+                            not completed
+                            and not candidate_gate.get("predecessor_gate_id")
+                        )
+                        or (
+                            completed
+                            and stored_root_gate is not None
+                            and (
+                                candidate_gate.get("gate_id")
+                                == stored_root_gate.get("gate_id")
+                                or (
+                                    candidate_gate.get("predecessor_gate_id")
+                                    == stored_root_gate.get("gate_id")
+                                    and int(candidate_gate.get("owner_generation") or 0)
+                                    > int(stored_root_gate.get("owner_generation") or 0)
+                                )
+                            )
+                        )
+                    )
+                )
+                if candidate_gate is not None and not candidate_gate_admitted:
+                    reasons.append("root_completion_gate_predecessor_or_generation_invalid")
+                effective_candidate_gate = (
+                    candidate_gate if candidate_gate_admitted else None
+                )
+                current_gate = effective_candidate_gate or root_gate_for_current_receipt
+                context = (
+                    root_gate_context
+                    if isinstance(root_gate_context, Mapping)
+                    else {}
+                )
+                gate_runtime_binding = (
+                    current_gate.get("runtime_settlement_binding")
+                    if isinstance(current_gate, Mapping)
+                    else None
+                )
+                context_runtime_binding: Mapping[str, Any] | None = None
+                if isinstance(context.get("runtime_settlement_binding"), Mapping):
+                    try:
+                        context_runtime_binding = _goal_runtime_settlement_binding(
+                            context["runtime_settlement_binding"]
+                        )
+                    except IntentRepositoryError:
+                        context_runtime_binding = None
+                database_gates["runtime_settlement_gate_satisfied"] = bool(
+                    isinstance(gate_runtime_binding, Mapping)
+                    and context_runtime_binding is not None
+                    and dict(gate_runtime_binding) == dict(context_runtime_binding)
+                )
+                expected_retired_ready_task_cids = sorted(
+                    task["task_cid"]
+                    for task in spec["tasks"]
+                    if task["task_alias"] in {"VRIF-013", "VRIF-014", "VRIF-015"}
+                )
+                observed_retired_ready_task_cids = (
+                    list(gate_runtime_binding.get("retired_ready_task_cids") or [])
+                    if isinstance(gate_runtime_binding, Mapping)
+                    else []
+                )
+                database_gates["retired_ready_tasks_satisfied"] = bool(
+                    len(expected_retired_ready_task_cids) == 3
+                    and set(expected_retired_ready_task_cids).issubset(
+                        observed_retired_ready_task_cids
+                    )
+                    and all(
+                        task_cid in tasks
+                        and str(tasks[task_cid]["status"] or "").strip().lower()
+                        in _SUCCESSFUL_TASK_STATUSES
+                        and task_bindings.get(task_cid) is not None
+                        for task_cid in observed_retired_ready_task_cids
+                    )
+                )
+                terminal_gate_evidence = (
+                    current_gate.get("terminal_report_evidence")
+                    if isinstance(current_gate, Mapping)
+                    else None
+                )
+                terminal_report_gate_evidence = (
+                    terminal_gate_evidence
+                    if isinstance(terminal_gate_evidence, Mapping)
+                    else None
+                )
+                terminal_artifacts = (
+                    terminal_gate_evidence.get("report_artifacts")
+                    if isinstance(terminal_gate_evidence, Mapping)
+                    else None
+                )
+                terminal_producer_artifacts = (
+                    terminal_gate_evidence.get("producer_artifacts")
+                    if isinstance(terminal_gate_evidence, Mapping)
+                    else None
+                )
+                observed_producer_output_paths = {
+                    str(item.get("task_alias") or ""): [
+                        str(artifact.get("path") or "")
+                        for artifact in item.get("artifacts", [])
+                        if isinstance(artifact, Mapping)
+                    ]
+                    for item in terminal_producer_artifacts.get("tasks", [])
+                    if isinstance(item, Mapping)
+                } if isinstance(terminal_producer_artifacts, Mapping) else {}
+                database_gates["terminal_report_producer_artifacts_satisfied"] = (
+                    observed_producer_output_paths
+                    == {
+                        alias: sorted(paths)
+                        for alias, paths in terminal_contract[
+                            "producer_output_paths"
+                        ].items()
+                    }
+                )
+                artifact_bundle_by_alias = {
+                    str(item.get("task_alias") or ""): str(
+                        item.get("bundle_id") or ""
+                    )
+                    for item in terminal_producer_artifacts.get("tasks", [])
+                    if isinstance(item, Mapping)
+                } if isinstance(terminal_producer_artifacts, Mapping) else {}
+                producer_receipt_binding_rows = (
+                    terminal_gate_evidence.get("producer_receipt_bindings")
+                    if isinstance(terminal_gate_evidence, Mapping)
+                    else None
+                )
+                observed_producer_receipt_bindings = {
+                    str(item.get("task_alias") or ""): item
+                    for item in producer_receipt_binding_rows or []
+                    if isinstance(item, Mapping)
+                } if isinstance(producer_receipt_binding_rows, list) else {}
+                database_gates[
+                    "terminal_report_producer_receipt_bindings_satisfied"
+                ] = bool(
+                    terminal_producer_portal_bindings_satisfied
+                    and set(observed_producer_receipt_bindings)
+                    == set(terminal_contract["producer_output_paths"])
+                    and all(
+                        item.get("task_cid")
+                        == spec_task_cid_by_alias[producer_alias]
+                        and item.get("completion_receipt_cid")
+                        == terminal_producer_receipts.get(producer_alias)
+                        and item.get("portal_completion_binding")
+                        == terminal_producer_portal_bindings.get(producer_alias)
+                        and item.get("artifact_bundle_id")
+                        == artifact_bundle_by_alias.get(producer_alias)
+                        for producer_alias, item in (
+                            observed_producer_receipt_bindings.items()
+                        )
+                    )
+                )
+                database_gates["terminal_report_gate_satisfied"] = bool(
+                    terminal_production_receipt_satisfied
+                    and terminal_task_binding is not None
+                    and isinstance(terminal_gate_evidence, Mapping)
+                    and terminal_gate_evidence.get("terminal_report_contract_id")
+                    == terminal_contract["contract_id"]
+                    and terminal_gate_evidence.get("task_cid")
+                    == terminal_task["task_cid"]
+                    and terminal_gate_evidence.get("task_alias")
+                    == terminal_task["task_alias"]
+                    and terminal_gate_evidence.get("task_revision")
+                    == terminal_task["revision"]
+                    and terminal_gate_evidence.get("completion_receipt_cid")
+                    == terminal_task_binding["completion_receipt_cid"]
+                    and terminal_gate_evidence.get("completion_evidence_digest")
+                    == terminal_task_binding["completion_evidence_digest"]
+                    and terminal_gate_evidence.get("control_receipt_id")
+                    == terminal_task_binding["control_receipt_id"]
+                    and terminal_gate_evidence.get("portal_receipt_id")
+                    == terminal_validation.get("portal_receipt_id")
+                    and terminal_portal_completion_binding is not None
+                    and terminal_gate_evidence.get("portal_completion_binding")
+                    == terminal_portal_completion_binding
+                    and terminal_producer_receipts_satisfied
+                    and terminal_gate_evidence.get("producer_receipts")
+                    == terminal_producer_receipts
+                    and database_gates[
+                        "terminal_report_producer_artifacts_satisfied"
+                    ]
+                    and database_gates[
+                        "terminal_report_producer_receipt_bindings_satisfied"
+                    ]
+                    and terminal_validation_lineage is not None
+                    and terminal_gate_evidence.get("validation_run_id")
+                    == terminal_validation_lineage["validation_run_id"]
+                    and terminal_gate_evidence.get("validation_result_id")
+                    == terminal_validation_lineage["validation_result_id"]
+                    and terminal_gate_evidence.get("validation_evidence_id")
+                    == terminal_validation_lineage["validation_evidence_id"]
+                    and isinstance(terminal_artifacts, list)
+                    and [item.get("path") for item in terminal_artifacts]
+                    == terminal_contract["required_report_paths"]
+                )
+                failed_database_gates = sorted(
+                    name for name, passed in database_gates.items() if passed is not True
+                )
+                reasons.extend(f"completion_gate:{name}" for name in failed_database_gates)
+                if root_gate_for_current_receipt is None:
+                    reasons.append("root_completion_gate_missing")
+                if current_gate is not None:
+                    if context:
+                        if (
+                            context.get("current_tree_clean") is not True
+                            or str(context.get("source_head") or "")
+                            != str(current_gate.get("source_head") or "")
+                            or str(context.get("repository_tree_id") or "")
+                            != str(current_gate.get("repository_tree_id") or "")
+                        ):
+                            reasons.append("root_completion_gate_not_current")
+                    elif candidate_gate is None:
+                        reasons.append("root_completion_gate_currentness_unverified")
+
+            receipt_backfill = bool(
+                isinstance(stored_receipt, Mapping)
+                and stored_receipt.get("completion_kind")
+                == "preseeded_completion_receipt_backfill"
+            )
+            expected_current_receipt: dict[str, Any] | None = None
+            if completed and isinstance(stored_receipt, Mapping):
+                expected_current_receipt = _goal_completion_receipt(
+                    authority_spec_id=spec["authority_spec_id"],
+                    goal_cid=goal_cid,
+                    goal_alias=goal["goal_alias"],
+                    goal_revision=int(goal["revision"]),
+                    task_receipts=task_receipt_values,
+                    child_goal_receipts=child_receipts,
+                    dependency_goal_receipts=dependency_receipts,
+                    receipt_backfill=receipt_backfill,
+                    root_completion_gate=root_gate_for_current_receipt,
+                )
+                if dict(stored_receipt) != expected_current_receipt:
+                    reasons.append("goal_current_completion_receipt_invalid")
+            elif completed:
+                reasons.append("goal_current_completion_receipt_missing")
+
+            stored_receipt_integrity = bool(
+                completed
+                and isinstance(stored_receipt, Mapping)
+                and _goal_receipt_has_valid_identity(
+                    stored_receipt,
+                    authority_spec_id=spec["authority_spec_id"],
+                    goal_cid=goal_cid,
+                    goal_alias=goal["goal_alias"],
+                    goal_revision=int(goal["revision"]),
+                    expected_root_completion_gate=(
+                        stored_root_gate if is_root else None
+                    ),
+                )
+                and (
+                    goal_cid,
+                    int(goal["revision"]),
+                    _canonical(stored_receipt, noun="stored goal receipt"),
+                )
+                in emitted_goal_receipts
+            )
+
+            receipt_valid = bool(completed and not reasons and expected_current_receipt)
+            if receipt_valid and expected_current_receipt is not None:
+                goal_bindings[goal_cid] = {
+                    "goal_cid": goal_cid,
+                    "goal_alias": goal["goal_alias"],
+                    "goal_revision": int(goal["revision"]),
+                    "completion_receipt_id": expected_current_receipt["receipt_id"],
+                }
+            else:
+                goal_bindings[goal_cid] = None
+
+            absent_backfill = bool(
+                completed
+                and not isinstance(stored_receipt, Mapping)
+                and goal_cid in backfill_allowlist
+            )
+            prerequisite_reasons = [
+                reason
+                for reason in reasons
+                if reason
+                not in {
+                    "goal_current_completion_receipt_missing",
+                    "goal_current_completion_receipt_invalid",
+                }
+            ]
+            nonroot_receipt_refresh = bool(
+                completed
+                and not is_root
+                and stored_receipt_integrity
+                and expected_current_receipt is not None
+                and dict(stored_receipt) != expected_current_receipt
+                and not prerequisite_reasons
+            )
+            root_gate_refresh = bool(
+                is_root
+                and receipt_valid
+                and effective_candidate_gate is not None
+                and stored_root_gate is not None
+                and effective_candidate_gate.get("gate_id")
+                != stored_root_gate.get("gate_id")
+            )
+            root_input_refresh = bool(
+                is_root
+                and completed
+                and stored_receipt_integrity
+                and effective_candidate_gate is not None
+                and stored_root_gate is not None
+                and effective_candidate_gate.get("gate_id")
+                == stored_root_gate.get("gate_id")
+                and expected_current_receipt is not None
+                and dict(stored_receipt) != expected_current_receipt
+                and not prerequisite_reasons
+            )
+            ready = bool(
+                root_gate_refresh
+                or root_input_refresh
+                or nonroot_receipt_refresh
+                or (
+                    not prerequisite_reasons
+                    and (
+                        status in _GOAL_OPEN_STATUSES
+                        or absent_backfill
+                    )
+                )
+            )
+            if ready:
+                ready_goal_cids.append(goal_cid)
+                completion_inputs[goal_cid] = {
+                    "task_receipts": task_receipt_values,
+                    "child_goal_receipts": child_receipts,
+                    "dependency_goal_receipts": dependency_receipts,
+                    "receipt_backfill": (
+                        False
+                        if root_gate_refresh
+                        or root_input_refresh
+                        or nonroot_receipt_refresh
+                        else absent_backfill
+                    ),
+                    "root_completion_gate": (
+                        effective_candidate_gate
+                        if root_gate_refresh or root_input_refresh
+                        else root_gate_for_current_receipt
+                    ),
+                }
+            if not receipt_valid:
+                incomplete_goal_cids.append(goal_cid)
+            if completed and not receipt_valid:
+                invalid_goal_cids.append(goal_cid)
+            goal_reasons[goal_cid] = sorted(set(reasons))
+            goal_projection.append(
+                {
+                    "goal_cid": goal_cid,
+                    "goal_alias": goal["goal_alias"],
+                    "parent_goal_cid": goal["parent_goal_cid"],
+                    "ordinal": int(goal["ordinal"]),
+                    "status": goal["status"],
+                    "revision": int(goal["revision"]),
+                    "completion_receipt_id": (
+                        str(expected_current_receipt.get("receipt_id") or "")
+                        if receipt_valid and expected_current_receipt is not None
+                        else ""
+                    ),
+                    "receipt_valid": receipt_valid,
+                    "ready_for_completion": ready,
+                    "incomplete_reasons": sorted(set(reasons)),
+                }
+            )
+
+        goal_status_counts: dict[str, int] = {}
+        for goal in goal_projection:
+            status = str(goal["status"])
+            goal_status_counts[status] = goal_status_counts.get(status, 0) + 1
+        all_goal_receipts_valid = all(
+            bool(goal["receipt_valid"]) for goal in goal_projection
+        )
+        completion_gates = {
+            **database_gates,
+            "all_exact_goal_receipts_valid": all_goal_receipts_valid,
+            "root_completion_gate_current": bool(
+                goal_bindings.get(spec["root_goal_cid"])
+            ),
+        }
+        all_goals_satisfied = bool(
+            all_goal_receipts_valid
+            and all(value is True for value in completion_gates.values())
+        )
+        watermark_row = connection.execute(
+            "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+        ).fetchone()
+        projection = {
+            "schema": GOAL_AUTHORITY_PROJECTION_SCHEMA,
+            "authority": "duckdb_via_quack_state_owner",
+            "authority_spec_id": spec["authority_spec_id"],
+            "board_namespace": spec["board_namespace"],
+            "event_watermark": int(watermark_row[0] if watermark_row else 0),
+            "goal_count": len(goal_projection),
+            "goal_status_counts": dict(sorted(goal_status_counts.items())),
+            "root_goal": next(
+                item for item in goal_projection if item["goal_cid"] == spec["root_goal_cid"]
+            ),
+            "goals": goal_projection,
+            "goal_edges": [dict(item) for item in spec["goal_edges"]],
+            "task_dependencies": [
+                dict(item) for item in spec["task_dependencies"]
+            ],
+            "incomplete_goal_ids": [goals_by_cid[item]["goal_alias"] for item in incomplete_goal_cids],
+            "invalid_goal_ids": [goals_by_cid[item]["goal_alias"] for item in invalid_goal_cids],
+            "ready_goal_ids": [goals_by_cid[item]["goal_alias"] for item in ready_goal_cids],
+            "task_receipt_invalid_ids": [
+                task_alias_by_cid[task_cid]
+                for task_cid, binding in task_bindings.items()
+                if binding is None
+            ],
+            "task_dependency_failures": dependency_failures,
+            "terminal_report_authority": {
+                "task_cid": terminal_task["task_cid"],
+                "task_alias": terminal_task["task_alias"],
+                "status": terminal_task["status"],
+                "revision": int(terminal_task["revision"]),
+                "completion_receipt_cid": (
+                    str(terminal_task_binding["completion_receipt_cid"])
+                    if terminal_task_binding is not None
+                    else ""
+                ),
+                "terminal_report_contract_id": terminal_contract["contract_id"],
+                "declared_output_paths": list(
+                    terminal_contract["declared_output_paths"]
+                ),
+                "required_report_paths": list(
+                    terminal_contract["required_report_paths"]
+                ),
+                "validation_commands": [
+                    list(item) for item in terminal_contract["validation_commands"]
+                ],
+                "production_completion_receipt_satisfied": (
+                    terminal_production_receipt_satisfied
+                ),
+                "control_receipt_id": (
+                    str(terminal_task_binding["control_receipt_id"])
+                    if terminal_task_binding is not None
+                    else ""
+                ),
+                "portal_receipt_id": (
+                    str(terminal_validation.get("portal_receipt_id") or "")
+                    if isinstance(terminal_validation, Mapping)
+                    else ""
+                ),
+                "portal_completion_binding": (
+                    dict(terminal_portal_completion_binding)
+                    if terminal_portal_completion_binding is not None
+                    else {}
+                ),
+                "producer_receipts": dict(terminal_producer_receipts),
+                "producer_artifacts": (
+                    dict(terminal_report_gate_evidence.get("producer_artifacts") or {})
+                    if isinstance(terminal_report_gate_evidence, Mapping)
+                    else {}
+                ),
+                "validation_lineage": (
+                    dict(terminal_validation_lineage)
+                    if terminal_validation_lineage is not None
+                    else {}
+                ),
+                "report_artifacts": (
+                    [
+                        dict(item)
+                        for item in terminal_report_gate_evidence.get(
+                            "report_artifacts", []
+                        )
+                    ]
+                    if isinstance(terminal_report_gate_evidence, Mapping)
+                    else []
+                ),
+                "satisfied": database_gates["terminal_report_gate_satisfied"],
+            },
+            "settlement_counts": settlement_counts,
+            "completion_policy": dict(spec["completion_policy"]),
+            "completion_gates": completion_gates,
+            "all_goals_satisfied": all_goals_satisfied,
+            "ducklake_authoritative": False,
+        }
+        internal = {
+            "spec": spec,
+            "goals_by_cid": goals_by_cid,
+            "completion_inputs": completion_inputs,
+            "ready_goal_cids": ready_goal_cids,
+        }
+        return projection, internal
+
+    def goal_authority_projection(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_gate_context: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Project exact, read-only goal authority through the current transport."""
+
+        with self._connection(write=False) as connection:
+            projection = _stable_goal_authority_projection_on(
+                connection,
+                specification,
+                root_gate_context=root_gate_context,
+            )
+        return _content_addressed_projection(
+            projection,
+            maximum_bytes=MAX_GOAL_AUTHORITY_PROJECTION_BYTES,
+            noun="goal authority projection",
+        )
+
+    def reconcile_goal_completion_authority(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_completion_gate: Mapping[str, Any] | None = None,
+        root_gate_current_validator: Callable[[Mapping[str, Any]], bool] | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically close every newly satisfied goal in topological order.
+
+        This mutation is intentionally owner-only.  Callers attached through
+        Quack may read :meth:`goal_authority_projection`, but they cannot
+        supply a new goal population or completion receipt for admission.
+        """
+
+        if not self.uses_bound_connection:
+            raise IntentRepositoryError(
+                "goal completion reconciliation requires the exclusive owner's bound connection"
+            )
+        changed_goal_ids: list[str] = []
+        with self._connection(write=True) as connection:
+            spec = _goal_completion_authority_spec(specification)
+            maximum = int(spec["goal_count"])
+
+            def admitted_root_gate() -> Mapping[str, Any] | None:
+                if not isinstance(root_completion_gate, Mapping):
+                    return None
+                if root_gate_current_validator is None:
+                    return root_completion_gate
+                try:
+                    return (
+                        root_completion_gate
+                        if root_gate_current_validator(root_completion_gate) is True
+                        else None
+                    )
+                except Exception:
+                    return None
+
+            for _index in range(maximum + 1):
+                current_root_gate = admitted_root_gate()
+                projection, internal = self._goal_authority_state_on(
+                    connection,
+                    specification,
+                    candidate_root_completion_gate=current_root_gate,
+                    root_gate_context=(
+                        {
+                            "current_tree_clean": True,
+                            "source_head": current_root_gate.get("source_head"),
+                            "repository_tree_id": current_root_gate.get(
+                                "repository_tree_id"
+                            ),
+                            "runtime_settlement_binding": current_root_gate.get(
+                                "runtime_settlement_binding"
+                            ),
+                        }
+                        if isinstance(current_root_gate, Mapping)
+                        else None
+                    ),
+                )
+                ready = list(internal["ready_goal_cids"])
+                if not ready:
+                    break
+                goal_cid = ready[0]
+                goal = internal["goals_by_cid"][goal_cid]
+                inputs = internal["completion_inputs"][goal_cid]
+                if (
+                    goal_cid == spec["root_goal_cid"]
+                    and root_gate_current_validator is not None
+                    and admitted_root_gate() is None
+                ):
+                    raise IntentRepositoryConflictError(
+                        "root completion gate changed before its owner-side CAS"
+                    )
+                current_revision = int(goal["revision"])
+                target_revision = current_revision + 1
+                receipt = _goal_completion_receipt(
+                    authority_spec_id=spec["authority_spec_id"],
+                    goal_cid=goal_cid,
+                    goal_alias=goal["goal_alias"],
+                    goal_revision=target_revision,
+                    task_receipts=inputs["task_receipts"],
+                    child_goal_receipts=inputs["child_goal_receipts"],
+                    dependency_goal_receipts=inputs["dependency_goal_receipts"],
+                    receipt_backfill=bool(inputs["receipt_backfill"]),
+                    root_completion_gate=inputs["root_completion_gate"],
+                )
+                body = dict(goal["body"])
+                body["completion_receipt"] = receipt
+                now = _utc_iso()
+                connection.execute(
+                    """
+                    UPDATE goals SET status = 'completed', updated_at = ?,
+                        revision = ?, body_json = ?
+                    WHERE goal_cid = ? AND revision = ?
+                    """,
+                    [
+                        now,
+                        target_revision,
+                        _canonical(body, noun="goal body"),
+                        goal_cid,
+                        current_revision,
+                    ],
+                )
+                observed = connection.execute(
+                    "SELECT status, revision, body_json FROM goals WHERE goal_cid = ?",
+                    [goal_cid],
+                ).fetchone()
+                if (
+                    observed is None
+                    or str(observed[0]) != "completed"
+                    or int(observed[1]) != target_revision
+                    or _decode_json(observed[2], noun="goal body") != body
+                ):
+                    raise IntentRepositoryConflictError(
+                        "goal completion CAS lost its exact revision"
+                    )
+                self._append_event(
+                    connection,
+                    event_type=IntentEventType.GOAL_UPSERTED,
+                    subject_id=goal_cid,
+                    body={
+                        "goal_cid": goal_cid,
+                        "goal_alias": goal["goal_alias"],
+                        "objective_id": goal["objective_id"],
+                        "parent_goal_cid": goal["parent_goal_cid"],
+                        "ordinal": int(goal["ordinal"]),
+                        "title": goal["title"],
+                        "previous_status": goal["status"],
+                        "status": "completed",
+                        "revision": target_revision,
+                        "receipt": receipt,
+                        "recorded_at": now,
+                        "body": body,
+                    },
+                )
+                changed_goal_ids.append(goal["goal_alias"])
+            else:
+                raise IntentRepositoryIntegrityError(
+                    "goal completion reconciliation did not converge within the exact population"
+                )
+            final_root_gate = admitted_root_gate()
+            final_projection, _internal = self._goal_authority_state_on(
+                connection,
+                specification,
+                candidate_root_completion_gate=final_root_gate,
+                root_gate_context=(
+                    {
+                        "current_tree_clean": True,
+                        "source_head": final_root_gate.get("source_head"),
+                        "repository_tree_id": final_root_gate.get(
+                            "repository_tree_id"
+                        ),
+                        "runtime_settlement_binding": final_root_gate.get(
+                            "runtime_settlement_binding"
+                        ),
+                    }
+                    if isinstance(final_root_gate, Mapping)
+                    else None
+                ),
+            )
+            if (
+                spec["root_goal_alias"] in changed_goal_ids
+                and root_gate_current_validator is not None
+                and admitted_root_gate() is None
+            ):
+                raise IntentRepositoryConflictError(
+                    "root completion gate changed before transaction commit"
+                )
+        projected = _content_addressed_projection(
+            final_projection,
+            maximum_bytes=MAX_GOAL_AUTHORITY_PROJECTION_BYTES,
+            noun="goal authority projection",
+        )
+        return MappingProxyType(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/goal-completion-reconciliation@1",
+                "changed": bool(changed_goal_ids),
+                "changed_goal_ids": changed_goal_ids,
+                "goal_authority": dict(projected),
             }
         )
 
@@ -3088,6 +6461,7 @@ class IntentRepository:
         expected_revision: int,
         new_status: str,
         receipt: Mapping[str, Any] | None = None,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
         allow_completion_without_evidence: bool = False,
     ) -> IntentReceipt:
@@ -3095,6 +6469,14 @@ class IntentRepository:
         expected = _positive_int(expected_revision, noun="expected_revision")
         status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
         receipt_map = _mapping(receipt, noun="status receipt")
+        expected_receipt_map = (
+            None
+            if expected_control_receipt is None
+            else _mapping(
+                expected_control_receipt,
+                noun="expected control receipt",
+            )
+        )
         now = _utc_iso()
 
         with self._connection(write=True) as connection:
@@ -3116,6 +6498,18 @@ class IntentRepository:
             current_revision = int(task_row[4])
             if current_revision != expected:
                 raise IntentRepositoryConflictError("task revision CAS is stale")
+            body_map = _decode_json(task_row[5], noun="task body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            current_control_receipt = body_map.get("completion_receipt")
+            if expected_receipt_map is not None and (
+                not isinstance(current_control_receipt, Mapping)
+                or dict(current_control_receipt)
+                != dict(expected_receipt_map)
+            ):
+                raise IntentRepositoryConflictError(
+                    "task control receipt CAS is stale"
+                )
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -3150,9 +6544,6 @@ class IntentRepository:
                     )
 
             revision = current_revision + 1
-            body_map = _decode_json(task_row[5], noun="task body")
-            if not isinstance(body_map, dict):
-                body_map = {}
             body_map = dict(body_map)
             if receipt_map:
                 body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
@@ -3292,6 +6683,110 @@ class IntentRepository:
 
     # -- queue / attempts / blocks -------------------------------------------
 
+    def _record_queue_backoff_on(
+        self,
+        connection: Any,
+        *,
+        task_cid: str,
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int,
+        now_ms: int,
+        exact_retry_not_before_ms: int | None = None,
+    ) -> IntentReceipt:
+        """Write one queue cooldown on an already-owned transaction."""
+
+        retry_not_before = (
+            now_ms + delay_ms
+            if exact_retry_not_before_ms is None
+            else exact_retry_not_before_ms
+        )
+        lease = connection.execute(
+            "SELECT attempt, fencing_token FROM leases WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        if lease is None:
+            attempt = 1
+            connection.execute(
+                """
+                INSERT INTO leases (
+                    task_cid, claim_cid, resolution_cid, claimant_did,
+                    logical_epoch, fencing_token, expires_at_ms, attempt,
+                    state, started_at_ms, release_reason, retry_not_before_ms,
+                    owner_session_id, fence_epoch, revision, extension_schema,
+                    extension_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    task_cid,
+                    f"claim:queue:{task_cid}",
+                    f"resolution:queue:{task_cid}",
+                    self.owner_id,
+                    1,
+                    1,
+                    0,
+                    attempt,
+                    "released",
+                    now_ms,
+                    reason,
+                    retry_not_before,
+                    self.session_id,
+                    1,
+                    1,
+                    QUEUE_ENTRY_SCHEMA,
+                    _canonical(
+                        {
+                            "selection_penalty": selection_penalty,
+                            "consecutive_failures": 1,
+                            "reason": reason,
+                        },
+                        noun="queue extension",
+                    ),
+                ],
+            )
+        else:
+            attempt = int(lease[0]) + 1
+            connection.execute(
+                """
+                UPDATE leases SET
+                    attempt = ?, retry_not_before_ms = ?,
+                    release_reason = ?, state = 'released',
+                    extension_schema = ?, extension_json = ?,
+                    revision = revision + 1
+                WHERE task_cid = ?
+                """,
+                [
+                    attempt,
+                    retry_not_before,
+                    reason,
+                    QUEUE_ENTRY_SCHEMA,
+                    _canonical(
+                        {
+                            "selection_penalty": selection_penalty,
+                            "consecutive_failures": attempt,
+                            "reason": reason,
+                        },
+                        noun="queue extension",
+                    ),
+                    task_cid,
+                ],
+            )
+        return self._append_event(
+            connection,
+            event_type=IntentEventType.QUEUE_BACKOFF,
+            subject_id=task_cid,
+            task_cid=task_cid,
+            body={
+                "task_cid": task_cid,
+                "attempt": attempt,
+                "retry_not_before_ms": retry_not_before,
+                "delay_ms": delay_ms,
+                "selection_penalty": selection_penalty,
+                "reason": reason,
+                "revision": attempt,
+            },
+        )
+
     def record_queue_backoff(
         self,
         *,
@@ -3305,97 +6800,279 @@ class IntentRepository:
         reason_text = str(reason or "backoff").strip() or "backoff"
         penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
         now_ms = int(self._clock_ms())
-        retry_not_before = now_ms + delay
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
             ).fetchone()
             if task_row is None:
                 raise KeyError(tcid)
+            return self._record_queue_backoff_on(
+                connection,
+                task_cid=tcid,
+                delay_ms=delay,
+                reason=reason_text,
+                selection_penalty=penalty,
+                now_ms=now_ms,
+            )
+
+    def record_queue_backoff_and_cas_task_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        new_status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically persist one guarded cooldown and retry status.
+
+        The prior task receipt, task revision, queue mutation, and status
+        mutation share one owner transaction.  A foreign lane therefore
+        cannot leave a stale cooldown behind by winning between queue-first
+        and status-CAS operations.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        expected_receipt = _mapping(
+            expected_control_receipt,
+            noun="expected control receipt",
+        )
+        status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
+        if status_text != "retrying":
+            raise ValueError("guarded queue/status transition must target retrying")
+        receipt_map = _mapping(receipt, noun="status receipt")
+        delay = _nonneg_int(delay_ms, noun="delay_ms")
+        reason_text = str(reason or "backoff").strip() or "backoff"
+        penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
+        exact_deadline = (
+            None
+            if exact_retry_not_before_ms is None
+            else _nonneg_int(
+                exact_retry_not_before_ms,
+                noun="exact_retry_not_before_ms",
+            )
+        )
+        now_ms = int(self._clock_ms())
+        now = _utc_iso()
+
+        with self._connection(write=True) as connection:
+            rows = connection.execute(
+                """
+                SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+                FROM tasks WHERE task_cid = ? OR task_alias = ?
+                ORDER BY task_cid LIMIT 2
+                """,
+                [tcid, tcid],
+            ).fetchall()
+            if not rows:
+                raise KeyError(tcid)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError(
+                    "task CID/alias lookup is ambiguous"
+                )
+            task_row = rows[0]
+            resolved_cid = str(task_row[0])
+            previous_status = str(task_row[3])
+            current_revision = int(task_row[4])
+            body_map = _decode_json(task_row[5], noun="task body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            current_receipt = body_map.get("completion_receipt")
+            if current_revision != expected:
+                raise IntentRepositoryConflictError("task revision CAS is stale")
+            if (
+                not isinstance(current_receipt, Mapping)
+                or dict(current_receipt) != dict(expected_receipt)
+            ):
+                raise IntentRepositoryConflictError(
+                    "task control receipt CAS is stale"
+                )
+
             lease = connection.execute(
-                "SELECT attempt, fencing_token FROM leases WHERE task_cid = ?",
-                [tcid],
+                """
+                SELECT retry_not_before_ms, release_reason, extension_json
+                FROM leases WHERE task_cid = ?
+                """,
+                [resolved_cid],
             ).fetchone()
-            if lease is None:
-                attempt = 1
-                connection.execute(
-                    """
-                    INSERT INTO leases (
-                        task_cid, claim_cid, resolution_cid, claimant_did,
-                        logical_epoch, fencing_token, expires_at_ms, attempt,
-                        state, started_at_ms, release_reason, retry_not_before_ms,
-                        owner_session_id, fence_epoch, revision, extension_schema,
-                        extension_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        tcid,
-                        f"claim:queue:{tcid}",
-                        f"resolution:queue:{tcid}",
-                        self.owner_id,
-                        1,
-                        1,
-                        0,
-                        attempt,
-                        "released",
-                        now_ms,
-                        reason_text,
-                        retry_not_before,
-                        self.session_id,
-                        1,
-                        1,
-                        QUEUE_ENTRY_SCHEMA,
-                        _canonical(
-                            {
-                                "selection_penalty": penalty,
-                                "consecutive_failures": 1,
-                                "reason": reason_text,
-                            },
-                            noun="queue extension",
-                        ),
-                    ],
+            extension = (
+                _decode_json(lease[2], noun="queue extension")
+                if lease is not None
+                else {}
+            )
+            existing_reason = str(
+                (extension.get("reason") if isinstance(extension, Mapping) else "")
+                or (lease[1] if lease is not None else "")
+                or ""
+            )
+            if (
+                lease is not None
+                and receipt_map.get("operation")
+                in {
+                    "database_portal_protected_path_retry_recovery",
+                    "database_portal_landed_completion_revalidation",
+                }
+                and existing_reason != reason_text
+            ):
+                raise IntentRepositoryConflictError(
+                    "typed recovery found a foreign queue entry"
+                )
+            if previous_status == status_text:
+                expected_queue_reason = expected_receipt.get("queue_reason")
+                expected_queue_deadline = expected_receipt.get(
+                    "retry_not_before_ms"
+                )
+                if (
+                    not isinstance(expected_queue_reason, str)
+                    or expected_queue_reason != reason_text
+                ):
+                    raise IntentRepositoryConflictError(
+                        "retrying control receipt does not authorize this queue"
+                    )
+                if (
+                    type(expected_queue_deadline) is not int
+                    or expected_queue_deadline < 0
+                ):
+                    raise IntentRepositoryConflictError(
+                        "retrying control queue does not match its receipt"
+                    )
+                if lease is not None and (
+                    existing_reason != reason_text
+                    or int(lease[0] or 0) != expected_queue_deadline
+                ):
+                    raise IntentRepositoryConflictError(
+                        "retrying control queue does not match its receipt"
+                    )
+            desired_retry_not_before_ms = (
+                now_ms + delay if exact_deadline is None else exact_deadline
+            )
+            queue_reused = bool(
+                lease is not None
+                and existing_reason == reason_text
+                and (
+                    previous_status == status_text
+                    or int(lease[0] or 0) == desired_retry_not_before_ms
+                )
+            )
+            if queue_reused:
+                queue_receipt: IntentReceipt | None = None
+                retry_not_before_ms = int(lease[0] or 0)
+            else:
+                queue_receipt = self._record_queue_backoff_on(
+                    connection,
+                    task_cid=resolved_cid,
+                    delay_ms=delay,
+                    reason=reason_text,
+                    selection_penalty=penalty,
+                    now_ms=now_ms,
+                    exact_retry_not_before_ms=exact_deadline,
+                )
+                retry_not_before_ms = desired_retry_not_before_ms
+
+            queue_receipt_dict = (
+                queue_receipt.to_dict() if queue_receipt is not None else {}
+            )
+            transition_receipt = dict(receipt_map)
+            if transition_receipt.get("queue_reason") != reason_text:
+                raise IntentRepositoryConflictError(
+                    "retry receipt does not bind the guarded queue reason"
+                )
+            if (
+                transition_receipt.get("operation")
+                == "database_portal_validation_retry_successor_recovery"
+            ):
+                # Successor recovery deliberately binds the stable queue
+                # reason and deadline while omitting the variable queue-event
+                # receipt from the task body.  The event remains available in
+                # this method's separate queue_receipt result, but carries no
+                # additional transition authority.
+                if transition_receipt.get("queue_receipt") != {}:
+                    raise IntentRepositoryConflictError(
+                        "validation retry successor must omit its durable "
+                        "queue-event receipt"
+                    )
+            else:
+                transition_receipt["queue_receipt"] = queue_receipt_dict
+            if "queue_reused" in transition_receipt:
+                transition_receipt["queue_reused"] = queue_reused
+            if "retry_not_before_ms" in transition_receipt:
+                transition_receipt["retry_not_before_ms"] = retry_not_before_ms
+            if previous_status == status_text and queue_receipt is None:
+                transition_receipt = dict(expected_receipt)
+                status_receipt = IntentReceipt(
+                    event_id="",
+                    event_type=IntentEventType.TASK_STATUS_CHANGED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now,
+                    subject_id=resolved_cid,
+                    revision=current_revision,
+                    changed=False,
+                    details=MappingProxyType(
+                        {
+                            "task_cid": resolved_cid,
+                            "status": status_text,
+                            "previous_status": previous_status,
+                        }
+                    ),
                 )
             else:
-                attempt = int(lease[0]) + 1
+                revision = current_revision + 1
+                body_map = dict(body_map)
+                body_map["completion_receipt"] = transition_receipt
+                encoded_body = _canonical(body_map, noun="task body")
                 connection.execute(
                     """
-                    UPDATE leases SET
-                        attempt = ?, retry_not_before_ms = ?,
-                        release_reason = ?, state = 'released',
-                        extension_schema = ?, extension_json = ?,
-                        revision = revision + 1
-                    WHERE task_cid = ?
+                    UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
+                        body_json = ?
+                    WHERE task_cid = ? AND revision = ?
                     """,
                     [
-                        attempt,
-                        retry_not_before,
-                        reason_text,
-                        QUEUE_ENTRY_SCHEMA,
-                        _canonical(
-                            {
-                                "selection_penalty": penalty,
-                                "consecutive_failures": attempt,
-                                "reason": reason_text,
-                            },
-                            noun="queue extension",
-                        ),
-                        tcid,
+                        status_text,
+                        revision,
+                        now,
+                        encoded_body,
+                        resolved_cid,
+                        current_revision,
                     ],
                 )
-            return self._append_event(
-                connection,
-                event_type=IntentEventType.QUEUE_BACKOFF,
-                subject_id=tcid,
-                task_cid=tcid,
-                body={
-                    "task_cid": tcid,
-                    "attempt": attempt,
-                    "retry_not_before_ms": retry_not_before,
-                    "delay_ms": delay,
-                    "selection_penalty": penalty,
-                    "reason": reason_text,
-                    "revision": attempt,
-                },
+                connection.execute(
+                    """
+                    INSERT INTO task_revisions (
+                        task_cid, revision, status, body_json, recorded_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [resolved_cid, revision, status_text, encoded_body, now],
+                )
+                status_receipt = self._append_event(
+                    connection,
+                    event_type=IntentEventType.TASK_STATUS_CHANGED,
+                    subject_id=resolved_cid,
+                    task_cid=resolved_cid,
+                    body={
+                        "task_cid": resolved_cid,
+                        "task_alias": str(task_row[1]),
+                        "goal_cid": str(task_row[2]),
+                        "previous_status": previous_status,
+                        "status": status_text,
+                        "revision": revision,
+                        "receipt": transition_receipt,
+                        "recorded_at": now,
+                    },
+                )
+            return MappingProxyType(
+                {
+                    "previous_status": previous_status,
+                    "queue_receipt": queue_receipt_dict,
+                    "queue_reused": queue_reused,
+                    "retry_not_before_ms": retry_not_before_ms,
+                    "status_receipt": status_receipt.to_dict(),
+                    "transition_receipt": transition_receipt,
+                }
             )
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
@@ -3475,10 +7152,15 @@ class IntentRepository:
         fencing_token: int = 1,
     ) -> IntentReceipt:
         tcid = _identifier(task_cid, noun="task_cid")
-        status_text = str(status or "started").strip().lower()
+        status_text = _status(
+            status or "started",
+            allowed=_ATTEMPT_STATUSES,
+            noun="attempt",
+        )
         owner = _optional_identifier(owner_session_id, noun="owner_session_id") or self.session_id
         fence = _positive_int(fencing_token, noun="fencing_token")
         now = _utc_iso()
+        finished_at = now if status_text in _TERMINAL_ATTEMPT_STATUSES else ""
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
@@ -3513,7 +7195,7 @@ class IntentRepository:
                     fence,
                     1,
                     now,
-                    "",
+                    finished_at,
                     status_text,
                     1,
                 ],
@@ -3533,6 +7215,7 @@ class IntentRepository:
                     "status": status_text,
                     "revision": 1,
                     "started_at": now,
+                    "finished_at": finished_at,
                 },
             )
 
@@ -3804,7 +7487,8 @@ class IntentRepository:
         with self._connection(write=True) as connection:
             events = connection.execute(
                 """
-                SELECT event_id, event_type, task_cid, body_json, global_sequence
+                SELECT event_id, event_type, task_cid, attempt_id,
+                       body_json, global_sequence
                 FROM domain_events
                 WHERE stream_id = ?
                 ORDER BY global_sequence ASC
@@ -3832,7 +7516,8 @@ class IntentRepository:
             for event_row in events:
                 # DuckDBRow iterates keys; index into values explicitly.
                 event_type = str(event_row[1])
-                body_json = event_row[3]
+                event_attempt_id = str(event_row[3] or "")
+                body_json = event_row[4]
                 body_wrapper = _decode_json(body_json, noun="event body")
                 if not isinstance(body_wrapper, dict):
                     continue
@@ -3850,6 +7535,7 @@ class IntentRepository:
                     connection,
                     event_type=event_type,
                     payload=payload,
+                    attempt_id=event_attempt_id,
                 )
             # DuckDB's immediate unique-index checks can reject a delete and
             # reinsert of the same ``(run_id, ordinal)`` in one transaction.
@@ -3878,6 +7564,7 @@ class IntentRepository:
         *,
         event_type: str,
         payload: Mapping[str, Any],
+        attempt_id: str = "",
     ) -> None:
         """Project one admitted event into current-state tables (idempotent)."""
 
@@ -4358,6 +8045,9 @@ class IntentRepository:
 
         if event_type == IntentEventType.EVIDENCE_RECORDED.value:
             evidence_id = str(payload["evidence_id"])
+            created_at = _event_timestamp(
+                payload.get("created_at"), noun="evidence recorded created_at"
+            )
             connection.execute(
                 "DELETE FROM evidence_nodes WHERE evidence_id = ?",
                 [evidence_id],
@@ -4375,7 +8065,7 @@ class IntentRepository:
                     str(payload.get("task_cid") or ""),
                     str(payload.get("evidence_kind") or "evidence"),
                     str(payload.get("digest") or ""),
-                    now,
+                    created_at,
                     _canonical(
                         payload.get("body") if isinstance(payload.get("body"), dict) else {},
                         noun="evidence body",
@@ -4407,7 +8097,7 @@ class IntentRepository:
                     [
                         run_id,
                         tcid,
-                        "",
+                        attempt_id,
                         now,
                         now,
                         str(payload.get("outcome") or "passed"),
@@ -4480,7 +8170,12 @@ class IntentRepository:
                         str(payload.get("evidence_digest") or ""),
                         now,
                         _canonical(
-                            {"run_id": run_id, "result_id": result_id},
+                            {
+                                "run_id": run_id,
+                                "result_id": result_id,
+                                "argv": list(payload.get("argv") or ()),
+                                "outcome": str(payload.get("outcome") or "passed"),
+                            },
                             noun="validation evidence",
                         ),
                     ],
@@ -4571,6 +8266,18 @@ class IntentRepository:
 
         if event_type == IntentEventType.ATTEMPT_RECORDED.value:
             attempt_id = str(payload["attempt_id"])
+            status = _status(
+                payload.get("status") or "started",
+                allowed=_ATTEMPT_STATUSES,
+                noun="attempt",
+            )
+            started_at = str(payload.get("started_at") or now)
+            raw_finished_at = str(payload.get("finished_at") or "")
+            finished_at = (
+                raw_finished_at or started_at
+                if status in _TERMINAL_ATTEMPT_STATUSES
+                else ""
+            )
             connection.execute("DELETE FROM task_attempts WHERE attempt_id = ?", [attempt_id])
             connection.execute(
                 """
@@ -4587,9 +8294,9 @@ class IntentRepository:
                     str(payload.get("owner_session_id") or self.session_id),
                     int(payload.get("fencing_token") or 1),
                     1,
-                    now,
-                    "",
-                    str(payload.get("status") or "started"),
+                    started_at,
+                    finished_at,
+                    status,
                     1,
                 ],
             )
@@ -4598,6 +8305,9 @@ class IntentRepository:
         if event_type == IntentEventType.TASK_BLOCKED.value:
             block_id = str(payload["block_id"])
             tcid = str(payload["task_cid"])
+            created_at = _event_timestamp(
+                payload.get("created_at"), noun="task blocked created_at"
+            )
             connection.execute("DELETE FROM task_blocks WHERE block_id = ?", [block_id])
             connection.execute(
                 """
@@ -4612,7 +8322,7 @@ class IntentRepository:
                     str(payload.get("blocker_kind") or "manual"),
                     str(payload.get("blocker_id") or "unknown"),
                     str(payload.get("reason") or "blocked"),
-                    now,
+                    created_at,
                     "",
                     "active",
                 ],
@@ -4622,25 +8332,38 @@ class IntentRepository:
                 UPDATE tasks SET status = 'blocked', revision = ?, updated_at = ?
                 WHERE task_cid = ?
                 """,
-                [int(payload.get("revision") or 1), now, tcid],
+                [int(payload.get("revision") or 1), created_at, tcid],
             )
             return
 
         if event_type == IntentEventType.TASK_UNBLOCKED.value:
             tcid = str(payload["task_cid"])
-            connection.execute(
-                """
-                UPDATE task_blocks SET state = 'cleared', cleared_at = ?
-                WHERE task_cid = ? AND state = 'active'
-                """,
-                [now, tcid],
+            cleared_at = _event_timestamp(
+                payload.get("cleared_at"), noun="task unblocked cleared_at"
             )
+            block_id = str(payload.get("block_id") or "")
+            if block_id:
+                connection.execute(
+                    """
+                    UPDATE task_blocks SET state = 'cleared', cleared_at = ?
+                    WHERE block_id = ? AND task_cid = ?
+                    """,
+                    [cleared_at, block_id, tcid],
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE task_blocks SET state = 'cleared', cleared_at = ?
+                    WHERE task_cid = ? AND state = 'active'
+                    """,
+                    [cleared_at, tcid],
+                )
             connection.execute(
                 """
                 UPDATE tasks SET status = 'ready', revision = ?, updated_at = ?
                 WHERE task_cid = ?
                 """,
-                [int(payload.get("revision") or 1), now, tcid],
+                [int(payload.get("revision") or 1), cleared_at, tcid],
             )
             return
 
@@ -5037,107 +8760,11 @@ class IntentRepository:
 
     def completion_evidence_projection(self, *, task_cids: Sequence[str] = ()) -> Mapping[str, Any]:
         """Return exact current task states and durable completion receipts."""
-
-        requested = _projection_task_cids(task_cids)
         with self._connection(write=False) as connection:
-            connection.execute("BEGIN TRANSACTION")
-            try:
-                if requested:
-                    placeholders = ", ".join("?" for _ in requested)
-                    task_rows = connection.execute(
-                        "SELECT task_cid, status, revision FROM tasks "
-                        f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid",
-                        list(requested),
-                    ).fetchall()
-                    found = {str(row[0]) for row in task_rows}
-                    missing = sorted(set(requested) - found)
-                    if missing:
-                        raise KeyError(
-                            "unknown task_cids in completion projection: " + ", ".join(missing)
-                        )
-                else:
-                    task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
-                    if task_count > MAX_PAGE_LIMIT:
-                        raise IntentRepositoryBoundsError(
-                            "completion projection task count exceeds bound"
-                        )
-                    task_rows = connection.execute(
-                        "SELECT task_cid, status, revision FROM tasks ORDER BY task_cid"
-                    ).fetchall()
-
-                projected_task_cids = tuple(str(row[0]) for row in task_rows)
-                if projected_task_cids:
-                    placeholders = ", ".join("?" for _ in projected_task_cids)
-                    receipt_count = int(
-                        connection.execute(
-                            "SELECT COUNT(*) FROM completion_receipts "
-                            f"WHERE task_cid IN ({placeholders})",
-                            list(projected_task_cids),
-                        ).fetchone()[0]
-                    )
-                    if receipt_count > MAX_EVIDENCE:
-                        raise IntentRepositoryBoundsError(
-                            "completion receipt projection count exceeds bound"
-                        )
-                    receipt_rows = connection.execute(
-                        """
-                        SELECT receipt_cid, task_cid, goal_cid, attempt_id,
-                               claim_cid, fencing_token, completed_at,
-                               validation_run_id, evidence_digest, body_json
-                        FROM completion_receipts
-                        WHERE task_cid IN ("""
-                        + placeholders
-                        + ") ORDER BY task_cid, completed_at, receipt_cid",
-                        list(projected_task_cids),
-                    ).fetchall()
-                else:
-                    receipt_rows = []
-                watermark = int(
-                    connection.execute(
-                        "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
-                    ).fetchone()[0]
-                )
-                connection.execute("COMMIT")
-            except BaseException:
-                try:
-                    connection.execute("ROLLBACK")
-                except Exception:
-                    pass
-                raise
-
-        task_states = [
-            {
-                "task_cid": str(row[0]),
-                "status": str(row[1]),
-                "revision": int(row[2]),
-            }
-            for row in task_rows
-        ]
-        completion_receipts = [
-            {
-                "receipt_cid": str(row[0]),
-                "task_cid": str(row[1]),
-                "goal_cid": str(row[2]),
-                "attempt_id": str(row[3] or ""),
-                "claim_cid": str(row[4] or ""),
-                "fencing_token": int(row[5]),
-                "completed_at": str(row[6]),
-                "validation_run_id": str(row[7] or ""),
-                "evidence_digest": str(row[8]),
-                "body": _decode_json(row[9], noun="completion receipt body"),
-            }
-            for row in receipt_rows
-        ]
-        return _content_addressed_projection(
-            {
-                "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
-                "event_watermark": watermark,
-                "task_states": task_states,
-                "completion_receipts": completion_receipts,
-            },
-            maximum_bytes=MAX_COMPLETION_PROJECTION_BYTES,
-            noun="intent completion projection",
-        )
+            return completion_evidence_projection_on_connection(
+                connection,
+                task_cids=task_cids,
+            )
 
     def plan_revisions(self) -> PlanRevisionRepository:
         """Return the plan-revision repository view over this intent store."""
@@ -5381,6 +9008,154 @@ def missing_current_evidence_on(
 # ---------------------------------------------------------------------------
 
 
+def _stable_goal_authority_projection_on(
+    connection: Any,
+    specification: Mapping[str, Any],
+    *,
+    root_gate_context: Mapping[str, Any] | None = None,
+    transaction_owned_by_caller: bool = False,
+) -> dict[str, Any]:
+    """Read the complete authority projection from one MVCC snapshot.
+
+    Settlement and execution tables are not all coupled to ``domain_events``;
+    an event-watermark sandwich alone therefore cannot prove that the many
+    normalized reads observed one database state.  Quack permits transaction
+    control while keeping data SQL read-only, so this helper owns a short read
+    transaction unless its caller already owns one.  The watermark remains an
+    additional integrity assertion inside that snapshot.
+    """
+
+    transaction_state = getattr(connection, "in_transaction", False)
+    if callable(transaction_state):
+        transaction_state = transaction_state()
+    nested = transaction_owned_by_caller or transaction_state is True
+    owns_transaction = False
+    if not nested:
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            owns_transaction = True
+        except Exception as exc:
+            # Some DB-API adapters do not expose transaction state.  Preserve
+            # a caller-owned transaction only when the backend explicitly says
+            # that one is already active; all other begin failures fail closed.
+            message = str(exc).strip().lower()
+            if not any(
+                marker in message
+                for marker in (
+                    "transaction already active",
+                    "already in a transaction",
+                    "cannot start a transaction within a transaction",
+                )
+            ):
+                raise IntentRepositoryConflictError(
+                    "goal authority projection could not start an MVCC read transaction"
+                ) from exc
+            nested = True
+    try:
+        before_row = connection.execute(
+            "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+        ).fetchone()
+        before = int(before_row[0] if before_row else 0)
+        projection, _internal = IntentRepository._goal_authority_state_on(
+            connection,
+            specification,
+            root_gate_context=root_gate_context,
+        )
+        after_row = connection.execute(
+            "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+        ).fetchone()
+        after = int(after_row[0] if after_row else 0)
+        if before != int(projection.get("event_watermark") or 0) or before != after:
+            raise IntentRepositoryConflictError(
+                "goal authority projection changed inside its MVCC snapshot"
+            )
+        if owns_transaction:
+            connection.execute("COMMIT")
+            owns_transaction = False
+        return projection
+    except BaseException:
+        if owns_transaction:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+
+
+def goal_authority_projection_on_connection(
+    connection: Any,
+    specification: Mapping[str, Any],
+    *,
+    root_gate_context: Mapping[str, Any] | None = None,
+    transaction_owned_by_caller: bool = False,
+) -> Mapping[str, Any]:
+    """Project goal authority on an already admitted read connection.
+
+    The VRIF status operator uses its authenticated Quack attachment here so
+    it does not open the live DuckDB file or create a second transport session.
+    This helper contains no mutation path.
+    """
+
+    if not callable(getattr(connection, "execute", None)):
+        raise IntentRepositoryIntegrityError(
+            "goal authority projection requires a readable connection"
+        )
+    projection = _stable_goal_authority_projection_on(
+        connection,
+        specification,
+        root_gate_context=root_gate_context,
+        transaction_owned_by_caller=transaction_owned_by_caller,
+    )
+    return _content_addressed_projection(
+        projection,
+        maximum_bytes=MAX_GOAL_AUTHORITY_PROJECTION_BYTES,
+        noun="goal authority projection",
+    )
+
+
+def completion_evidence_projection_on_connection(
+    connection: Any,
+    *,
+    task_cids: Sequence[str],
+    transaction_owned_by_caller: bool = False,
+) -> Mapping[str, Any]:
+    """Project exact completion evidence on one admitted read connection.
+
+    The typed state owner passes ``transaction_owned_by_caller=True`` while it
+    holds its sole connection lock and MVCC transaction. Other callers receive
+    a short self-owned read transaction. No database path or write surface is
+    accepted here.
+    """
+
+    if not callable(getattr(connection, "execute", None)):
+        raise IntentRepositoryIntegrityError(
+            "completion evidence projection requires a readable connection"
+        )
+    requested = _projection_task_cids(task_cids)
+    owns_transaction = False
+    if not transaction_owned_by_caller:
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            owns_transaction = True
+        except Exception as exc:
+            raise IntentRepositoryConflictError(
+                "completion projection could not start an MVCC read transaction"
+            ) from exc
+    try:
+        projection = _completion_evidence_projection_on(connection, requested)
+        if owns_transaction:
+            connection.execute("COMMIT")
+            owns_transaction = False
+        return projection
+    except BaseException:
+        if owns_transaction:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+
+
 def open_intent_repository(
     database_path: str | Path | None = None,
     *,
@@ -5411,6 +9186,13 @@ __all__ = (
     "PLAN_REVISION_REPOSITORY_SCHEMA",
     "INTENT_PLAN_PROJECTION_SCHEMA",
     "INTENT_COMPLETION_PROJECTION_SCHEMA",
+    "GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA",
+    "GOAL_COMPLETION_RECEIPT_SCHEMA",
+    "GOAL_ROOT_COMPLETION_GATE_SCHEMA",
+    "GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA",
+    "GOAL_AUTHORITY_PROJECTION_SCHEMA",
+    "GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA",
+    "GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA",
     "TASK_PROJECTION_SPEC_SCHEMA",
     "TASK_AUTHORITY_SPEC_SCHEMA",
     "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
@@ -5418,6 +9200,7 @@ __all__ = (
     "MAX_TASK_PROJECTION_BYTES",
     "MAX_PLAN_PROJECTION_BYTES",
     "MAX_COMPLETION_PROJECTION_BYTES",
+    "MAX_GOAL_AUTHORITY_PROJECTION_BYTES",
     "IntentEventType",
     "IntentRepository",
     "IntentRepositoryError",
@@ -5437,6 +9220,8 @@ __all__ = (
     "PlanRevisionRepository",
     "task_projection_spec_cid",
     "task_authority_spec_cid",
+    "completion_evidence_projection_on_connection",
+    "goal_authority_projection_on_connection",
     "open_intent_repository",
     "duckdb_available",
 )

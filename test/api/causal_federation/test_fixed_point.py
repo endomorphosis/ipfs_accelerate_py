@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
+    FederationContractError,
+    UnknownNormativeFieldError,
+)
 from ipfs_accelerate_py.agent_supervisor.federation.fixed_point import (
     FederationFixedPointDetector,
     FixedPointAuthorityError,
     FixedPointError,
     FixedPointObservation,
+    FixedPointReceipt,
     FixedPointStore,
 )
 from ipfs_accelerate_py.agent_supervisor.federation.world_snapshot import (
@@ -82,6 +89,126 @@ def test_conjunctive_predicate_admits_a_true_fixed_point() -> None:
     assert diagnostics.at_fixed_point is True
     assert diagnostics.false_quiet is False
     assert diagnostics.failed_predicates == ()
+
+
+def test_fixed_point_receipt_has_an_exact_canonical_wire_round_trip() -> None:
+    receipt = _detect(_observation())
+
+    wire = receipt.to_dict()
+
+    assert wire == {
+        "schema": FixedPointReceipt.SCHEMA,
+        "world_snapshot_ref": receipt.world_snapshot_ref,
+        "event_watermark": 7,
+        "outstanding_required_work": 0,
+        "fencing_epoch": 2,
+        "outcome": "fixed_point",
+        "evidence_refs": list(receipt.evidence_refs),
+        "receipt_id": receipt.cid,
+    }
+    assert FixedPointReceipt.from_dict(wire) == receipt
+    assert FixedPointReceipt.SCHEMA.endswith("fixed-point-receipt@2")
+    assert receipt.to_dict(include_identity=False) == {
+        key: value for key, value in wire.items() if key != "receipt_id"
+    }
+
+
+def test_fixed_point_receipt_identity_binds_evidence_refs() -> None:
+    receipt = _detect(_observation())
+    changed = replace(
+        receipt,
+        evidence_refs=(receipt.evidence_refs[0], "watermark:8"),
+    )
+
+    assert changed.cid != receipt.cid
+    assert changed.to_dict()["receipt_id"] == changed.cid
+
+    transplanted = changed.to_dict()
+    transplanted["receipt_id"] = receipt.cid
+    with pytest.raises(FederationContractError, match="identity mismatches"):
+        FixedPointReceipt.from_dict(transplanted)
+
+
+def test_fixed_point_receipt_decoder_rejects_noncanonical_wire_shapes() -> None:
+    receipt = _detect(_observation())
+
+    with pytest.raises(FederationContractError, match="exact JSON object"):
+        FixedPointReceipt.from_dict(MappingProxyType(receipt.to_dict()))
+
+    unknown = receipt.to_dict()
+    unknown["caller_claimed_complete"] = True
+    with pytest.raises(UnknownNormativeFieldError, match="unknown fields"):
+        FixedPointReceipt.from_dict(unknown)
+
+    missing = receipt.to_dict()
+    missing.pop("event_watermark")
+    with pytest.raises(FederationContractError, match="missing fields"):
+        FixedPointReceipt.from_dict(missing)
+
+    wrong_schema = receipt.to_dict()
+    wrong_schema["schema"] = "foreign/fixed-point-receipt@1"
+    with pytest.raises(FederationContractError, match="schema must equal"):
+        FixedPointReceipt.from_dict(wrong_schema)
+
+    tuple_encoded = receipt.to_dict()
+    tuple_encoded["evidence_refs"] = tuple(receipt.evidence_refs)
+    with pytest.raises(FederationContractError, match="canonical array"):
+        FixedPointReceipt.from_dict(tuple_encoded)
+
+    class _ListSubclass(list):
+        pass
+
+    subclass_encoded = receipt.to_dict()
+    subclass_encoded["evidence_refs"] = _ListSubclass(receipt.evidence_refs)
+    with pytest.raises(FederationContractError, match="canonical array"):
+        FixedPointReceipt.from_dict(subclass_encoded)
+
+    class _AlwaysEqual(str):
+        def __eq__(self, _other: object) -> bool:
+            return True
+
+        __hash__ = str.__hash__
+
+    adversarial_schema = receipt.to_dict()
+    adversarial_schema["schema"] = _AlwaysEqual("legacy-or-foreign")
+    with pytest.raises(FederationContractError, match="exact string"):
+        FixedPointReceipt.from_dict(adversarial_schema)
+
+    adversarial_identity = receipt.to_dict()
+    adversarial_identity["receipt_id"] = _AlwaysEqual("forged")
+    with pytest.raises(FederationContractError, match="identity mismatches"):
+        FixedPointReceipt.from_dict(adversarial_identity)
+
+
+def test_legacy_v1_fixed_point_receipt_is_audit_only() -> None:
+    receipt = _detect(_observation())
+    legacy = receipt.to_dict()
+    legacy["schema"] = FixedPointReceipt.LEGACY_SCHEMA
+
+    with pytest.raises(FixedPointAuthorityError, match="audit-only"):
+        FixedPointReceipt.from_dict(legacy)
+
+
+def test_fixed_point_receipt_decoder_rejects_invalid_semantics() -> None:
+    receipt = _detect(_observation())
+
+    duplicate_evidence = receipt.to_dict()
+    duplicate_evidence["evidence_refs"] = [
+        receipt.evidence_refs[0],
+        receipt.evidence_refs[0],
+    ]
+    with pytest.raises(FederationContractError, match="contains duplicates"):
+        FixedPointReceipt.from_dict(duplicate_evidence)
+
+    nonzero_work = receipt.to_dict()
+    nonzero_work["outstanding_required_work"] = 1
+    with pytest.raises(FixedPointAuthorityError, match="outstanding required work"):
+        FixedPointReceipt.from_dict(nonzero_work)
+
+    boolean_watermark = receipt.to_dict()
+    boolean_watermark["event_watermark"] = True
+    with pytest.raises(FederationContractError, match="must be an integer"):
+        FixedPointReceipt.from_dict(boolean_watermark)
 
 
 def test_outstanding_work_fails_the_conjunctive_predicate() -> None:

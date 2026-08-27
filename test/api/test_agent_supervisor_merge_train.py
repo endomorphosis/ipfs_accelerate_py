@@ -3,15 +3,19 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
     MergeQueue,
     MergeRequest,
 )
@@ -20,6 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     conflict_fingerprint,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DatabasePortalExecutionBridge,
 )
@@ -188,6 +195,254 @@ def _quarantine_invalid_authority_projection(
     return request
 
 
+def test_database_projection_checkout_lease_exemption_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:lease-classification",
+        claim_id="claim:lease-classification",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(),
+    )
+
+    # A verified projection is still fenced until Git proves it is disposable.
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    relative = paths.task_projection.resolve().relative_to(repo).as_posix()
+    daemon.implementation_protected_paths = (relative,)
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+    daemon.implementation_protected_paths = ()
+
+    binding = json.loads(paths.binding.read_text(encoding="utf-8"))
+    binding["projection_authority"] = True
+    paths.binding.write_text(
+        json.dumps(binding, sort_keys=True),
+        encoding="utf-8",
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+
+def test_database_projection_checkout_lease_exemption_rejects_nested_repo(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:nested-repository",
+        claim_id="claim:nested-repository",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(),
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    nested_repo = paths.task_projection.parent
+    _git(nested_repo, "init", "-b", "nested")
+    _git(nested_repo, "config", "user.name", "Nested Projection Test")
+    _git(
+        nested_repo,
+        "config",
+        "user.email",
+        "nested-projection@example.invalid",
+    )
+    _git(nested_repo, "add", "task-projection.md")
+    _git(nested_repo, "commit", "-m", "track nested projection")
+
+    # The outer repository still reports the path ignored, but it must not
+    # authorize a lease exemption for a tracked file in another checkout.
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+
+def test_database_projection_completion_survives_foreign_checkout_lease(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:lease-contention",
+        claim_id="claim:lease-contention",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(task_cid=task_cid),
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_payload = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="FOREIGN-MERGE",
+        branch="implementation/foreign",
+        owner_script="",
+        extra={"operation": "merge_train_callback"},
+    )
+    lock_path.write_text(
+        json.dumps(lock_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    result = daemon._mark_task_completed_in_todo(
+        "REF-040",
+        expected_task_cids={"REF-040": task_cid},
+    )
+
+    assert result["updated"] is True
+    assert result["completion_receipts"] == [
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "task_id": "REF-040",
+            "canonical_task_key": result["completion_receipts"][0][
+                "canonical_task_key"
+            ],
+            "canonical_task_cid": task_cid,
+            "board_namespace": "task-projection.md",
+            "status": "succeeded",
+        }
+    ]
+    assert daemon._todo_completion_is_durable(result) is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    # The ignored attempt projection is durable without a Git commit.  The
+    # no-change commit probe therefore never contends with the foreign
+    # checkout lease.
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == lock_payload
+
+
+def test_synchronous_callback_completes_ignored_projection_under_foreign_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:synchronous-lock-contention",
+        claim_id="claim:synchronous-lock-contention",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(task_cid=task_cid),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/synchronous-lock")
+    (repo / "base.txt").write_text(
+        "synchronous callback with foreign lease\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "synchronous lock candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    [task] = daemon._load_tasks()
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/synchronous-lock",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_payload = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="FOREIGN-MERGE",
+        branch="implementation/foreign",
+        owner_script="",
+        extra={"operation": "merge_train_callback"},
+    )
+    original_completion = daemon._mark_task_completed_in_todo
+
+    def complete_while_foreign_lease_is_live(*args: object, **kwargs: object):
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(
+            json.dumps(lock_payload, sort_keys=True),
+            encoding="utf-8",
+        )
+        return original_completion(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_completed_in_todo",
+        complete_while_foreign_lease_is_live,
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["merge_reconciliation_receipt"]["recorded"] is True
+    receipts = result["todo_update_result"]["completion_receipts"]
+    assert {
+        receipt["task_id"]: receipt["canonical_task_cid"]
+        for receipt in receipts
+    } == {"REF-040": task_cid}
+    assert daemon._todo_completion_is_durable(
+        result["todo_update_result"]
+    ) is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == lock_payload
+    events = daemon._iter_merge_lifecycle_events()
+    event_types = [event["type"] for event in events]
+    assert event_types.index("worktree_reconciliation_candidate_queued") < (
+        event_types.index("merge_reconciled")
+    )
+    assert event_types.index("merge_reconciled") < event_types.index(
+        "todo_status_updated"
+    )
+
+
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
     queue = MergeQueue(tmp_path / "queue")
     first = queue.enqueue(
@@ -314,6 +569,8 @@ def test_queue_can_revive_false_positive_quarantine(tmp_path: Path) -> None:
             "previous_failure_reason": "pending request exceeded max age",
         }
     ]
+
+
 
 
 def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
@@ -619,6 +876,8 @@ def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path
     assert queue.pending_count() == 0
 
 
+
+
 def test_one_conflict_fingerprint_has_one_active_resolver_attempt(tmp_path: Path) -> None:
     registry = MergeResolverRegistry(tmp_path / "resolver", max_attempts=2)
     event = {
@@ -665,9 +924,11 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
 
     lane_a = daemon("lane-a")
     lane_b = daemon("lane-b")
+    target_branch = lane_a.resolved_merge_target_branch
     assert lane_a.merge_queue.database_path == lane_b.merge_queue.database_path
     assert lane_a.merge_queue_dir.parent == repo / ".git" / "agent-merge-trains"
-    assert lane_a.merge_queue.target_branch == "main"
+    assert target_branch == "implementation/tasks"
+    assert lane_a.merge_queue.target_branch == target_branch
 
     task = PortalTask(
         task_id="REF-038",
@@ -691,7 +952,7 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     assert result["queued"] is True
     assert request.commit_sha == commit
     assert request.target_repository_id == lane_a.merge_target_repository_id
-    assert request.target_branch == "main"
+    assert request.target_branch == target_branch
     assert request.has_target_binding is True
     assert lane_b.merge_queue.has_pending_for_task(identity.canonical_task_cid, commit_sha=commit)
 
@@ -726,7 +987,7 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     rejected = lane_a._merge_train_callback(foreign_request)
 
     assert rejected["reason"] == "merge_target_binding_mismatch"
-    assert rejected["expected_target_branch"] == "main"
+    assert rejected["expected_target_branch"] == target_branch
     assert rejected["actual_target_branch"] == "benchmark/semantic-roundtrip"
     assert lane_a.merge_queue.pending_count() == 1
     assert benchmark_lane.merge_queue.pending_count() == 1
@@ -796,7 +1057,394 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
 
 
-def test_database_portal_retry_continues_merge_into_current_projection(
+def test_database_portal_projection_continues_into_shared_board(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    producer, _producer_paths, producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(revision=2),
+    )
+    board = repo / "board.md"
+    board.write_text(
+        "## REF-040 Continue one exact database task merge\n\n"
+        "- Status: todo\n\n"
+        "## REF-041 Other task\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    consumer_state = tmp_path / "shared-board"
+    consumer = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=consumer_state / "state.json",
+        strategy_path=consumer_state / "strategy.json",
+        events_path=consumer_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch=producer.resolved_merge_target_branch,
+        merge_queue_dir=merge_queue_dir,
+        worktree_pool_enabled=False,
+    )
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040-shared",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+
+    result = consumer._merge_train_callback(request)
+
+    assert result.get("already_merged") is True or result.get("merged") is True
+    continuation = result["database_portal_merge_continuation"]
+    assert continuation["task_id"] == "REF-040"
+    assert continuation["task_cid"] == task_cid
+    assert continuation["producer_binding_id"] == producer_binding["binding_id"]
+    assert result.get("reason") != (
+        "cross_board_manual_completion_authority_metadata_invalid"
+    )
+
+
+def test_portal_projection_cross_board_quarantine_revives_when_outputs_landed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(repo, "add", "side.txt")
+    _git(repo, "commit", "-m", "side")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantined_candidate_is_integrated(quarantined) is False
+    assert train._quarantine_auto_recovery_allowed(quarantined) is True
+    assert train.portal_declared_outputs_match_target(quarantined) is True
+    assert train._quarantine_may_auto_recover(quarantined) is True
+
+    processed: list[str] = []
+
+    def process_claimed(_request: object) -> dict[str, object]:
+        current = queue.get(request.request_id)
+        assert current is not None
+        processed.append(str(current.status))
+        return {
+            "already_merged": True,
+            "reason": "declared_outputs_already_on_target",
+        }
+
+    monkeypatch.setattr(train, "_process_claimed", process_claimed)
+    result = train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+    )
+    assert result is not None
+    assert processed
+
+
+
+
+def test_existing_declared_output_with_different_candidate_content_is_merged(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/replace-output")
+    (repo / "base.txt").write_text("candidate output\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "replace declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    target_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/replace-output",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(
+                tmp_path / "attempts" / "replace" / "task-projection.md"
+            ),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    train = MergeTrain(repo, queue)
+
+    assert train.portal_declared_outputs_match_target(request) is False
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "merged"
+    assert result.get("merged") is True
+    assert result.get("reason") != "declared_outputs_already_on_target"
+    assert result.get("mutation_short_circuited") is not True
+    assert _git(repo, "rev-parse", "HEAD") != target_before
+    assert (repo / "base.txt").read_text(encoding="utf-8") == (
+        "candidate output\n"
+    )
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+@pytest.mark.parametrize("mutation", ("mode", "deletion"))
+def test_declared_output_mode_and_deletion_differences_are_merged(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repo = _repo(tmp_path)
+    branch = f"implementation/{mutation}-output"
+    _git(repo, "switch", "-c", branch)
+    if mutation == "mode":
+        (repo / "base.txt").chmod(0o755)
+        _git(repo, "add", "base.txt")
+    else:
+        (repo / "base.txt").unlink()
+        _git(repo, "add", "-u", "base.txt")
+    _git(repo, "commit", "-m", f"{mutation} declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name=branch,
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(
+                tmp_path / "attempts" / mutation / "task-projection.md"
+            ),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    train = MergeTrain(repo, queue)
+
+    assert train.portal_declared_outputs_match_target(request) is False
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "merged"
+    assert result.get("reason") != "declared_outputs_already_on_target"
+    if mutation == "mode":
+        assert _git(repo, "ls-tree", "HEAD", "--", "base.txt").startswith(
+            "100755 blob "
+        )
+    else:
+        assert not (repo / "base.txt").exists()
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+def test_declared_output_comparison_is_config_independent_for_gitlinks(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    first_gitlink = _git(repo, "rev-parse", "HEAD")
+    second_gitlink = _git(
+        repo,
+        "commit-tree",
+        "HEAD^{tree}",
+        "-p",
+        "HEAD",
+        "-m",
+        "alternate gitlink object",
+    )
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{first_gitlink},nested",
+    )
+    _git(repo, "commit", "-m", "target gitlink")
+    _git(repo, "switch", "-c", "implementation/gitlink-output")
+    _git(
+        repo,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{second_gitlink},nested",
+    )
+    _git(repo, "commit", "-m", "candidate gitlink")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(repo, "config", "diff.ignoreSubmodules", "all")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/gitlink-output",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": ["nested"]}},
+    )
+    train = MergeTrain(repo, queue)
+
+    assert (
+        train.portal_declared_outputs_match_commit_state(
+            request,
+            _git(repo, "rev-parse", "main"),
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "output",
+    ("missing.txt", "../escape.txt", "./base.txt", "base\\path.txt"),
+)
+def test_declared_output_comparison_rejects_unproved_or_noncanonical_paths(
+    tmp_path: Path,
+    output: str,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="main",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": [output]}},
+    )
+    train = MergeTrain(repo, queue)
+
+    assert (
+        train.portal_declared_outputs_match_commit_state(request, candidate)
+        is None
+    )
+    assert train.portal_declared_outputs_match_target(request) is False
+
+
+def test_declared_output_and_ancestry_git_errors_remain_indeterminate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="main",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": ["base.txt"]}},
+    )
+    train = MergeTrain(repo, queue)
+    original_git = train._git
+
+    def fail_tree_read(*args: str, **kwargs: object) -> object:
+        if args and args[0] == "ls-tree":
+            return subprocess.CompletedProcess(
+                ["git", *args],
+                128,
+                stdout="",
+                stderr="fixture tree failure",
+            )
+        return original_git(*args, **kwargs)
+
+    monkeypatch.setattr(train, "_git", fail_tree_read)
+    assert (
+        train.portal_declared_outputs_match_commit_state(request, candidate)
+        is None
+    )
+
+    monkeypatch.setattr(
+        train,
+        "_git",
+        lambda *args, **_kwargs: subprocess.CompletedProcess(
+            ["git", *args],
+            128,
+            stdout="",
+            stderr="fixture ancestry failure",
+        ),
+    )
+    assert train._is_ancestor_state(candidate, candidate) is None
+    assert train._is_ancestor(candidate, candidate) is False
+
+
+def test_database_portal_retry_consumer_continues_merge_into_current_projection(
     tmp_path: Path,
 ) -> None:
     repo = _repo(tmp_path)
@@ -878,6 +1526,703 @@ def test_database_portal_retry_continues_merge_into_current_projection(
     )
     assert "- Status: completed" in consumer_paths.task_projection.read_text(
         encoding="utf-8"
+    )
+
+
+def test_database_portal_retry_continues_merge_into_current_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(
+            revision=2,
+            allowed_paths="base.txt",
+        ),
+    )
+    consumer, consumer_paths, consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(
+            revision=4,
+            allowed_paths="base.txt",
+        ),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/ref-040")
+    (repo / "base.txt").write_text(
+        "database continuation candidate\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "database continuation candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = producer._load_tasks()[0]
+    request, queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    producer._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    [producer_source] = [
+        event
+        for event in producer._iter_merge_lifecycle_events()
+        if event.get("type") == "implementation_finished"
+    ]
+
+    result = consumer._merge_train_callback(request)
+
+    assert result.get("merged") is True
+    continuation = result["database_portal_merge_continuation"]
+    assert continuation["task_id"] == "REF-040"
+    assert continuation["task_cid"] == task_cid
+    assert continuation["producer_binding_id"] == producer_binding["binding_id"]
+    assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    consumer_events = [
+        json.loads(line)
+        for line in consumer_paths.events.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event.get("type") == "todo_status_updated"
+        and event.get("task_id") == "REF-040"
+        for event in consumer_events
+    )
+    [local_source] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "worktree_reconciliation_candidate_queued"
+    ]
+    [reconciled] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "merge_reconciled"
+    ]
+    assert consumer_events.index(local_source) < consumer_events.index(reconciled)
+    assert not any(
+        event.get("type") == "task_completed" for event in consumer_events
+    )
+    provenance = local_source["database_portal_merge_continuation_source"]
+    assert (
+        provenance["producer_completion_source_event_id"]
+        == producer_source["event_id"]
+    )
+    assert provenance["producer_binding_id"] == producer_binding["binding_id"]
+    assert provenance["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert provenance["producer_projection_path"] == str(
+        producer_paths.task_projection.resolve()
+    )
+    assert provenance["producer_state_path"] == str(
+        producer_paths.state.resolve()
+    )
+    assert provenance["producer_events_path"] == str(
+        producer_paths.events.resolve()
+    )
+    assert reconciled["completion_source_event_id"] == local_source["event_id"]
+    assert reconciled["database_portal_merge_continuation_source"] == provenance
+
+    before_replay = consumer_paths.events.read_bytes()
+    monkeypatch.setattr(
+        consumer,
+        "_completion_daemon_for_merge_request",
+        lambda _metadata: pytest.fail(
+            "sealed local replay reopened producer history"
+        ),
+    )
+    replay = consumer._merge_train_callback(request)
+    assert replay.get("merged") is True or replay.get("already_merged") is True
+    assert replay["merge_reconciliation_receipt"]["replayed"] is True
+    assert consumer_paths.events.read_bytes() == before_replay
+
+    consumer.merge_queue.cancel(
+        request.request_id,
+        reason="direct_callback_already_integrated",
+    )
+    consumer.run_once()
+    consumer_events = [
+        json.loads(line)
+        for line in consumer_paths.events.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event.get("type") == "task_completed"
+        and event.get("task_id") == "REF-040"
+        for event in consumer_events
+    )
+    [task_completed] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "task_completed"
+        and event.get("task_id") == "REF-040"
+    ]
+    assert consumer_events.index(reconciled) < consumer_events.index(task_completed)
+    producer_events = (
+        [
+            json.loads(line)
+            for line in producer_paths.events.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        if producer_paths.events.exists()
+        else []
+    )
+    assert not any(event.get("type") == "task_completed" for event in producer_events)
+
+
+def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:delayed-callback",
+        claim_id="claim:delayed-callback",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/delayed-callback")
+    (repo / "base.txt").write_text("delayed candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "delayed callback candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/delayed-callback",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    [source] = [
+        event
+        for event in daemon._iter_merge_lifecycle_events()
+        if event.get("type") == "implementation_finished"
+    ]
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["target_commit"] == result["merge_commit"]
+    events = daemon._iter_merge_lifecycle_events()
+    [reconciled] = [
+        event for event in events if event.get("type") == "merge_reconciled"
+    ]
+    assert events.index(source) < events.index(reconciled)
+    assert not any(event.get("type") == "task_completed" for event in events)
+    assert reconciled["resolved"] is True
+    assert reconciled["task_id"] == task.task_id
+    assert reconciled["canonical_task_cid"] == task_cid
+    assert reconciled["attempt"] == 1
+    assert reconciled["request_id"] == request.request_id
+    assert reconciled["completion_source_event_id"] == source["event_id"]
+    assert reconciled["baseline_ref"] == baseline
+    assert reconciled["implementation_commit"] == candidate
+    assert reconciled["landed_commit"] == candidate
+    assert reconciled["merge_commit"] == result["merge_commit"]
+    assert reconciled["target_commit"] == result["merge_commit"]
+    assert reconciled["merge_result"]["merged"] is True
+    assert reconciled["merge_result"]["queued"] is False
+    assert reconciled["integration_commit_proof"]["passed"] is True
+    evidence = reconciled["completion_receipt_evidence"]
+    assert evidence["completion_task_cids"] == {task.task_id: task_cid}
+    assert evidence["completion_receipts"][0]["canonical_task_cid"] == task_cid
+    assert evidence["receipt_id"] == content_identity(
+        {key: value for key, value in evidence.items() if key != "receipt_id"}
+    )
+
+    before_replay = paths.events.read_bytes()
+    replay = daemon._merge_train_callback(request)
+
+    assert (
+        replay.get("merged") is True or replay.get("already_merged") is True
+    ), replay
+    assert replay["merge_reconciliation_receipt"]["replayed"] is True
+    assert paths.events.read_bytes() == before_replay
+
+    for tamper in ("extra_field", "foreign_completion_receipts"):
+        forged = json.loads(json.dumps(reconciled))
+        if tamper == "extra_field":
+            forged["attacker_extension"] = True
+        else:
+            forged_evidence = forged["completion_receipt_evidence"]
+            forged_evidence["completion_receipts"][0][
+                "attacker_extension"
+            ] = True
+            forged_evidence["receipt_id"] = content_identity(
+                {
+                    key: value
+                    for key, value in forged_evidence.items()
+                    if key != "receipt_id"
+                }
+            )
+        forged_events = [
+            forged if event.get("event_id") == reconciled["event_id"] else event
+            for event in events
+        ]
+        monkeypatch.setattr(
+            daemon,
+            "_iter_merge_lifecycle_events",
+            lambda forged_events=forged_events: forged_events,
+        )
+        conflict = daemon._record_merge_queue_callback_reconciliation(
+            request=request,
+            task=task,
+            metadata=request.metadata,
+            implementation_commit=candidate,
+            integration_commit=result["merge_commit"],
+            integration_commit_proof=result["integration_commit_proof"],
+            completion_task_cids=request.metadata["completion_task_cids"],
+            completion_receipts=result["todo_update_result"][
+                "completion_receipts"
+            ],
+            declared_output_invariant=result[
+                "post_merge_declared_output_invariant"
+            ],
+        )
+        assert conflict["recorded"] is False
+        assert conflict["reason"] == (
+            "merge_queue_reconciliation_receipt_conflict"
+        )
+
+
+def test_synchronous_schema_v3_callback_projects_source_before_completion(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:synchronous-callback",
+        claim_id="claim:synchronous-callback",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/synchronous-callback")
+    (repo / "base.txt").write_text(
+        "synchronous callback candidate\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "synchronous callback candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", f"{candidate}^{{tree}}")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/synchronous-callback",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    events = daemon._iter_merge_lifecycle_events()
+    [enqueue_source] = [
+        event
+        for event in events
+        if event.get("type") == "merge_candidate_enqueued"
+    ]
+    [projected_source] = [
+        event
+        for event in events
+        if event.get("type")
+        == "worktree_reconciliation_candidate_queued"
+    ]
+    [reconciled] = [
+        event for event in events if event.get("type") == "merge_reconciled"
+    ]
+    [todo_updated] = [
+        event for event in events if event.get("type") == "todo_status_updated"
+    ]
+    assert events.index(enqueue_source) < events.index(projected_source)
+    assert events.index(projected_source) < events.index(reconciled)
+    assert events.index(reconciled) < events.index(todo_updated)
+    assert not any(
+        event.get("type") in {"implementation_finished", "task_completed"}
+        for event in events
+    )
+    provenance = projected_source["merge_queue_synchronous_source"]
+    assert provenance["merge_candidate_enqueued_event_id"] == (
+        enqueue_source["event_id"]
+    )
+    assert provenance["portal_attempt"] == 1
+    assert provenance["baseline_ref"] == baseline
+    assert provenance["implementation_commit"] == candidate
+    assert provenance["validation_target_commit"] == candidate
+    assert provenance["validation_target_tree"] == candidate_tree
+    assert provenance["validation_repository_tree_id"] == (
+        f"git-tree:{candidate_tree}"
+    )
+    assert reconciled["completion_source_event_id"] == (
+        projected_source["event_id"]
+    )
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+    terminal_merge = dict(queued)
+    terminal_merge.update(
+        {
+            "attempted": True,
+            "merged": True,
+            "queued": False,
+            "merge_commit": result["merge_commit"],
+            "target_commit": result["merge_commit"],
+        }
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": terminal_merge,
+            "board_completion": {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "merged_into_target",
+            },
+        },
+    )
+    replay = daemon._record_merge_queue_callback_reconciliation(
+        request=request,
+        task=task,
+        metadata=request.metadata,
+        implementation_commit=candidate,
+        integration_commit=result["merge_commit"],
+        integration_commit_proof=result["integration_commit_proof"],
+        completion_task_cids=request.metadata["completion_task_cids"],
+        completion_receipts=result["todo_update_result"][
+            "completion_receipts"
+        ],
+        declared_output_invariant=result[
+            "post_merge_declared_output_invariant"
+        ],
+    )
+    assert replay["recorded"] is True
+    assert replay["replayed"] is True
+
+
+def test_missing_callback_source_never_publishes_completion(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:missing-callback-source",
+        claim_id="claim:missing-callback-source",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/missing-callback-source")
+    (repo / "base.txt").write_text(
+        "candidate whose source is unavailable\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "missing callback source candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/missing-callback-source",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    paths.events.unlink()
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["completion_skipped"] is True
+    assert result["reason"] == "merge_queue_reconciliation_source_pending"
+    assert "todo_update_result" not in result
+    assert "- Status: ready" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    events = daemon._iter_merge_lifecycle_events()
+    assert not any(
+        event.get("type")
+        in {
+            "worktree_reconciliation_candidate_queued",
+            "merge_reconciled",
+            "todo_status_updated",
+            "task_completed",
+        }
+        for event in events
+    )
+
+
+def test_reconciliation_failure_precedes_all_completion_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:reconciliation-failure",
+        claim_id="claim:reconciliation-failure",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/reconciliation-failure")
+    (repo / "base.txt").write_text(
+        "integrated without completion publication\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "reconciliation failure candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/reconciliation-failure",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    observed_receipts: list[dict[str, object]] = []
+
+    def reject_reconciliation(**kwargs: object) -> dict[str, object]:
+        observed_receipts.extend(
+            dict(receipt)
+            for receipt in kwargs["completion_receipts"]  # type: ignore[index]
+        )
+        return {
+            "recorded": False,
+            "reason": "forced_reconciliation_failure",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        reject_reconciliation,
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "forced_reconciliation_failure"
+    assert result["completion_skipped"] is True
+    assert result["integration_occurred"] is True
+    assert "todo_update_result" not in result
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        candidate,
+        daemon.resolved_merge_target_branch,
+    ) == ""
+    assert "- Status: ready" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert observed_receipts == [
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "task_id": task.task_id,
+            "canonical_task_key": request.canonical_task_key,
+            "canonical_task_cid": task_cid,
+            "board_namespace": observed_receipts[0]["board_namespace"],
+            "status": "succeeded",
+        }
+    ]
+    events = daemon._iter_merge_lifecycle_events()
+    assert not any(
+        event.get("type")
+        in {"merge_reconciled", "todo_status_updated", "task_completed"}
+        for event in events
     )
 
 
@@ -995,6 +2340,9 @@ def test_database_portal_sibling_request_stays_pending_for_its_producer(
         "attempt_order",
         "goal_mismatch",
         "plan_mismatch",
+        "producer_events_path",
+        "producer_state_path",
+        "producer_events_symlink",
     ),
 )
 def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
@@ -1010,7 +2358,9 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
         attempt_number=1,
     )
     consumer_task_cid = (
-        "task:cid:other" if tamper == "task_cid_mismatch" else "task:cid:ref-040"
+        "task:cid:other"
+        if tamper == "task_cid_mismatch"
+        else "task:cid:ref-040"
     )
     consumer_attempt = _database_projection_attempt(
         attempt_id="attempt:consumer",
@@ -1083,6 +2433,36 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
             "selection": {"scope": "pre_merge"},
         },
     )
+    if tamper == "producer_events_path":
+        request.metadata["events_path"] = str(
+            tmp_path / "foreign-events.jsonl"
+        )
+    elif tamper == "producer_state_path":
+        request.metadata["state_path"] = str(
+            tmp_path / "foreign-state.json"
+        )
+    elif tamper == "producer_events_symlink":
+        foreign_events = tmp_path / "foreign-events.jsonl"
+        foreign_events.write_bytes(producer_paths.events.read_bytes())
+        producer_paths.events.unlink()
+        producer_paths.events.symlink_to(foreign_events)
+    if tamper in {"producer_events_path", "producer_state_path"}:
+        # ``MergeQueue`` persists metadata by value.  Corrupt the durable row
+        # so the consumer-side queue filter observes the tamper instead of
+        # merely changing the detached request returned by ``enqueue``.
+        with producer.merge_queue._connect() as connection:
+            connection.execute(
+                "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+                (
+                    json.dumps(
+                        request.metadata,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    request.request_id,
+                ),
+            )
+            connection.commit()
     target_before = _git(repo, "rev-parse", "main")
 
     result = consumer._consume_one_merge_candidate()
@@ -1091,6 +2471,124 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
     stored = consumer.merge_queue.get(request.request_id)
     assert stored is not None and stored.status == "pending"
     assert stored.failure_count == 0
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: ready" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "missing_binding",
+        "projection_authority",
+        "task_cid_mismatch",
+        "producer_events_path",
+        "producer_state_path",
+        "producer_events_symlink",
+    ),
+)
+def test_database_portal_retry_callback_fails_closed_on_binding_mismatch(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    consumer_task_cid = (
+        "task:cid:other" if tamper == "task_cid_mismatch" else "task:cid:ref-040"
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=consumer_task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, _producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(revision=2),
+    )
+    consumer, consumer_paths, _consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(
+            task_cid=consumer_task_cid,
+            revision=4,
+        ),
+    )
+    if tamper == "missing_binding":
+        consumer_paths.binding.unlink()
+    elif tamper == "projection_authority":
+        binding = json.loads(consumer_paths.binding.read_text(encoding="utf-8"))
+        binding.pop("binding_id")
+        binding["projection_authority"] = True
+        binding["binding_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        consumer_paths.binding.write_text(
+            json.dumps(binding, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    if tamper == "producer_events_path":
+        request.metadata["events_path"] = str(
+            tmp_path / "foreign-events.jsonl"
+        )
+    elif tamper == "producer_state_path":
+        request.metadata["state_path"] = str(
+            tmp_path / "foreign-state.json"
+        )
+    elif tamper == "producer_events_symlink":
+        foreign_events = tmp_path / "foreign-events.jsonl"
+        foreign_events.write_bytes(producer_paths.events.read_bytes())
+        producer_paths.events.unlink()
+        producer_paths.events.symlink_to(foreign_events)
+    target_before = _git(repo, "rev-parse", "main")
+
+    result = consumer._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] in {
+        "cross_board_manual_completion_authority_metadata_invalid",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "merge_target_binding_mismatch",
+        "merge_candidate_primary_identity_mismatch",
+    }
     assert _git(repo, "rev-parse", "main") == target_before
     assert "- Status: ready" in producer_paths.task_projection.read_text(
         encoding="utf-8"
@@ -1241,6 +2739,7 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
         task_header_prefix="## REF-",
         worktree_pool_enabled=False,
     )
+    target_branch = daemon.resolved_merge_target_branch
     task = daemon._load_tasks()[0]
     request, queued = daemon._enqueue_merge_candidate(
         branch_name=branch,
@@ -1260,11 +2759,11 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
     assert queued.get("queued") is True
 
     def integrate(*_args, **_kwargs):
-        _git(repo, "merge", "--ff-only", branch)
+        _git(repo, "branch", "-f", target_branch, candidate)
         return {
             "merged": True,
             "returncode": 0,
-            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+            "merge_commit": _git(repo, "rev-parse", target_branch),
         }
 
     monkeypatch.setattr(daemon, "_merge_branch_to_main", integrate)
@@ -1283,7 +2782,755 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
     assert result.get("cleanup_failed") is True
     assert result.get("reason") != "merge_cleanup_failed"
     assert "- Status: completed" in todo.read_text(encoding="utf-8")
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        candidate,
+        target_branch,
+    ) == ""
+
+
+def test_same_projection_does_not_complete_nonancestor_stale_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    head_before = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/stale")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(repo, "add", "side.txt")
+    _git(repo, "commit", "-m", "stale candidate")
+    stale = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/stale",
+        implementation_commit=stale,
+        baseline_ref=head_before,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result.get("merged") is False
+    assert result.get("already_merged") is False
+    assert result.get("completion_skipped") is True
+    assert result.get("reason") == (
+        "merge_queue_reconciliation_completion_gate_invalid"
+    )
+    side_probe = subprocess.run(
+        ["git", "cat-file", "-e", "HEAD:side.txt"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert side_probe.returncode != 0
+    assert "- Status: ready" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_false_completion_reopen_merges_and_seals_qualification_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:false-reopen",
+        claim_id="claim:false-reopen",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    target_branch = daemon.resolved_merge_target_branch
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/false-reopen")
+    (repo / "base.txt").write_text("candidate output\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    (repo / "target.txt").write_text("target advance\n", encoding="utf-8")
+    _git(repo, "add", "target.txt")
+    _git(repo, "commit", "-m", "advance target")
+    _git(repo, "branch", "-f", target_branch, "HEAD")
+    task = daemon._load_tasks()[0]
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/false-reopen",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    claimed = daemon.merge_queue.claim_pending_request(
+        request.request_id,
+        consumer_id="merge-train:false-shortcut-fixture",
+    )
+    assert claimed is not None
+    original_identity_check = daemon._declared_outputs_match_commits
+    original_reconciliation = (
+        daemon._record_merge_queue_callback_reconciliation
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_declared_outputs_match_commits",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        lambda **_kwargs: {
+            "recorded": True,
+            "legacy_false_completion_fixture": True,
+        },
+    )
+    false_callback = daemon._merge_train_callback(claimed)
+    monkeypatch.setattr(
+        daemon,
+        "_declared_outputs_match_commits",
+        original_identity_check,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        original_reconciliation,
+    )
+    assert false_callback["reason"] == "declared_outputs_already_on_target"
+    assert false_callback["already_merged"] is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    false_target = _git(repo, "rev-parse", target_branch)
+    daemon.merge_queue.complete(claimed)
+    completed = daemon.merge_queue.get(request.request_id)
+    assert completed is not None and completed.status == "completed"
+    false_receipt = {
+        "already_merged": True,
+        "canonical_task_id": completed.canonical_identity,
+        "commit_sha": candidate,
+        "distributed_publication_admission": {
+            "admitted": True,
+            "distributed": False,
+            "request_id": request.request_id,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            ),
+            "status": "local",
+        },
+        "finished_at": 2.0,
+        "integrated": True,
+        "merge_commit": false_target,
+        "merged": False,
+        "mutation_short_circuited": True,
+        "reason": "declared_outputs_already_on_target",
+        "request_id": request.request_id,
+        "started_at": 1.0,
+        "status": "already_merged",
+        "target_branch": target_branch,
+        "target_commit": false_target,
+        "task_id": "REF-040",
+    }
+    reopened = daemon.merge_queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=false_receipt,
+    )
+    assert reopened is not None and reopened.status == "pending"
+
+    validation_count = 0
+
+    def validation(
+        _workspace: Path,
+        validation_task: object,
+        log_path: Path,
+        *,
+        force_uncached: bool = False,
+    ) -> dict[str, object]:
+        nonlocal validation_count
+        validation_count += 1
+        assert validation_task.task_id == "REF-040"
+        assert force_uncached is True
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("false reopen qualification passed\n")
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [
+                {
+                    "validation_result_digest": "sha256:" + "a" * 64,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", validation)
+    crashed_train = MergeTrain(
+        repo,
+        daemon.merge_queue,
+        target_branch=target_branch,
+        merge_callback=daemon._merge_train_callback,
+    )
+    crashed_claim = daemon.merge_queue.claim_pending_request(
+        reopened.request_id,
+        consumer_id=crashed_train.owner_id,
+    )
+    assert crashed_claim is not None
+    lost_result = daemon._merge_train_callback(crashed_claim)
+    assert lost_result["merged"] is True
+    assert lost_result.get("already_merged") is not True
+    assert lost_result["reason"] == "post_merge_declared_outputs_repaired"
+    integration_commit = str(lost_result["merge_commit"])
+    crashed_row = daemon.merge_queue.get(request.request_id)
+    assert crashed_row is not None and crashed_row.status == "processing"
+
+    target_advance_worktree = tmp_path / "target-advance"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        str(target_advance_worktree),
+        target_branch,
+    )
+    (target_advance_worktree / "after-crash.txt").write_text(
+        "descendant target advance\n",
+        encoding="utf-8",
+    )
+    _git(target_advance_worktree, "add", "after-crash.txt")
+    _git(
+        target_advance_worktree,
+        "commit",
+        "-m",
+        "advance target after crashed merge",
+    )
+    descendant_target = _git(target_advance_worktree, "rev-parse", "HEAD")
+    _git(
+        repo,
+        "worktree",
+        "remove",
+        "--force",
+        str(target_advance_worktree),
+    )
+
+    recovery_train = MergeTrain(
+        repo,
+        daemon.merge_queue,
+        target_branch=target_branch,
+        merge_callback=daemon._merge_train_callback,
+    )
+
+    @contextmanager
+    def route_exact_recovery(train: MergeTrain) -> object:
+        shortcut = train._portal_projection_invalid_metadata_already_on_target
+        train._portal_projection_invalid_metadata_already_on_target = (
+            lambda _request: False
+        )
+        try:
+            yield
+        finally:
+            train._portal_projection_invalid_metadata_already_on_target = (
+                shortcut
+            )
+
+    result = recovery_train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+        processor_context=route_exact_recovery,
+        allow_post_merge_declared_output_recovery=True,
+    )
+
+    assert result is not None
+    assert result["status"] == "already_merged", result
+    assert "merge_result" in result, result
+    merge_result = result["merge_result"]
+    assert merge_result["reason"] == "post_merge_declared_outputs_repaired"
+    qualification = merge_result["post_merge_declared_output_repair"]
+    assert qualification["passed"] is True
+    assert qualification["qualification_kind"] == (
+        "false_positive_completion_reopen"
+    )
+    receipt = qualification["receipt"]
+    receipt_id = receipt.pop("receipt_id")
+    assert receipt_id == content_identity(receipt)
+    receipt["receipt_id"] = receipt_id
+    assert receipt["candidate_commit"] == candidate
+    assert receipt["failed_integration_commit"] == false_target
+    assert receipt["repair_parent_commit"] == false_target
+    assert receipt["repair_commit"] == descendant_target
+    assert qualification["integration_lineage"]["integration_commit"] == (
+        integration_commit
+    )
+    assert receipt["entries"][0]["path"] == "base.txt"
+    settled = daemon.merge_queue.get(request.request_id)
+    assert settled is not None and settled.status == "completed"
+    completion = settled.metadata["completion"]
+    assert completion["reason"] == "post_merge_declared_outputs_repaired"
+    assert completion["target_commit"] == receipt["repair_commit"]
+    assert completion["repair_receipt"] == receipt
+    assert validation_count == 2
+    assert _git(repo, "show", f"{target_branch}:base.txt") == "candidate output"
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_false_completion_lineage_bounds_distance_not_repository_age(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/deep-history")
+    (repo / "base.txt").write_text(
+        "candidate output\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "foreign-previous", baseline)
+    _git(repo, "commit", "--allow-empty", "-m", "foreign previous target")
+    foreign_previous = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "foreign-previous",
+        "-m",
+        "retain foreign previous as a side-parent ancestor",
+    )
+
+    padding_commits: list[str] = []
+    for index in range(513):
+        _git(
+            repo,
+            "commit",
+            "--allow-empty",
+            "-m",
+            f"older first-parent history {index}",
+        )
+        padding_commits.append(_git(repo, "rev-parse", "HEAD"))
+    near_previous = padding_commits[-1]
+    boundary_previous = padding_commits[1]
+    beyond_bound_previous = padding_commits[0]
+
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "implementation/deep-history",
+        "-m",
+        "integrate exact candidate",
+    )
+    target = _git(repo, "rev-parse", "HEAD")
+    assert int(_git(repo, "rev-list", "--first-parent", "--count", target)) > 512
+
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:deep-lineage",
+        claim_id="claim:deep-lineage",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, _paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    task = daemon._load_tasks()[0]
+
+    def prove(previous_target_commit: str) -> dict[str, object]:
+        return daemon._false_positive_completion_integration_lineage(
+            task,
+            candidate_commit=candidate,
+            baseline_ref=baseline,
+            previous_target_commit=previous_target_commit,
+            target_commit=target,
+        )
+
+    near = prove(near_previous)
+    assert near["passed"] is True, near
+    assert near["reason"] == "false_positive_completion_merge_lineage_proved"
+    assert near["first_parent_distance"] == 1
+
+    boundary = prove(boundary_previous)
+    assert boundary["passed"] is True, boundary
+    assert boundary["first_parent_distance"] == 512
+
+    beyond_bound = prove(beyond_bound_previous)
+    assert beyond_bound["passed"] is False
+    assert beyond_bound["reason"] == "false_completion_lineage_history_unbounded"
+
+    missing = prove(foreign_previous)
+    assert missing["passed"] is False
+    assert missing["reason"] == "false_completion_lineage_history_unbounded"
+
+
+def test_false_completion_lineage_retry_requires_new_target_generation(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/lineage-retry")
+    (repo / "base.txt").write_text(
+        "candidate output\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    previous_target = _git(repo, "rev-parse", "HEAD")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "implementation/lineage-retry",
+        "-m",
+        "integrate candidate before lineage retry",
+    )
+    failed_target = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "foreign-lineage-target", baseline)
+    _git(repo, "switch", "foreign-lineage-target")
+    _git(repo, "commit", "--allow-empty", "-m", "foreign lineage target")
+    foreign_target = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+
+    reason = "false_positive_completion_integration_lineage_unproven"
+    queue = MergeQueue(
+        tmp_path / "merge-queue",
+        max_attempts=3,
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    def lineage(target: str, **updates: object) -> dict[str, object]:
+        value: dict[str, object] = {
+            "passed": False,
+            "reason": "false_completion_lineage_history_unbounded",
+            "candidate_commit": candidate,
+            "baseline_commit": baseline,
+            "previous_target_commit": previous_target,
+            "target_commit": target,
+            "ancestry": {
+                "candidate_to_previous_target": 1,
+                "baseline_to_previous_target": 0,
+                "previous_target_to_target": 0,
+                "candidate_to_target": 0,
+            },
+            "previous_declared_output_identity": False,
+            "current_declared_output_identity": True,
+        }
+        value.update(updates)
+        return value
+
+    def exhausted_quarantine(
+        suffix: str,
+        *,
+        proof_target: str,
+        marker_schema: str = FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+        proof_updates: dict[str, object] | None = None,
+    ) -> MergeRequest:
+        task_id = f"LINEAGE-{suffix}"
+        request = queue.enqueue(
+            branch_name="implementation/lineage-retry",
+            task_id=task_id,
+            canonical_task_id=f"canonical:{suffix}",
+            commit_sha=candidate,
+            metadata={
+                "baseline_ref": baseline,
+                "task": {"outputs": ["base.txt"]},
+            },
+        )
+        initial_claim = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=f"merge-train:false-completion-{suffix}",
+        )
+        assert initial_claim is not None
+        queue.complete(initial_claim)
+        completed = queue.get(request.request_id)
+        assert completed is not None and completed.status == "completed"
+        false_completion_receipt = {
+            "already_merged": True,
+            "canonical_task_id": completed.canonical_identity,
+            "commit_sha": candidate,
+            "distributed_publication_admission": {
+                "admitted": True,
+                "distributed": False,
+                "request_id": request.request_id,
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "distributed-lane-admission@1"
+                ),
+                "status": "local",
+            },
+            "finished_at": 2.0,
+            "integrated": True,
+            "merge_commit": previous_target,
+            "merged": False,
+            "mutation_short_circuited": True,
+            "reason": "declared_outputs_already_on_target",
+            "request_id": request.request_id,
+            "started_at": 1.0,
+            "status": "already_merged",
+            "target_branch": "main",
+            "target_commit": previous_target,
+            "task_id": task_id,
+        }
+        reopened = queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=false_completion_receipt,
+        )
+        assert reopened is not None and reopened.status == "pending"
+        for prior in range(2):
+            claimed = queue.claim_pending_request(
+                request.request_id,
+                consumer_id=f"merge-train:prior-{suffix}-{prior}",
+            )
+            assert claimed is not None
+            retried = queue.requeue(
+                claimed,
+                reason=f"prior bounded failure {prior}",
+            )
+            assert isinstance(retried, MergeRequest)
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=f"merge-train:terminal-{suffix}",
+        )
+        assert claimed is not None
+        proof = lineage(proof_target, **(proof_updates or {}))
+        queue.quarantine(
+            claimed,
+            reason=reason,
+            metadata={
+                "status": "quarantined",
+                "reason": reason,
+                "merge_result": {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": reason,
+                    "false_positive_completion_integration_lineage": proof,
+                },
+            },
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        if marker_schema != FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA:
+            with queue._connect() as connection:
+                row = connection.execute(
+                    "SELECT metadata_json FROM merge_requests "
+                    "WHERE request_id=?",
+                    (request.request_id,),
+                ).fetchone()
+                assert row is not None
+                raw_metadata = json.loads(row["metadata_json"])
+                raw_metadata["false_positive_completion_reopen"][
+                    "schema"
+                ] = marker_schema
+                connection.execute(
+                    "UPDATE merge_requests SET metadata_json=? "
+                    "WHERE request_id=?",
+                    (
+                        json.dumps(
+                            raw_metadata,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        request.request_id,
+                    ),
+                )
+                connection.commit()
+            stored = queue.get(request.request_id)
+            assert stored is not None
+        assert stored.status == "quarantined"
+        assert stored.attempt == 3
+        assert stored.failure_count == 3
+        return stored
+
+    callbacks: list[str] = []
+
+    def fail_lineage_again(_request: MergeRequest) -> dict[str, object]:
+        target = _git(repo, "rev-parse", "refs/heads/main")
+        callbacks.append(target)
+        return {
+            "attempted": False,
+            "merged": False,
+            "returncode": 2,
+            "reason": reason,
+            "false_positive_completion_integration_lineage": lineage(target),
+        }
+
+    train = MergeTrain(
+        repo,
+        queue,
+        target_branch="main",
+        max_attempts=3,
+        merge_callback=fail_lineage_again,
+    )
+    selected = exhausted_quarantine(
+        "VALID",
+        proof_target=failed_target,
+    )
+    assert DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+        selected
+    )
+    assert not train._quarantine_may_auto_recover(selected)
+    assert not train._quarantine_may_auto_recover(
+        selected,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    before_same_target = queue.get(selected.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    after_same_target = queue.get(selected.request_id)
+    assert before_same_target == after_same_target
+    assert callbacks == []
+
+    _git(repo, "commit", "--allow-empty", "-m", "new retry generation")
+    retry_target = _git(repo, "rev-parse", "HEAD")
+    retry = train._false_positive_completion_lineage_retry(selected)
+    assert retry == {
+        "failed_target_commit": failed_target,
+        "target_commit": retry_target,
+    }
+    first_result = train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert first_result is not None
+    assert first_result["status"] == "quarantined"
+    first_failure = queue.get(selected.request_id)
+    assert first_failure is not None
+    assert first_failure.status == "quarantined"
+    assert first_failure.attempt == 3
+    assert first_failure.failure_count == 4
+    assert callbacks == [retry_target]
+    assert len(first_failure.metadata["revivals"]) == 1
+    assert failed_target in first_failure.metadata["revivals"][-1]["reason"]
+    assert retry_target in first_failure.metadata["revivals"][-1]["reason"]
+    assert (
+        first_failure.metadata["quarantine"]["merge_result"][
+            "false_positive_completion_integration_lineage"
+        ]["target_commit"]
+        == retry_target
+    )
+
+    same_generation = queue.get(selected.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    assert queue.get(selected.request_id) == same_generation
+    assert callbacks == [retry_target]
+
+    _git(repo, "commit", "--allow-empty", "-m", "second retry generation")
+    second_target = _git(repo, "rev-parse", "HEAD")
+    second_result = train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert second_result is not None
+    assert second_result["status"] == "quarantined"
+    second_failure = queue.get(selected.request_id)
+    assert second_failure is not None
+    assert second_failure.failure_count == 5
+    assert len(second_failure.metadata["revivals"]) == 2
+    assert callbacks == [retry_target, second_target]
+
+    invalid_rows = (
+        exhausted_quarantine("DIVERGENT", proof_target=foreign_target),
+        exhausted_quarantine("UNKNOWN", proof_target="f" * 40),
+        exhausted_quarantine("MALFORMED", proof_target="not-a-commit"),
+        exhausted_quarantine(
+            "INNER-REASON",
+            proof_target=failed_target,
+            proof_updates={"reason": "false_completion_lineage_commit_unavailable"},
+        ),
+        exhausted_quarantine(
+            "OUTPUT-IDENTITY",
+            proof_target=failed_target,
+            proof_updates={"current_declared_output_identity": False},
+        ),
+    )
+    for invalid in invalid_rows:
+        assert DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+            invalid
+        )
+        assert not train._quarantine_may_auto_recover(
+            invalid,
+            allow_post_merge_declared_output_recovery=True,
+        )
+        before = queue.get(invalid.request_id)
+        assert train.recover_one_integrated_quarantine(
+            request_id=invalid.request_id,
+            allow_post_merge_declared_output_recovery=True,
+        ) is None
+        assert queue.get(invalid.request_id) == before
+    assert callbacks == [retry_target, second_target]
+
+    malformed_marker = exhausted_quarantine(
+        "MARKER",
+        proof_target=failed_target,
+        marker_schema="malformed-reopen-marker",
+    )
+    assert not DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+        malformed_marker
+    )
+    assert not train._quarantine_may_auto_recover(
+        malformed_marker,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    before_marker = queue.get(malformed_marker.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=malformed_marker.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    assert queue.get(malformed_marker.request_id) == before_marker
+    assert callbacks == [retry_target, second_target]
 
 
 def test_merge_train_rejects_a_mismatched_bound_queue_target(
@@ -1735,7 +3982,7 @@ def test_invalid_authority_metadata_quarantine_settles_for_candidate_ancestor(
 
     assert result is not None
     assert result.get("status") == "already_merged"
-    assert result.get("reason") == "declared_outputs_already_on_target"
+    assert result.get("reason") != "declared_outputs_already_on_target"
     assert _git(repo, "rev-parse", "HEAD") == head_before
     completed = queue.get(request.request_id)
     assert completed is not None
@@ -1917,68 +4164,3 @@ def test_declared_output_recovery_may_revive_terminal_missing_output_quarantine(
     assert train.recover_one_integrated_quarantine(
         request_id=request.request_id,
     ) is None
-
-
-def test_portal_projection_cross_board_quarantine_revives_when_outputs_landed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = _repo(tmp_path)
-    _git(repo, "switch", "-c", "implementation/side")
-    (repo / "side.txt").write_text("side\n", encoding="utf-8")
-    _git(repo, "add", "side.txt")
-    _git(repo, "commit", "-m", "side")
-    candidate = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "switch", "main")
-    queue = MergeQueue(
-        tmp_path / "queue",
-        target_repository_id=checkout_repository_id(repo),
-        target_branch="main",
-        require_target_binding=True,
-    )
-    request = queue.enqueue(
-        branch_name="implementation/side",
-        task_id="REF-040",
-        canonical_task_id="task:cid:ref-040",
-        commit_sha=candidate,
-        metadata={
-            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
-            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
-            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
-            "task": {
-                "task_id": "REF-040",
-                "outputs": ["base.txt"],
-            },
-            "changed_submodule_paths": [],
-        },
-    )
-    claimed = queue.dequeue(consumer_id="merge-train:test")
-    assert claimed is not None
-    queue.quarantine(
-        claimed,
-        reason="cross_board_manual_completion_authority_metadata_invalid",
-    )
-    train = MergeTrain(repo, queue)
-    quarantined = queue.get(request.request_id)
-    assert quarantined is not None
-    assert train._quarantined_candidate_is_integrated(quarantined) is False
-    assert train._quarantine_auto_recovery_allowed(quarantined) is True
-    assert train._quarantine_may_auto_recover(quarantined) is True
-
-    processed: list[str] = []
-
-    def process_claimed(_request: object) -> dict[str, object]:
-        current = queue.get(request.request_id)
-        assert current is not None
-        processed.append(str(current.status))
-        return {
-            "already_merged": True,
-            "reason": "declared_outputs_already_on_target",
-        }
-
-    monkeypatch.setattr(train, "_process_claimed", process_claimed)
-    result = train.recover_one_integrated_quarantine(
-        request_id=request.request_id,
-    )
-    assert result is not None
-    assert processed

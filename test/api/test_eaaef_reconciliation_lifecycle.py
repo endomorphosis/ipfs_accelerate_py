@@ -1591,8 +1591,8 @@ def test_canonical_casf_import_is_exact_and_structurally_valid(
         forest = _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
         evidence = _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
 
-    assert evidence["canonical_tip"] == "4030ab14cbe084ee4716a904fc37677aafd168d3"
-    assert evidence["canonical_tree"] == "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714"
+    assert evidence["canonical_tip"] == "f10ace3dce54933ea971cfab595ca495764ac199"
+    assert evidence["canonical_tree"] == "b543389b6b4666ae879836b8e37f254d2738c545"
     assert evidence["structural_validation_report_cid"] == (
         "sha256:ed81aec7bad2b030325fe998d187f32e757c3514d35eef01a7d1a91ba4d98c67"
     )

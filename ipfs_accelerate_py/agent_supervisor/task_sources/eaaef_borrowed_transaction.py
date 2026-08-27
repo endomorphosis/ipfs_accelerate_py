@@ -77,6 +77,9 @@ EAAEF_DEAD_LANE_RECOVERY_AUTHORITY_SCHEMA: Final = (
 EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-container-validation-evidence@1"
 )
+COMPLETION_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"
+)
 EAAEF_CONTAINER_DISPATCH_OPERATION_KIND: Final = (
     "external_agent_container_dispatch"
 )
@@ -117,6 +120,12 @@ _COMPLETION_RECEIPT_FIELDS = {
     "evidence_digest",
     "coordination_preparation",
     "validation",
+}
+_COMPLETION_EVIDENCE_FIELDS = {
+    "schema",
+    "receipt",
+    "evidence_digests",
+    "revision",
 }
 _BARRIER_FIELDS = {
     "schema",
@@ -410,6 +419,83 @@ def _decode(value: Any, noun: str) -> dict[str, Any]:
     except (TypeError, ValueError) as exc:
         raise EAAEFBorrowedTransactionError(f"{noun} is corrupt") from exc
     return _object(decoded, noun)
+
+
+def _completion_evidence_body(
+    *,
+    receipt: Mapping[str, Any],
+    evidence_digests: Sequence[str],
+    revision: int,
+) -> dict[str, Any]:
+    return {
+        "schema": COMPLETION_EVIDENCE_SCHEMA,
+        "receipt": dict(receipt),
+        "evidence_digests": list(evidence_digests),
+        "revision": revision,
+    }
+
+
+def _decode_durable_completion_evidence(
+    value: Any,
+    noun: str,
+    *,
+    task_cid: str,
+    revision: int,
+    evidence_digest: str,
+    receipt_cid: str,
+) -> dict[str, Any]:
+    body = _decode(value, noun)
+    if (
+        set(body) != _COMPLETION_EVIDENCE_FIELDS
+        or body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+        or type(body.get("revision")) is not int
+        or body.get("revision") != revision
+        or not isinstance(body.get("receipt"), Mapping)
+        or not isinstance(body.get("evidence_digests"), list)
+        or len(body["evidence_digests"]) > MAX_LIST_ITEMS
+    ):
+        raise EAAEFBorrowedTransactionConflict(
+            f"{noun} is not normalized for the current task revision"
+        )
+    receipt = _object(body["receipt"], f"{noun} control receipt")
+    evidence_digests = [
+        _identifier(value, f"{noun} evidence_digest")
+        for value in body["evidence_digests"]
+    ]
+    if len(set(evidence_digests)) != len(evidence_digests):
+        raise EAAEFBorrowedTransactionConflict(
+            f"{noun} contains duplicate evidence digests"
+        )
+    normalized = _completion_evidence_body(
+        receipt=receipt,
+        evidence_digests=evidence_digests,
+        revision=revision,
+    )
+    expected_evidence_digest = content_identity(
+        {
+            "task_cid": task_cid,
+            "revision": revision,
+            "receipt": receipt,
+            "evidence_digests": evidence_digests,
+        }
+    )
+    expected_receipt_cid = content_identity(
+        {
+            "namespace": "completion-receipt",
+            "task_cid": task_cid,
+            "revision": revision,
+            "evidence_digest": expected_evidence_digest,
+        }
+    )
+    if (
+        body != normalized
+        or evidence_digest != expected_evidence_digest
+        or receipt_cid != expected_receipt_cid
+    ):
+        raise EAAEFBorrowedTransactionConflict(
+            f"{noun} identity differs from its normalized body"
+        )
+    return normalized
 
 
 def _exact(arguments: Mapping[str, Any], fields: set[str], operation: str) -> dict[str, Any]:
@@ -1819,6 +1905,13 @@ class EAAEFBorrowedTransactionAdapter:
         evidence_digests = args["evidence_digests"] or []
         if not isinstance(evidence_digests, list) or len(evidence_digests) > MAX_LIST_ITEMS:
             raise EAAEFBorrowedTransactionError("evidence_digests is not bounded")
+        evidence_digests = [
+            _identifier(value, "evidence_digest") for value in evidence_digests
+        ]
+        if len(set(evidence_digests)) != len(evidence_digests):
+            raise EAAEFBorrowedTransactionError(
+                "evidence_digests contains duplicates"
+            )
         task = self._task_record(owned, task_cid)
         if task is None:
             raise EAAEFBorrowedTransactionConflict("task is absent")
@@ -1944,7 +2037,7 @@ class EAAEFBorrowedTransactionAdapter:
                     "completion validation differs from barrier evidence"
                 )
             current_digests, current_kinds = self._current_evidence(owned, task_cid)
-            supplied = {_identifier(value, "evidence_digest") for value in evidence_digests}
+            supplied = set(evidence_digests)
             if not supplied or not supplied.issubset(current_digests):
                 raise EAAEFBorrowedTransactionNotReady(
                     "completion lacks current stored evidence"
@@ -1976,7 +2069,8 @@ class EAAEFBorrowedTransactionAdapter:
                     )
             if same_status:
                 durable = owned.execute(
-                    "SELECT receipt_cid, body_json FROM completion_receipts "
+                    "SELECT receipt_cid, evidence_digest, body_json "
+                    "FROM completion_receipts "
                     "WHERE task_cid=? AND attempt_id=? AND claim_cid=? "
                     "AND fencing_token=? ORDER BY completed_at DESC LIMIT 2",
                     [
@@ -1986,11 +2080,27 @@ class EAAEFBorrowedTransactionAdapter:
                         live_claim["fencing_token"],
                     ],
                 ).fetchall()
+                expected_body = _completion_evidence_body(
+                    receipt=receipt,
+                    evidence_digests=evidence_digests,
+                    revision=expected,
+                )
                 if (
                     len(durable) != 1
-                    or _decode(durable[0][1], "durable completion replay") != receipt
                     or task["body"].get("completion_receipt") != receipt
                 ):
+                    raise EAAEFBorrowedTransactionConflict(
+                        "terminal task replay differs from its unique durable receipt"
+                    )
+                durable_body = _decode_durable_completion_evidence(
+                    durable[0][2],
+                    "durable completion replay",
+                    task_cid=task_cid,
+                    revision=expected,
+                    evidence_digest=str(durable[0][1]),
+                    receipt_cid=str(durable[0][0]),
+                )
+                if durable_body != expected_body:
                     raise EAAEFBorrowedTransactionConflict(
                         "terminal task replay differs from its unique durable receipt"
                     )
@@ -2022,6 +2132,11 @@ class EAAEFBorrowedTransactionAdapter:
         )
         receipt_cid = ""
         if status in _SUCCESSFUL_TASK_STATUSES:
+            completion_evidence = _completion_evidence_body(
+                receipt=receipt,
+                evidence_digests=evidence_digests,
+                revision=revision,
+            )
             evidence_digest = content_identity(
                 {"task_cid": task_cid, "revision": revision, "receipt": receipt, "evidence_digests": evidence_digests}
             )
@@ -2032,7 +2147,7 @@ class EAAEFBorrowedTransactionAdapter:
                 "INSERT INTO completion_receipts(receipt_cid, task_cid, goal_cid, "
                 "attempt_id, claim_cid, fencing_token, completed_at, validation_run_id, "
                 "evidence_digest, body_json) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)",
-                [receipt_cid, task_cid, task["goal_cid"], str(receipt.get("attempt_id") or ""), str(receipt.get("claim_id") or ""), int(receipt.get("fencing_token") or 0), _iso(now), evidence_digest, _json(receipt, "completion receipt")],
+                [receipt_cid, task_cid, task["goal_cid"], str(receipt.get("attempt_id") or ""), str(receipt.get("claim_id") or ""), int(receipt.get("fencing_token") or 0), _iso(now), evidence_digest, _json(completion_evidence, "completion receipt")],
             )
         updated = self._task_record(owned, task_cid)
         assert updated is not None
@@ -2576,7 +2691,8 @@ class EAAEFBorrowedTransactionAdapter:
         }
         task = self._task_record(owned, identity["task_cid"])
         durable_rows = owned.execute(
-            "SELECT receipt_cid, task_cid, attempt_id, claim_cid, fencing_token, body_json "
+            "SELECT receipt_cid, task_cid, attempt_id, claim_cid, fencing_token, "
+            "evidence_digest, body_json "
             "FROM completion_receipts WHERE task_cid=? AND attempt_id=? "
             "AND claim_cid=? AND fencing_token=? ORDER BY completed_at DESC LIMIT 2",
             [
@@ -2592,11 +2708,6 @@ class EAAEFBorrowedTransactionAdapter:
             )
         durable = durable_rows[0]
         receipt_cid = _identifier(durable[0], "receipt_cid")
-        durable_body = _decode(durable[5], "durable completion receipt")
-        if set(durable_body) != _COMPLETION_RECEIPT_FIELDS:
-            raise EAAEFBorrowedTransactionConflict(
-                "durable completion receipt shape differs"
-            )
         if (
             task is None
             or task["task_cid"] != identity["task_cid"]
@@ -2610,14 +2721,30 @@ class EAAEFBorrowedTransactionAdapter:
             raise EAAEFBorrowedTransactionConflict(
                 "control completion does not match its prepared CAS"
             )
-        binding = durable_body.get("coordination_preparation")
+        durable_body = _decode_durable_completion_evidence(
+            durable[6],
+            "durable completion receipt",
+            task_cid=identity["task_cid"],
+            revision=task["revision"],
+            evidence_digest=str(durable[5]),
+            receipt_cid=receipt_cid,
+        )
+        control_receipt = durable_body["receipt"]
+        if (
+            set(control_receipt) != _COMPLETION_RECEIPT_FIELDS
+            or task["body"].get("completion_receipt") != control_receipt
+        ):
+            raise EAAEFBorrowedTransactionConflict(
+                "durable completion receipt shape differs"
+            )
+        binding = control_receipt.get("coordination_preparation")
         if (
             not isinstance(binding, Mapping)
             or str(binding.get("preparation_digest") or "")
             != barrier["preparation_digest"]
-            or durable_body.get("evidence_digest") != barrier["evidence_digest"]
+            or control_receipt.get("evidence_digest") != barrier["evidence_digest"]
             or any(
-                durable_body.get(name) != identity[name]
+                control_receipt.get(name) != identity[name]
                 for name in (
                     "claim_id",
                     "attempt_id",
@@ -2891,7 +3018,8 @@ class EAAEFBorrowedTransactionAdapter:
                 "receipt_cid",
             }
             durable_rows = owned.execute(
-                "SELECT receipt_cid, attempt_id, claim_cid, fencing_token, body_json "
+                "SELECT receipt_cid, attempt_id, claim_cid, fencing_token, "
+                "evidence_digest, body_json "
                 "FROM completion_receipts WHERE task_cid=? AND attempt_id=? "
                 "AND claim_cid=? AND fencing_token=? ORDER BY completed_at DESC LIMIT 2",
                 [
@@ -2907,7 +3035,15 @@ class EAAEFBorrowedTransactionAdapter:
                 )
             durable = durable_rows[0]
             receipt_cid = _identifier(durable[0], "receipt_cid")
-            durable_body = _decode(durable[4], "recovery durable completion")
+            durable_body = _decode_durable_completion_evidence(
+                durable[5],
+                "recovery durable completion",
+                task_cid=task_cid,
+                revision=actual_task["revision"],
+                evidence_digest=str(durable[4]),
+                receipt_cid=receipt_cid,
+            )
+            control_receipt = durable_body["receipt"]
             canonical = {
                 "schema": "ipfs_accelerate_py/agent-supervisor/database-task-cas@1",
                 "task": actual_task,
@@ -2926,7 +3062,7 @@ class EAAEFBorrowedTransactionAdapter:
                     "recovery caller receipt differs from canonical stored state"
                 )
             canonical_observation = canonical
-            binding = durable_body.get("coordination_preparation")
+            binding = control_receipt.get("coordination_preparation")
             if (
                 str(durable[1]) != barrier["attempt_id"]
                 or str(durable[2]) != barrier["claim_id"]
@@ -2934,7 +3070,10 @@ class EAAEFBorrowedTransactionAdapter:
                 or not isinstance(binding, Mapping)
                 or str(binding.get("preparation_digest") or "")
                 != barrier["preparation_digest"]
-                or durable_body.get("evidence_digest") != barrier["evidence_digest"]
+                or control_receipt.get("evidence_digest")
+                != barrier["evidence_digest"]
+                or actual_task["body"].get("completion_receipt")
+                != control_receipt
             ):
                 raise EAAEFBorrowedTransactionConflict(
                     "recovery durable completion differs from its barrier"

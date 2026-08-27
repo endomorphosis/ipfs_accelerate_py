@@ -275,6 +275,24 @@ def test_database_portal_attempts_share_dependency_preflight_artifact_store(
         def bind_execution_callbacks(**callbacks: object) -> None:
             captured_callbacks.update(callbacks)
 
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            callback: object,
+        ) -> None:
+            captured_callbacks["consumed_attempt_recovery_fn"] = callback
+
+        @staticmethod
+        def bind_protected_preservation_recovery(
+            callback: object,
+        ) -> None:
+            captured_callbacks["protected_preservation_recovery_fn"] = callback
+
+        @staticmethod
+        def bind_protected_reconciliation_self_lock_recovery(
+            callback: object,
+        ) -> None:
+            captured_callbacks["protected_self_lock_recovery_fn"] = callback
+
     class CapturingPortal:
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
@@ -333,4 +351,10 @@ def test_database_portal_attempts_share_dependency_preflight_artifact_store(
         "pooled_worktree_create_recovery_fn",
         "landed_completion_recovery_fn",
         "validation_retry_successor_recovery_fn",
+        "consumed_attempt_recovery_fn",
+        "protected_preservation_recovery_fn",
+        "protected_self_lock_recovery_fn",
     }
+    assert callable(captured_callbacks["consumed_attempt_recovery_fn"])
+    assert callable(captured_callbacks["protected_preservation_recovery_fn"])
+    assert callable(captured_callbacks["protected_self_lock_recovery_fn"])

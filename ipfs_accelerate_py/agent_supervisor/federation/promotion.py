@@ -8,9 +8,9 @@ the legacy owner has no wire decoder).
 
 The current artifact population is non-promoting: CASF-030/032/033 lack an
 accepted-producer, state-owner, and full qualification-identity provenance
-envelope; CASF-035 has no canonical control-parity report; CASF-036 has no
-aggregate formal report; CASF-037 always requires upstream reverification; and
-CASF-038--041 explicitly record non-promotion or unavailable/not-run live
+envelope; CASF-035 and CASF-036 reports remain non-authoritative without that
+same accepted provenance; CASF-037 always requires upstream reverification;
+and CASF-038--041 explicitly record non-promotion or unavailable/not-run live
 capability. The truthful current disposition is therefore
 ``quarantine_required``.
 
@@ -41,8 +41,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
+from ..proof.prover_matrix_registry import ProverState
+from ..self_improvement.supervisor_state_model import (
+    ModelCheckBounds,
+    ModelCheckerTool,
+)
 from ..task_sources.control_plane_contracts import content_identity
 from .chaos import CASF_CHAOS_REPORT_SCHEMA, ChaosReport
+from .cli import federation_cli_discovery_manifest
 from .contracts import (
     FederationAuthorityError,
     FederationBoundsError,
@@ -57,6 +63,20 @@ from .control_service import (
 from .drift_monitor import DRIFT_REPORT_SCHEMA, DriftReport, validate_current_drift_report
 from .ducklake_projection import ProjectionReceipt, ProjectionRecoveryReceipt
 from .fixed_point import FixedPointReceipt
+from .formal import (
+    CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA,
+    CASF_FORMAL_IDENTITY_SCHEMA,
+    CASF_FORMAL_SUITE_SCHEMA,
+    ExternalCheckStatus,
+    ExternalModelCheckReceipt,
+    ExternalModelInvariant,
+    FederationFormalError,
+    FederationFormalIdentity,
+    FederationFormalProperty,
+    HermeticCheckStatus,
+    build_federation_formal_suite,
+    check_federation_formal_suite,
+)
 
 FEDERATION_PROMOTION_GATE_INTERFACE: Final[str] = "FederationPromotionGate@1"
 QUALIFICATION_IDENTITY_SCHEMA: Final[str] = (
@@ -68,6 +88,18 @@ PROMOTION_DECISION_SCHEMA: Final[str] = "casf/promotion-decision@1"
 ROLLBACK_DECISION_SCHEMA: Final[str] = "casf/rollback-decision@1"
 QUARANTINE_DECISION_SCHEMA: Final[str] = "casf/quarantine-decision@1"
 DECISION_VALIDATION_SCHEMA: Final[str] = "casf/promotion-decision-validation@1"
+CASF_CONTROL_PARITY_REPORT_SCHEMA: Final[str] = "casf/control-parity@1"
+CASF_FORMAL_MODEL_REPORT_SCHEMA: Final[str] = "casf/formal-model-report@1"
+_CONTROL_MCP_DISCOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-federation/mcp-discovery@1"
+)
+_CONTROL_MCP_INTERFACE: Final[str] = "FederationControlMCP@1"
+_CONTROL_MCP_RESULT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-federation/mcp-result@1"
+)
+_CONTROL_MCP_ERROR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-federation/mcp-error@1"
+)
 
 _FIXED_POINT_SCHEMA: Final[str] = FixedPointReceipt.SCHEMA
 _DUCKLAKE_PROJECTION_SCHEMA: Final[str] = ProjectionReceipt.SCHEMA
@@ -213,6 +245,21 @@ MAX_JSON_NODES: Final[int] = 200_000
 MAX_JSON_CONTAINER_ITEMS: Final[int] = 65_536
 MAX_JSON_TEXT_BYTES: Final[int] = 128 * 1024
 MAX_BENCHMARK_MANIFEST_BYTES: Final[int] = 64 * 1024
+MAX_FORMAL_EXTERNAL_RECEIPTS: Final[int] = 12
+MAX_FORMAL_REASON_BYTES: Final[int] = 4 * 1024
+
+_FORMAL_BOUND_LIMITS: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "max_steps": 64,
+        "max_retries": 16,
+        "max_fence": 1_024,
+        "max_tasks": 32,
+        "max_agents": 16,
+        "max_states": 32,
+        "max_transitions": 64,
+        "max_evidence_ids": 128,
+    }
+)
 
 _REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 _BENCHMARK_ROOT: Final[Path] = (
@@ -367,6 +414,44 @@ def _closed_dict(value: Any, fields: frozenset[str], label: str) -> dict[str, An
         raise PromotionGateError(
             f"{label} is missing fields: {sorted(str(item) for item in missing)!r}"
         )
+    return value
+
+
+def _exact_wire(value: Any, expected: Any, label: str) -> None:
+    """Require exact JSON types and byte-canonical equality to trusted wire data."""
+
+    _validate_json_value(value, label, depth=0, ancestors=frozenset(), counter=[0])
+    try:
+        actual_bytes = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        expected_bytes = json.dumps(
+            expected,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PromotionGateError(f"{label} is not canonical JSON") from exc
+    if actual_bytes != expected_bytes:
+        raise PromotionGateError(f"{label} does not match canonical producer wire data")
+
+
+def _exact_boolean(value: Any, expected: bool, name: str) -> None:
+    if type(value) is not bool or value is not expected:
+        raise PromotionGateError(f"{name} must be exact {str(expected).lower()}")
+
+
+def _bounded_report_text(value: Any, name: str) -> str:
+    if type(value) is not str or not value or value != value.strip():
+        raise PromotionGateError(f"{name} must be nonempty exact text")
+    if len(value.encode("utf-8")) > MAX_FORMAL_REASON_BYTES:
+        raise FederationBoundsError(f"{name} exceeds its text bound")
     return value
 
 
@@ -933,16 +1018,9 @@ def _assess_fixed_point(
         evidence_refs = _exact_list(
             data["evidence_refs"], "CASF-030 evidence_refs", maximum=MAX_CAPABILITIES
         )
-        receipt = FixedPointReceipt(
-            world_snapshot_ref=data["world_snapshot_ref"],
-            event_watermark=data["event_watermark"],
-            outstanding_required_work=data["outstanding_required_work"],
-            fencing_epoch=data["fencing_epoch"],
-            outcome=data["outcome"],
-            evidence_refs=tuple(evidence_refs),
-        )
-        if data["receipt_id"] != receipt.cid:
-            raise PromotionGateError("CASF-030 receipt identity mismatches")
+        if evidence_refs != data["evidence_refs"]:
+            raise PromotionGateError("CASF-030 evidence references are not canonical")
+        receipt = FixedPointReceipt.from_dict(data)
         if (
             receipt.world_snapshot_ref != identity.world_snapshot_ref
             or receipt.event_watermark != identity.event_watermark
@@ -1175,18 +1253,416 @@ def _assess_control(
         return _assessment(slot, payload, ArtifactStatus.INVALID, "invalid:casf_034_control_audit")
 
 
-def _assess_missing_decoder(
-    slot: EvidenceSlot,
-    payload: dict[str, Any] | None,
-    blocker: str,
-) -> ArtifactAssessment:
-    # A look-alike mapping must not invent a missing canonical report type.
-    return _assessment(
-        slot,
-        payload,
-        ArtifactStatus.MISSING if payload is None else ArtifactStatus.INVALID,
-        blocker if payload is None else blocker.replace("missing:", "unsupported:"),
+def _decode_control_parity_report(payload: dict[str, Any]) -> tuple[str, str]:
+    fields = frozenset(
+        {
+            "schema",
+            "source_revision",
+            "source_tree",
+            "task_id",
+            "bounded",
+            "authority_created",
+            "cli_manifest",
+            "mcp_manifest",
+            "report_id",
+        }
     )
+    data = _closed_dict(payload, fields, "CASF-035 control parity report")
+    _schema(data, CASF_CONTROL_PARITY_REPORT_SCHEMA, "CASF-035 control parity report")
+    source_revision = _oid(data["source_revision"], "CASF-035 source_revision")
+    source_tree = _oid(data["source_tree"], "CASF-035 source_tree")
+    if _token(data["task_id"], "CASF-035 task_id") != "CASF-035":
+        raise PromotionGateError("CASF-035 report has another task identity")
+    _exact_boolean(data["bounded"], True, "CASF-035 bounded")
+    _exact_boolean(data["authority_created"], False, "CASF-035 authority_created")
+
+    # These are cold, deterministic producer manifests.  Exact canonical-byte
+    # comparison rejects bool/int equality tricks and any invented field while
+    # preserving the intentionally different CLI and MCP envelopes.
+    expected_cli = federation_cli_discovery_manifest()
+    operation_prefix = "federation."
+    expected_tools: dict[str, str] = {}
+    for operation in sorted(expected_cli["commands"].values()):
+        if not operation.startswith(operation_prefix):
+            raise PromotionGateError("CASF-035 operation prefix differs")
+        expected_tools[
+            "federation_" + operation[len(operation_prefix) :]
+        ] = operation
+    expected_mcp = {
+        "schema": _CONTROL_MCP_DISCOVERY_SCHEMA,
+        "interface": _CONTROL_MCP_INTERFACE,
+        "category": "agent_supervisor",
+        "dispatch": expected_cli["dispatch"],
+        "tools": expected_tools,
+        "request_schemas": expected_cli["request_schemas"],
+        "result_schema": _CONTROL_MCP_RESULT_SCHEMA,
+        "error_schema": _CONTROL_MCP_ERROR_SCHEMA,
+        "shell_out": False,
+        "embedded_fallback": False,
+        "create_via_trigger_gateway": expected_cli["create_via_trigger_gateway"],
+        "max_canonical_bytes": expected_cli["max_canonical_bytes"],
+    }
+    cli_manifest = _closed_dict(
+        data["cli_manifest"], frozenset(expected_cli), "CASF-035 CLI manifest"
+    )
+    mcp_manifest = _closed_dict(
+        data["mcp_manifest"], frozenset(expected_mcp), "CASF-035 MCP manifest"
+    )
+    _exact_wire(cli_manifest, expected_cli, "CASF-035 CLI manifest")
+    _exact_wire(mcp_manifest, expected_mcp, "CASF-035 MCP manifest")
+
+    cli_operations = tuple(sorted(cli_manifest["commands"].values()))
+    mcp_operations = tuple(sorted(mcp_manifest["tools"].values()))
+    if cli_operations != mcp_operations:
+        raise PromotionGateError("CASF-035 operation catalogs are not parity-equivalent")
+    for name in (
+        "request_schemas",
+        "dispatch",
+        "shell_out",
+        "embedded_fallback",
+        "create_via_trigger_gateway",
+        "max_canonical_bytes",
+    ):
+        _exact_wire(
+            cli_manifest[name],
+            mcp_manifest[name],
+            f"CASF-035 shared {name}",
+        )
+
+    report_id = _content_ref(data["report_id"], "CASF-035 report_id")
+    body = {name: value for name, value in data.items() if name != "report_id"}
+    if report_id != content_identity(body):
+        raise PromotionGateError("CASF-035 report content identity mismatches")
+    return source_revision, source_tree
+
+
+def _assess_control_parity(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.CONTROL_PARITY
+    if payload is None:
+        return _assessment(
+            slot,
+            None,
+            ArtifactStatus.MISSING,
+            "missing:casf_035_control_parity_report",
+        )
+    try:
+        source_revision, source_tree = _decode_control_parity_report(payload)
+        if source_revision != identity.revision or source_tree != identity.tree_id:
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "stale:casf_035_control_parity_identity",
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-035"),
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.INVALID,
+            "invalid:casf_035_control_parity_report",
+        )
+
+
+def _decode_formal_bounds(value: Any) -> ModelCheckBounds:
+    fields = frozenset({"schema", *_FORMAL_BOUND_LIMITS})
+    data = _closed_dict(value, fields, "CASF-036 formal bounds")
+    for name, maximum in _FORMAL_BOUND_LIMITS.items():
+        minimum = 0 if name == "max_retries" else 1
+        if _integer(data[name], f"CASF-036 bounds.{name}", minimum=minimum) > maximum:
+            raise FederationBoundsError(f"CASF-036 bounds.{name} exceeds its bound")
+    bounds = ModelCheckBounds.from_dict(data)
+    _exact_wire(data, bounds.to_dict(), "CASF-036 formal bounds")
+    return bounds
+
+
+def _decode_external_formal_receipts(
+    value: Any,
+    *,
+    suite: Any,
+    hermetic_receipts: tuple[Any, ...],
+) -> tuple[ExternalModelCheckReceipt, ...]:
+    payloads = _exact_list(
+        value,
+        "CASF-036 external receipts",
+        maximum=MAX_FORMAL_EXTERNAL_RECEIPTS,
+    )
+    if payloads and len(payloads) != MAX_FORMAL_EXTERNAL_RECEIPTS:
+        raise PromotionGateError("CASF-036 external receipt matrix is incomplete")
+    fields = frozenset(
+        {
+            "schema",
+            "scenario_id",
+            "scenario_property",
+            "property",
+            "property_scope",
+            "external_model_satisfies_casf_property_alone",
+            "tool",
+            "status",
+            "ran",
+            "bounded",
+            "unbounded_proof",
+            "authority_created",
+            "matrix_snapshot_id",
+            "matrix_entry_state",
+            "generated_model_identity",
+            "model_check_receipt_id",
+            "paired_hermetic_receipt_id",
+            "paired_hermetic_status",
+            "casf_property_satisfied_by_pair",
+            "reason",
+            "receipt_id",
+        }
+    )
+    hermetic_by_property = {item.property: item for item in hermetic_receipts}
+    results: list[ExternalModelCheckReceipt] = []
+    observed: list[tuple[FederationFormalProperty, ModelCheckerTool]] = []
+    closed_matrix_states = frozenset(item.value for item in ProverState)
+    for index, payload in enumerate(payloads):
+        data = _closed_dict(payload, fields, f"CASF-036 external receipt[{index}]")
+        _schema(data, CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA, "CASF-036 external receipt")
+        _exact_boolean(data["bounded"], True, "CASF-036 external bounded")
+        _exact_boolean(data["unbounded_proof"], False, "CASF-036 external unbounded_proof")
+        _exact_boolean(
+            data["authority_created"], False, "CASF-036 external authority_created"
+        )
+        _exact_boolean(
+            data["external_model_satisfies_casf_property_alone"],
+            False,
+            "CASF-036 external standalone satisfaction",
+        )
+        if data["property_scope"] != "generic_supervisor_state_model":
+            raise PromotionGateError("CASF-036 external property scope is unsupported")
+        for name in (
+            "scenario_id",
+            "matrix_snapshot_id",
+            "generated_model_identity",
+            "receipt_id",
+        ):
+            _content_ref(data[name], f"CASF-036 external {name}")
+        for name in ("model_check_receipt_id", "paired_hermetic_receipt_id"):
+            if data[name]:
+                _content_ref(data[name], f"CASF-036 external {name}")
+            elif type(data[name]) is not str:
+                raise PromotionGateError(f"CASF-036 external {name} must be exact text")
+        matrix_entry_state = _token(
+            data["matrix_entry_state"], "CASF-036 external matrix_entry_state"
+        )
+        if matrix_entry_state not in closed_matrix_states:
+            raise PromotionGateError("CASF-036 external matrix state is not closed")
+        _bounded_report_text(data["reason"], "CASF-036 external reason")
+
+        scenario_property = FederationFormalProperty(data["scenario_property"])
+        tool = ModelCheckerTool(data["tool"])
+        paired_status = (
+            None
+            if data["paired_hermetic_status"] is None
+            else HermeticCheckStatus(data["paired_hermetic_status"])
+        )
+        receipt = ExternalModelCheckReceipt(
+            scenario_id=data["scenario_id"],
+            scenario_property=scenario_property,
+            property=ExternalModelInvariant(data["property"]),
+            tool=tool,
+            status=ExternalCheckStatus(data["status"]),
+            ran=data["ran"],
+            matrix_snapshot_id=data["matrix_snapshot_id"],
+            matrix_entry_state=matrix_entry_state,
+            generated_model_identity=data["generated_model_identity"],
+            model_check_receipt_id=data["model_check_receipt_id"],
+            paired_hermetic_receipt_id=data["paired_hermetic_receipt_id"],
+            paired_hermetic_status=paired_status,
+            casf_property_satisfied_by_pair=data["casf_property_satisfied_by_pair"],
+            reason=data["reason"],
+            schema=data["schema"],
+        )
+        _exact_wire(data, receipt.to_dict(), f"CASF-036 external receipt[{index}]")
+        scenario = suite.scenario(scenario_property)
+        if (
+            receipt.scenario_id != scenario.scenario_id
+            or receipt.generated_model_identity
+            != scenario.generated_model.artifact_identity
+        ):
+            raise PromotionGateError("CASF-036 external receipt binds another scenario")
+        paired = hermetic_by_property[scenario_property]
+        if receipt.paired_hermetic_receipt_id and (
+            receipt.paired_hermetic_receipt_id != paired.receipt_id
+            or receipt.paired_hermetic_status is not paired.status
+        ):
+            raise PromotionGateError("CASF-036 external receipt has a stale hermetic pair")
+        results.append(receipt)
+        observed.append((scenario_property, tool))
+
+    expected_order = [
+        (scenario.property, tool)
+        for scenario in suite.scenarios
+        for tool in (ModelCheckerTool.TLC, ModelCheckerTool.APALACHE)
+    ]
+    if payloads and observed != expected_order:
+        raise PromotionGateError("CASF-036 external receipt matrix is not canonical")
+    return tuple(results)
+
+
+def _decode_formal_model_report(
+    payload: dict[str, Any],
+) -> tuple[FederationFormalIdentity, tuple[Any, ...], tuple[ExternalModelCheckReceipt, ...]]:
+    fields = frozenset(
+        {
+            "schema",
+            "bounded",
+            "unbounded_proof",
+            "authority_created",
+            "identity",
+            "suite",
+            "hermetic_receipts",
+            "external_receipts",
+            "report_id",
+        }
+    )
+    data = _closed_dict(payload, fields, "CASF-036 formal model report")
+    _schema(data, CASF_FORMAL_MODEL_REPORT_SCHEMA, "CASF-036 formal model report")
+    _exact_boolean(data["bounded"], True, "CASF-036 bounded")
+    _exact_boolean(data["unbounded_proof"], False, "CASF-036 unbounded_proof")
+    _exact_boolean(data["authority_created"], False, "CASF-036 authority_created")
+
+    identity_fields = frozenset(
+        {
+            "schema",
+            "source_revision",
+            "source_tree",
+            "state_schema",
+            "generation_id",
+            "policy_id",
+            "policy_revision",
+            "capability_ids",
+            "federation_id",
+            "supervisor_ids",
+            "task_id",
+            "attempt_id",
+            "lease_id",
+            "fencing_epoch",
+            "assignment_revision",
+            "worktree_id",
+            "identity",
+        }
+    )
+    identity_data = _closed_dict(data["identity"], identity_fields, "CASF-036 identity")
+    _schema(identity_data, CASF_FORMAL_IDENTITY_SCHEMA, "CASF-036 identity")
+    formal_identity = FederationFormalIdentity.from_dict(identity_data)
+    _exact_wire(identity_data, formal_identity.to_dict(), "CASF-036 identity")
+
+    suite_fields = frozenset(
+        {
+            "schema",
+            "bounded",
+            "unbounded_proof",
+            "authority_created",
+            "identity",
+            "bounds",
+            "scenarios",
+            "suite_id",
+        }
+    )
+    suite_data = _closed_dict(data["suite"], suite_fields, "CASF-036 formal suite")
+    _schema(suite_data, CASF_FORMAL_SUITE_SCHEMA, "CASF-036 formal suite")
+    _exact_boolean(suite_data["bounded"], True, "CASF-036 suite bounded")
+    _exact_boolean(suite_data["unbounded_proof"], False, "CASF-036 suite unbounded_proof")
+    _exact_boolean(
+        suite_data["authority_created"], False, "CASF-036 suite authority_created"
+    )
+    _exact_wire(suite_data["identity"], identity_data, "CASF-036 suite identity")
+    bounds = _decode_formal_bounds(suite_data["bounds"])
+    suite = build_federation_formal_suite(formal_identity, bounds=bounds)
+    _exact_wire(suite_data, suite.to_dict(), "CASF-036 formal suite")
+
+    supplied_hermetic = _exact_list(
+        data["hermetic_receipts"],
+        "CASF-036 hermetic receipts",
+        maximum=len(FederationFormalProperty),
+    )
+    trusted_hermetic = check_federation_formal_suite(suite)
+    _exact_wire(
+        supplied_hermetic,
+        [item.to_dict() for item in trusted_hermetic],
+        "CASF-036 hermetic receipts",
+    )
+    external = _decode_external_formal_receipts(
+        data["external_receipts"],
+        suite=suite,
+        hermetic_receipts=trusted_hermetic,
+    )
+    report_id = _content_ref(data["report_id"], "CASF-036 report_id")
+    body = {name: value for name, value in data.items() if name != "report_id"}
+    if report_id != content_identity(body):
+        raise PromotionGateError("CASF-036 report content identity mismatches")
+    return formal_identity, trusted_hermetic, external
+
+
+def _assess_formal(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.FORMAL
+    if payload is None:
+        return _assessment(
+            slot,
+            None,
+            ArtifactStatus.MISSING,
+            "missing:casf_036_formal_model_report",
+        )
+    try:
+        formal_identity, hermetic, external = _decode_formal_model_report(payload)
+        if (
+            formal_identity.source_revision != identity.revision
+            or formal_identity.source_tree != identity.tree_id
+            or formal_identity.state_schema != identity.schema_id
+            or formal_identity.generation_id != identity.generation_id
+            or formal_identity.federation_id != identity.federation_id
+            or formal_identity.policy_id != identity.policy_id
+            or formal_identity.policy_revision != identity.policy_revision
+            or formal_identity.capability_ids != identity.capability_ids
+            or formal_identity.fencing_epoch != identity.fencing_epoch
+            or formal_identity.assignment_revision != identity.assignment_revision
+        ):
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "stale:casf_036_formal_identity",
+            )
+        if not all(item.status is HermeticCheckStatus.PASSED for item in hermetic):
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "blocked:casf_036_hermetic_checks_incomplete",
+            )
+        if any(item.status is ExternalCheckStatus.COUNTEREXAMPLE for item in external):
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "blocked:casf_036_external_counterexample",
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-036"),
+        )
+    except (KeyError, TypeError, ValueError, FederationFormalError, FederationContractError):
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.INVALID,
+            "invalid:casf_036_formal_model_report",
+        )
 
 
 def _assess_adversarial(
@@ -1372,16 +1848,10 @@ def _assess_bundle(
         ),
         EvidenceSlot.DRIFT: _assess_drift(identity, payloads[EvidenceSlot.DRIFT]),
         EvidenceSlot.CONTROL_AUDIT: _assess_control(identity, payloads[EvidenceSlot.CONTROL_AUDIT]),
-        EvidenceSlot.CONTROL_PARITY: _assess_missing_decoder(
-            EvidenceSlot.CONTROL_PARITY,
-            payloads[EvidenceSlot.CONTROL_PARITY],
-            "missing:casf_035_control_parity_report_decoder",
+        EvidenceSlot.CONTROL_PARITY: _assess_control_parity(
+            identity, payloads[EvidenceSlot.CONTROL_PARITY]
         ),
-        EvidenceSlot.FORMAL: _assess_missing_decoder(
-            EvidenceSlot.FORMAL,
-            payloads[EvidenceSlot.FORMAL],
-            "missing:casf_036_formal_report_decoder",
-        ),
+        EvidenceSlot.FORMAL: _assess_formal(identity, payloads[EvidenceSlot.FORMAL]),
         EvidenceSlot.ADVERSARIAL: _assess_adversarial(identity, payloads[EvidenceSlot.ADVERSARIAL]),
         EvidenceSlot.IDLE: _assess_benchmark(EvidenceSlot.IDLE, payloads[EvidenceSlot.IDLE]),
         EvidenceSlot.PARALLEL: _assess_benchmark(
@@ -1769,6 +2239,8 @@ __all__ = [
     "ARTIFACT_ASSESSMENT_SCHEMA",
     "ArtifactAssessment",
     "ArtifactStatus",
+    "CASF_CONTROL_PARITY_REPORT_SCHEMA",
+    "CASF_FORMAL_MODEL_REPORT_SCHEMA",
     "DECISION_VALIDATION_SCHEMA",
     "DecisionDisposition",
     "DecisionKind",
