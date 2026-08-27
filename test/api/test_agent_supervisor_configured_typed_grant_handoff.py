@@ -27954,7 +27954,7 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
     source = inspect.getsource(
         aseh_operator._run_r19_historical_live_validation
     )
-    assert "if revision in {30, 31}:" in source
+    assert "if revision in {30, 31, 32}:" in source
     assert "if revision in {29, 30}:\n        evidence[" not in source
     assert "if revision in {29, 30, 31}:\n        evidence[" not in source
 
@@ -28547,6 +28547,113 @@ def test_aseh_r27_delegates_r31_before_r30(
         authorization_directory_fd=90,
     )
     assert result == sentinel
+
+
+def test_aseh_r27_delegates_r32_before_r31(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r32"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_foreign_grok_waiter_census_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_native_lane_preload_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R31 ran before R32"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_candidate_git_epoch_guard_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R30 ran before R32"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "older suffix admission ran before R32"
+        ),
+    )
+
+    result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+        board=object(),
+        config={},
+        paths={
+            "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+        },
+        bootstrap={},
+        bootstrap_id="bootstrap",
+        head="9" * 40,
+        previous_receipt=r26_chain[-1],
+        previous_transition=r26_chain[-1],
+        prior_receipt_chain=r26_chain,
+        authorization_directory_fd=90,
+    )
+    assert result == sentinel
+
+
+def test_aseh_r32_admits_observed_grok_detached_container_names() -> None:
+    grok = "ipfs-accelerate-grok-841578-" + ("a" * 32)
+    codex = "ipfs-accelerate-codex-1737559-" + ("b" * 32)
+    assert aseh_operator._r32_detached_effect_container_name_ok(
+        grok, admit_grok=True
+    )
+    assert not aseh_operator._r32_detached_effect_container_name_ok(
+        grok, admit_grok=False
+    )
+    assert aseh_operator._r32_detached_effect_container_name_ok(
+        codex, admit_grok=False
+    )
+    assert not aseh_operator._r32_detached_effect_container_name_ok(
+        "ipfs-accelerate-other-1-" + ("c" * 32),
+        admit_grok=True,
+    )
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:

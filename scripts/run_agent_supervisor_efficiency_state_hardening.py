@@ -151,6 +151,10 @@ ASEH_R31_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r31-historical-live-policy-admission@1"
 )
+ASEH_R32_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r32-historical-live-policy-admission@1"
+)
 ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r27-historical-live-execution@1"
@@ -285,6 +289,14 @@ ASEH_R31_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
 ASEH_R31_R30_INITIAL_HEALTH_FAILURE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r31-r30-initial-health-failure-evidence@1"
+)
+ASEH_R32_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r32-authorization-attempt@1"
+)
+ASEH_R32_R31_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r32-r31-authorization-failure-evidence@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -3541,6 +3553,93 @@ REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_NON_SUCCESS: Final = (
     "preload; any usersite DuckDB fallback; or any skipped validation gate "
     "is rejected."
 )
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-foreign-grok-waiter-census-transition@1"
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD: Final = (
+    "5f0049b07853e5eae643ec135b12213e16973543"
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE: Final = (
+    "1c4de31ed0d38bb7d939d918806077812afb376a"
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID: Final = (
+    "sha256:435ec0764a62154632c12bc946f9192cfb2b207277e771adbde6ef815795b28f"
+)
+ASEH_R32_FAILED_R31_STARTED_AT: Final = 1787850499.3010032
+ASEH_R32_FAILED_R31_SOURCE_BLOB_OID: Final = (
+    "8a69cbbb9e512e1f5fca2cacdbdc9e4e3e7afdf2"
+)
+ASEH_R32_FAILED_R31_SOURCE_SHA256: Final = (
+    "sha256:7a708dda95b680017d3cec05861b4c55da375d84262713c9cdd9919058f261c4"
+)
+ASEH_R32_FAILED_R31_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:248bc50d83c4eb1fab42a42194b36061482941a3e40469b2c4329c5077cfb6f3"
+)
+ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS: Final = (
+    ASEH_R31_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "-k",
+        (
+            "aseh_r27_ or aseh_r28_ or aseh_r29_ or aseh_r30_ or aseh_r31_ or "
+            "aseh_r32_ or delegates_r28_before_suffix_admission or "
+            "delegates_r29_before or delegates_r30_before or "
+            "delegates_r31_before or delegates_r32_before or entry_ or "
+            "ordinary_track_forwards"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue through one exact R32 child after R31 authorization failed "
+    "closed at historical live because foreign Grok watchdogs use the "
+    "observed ipfs-accelerate-grok naming"
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SUCCESS: Final = (
+    "The exact R32 Git child retains immutable R1-R27 and published R30 "
+    "receipts, binds the failed unpublished R31 attempt without retrying it, "
+    "preserves sealed native DuckDB preload, and admits the observed Grok "
+    "detached-effect container names without signalling or adopting them."
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_NON_SUCCESS: Final = (
+    "Any R31 receipt or retry; different R30 receipt or R31 candidate; "
+    "usersite DuckDB fallback; skipped Grok census admission; or any skipped "
+    "validation gate is rejected."
+)
 REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS: Final = (
     "The exact R30 Git child retains immutable R1-R27 receipts, binds the "
     "failed R28 and R29 attempts without retrying either revision, holds a "
@@ -3710,6 +3809,11 @@ ASEH_R31_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_SCHEMA,
 )
+ASEH_R32_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA,
+)
+ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS: Final = ASEH_R31_EXACT_R1_R30_RECEIPT_CIDS
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -3901,6 +4005,17 @@ REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_RECEIPT_FIELDS: Final = (
             "published_r30_base_head",
             "published_r30_base_tree",
             "r30_initial_health_failure_evidence",
+        }
+    )
+)
+REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_RECEIPT_FIELDS
+    | frozenset(
+        {
+            "failed_unpublished_r31_head",
+            "failed_unpublished_r31_tree",
+            "r31_authorization_attempt",
+            "r31_authorization_failure_evidence",
         }
     )
 )
@@ -8305,6 +8420,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r31 = globals().get(
         "REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_VALIDATIONS"
     )
+    r32 = globals().get(
+        "REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -8324,6 +8442,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r29,) if isinstance(r29, Sequence) else ()),
         *((r30,) if isinstance(r30, Sequence) else ()),
         *((r31,) if isinstance(r31, Sequence) else ()),
+        *((r32,) if isinstance(r32, Sequence) else ()),
     )
 
 
@@ -12452,6 +12571,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 30
     if schema == ASEH_R31_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 31
+    if schema == ASEH_R32_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 32
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -12685,11 +12806,12 @@ def _r19_active_policy_scope(
         29: _validate_r29_historical_live_policy_admission_record,
         30: _validate_r30_historical_live_policy_admission_record,
         31: _validate_r31_historical_live_policy_admission_record,
+        32: _validate_r32_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
     if (
-        (revision in {29, 30, 31} and not callable(pre_effect_guard))
-        or (revision not in {29, 30, 31} and pre_effect_guard is not None)
+        (revision in {29, 30, 31, 32} and not callable(pre_effect_guard))
+        or (revision not in {29, 30, 31, 32} and pre_effect_guard is not None)
     ):
         raise OperatorError(
             "historical live pre-effect guard differs from policy revision"
@@ -12703,7 +12825,7 @@ def _r19_active_policy_scope(
     # Only R30 introduces a distinct durable policy anchor plus active executor
     # endpoint; silently broadening R29 here would make sealed R29 receipts
     # impossible to admit after an owner restart.
-    dual_endpoint_policy = revision in {30, 31}
+    dual_endpoint_policy = revision in {30, 31, 32}
     active_witness = (
         dict(active_candidate_authorization_witness)
         if isinstance(active_candidate_authorization_witness, Mapping)
@@ -13171,6 +13293,7 @@ def _admit_sealed_receipt_validation_executor_contract(
     r29 = _r29_sealed_receipt_validation_executor_contract()
     r30 = _r30_sealed_receipt_validation_executor_contract()
     r31 = _r31_sealed_receipt_validation_executor_contract()
+    r32 = _r32_sealed_receipt_validation_executor_contract()
     contracts = (
         r16,
         r17,
@@ -13188,6 +13311,7 @@ def _admit_sealed_receipt_validation_executor_contract(
         r29,
         r30,
         r31,
+        r32,
     )
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
@@ -13212,6 +13336,7 @@ def _admit_sealed_receipt_validation_executor_contract(
                 _r29_validation_executor_class,
                 _r30_validation_executor_class,
                 _r31_validation_executor_class,
+                _r32_validation_executor_class,
             ),
             strict=True,
         )
@@ -17837,7 +17962,63 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
     raise OperatorError("R19 Docker scope observation did not stabilize")
 
 
-def _r19_detached_effect_snapshot() -> dict[str, Any]:
+ASEH_R19_CODEX_DETACHED_CONTAINER_NAME: Final = (
+    r"ipfs-accelerate-codex-[1-9][0-9]*-[0-9a-f]{32}"
+)
+ASEH_R32_GROK_DETACHED_CONTAINER_NAME: Final = (
+    r"ipfs-accelerate-grok-[1-9][0-9]*-[0-9a-f]{32}"
+)
+ASEH_R32_GROK_LEASE_ROOT_NAME: Final = (
+    r"asref-grok-container-[A-Za-z0-9_-]{6,32}"
+)
+
+
+def _r32_detached_effect_container_name_ok(
+    name: str,
+    *,
+    admit_grok: bool,
+) -> bool:
+    """Admit the closed Codex pattern, plus R32's observed Grok pattern."""
+
+    if re.fullmatch(ASEH_R19_CODEX_DETACHED_CONTAINER_NAME, name) is not None:
+        return True
+    return (
+        admit_grok
+        and re.fullmatch(ASEH_R32_GROK_DETACHED_CONTAINER_NAME, name) is not None
+    )
+
+
+def _r32_assert_unrelated_grok_waiter(
+    item: Mapping[str, Any],
+    *,
+    working_directory: Path,
+) -> None:
+    """Preserve one foreign Grok watchdog without signalling or adopting it."""
+
+    script_path = Path(str(item.get("script_path") or ""))
+    process_cwd = Path(str(item.get("cwd") or ""))
+    lease_root = Path(str(item.get("lease_root") or ""))
+    name = str(item.get("target_container_name") or "")
+    if (
+        re.fullmatch(ASEH_R32_GROK_DETACHED_CONTAINER_NAME, name) is None
+        or item.get("marker") != "--internal-docker-cleanup-watchdog"
+        or item.get("state") == "Z"
+        or not script_path.is_absolute()
+        or script_path.name != "grok_cli_runner.py"
+        or not process_cwd.is_absolute()
+        or lease_root.parent != Path("/tmp")
+        or re.fullmatch(ASEH_R32_GROK_LEASE_ROOT_NAME, lease_root.name) is None
+        or _r19_path_is_within(script_path, working_directory)
+        or _r19_path_is_within(process_cwd, working_directory)
+        or _r19_path_is_within(lease_root, working_directory)
+    ):
+        raise OperatorError("R32 unrelated Grok waiter differs")
+
+
+def _r19_detached_effect_snapshot(
+    *,
+    admit_grok: bool = False,
+) -> dict[str, Any]:
     """Observe exact watchdog/removal issuers that escaped a managed group."""
 
     markers = {
@@ -17955,11 +18136,10 @@ def _r19_detached_effect_snapshot() -> dict[str, Any]:
                 "R19 detached-effect ownership is invalid"
             ) from exc
         if (
-            re.fullmatch(
-                r"ipfs-accelerate-codex-[1-9][0-9]*-[0-9a-f]{32}",
+            not _r32_detached_effect_container_name_ok(
                 target_container_name,
+                admit_grok=admit_grok,
             )
-            is None
             or not Path(script_path).is_absolute()
             or not Path(process_cwd).is_absolute()
             or not Path(lease_root).is_absolute()
@@ -18691,10 +18871,11 @@ def _r27_detached_effect_snapshot(
     *,
     docker_snapshot: Mapping[str, Any],
     working_directory: Path,
+    admit_grok: bool = False,
 ) -> dict[str, Any]:
     """Augment R19's read-only process census with exact foreign ownership."""
 
-    base = _r19_detached_effect_snapshot()
+    base = _r19_detached_effect_snapshot(admit_grok=admit_grok)
     docker_entries = docker_snapshot.get("entries")
     detached_entries = base.get("entries")
     if not isinstance(docker_entries, list) or not isinstance(
@@ -18711,9 +18892,20 @@ def _r27_detached_effect_snapshot(
         if not isinstance(raw, Mapping):
             raise OperatorError("R27 detached baseline is invalid")
         item = dict(raw)
-        item["foreign_recovery_ownership"] = (
+        target_name = str(item.get("target_container_name") or "")
+        if admit_grok and re.fullmatch(
+            ASEH_R32_GROK_DETACHED_CONTAINER_NAME,
+            target_name,
+        ):
+            _r32_assert_unrelated_grok_waiter(
+                item,
+                working_directory=working_directory,
+            )
+            item["foreign_recovery_ownership"] = None
+        else:
+            item["foreign_recovery_ownership"] = (
             None
-            if str(item.get("target_container_name") or "") in present_names
+            if target_name in present_names
             else _r27_foreign_recovery_ownership_observation(
                 item,
                 working_directory=working_directory,
@@ -18734,6 +18926,7 @@ def _r27_admit_stable_unrelated_baseline(
     first_detached: Mapping[str, Any],
     confirmed_detached: Mapping[str, Any],
     working_directory: Path,
+    admit_grok: bool = False,
 ) -> None:
     """Purely admit present R19 baselines plus exact preserved foreign waiters."""
 
@@ -18763,7 +18956,17 @@ def _r27_admit_stable_unrelated_baseline(
         item = dict(raw)
         ownership = item.pop("foreign_recovery_ownership", None)
         target = str(item.get("target_container_name") or "")
-        if target in docker_names:
+        if admit_grok and re.fullmatch(
+            ASEH_R32_GROK_DETACHED_CONTAINER_NAME,
+            target,
+        ):
+            if ownership is not None:
+                raise OperatorError("R32 Grok waiter claimed Codex ownership")
+            _r32_assert_unrelated_grok_waiter(
+                item,
+                working_directory=working_directory,
+            )
+        elif target in docker_names:
             if ownership is not None:
                 raise OperatorError("R27 present target claimed foreign absence")
             present_entries.append(item)
@@ -19121,7 +19324,7 @@ def _validate_r19_historical_live_execution_evidence(
         }
         fields = (
             base_fields | {"foreign_recovery_ownership"}
-            if revision in {27, 28, 29, 30, 31}
+            if revision in {27, 28, 29, 30, 31, 32}
             else base_fields
         )
         script_identity = result.get("script_identity")
@@ -19169,11 +19372,10 @@ def _validate_r19_historical_live_execution_evidence(
                     "lease_root",
                 )
             )
-            or re.fullmatch(
-                r"ipfs-accelerate-codex-[1-9][0-9]*-[0-9a-f]{32}",
+            or not _r32_detached_effect_container_name_ok(
                 str(result.get("target_container_name") or ""),
+                admit_grok=revision == 32,
             )
-            is None
             or not isinstance(script_identity, Mapping)
             or not (
                 script_identity == {"availability": "unavailable_deleted"}
@@ -19200,7 +19402,7 @@ def _validate_r19_historical_live_execution_evidence(
             raise OperatorError(
                 "R19 historical live detached-effect entry is invalid"
             )
-        if revision in {27, 28, 29, 30, 31}:
+        if revision in {27, 28, 29, 30, 31, 32}:
             ownership = result.get("foreign_recovery_ownership")
             if ownership is not None:
                 base_item = {
@@ -19210,6 +19412,23 @@ def _validate_r19_historical_live_execution_evidence(
                     ownership,
                     item=base_item,
                 )
+        if revision == 32 and re.fullmatch(
+            ASEH_R32_GROK_DETACHED_CONTAINER_NAME,
+            str(result.get("target_container_name") or ""),
+        ):
+            lease_root = Path(str(result.get("lease_root") or ""))
+            if (
+                result.get("foreign_recovery_ownership") is not None
+                or Path(str(result.get("script_path") or "")).name
+                != "grok_cli_runner.py"
+                or lease_root.parent != Path("/tmp")
+                or re.fullmatch(
+                    ASEH_R32_GROK_LEASE_ROOT_NAME,
+                    lease_root.name,
+                )
+                is None
+            ):
+                raise OperatorError("R32 Grok detached-effect entry is invalid")
         return result
 
     def validate_detached_snapshot(value: Any) -> dict[str, Any]:
@@ -19229,7 +19448,7 @@ def _validate_r19_historical_live_execution_evidence(
             or result.get("schema")
             != (
                 ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
-                if revision in {27, 28, 29, 30, 31}
+                if revision in {27, 28, 29, 30, 31, 32}
                 else ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
             )
             or entries
@@ -19267,6 +19486,7 @@ def _validate_r19_historical_live_execution_evidence(
         29: _admit_r29_historical_live_policy_admission,
         30: _admit_r30_historical_live_policy_admission,
         31: _admit_r31_historical_live_policy_admission,
+        32: _admit_r32_historical_live_policy_admission,
     }[revision]
     policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -19276,7 +19496,7 @@ def _validate_r19_historical_live_execution_evidence(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
-    if revision in {30, 31}:
+    if revision in {30, 31, 32}:
         if not isinstance(durable_candidate_witness, Mapping):
             raise OperatorError(
                 f"R{revision} durable live witness is absent"
@@ -19328,7 +19548,7 @@ def _validate_r19_historical_live_execution_evidence(
         "evidence_cid",
     }
     expected_active_binding: dict[str, Any] | None = None
-    if revision in {30, 31}:
+    if revision in {30, 31, 32}:
         if all(
             value is None
             for value in (
@@ -19381,7 +19601,7 @@ def _validate_r19_historical_live_execution_evidence(
         or supplied.get("schema")
         != (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29, 30, 31}
+            if revision in {27, 28, 29, 30, 31, 32}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         )
         or supplied.get("executor_class")
@@ -19612,7 +19832,7 @@ def _validate_r19_historical_live_execution_evidence(
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28, 29, 30, 31}
+        if revision in {27, 28, 29, 30, 31, 32}
         else _r19_admit_stable_unrelated_baseline
     )
     baseline_admitter(
@@ -19707,6 +19927,7 @@ def _r27_terminal_scope_guard(
     before_docker: Mapping[str, Any],
     before_detached: Mapping[str, Any],
     working_directory: Path,
+    admit_grok: bool = False,
 ) -> Any:
     """Re-observe preserved foreign ownership on both terminal samples."""
 
@@ -19722,6 +19943,7 @@ def _r27_terminal_scope_guard(
             detached = _r27_detached_effect_snapshot(
                 docker_snapshot=docker,
                 working_directory=working_directory,
+                admit_grok=admit_grok,
             )
             observations["docker"].append(docker)
             observations["detached"].append(detached)
@@ -19751,7 +19973,7 @@ def _r19_release_historical_live_waiter(
 
     if type(release_write) is not int or release_write < 0:
         raise OperatorError("R19 historical live release descriptor is invalid")
-    if revision in {29, 30, 31}:
+    if revision in {29, 30, 31, 32}:
         if not callable(pre_effect_guard):
             raise OperatorError(
                 f"R{revision} historical live pre-effect guard is absent"
@@ -19812,6 +20034,7 @@ def _run_r19_historical_live_validation(
         ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 29,
         ASEH_R30_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 30,
         ASEH_R31_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 31,
+        ASEH_R32_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 32,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -19827,12 +20050,13 @@ def _run_r19_historical_live_validation(
         29: _validate_r29_historical_live_policy_admission_record,
         30: _validate_r30_historical_live_policy_admission_record,
         31: _validate_r31_historical_live_policy_admission_record,
+        32: _validate_r32_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
     pre_effect_guard = active_policy.get("pre_effect_guard")
     active_candidate_binding = active_policy.get("active_candidate_binding")
     expected_active_candidate_binding = None
-    if revision in {30, 31}:
+    if revision in {30, 31, 32}:
         expected_active_candidate_binding = {
             "candidate_head": executor.candidate_head,
             "candidate_tree": executor.candidate_tree,
@@ -19841,14 +20065,14 @@ def _run_r19_historical_live_validation(
             ),
         }
     if (
-        (revision in {29, 30, 31} and not callable(pre_effect_guard))
-        or (revision not in {29, 30, 31} and pre_effect_guard is not None)
+        (revision in {29, 30, 31, 32} and not callable(pre_effect_guard))
+        or (revision not in {29, 30, 31, 32} and pre_effect_guard is not None)
         or (
-            revision in {30, 31}
+            revision in {30, 31, 32}
             and active_candidate_binding != expected_active_candidate_binding
         )
         or (
-            revision not in {30, 31}
+            revision not in {30, 31, 32}
             and active_candidate_binding is not None
         )
     ):
@@ -19922,8 +20146,9 @@ def _run_r19_historical_live_validation(
         _r27_detached_effect_snapshot(
             docker_snapshot=before_docker,
             working_directory=working_directory,
+            admit_grok=revision == 32,
         )
-        if revision in {27, 28, 29, 30, 31}
+        if revision in {27, 28, 29, 30, 31, 32}
         else _r19_detached_effect_snapshot()
     )
     time.sleep(0.05)
@@ -19932,22 +20157,33 @@ def _run_r19_historical_live_validation(
         _r27_detached_effect_snapshot(
             docker_snapshot=confirmed_docker,
             working_directory=working_directory,
+            admit_grok=revision == 32,
         )
-        if revision in {27, 28, 29, 30, 31}
+        if revision in {27, 28, 29, 30, 31, 32}
         else _r19_detached_effect_snapshot()
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28, 29, 30, 31}
+        if revision in {27, 28, 29, 30, 31, 32}
         else _r19_admit_stable_unrelated_baseline
     )
-    baseline_admitter(
-        first_docker=before_docker,
-        confirmed_docker=confirmed_docker,
-        first_detached=before_detached,
-        confirmed_detached=confirmed_detached,
-        working_directory=working_directory,
-    )
+    if revision in {27, 28, 29, 30, 31, 32}:
+        baseline_admitter(
+            first_docker=before_docker,
+            confirmed_docker=confirmed_docker,
+            first_detached=before_detached,
+            confirmed_detached=confirmed_detached,
+            working_directory=working_directory,
+            admit_grok=revision == 32,
+        )
+    else:
+        baseline_admitter(
+            first_docker=before_docker,
+            confirmed_docker=confirmed_docker,
+            first_detached=before_detached,
+            confirmed_detached=confirmed_detached,
+            working_directory=working_directory,
+        )
     baseline_docker_entries = before_docker["entries"]
     ready_read = ready_write = release_read = release_write = -1
     process: subprocess.Popen[bytes] | None = None
@@ -19963,8 +20199,9 @@ def _run_r19_historical_live_validation(
             before_docker=before_docker,
             before_detached=before_detached,
             working_directory=working_directory,
+            admit_grok=revision == 32,
         )
-        if revision in {27, 28, 29, 30, 31}
+        if revision in {27, 28, 29, 30, 31, 32}
         else _r19_terminal_scope_guard(
             before_docker=before_docker,
             before_detached=before_detached,
@@ -20207,7 +20444,7 @@ def _run_r19_historical_live_validation(
     evidence: dict[str, Any] = {
         "schema": (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29, 30, 31}
+            if revision in {27, 28, 29, 30, 31, 32}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         ),
         "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
@@ -20252,7 +20489,7 @@ def _run_r19_historical_live_validation(
             "verified_success" if returncode == 0 else "verified_failure"
         ),
     }
-    if revision in {30, 31}:
+    if revision in {30, 31, 32}:
         evidence["active_candidate_binding"] = active_candidate_binding
     evidence["evidence_cid"] = _identity(evidence)
     completed = subprocess.CompletedProcess(
@@ -20286,13 +20523,13 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}:
         raise OperatorError("historical live policy revision is invalid")
     if (
-        (_revision in {29, 30, 31} and not callable(pre_effect_guard))
-        or (_revision not in {29, 30, 31} and pre_effect_guard is not None)
+        (_revision in {29, 30, 31, 32} and not callable(pre_effect_guard))
+        or (_revision not in {29, 30, 31, 32} and pre_effect_guard is not None)
         or (
-            _revision in {30, 31}
+            _revision in {30, 31, 32}
             and (
                 re.fullmatch(
                     r"[0-9a-f]{40}", str(active_candidate_head or "")
@@ -20309,7 +20546,7 @@ def _qualify_r19_historical_live_policy(
             )
         )
         or (
-            _revision not in {30, 31}
+            _revision not in {30, 31, 32}
             and any(
                 value is not None
                 for value in (
@@ -20325,7 +20562,7 @@ def _qualify_r19_historical_live_policy(
         )
     executor_contract = (
         _r27_historical_live_validation_executor_contract()
-        if _revision in {27, 28, 29, 30, 31}
+        if _revision in {27, 28, 29, 30, 31, 32}
         else _r19_sealed_receipt_validation_executor_contract()
     )
     policy_builder = {
@@ -20342,6 +20579,7 @@ def _qualify_r19_historical_live_policy(
         29: _r29_historical_live_policy_admission,
         30: _r30_historical_live_policy_admission,
         31: _r31_historical_live_policy_admission,
+        32: _r32_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -20357,6 +20595,7 @@ def _qualify_r19_historical_live_policy(
         29: _admit_r29_historical_live_policy_admission,
         30: _admit_r30_historical_live_policy_admission,
         31: _admit_r31_historical_live_policy_admission,
+        32: _admit_r32_historical_live_policy_admission,
     }[_revision]
     policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -20366,7 +20605,7 @@ def _qualify_r19_historical_live_policy(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
-    if _revision in {30, 31}:
+    if _revision in {30, 31, 32}:
         if not isinstance(durable_candidate_witness, Mapping):
             raise OperatorError(
                 f"R{_revision} durable policy witness is absent"
@@ -22631,6 +22870,8 @@ def _repair_authorization_candidate_git_guard_if_required(
         and parents == [REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD]
     ):
         pass
+    elif parents == [REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD]:
+        pass
     else:
         yield None
         return
@@ -24527,6 +24768,1190 @@ def _r31_population_requires_policy(
     )
 
 
+def _r32_expected_r31_authorization_attempt() -> dict[str, Any]:
+    """Return the exact persisted R31 attempt without reconstructing v1 bytes."""
+
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R31_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 31,
+        "candidate_head": REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD,
+        "candidate_tree": REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE,
+        "published_r27_receipt_cid": ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID,
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r29_head": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        ),
+        "failed_r29_authorization_attempt_cid": (
+            ASEH_R30_FAILED_R29_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "r30_initial_health_failure_evidence_cid": (
+            _r31_expected_r30_initial_health_failure_evidence()["evidence_cid"]
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": (
+            ASEH_R32_FAILED_R31_VALIDATION_EXECUTOR_CONTRACT_CID
+        ),
+        "candidate_authorization_witness_cid": (
+            "sha256:7dac67d651b06f61227508332b461e9f53a5044b64c4150816c1fd4f13e231ac"
+        ),
+        "durable_candidate_witness_cid": (
+            "sha256:806708732aaded344fba425433ea1dc3c684d0d74eeaf77f6388301cbcfd630f"
+        ),
+        "candidate_git_guard_cid": (
+            "sha256:399ea412332f1f8f9799be43a7237c88363e09632c225e3216833dafa7fdfed4"
+        ),
+        "attempt_state": "started_after_git_guard_before_validator_or_live_effect",
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": ASEH_R32_FAILED_R31_STARTED_AT,
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    if attempt["attempt_cid"] != ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID:
+        raise OperatorError("closed R31 authorization attempt identity drifted")
+    return attempt
+
+
+def _validate_r32_failed_r31_authorization_attempt(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R32 failed R31 authorization attempt is invalid")
+    attempt = dict(value)
+    if attempt != _r32_expected_r31_authorization_attempt():
+        raise OperatorError("R32 failed R31 authorization attempt differs")
+    return attempt
+
+
+def _r32_expected_r31_authorization_failure_evidence() -> dict[str, Any]:
+    """Bind the observed R31 historical-live census failure without retry."""
+
+    attempt = _r32_expected_r31_authorization_attempt()
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R32_R31_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "failed_candidate_head": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "authorization_attempt_cid": attempt["attempt_cid"],
+        "ok": False,
+        "exit_code": 1,
+        "error_type": "OperatorError",
+        "error_message": "R19 detached-effect ownership is invalid",
+        "r31_receipt_published": False,
+        "r31_retry_authorized": False,
+        "validator_effect": "observed_started_completion_not_admitted",
+        "historical_live_effect": "observed_census_rejected_foreign_grok_watchdog",
+        "provider_effect": "none_observed",
+        "database_effect": "none_observed",
+        "ducklake_effect": "none_observed",
+        "database_observed_during_evidence_capture": False,
+        "database_mutated_during_evidence_capture": False,
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _validate_r32_r31_authorization_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R32 R31 authorization failure evidence is invalid")
+    evidence = dict(value)
+    expected = _r32_expected_r31_authorization_failure_evidence()
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if evidence != expected or evidence_cid != expected["evidence_cid"]:
+        raise OperatorError("R32 R31 authorization failure evidence differs")
+    return evidence
+
+
+def _admit_exact_r32_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R27 plus published R30 plus adjacent R32."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R32_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R32 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    last_index = len(ASEH_R32_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R32_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = (
+            None if index == 0 else (32 if index == last_index else (
+                30 if index == last_index - 1 else index + 1
+            ))
+        )
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R32 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R32 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS:
+        raise OperatorError("R32 historical receipt vector differs")
+    return chain
+
+
+def _r32_validation_executor_class(command: Sequence[str]) -> str:
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R32 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
+def _r32_validation_working_tree_scope(command: Sequence[str]) -> str:
+    if (
+        tuple(command)
+        == REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r32_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    parent = _r31_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    matrix = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r32_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r32-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 32,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "published_r30_executor_contract_cid": parent.get(
+                "published_r30_executor_contract_cid", parent_cid
+            ),
+            "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+            "scope": (
+                "r32_guarded_authorization_pre_duckdb_and_materialized_"
+                "launch_admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _validate_r32_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R32 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid",
+        "published_r30_receipt_cid",
+        "failed_r31_authorization_attempt_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_cid = str(unsigned.pop("policy_admission_cid", "") or "")
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid",
+        "published_r30_receipt_cid",
+        "failed_r31_authorization_attempt_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R32_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 32
+        or supplied.get("authorization_basis")
+        != (
+            "validated_r1_r27_r30_chain_plus_failed_r31_attempt_"
+            "plus_guarded_r32_grok_census_candidate_witness"
+        )
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R30_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or supplied.get("candidate_base_head")
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        or supplied.get("failed_r31_authorization_attempt_cid")
+        != ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(supplied.get(field) or "")
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("published_r30_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or supplied.get("executor_contract_cid")
+        != _identity(_r27_historical_live_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R32 historical live policy admission differs")
+    return supplied
+
+
+def _r32_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R32 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r30_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R32 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    _assert_r30_durable_candidate_witness(
+        durable,
+        active_authorization_witness=witness,
+    )
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("head") != candidate_head
+        or durable.get("tree") != candidate_tree
+        or witness.get("status_digest") != _identity(b"")
+    ):
+        raise OperatorError(
+            "R32 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    if admitted_contract != _r27_historical_live_validation_executor_contract():
+        raise OperatorError("R32 historical live executor contract differs")
+    admission: dict[str, Any] = {
+        "schema": ASEH_R32_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 32,
+        "authorization_basis": (
+            "validated_r1_r27_r30_chain_plus_failed_r31_attempt_"
+            "plus_guarded_r32_grok_census_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "failed_r31_authorization_attempt_cid": (
+            ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r32_historical_live_policy_admission_record(admission)
+
+
+def _admit_r32_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    supplied = _validate_r32_historical_live_policy_admission_record(value)
+    expected = _r32_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+        durable_candidate_witness=durable_candidate_witness,
+    )
+    if supplied != expected:
+        raise OperatorError("R32 historical live policy admission is unknown")
+    return supplied
+
+
+def _r32_authorization_attempt_record(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    started_at: float,
+) -> dict[str, Any]:
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    if (
+        witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("authorization_v1_witness_cid") != _identity(witness)
+        or durable.get("authorization_guard_cid") != guard.get("guard_cid")
+        or type(started_at) not in {int, float}
+        or not math.isfinite(float(started_at))
+        or float(started_at) <= 0.0
+    ):
+        raise OperatorError("R32 authorization attempt identity is invalid")
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R32_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 32,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "failed_unpublished_r31_head": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        ),
+        "failed_r31_authorization_attempt_cid": (
+            ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": _identity(
+            _r32_sealed_receipt_validation_executor_contract()
+        ),
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "candidate_git_guard_cid": guard["guard_cid"],
+        "attempt_state": "started_after_git_guard_before_validator_or_live_effect",
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": float(started_at),
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    return _validate_r32_authorization_attempt_record(
+        attempt,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+    )
+
+
+def _validate_r32_authorization_attempt_record(
+    value: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R32 authorization attempt is invalid")
+    attempt = dict(value)
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    unsigned = dict(attempt)
+    attempt_cid = str(unsigned.pop("attempt_cid", "") or "")
+    required = {
+        "schema", "program_id", "task_id", "transition_revision",
+        "candidate_head", "candidate_tree", "published_r30_receipt_cid",
+        "failed_unpublished_r31_head", "failed_r31_authorization_attempt_cid",
+        "authorization_argv", "validation_executor_contract_cid",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid", "candidate_git_guard_cid",
+        "attempt_state", "retry_authorized", "validator_effect",
+        "historical_live_effect", "provider_effect", "database_effect",
+        "ducklake_effect", "started_at", "attempt_cid",
+    }
+    if (
+        set(attempt) != required
+        or attempt.get("schema") != ASEH_R32_AUTHORIZATION_ATTEMPT_SCHEMA
+        or attempt.get("transition_revision") != 32
+        or attempt.get("candidate_head") != candidate_head
+        or attempt.get("candidate_tree") != candidate_tree
+        or attempt.get("published_r30_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or attempt.get("failed_unpublished_r31_head")
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        or attempt.get("failed_r31_authorization_attempt_cid")
+        != ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID
+        or attempt.get("retry_authorized") is not False
+        or attempt_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R32 authorization attempt differs")
+    return attempt
+
+
+def _r32_candidate_requires_policy(*, head: str, tree: str) -> bool:
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD]
+        and _git(
+            "show",
+            "-s",
+            "--format=%P",
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD,
+        ).split()
+        == [REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD]
+        and _git(
+            "rev-parse",
+            f"{REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD}^{{tree}}",
+        )
+        == REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_CHANGED_PATHS
+        and _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head)
+        == ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    )
+
+
+def _r32_population_requires_policy(population: Mapping[str, Any]) -> bool:
+    return _r32_candidate_requires_policy(
+        head=str(population.get("source_head") or ""),
+        tree=str(population.get("repository_tree_id") or ""),
+    )
+
+
+def _run_repair_foreign_grok_waiter_census_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=32,
+    )
+
+
+def _validate_repair_foreign_grok_waiter_census_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=32,
+    )
+
+
+def _repair_foreign_grok_waiter_census_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed R32 child of unpublished R31 after live census fail."""
+
+    r31_attempt = (
+        _validate_r32_failed_r31_authorization_attempt(
+            payload.get("r31_authorization_attempt")
+        )
+        if isinstance(payload.get("r31_authorization_attempt"), Mapping)
+        else None
+    )
+    r31_failure = (
+        _validate_r32_r31_authorization_failure_evidence(
+            payload.get("r31_authorization_failure_evidence")
+        )
+        if isinstance(payload.get("r31_authorization_failure_evidence"), Mapping)
+        else None
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_RECEIPT_FIELDS
+        or payload.get("transition_revision") != 32
+        or payload.get("previous_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or payload.get("failed_unpublished_r31_head")
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        or payload.get("failed_unpublished_r31_tree")
+        != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE
+        or not isinstance(r31_attempt, Mapping)
+        or not isinstance(r31_failure, Mapping)
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r32_sealed_receipt_validation_executor_contract()
+    ):
+        raise OperatorError("bootstrap repair R32 Grok-census receipt schema is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair R32 Grok-census receipt CID is invalid")
+    return receipt_id
+
+
+def _qualify_r32_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    authorization_attempt: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_authorization_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    sealed_attempt = json.loads(_canonical_json(authorization_attempt))
+    sealed_receipt = (
+        None
+        if authorization_receipt is None
+        else json.loads(_canonical_json(authorization_receipt))
+    )
+    sealed_witness = dict(candidate_authorization_witness)
+    sealed_durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    sealed_guard = dict(candidate_git_guard)
+    sealed_active_witness = dict(active_candidate_authorization_witness)
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=candidate_head,
+        authorization_candidate_tree=candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+
+    def pre_effect_guard() -> None:
+        _assert_r32_historical_live_effect_admission(
+            paths=paths,
+            authorization_attempt=sealed_attempt,
+            authorization_candidate_head=candidate_head,
+            authorization_candidate_tree=candidate_tree,
+            authorization_candidate_witness=sealed_witness,
+            durable_candidate_witness=sealed_durable,
+            candidate_git_guard=sealed_guard,
+            authorization_receipt=sealed_receipt,
+            authorizing_receipt_cid=authorizing_receipt_cid,
+            active_candidate_head=active_candidate_head,
+            active_candidate_tree=active_candidate_tree,
+            active_candidate_witness=sealed_active_witness,
+            continuity_admission=sealed_continuity,
+        )
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        durable_candidate_witness=sealed_durable,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        pre_effect_guard=pre_effect_guard,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+        active_candidate_authorization_witness=sealed_active_witness,
+        _revision=32,
+    )
+
+
+def _assert_r32_failed_r31_one_shot_state(
+    *,
+    paths: Mapping[str, Path],
+    expected_r32_attempt: Mapping[str, Any] | None = None,
+    expected_r32_receipt: Mapping[str, Any] | None = None,
+    expected_r32_receipt_cid: str | None = None,
+) -> dict[str, Any]:
+    r31_path = paths.get("repair_sealed_native_lane_preload_transition_receipt")
+    r31_attempt_path = paths.get(
+        "repair_sealed_native_lane_preload_authorization_attempt"
+    )
+    r32_path = paths.get("repair_foreign_grok_waiter_census_transition_receipt")
+    r32_attempt_path = paths.get(
+        "repair_foreign_grok_waiter_census_authorization_attempt"
+    )
+    if not all(
+        isinstance(path, Path)
+        for path in (r31_path, r31_attempt_path, r32_path, r32_attempt_path)
+    ):
+        raise OperatorError("R32 one-shot evidence paths are absent")
+    if not _r29_receipt_name_is_absent(r31_path):
+        raise OperatorError("R32 requires the failed R31 receipt to remain absent")
+    failed_attempt = _validate_r32_failed_r31_authorization_attempt(
+        _secure_runtime_json(
+            r31_attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+    )
+    if expected_r32_receipt_cid is None:
+        if expected_r32_receipt is not None or not _r29_receipt_name_is_absent(
+            r32_path
+        ):
+            raise OperatorError("R32 transition receipt appeared before publication")
+    else:
+        observed_receipt = _secure_runtime_json(
+            r32_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if (
+            _repair_foreign_grok_waiter_census_transition_receipt_id(
+                observed_receipt
+            )
+            != expected_r32_receipt_cid
+        ):
+            raise OperatorError("R32 transition receipt changed")
+    if expected_r32_attempt is None:
+        with _anchored_directory_descriptor(
+            r32_attempt_path.parent
+        ) as directory_fd:
+            if not _r21_path_absent(directory_fd, r32_attempt_path.name):
+                raise OperatorError(
+                    "R32 authorization attempt already exists; retry is denied"
+                )
+    else:
+        observed_attempt = _secure_runtime_json(
+            r32_attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if observed_attempt != json.loads(_canonical_json(expected_r32_attempt)):
+            raise OperatorError("R32 authorization attempt changed")
+    return failed_attempt
+
+
+def _assert_r32_historical_live_effect_admission(
+    *,
+    paths: Mapping[str, Path],
+    authorization_attempt: Mapping[str, Any],
+    authorization_candidate_head: str,
+    authorization_candidate_tree: str,
+    authorization_candidate_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> None:
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    stored_guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+    )
+    attempt = _validate_r32_authorization_attempt_record(
+        authorization_attempt,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+        candidate_authorization_witness=authorization_candidate_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=stored_guard,
+    )
+    _assert_r32_failed_r31_one_shot_state(
+        paths=paths,
+        expected_r32_attempt=attempt,
+        expected_r32_receipt=authorization_receipt,
+        expected_r32_receipt_cid=authorizing_receipt_cid,
+    )
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != active_candidate_head
+        or active_guard.candidate_tree != active_candidate_tree
+    ):
+        raise OperatorError("R32 live effect lacks a fresh prepared Git guard")
+    _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="immediately before R32 historical live effect release",
+    )
+    _assert_candidate_authorization_witness(
+        active_candidate_witness,
+        expected_head=active_candidate_head,
+        expected_tree=active_candidate_tree,
+        boundary="immediately before R32 historical live effect release",
+    )
+
+
+def _authorize_repair_foreign_grok_waiter_census_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize exact R32 on unpublished R31 without retrying R31."""
+
+    r32_path = paths.get("repair_foreign_grok_waiter_census_transition_receipt")
+    attempt_path = paths.get(
+        "repair_foreign_grok_waiter_census_authorization_attempt"
+    )
+    r31_path = paths.get("repair_sealed_native_lane_preload_transition_receipt")
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    if not isinstance(r32_path, Path) or not isinstance(attempt_path, Path):
+        return None
+    if r32_path.parent != attempt_path.parent or not _same_namespace_identity(
+        os.fstat(authorization_directory_fd),
+        os.stat(r32_path.parent, follow_symlinks=False),
+    ):
+        raise OperatorError("R32 authorization evidence directory differs")
+    if not isinstance(r30_path, Path) or _r29_receipt_name_is_absent(r30_path):
+        return None
+    waiter_chain = _admit_exact_r27_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in waiter_chain
+    ) != ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("bootstrap repair R32 waiter prior vector differs")
+    prior_chain = _load_exact_r30_receipt_chain(paths)
+    prior_receipt = prior_chain[-1]
+    if (
+        previous_receipt.get("receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or prior_receipt.get("receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+    ):
+        raise OperatorError("bootstrap repair R32 prior chain differs")
+    r32_receipt_absent = _r29_receipt_name_is_absent(
+        r32_path,
+        authorization_directory_fd=authorization_directory_fd,
+    )
+    if not r32_receipt_absent:
+        receipt = _secure_runtime_json(
+            r32_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_foreign_grok_waiter_census_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=prior_receipt,
+            rerun_validations=receipt.get("repair_head") == head,
+        )
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": [*prior_chain, receipt],
+            "runtime_source_head": head,
+        }
+
+    base_head = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R32 base tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R32 changed paths differ")
+    if _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head) != (
+        ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R32 effective changed paths differ")
+    source_path = "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+    if (
+        _git("rev-parse", f"{base_head}:{source_path}")
+        != ASEH_R32_FAILED_R31_SOURCE_BLOB_OID
+        or _identity(_git_bytes("show", f"{base_head}:{source_path}"))
+        != ASEH_R32_FAILED_R31_SOURCE_SHA256
+    ):
+        raise OperatorError("bootstrap repair R32 failed-R31 source differs")
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != head
+        or active_guard.candidate_tree != candidate_tree
+    ):
+        raise OperatorError("R32 authorization Git guard is absent")
+    candidate_git_guard = _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="before R32 authorization witness",
+    )
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    durable_witness = _r30_durable_candidate_witness(
+        authorization_witness=authorization_witness,
+        candidate_git_guard=candidate_git_guard,
+    )
+    r27_value = prior_receipt.get("r27_initial_health_failure_evidence")
+    if not isinstance(r27_value, Mapping):
+        raise OperatorError("R32 inherited R27 failure evidence is absent")
+    r27_failure_evidence = _validate_r28_r27_initial_health_failure_evidence(
+        r27_value
+    )
+    r28_failure_evidence = _validate_r29_r28_authorization_failure_evidence(
+        _r29_expected_r28_authorization_failure_evidence()
+    )
+    r29_failure_evidence = _validate_r30_r29_authorization_failure_evidence(
+        _r30_expected_r29_authorization_failure_evidence()
+    )
+    r30_failure_evidence = prior_receipt.get("r30_initial_health_failure_evidence")
+    if not isinstance(r30_failure_evidence, Mapping):
+        r30_failure_evidence = _r31_expected_r30_initial_health_failure_evidence()
+    else:
+        r30_failure_evidence = _validate_r31_r30_initial_health_failure_evidence(
+            r30_failure_evidence
+        )
+    failed_r31_attempt = _assert_r32_failed_r31_one_shot_state(paths=paths)
+    r31_failure_evidence = _validate_r32_r31_authorization_failure_evidence(
+        _r32_expected_r31_authorization_failure_evidence()
+    )
+    authorization_attempt = _r32_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=authorization_witness,
+        durable_candidate_witness=durable_witness,
+        candidate_git_guard=candidate_git_guard,
+        started_at=time.time(),
+    )
+    _atomic_json_create(
+        attempt_path,
+        authorization_attempt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_r32_failed_r31_one_shot_state(
+        paths=paths,
+        expected_r32_attempt=authorization_attempt,
+    )
+    validation_results = (
+        _run_repair_foreign_grok_waiter_census_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r32_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            durable_candidate_witness=durable_witness,
+            candidate_git_guard=candidate_git_guard,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+            authorization_attempt=authorization_attempt,
+            authorization_receipt=None,
+            active_candidate_head=head,
+            active_candidate_tree=candidate_tree,
+            active_candidate_authorization_witness=authorization_witness,
+            continuity_admission=None,
+        )
+    )
+    inherited_names = (
+        "projection_recovery_failure_evidence",
+        "r25_preflight_failure_evidence",
+        "projection_recovery_prestart_admission",
+        "r26_terminal_failure_evidence",
+    )
+    inherited: dict[str, Mapping[str, Any]] = {}
+    for name in inherited_names:
+        value = prior_receipt.get(name)
+        if not isinstance(value, Mapping):
+            raise OperatorError(f"R32 inherited {name} is absent")
+        inherited[name] = value
+    failed_r29_attempt = prior_receipt.get("r29_authorization_attempt")
+    if not isinstance(failed_r29_attempt, Mapping):
+        failed_r29_attempt = _validate_r30_failed_r29_authorization_attempt(
+            _r30_expected_r29_authorization_attempt()
+        )
+    receipt: dict[str, Any] = {
+        "schema": REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R32",
+        "program_id": PROGRAM,
+        "transition_revision": 32,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": prior_receipt["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE,
+        "published_r27_base_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "published_r27_base_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+        "published_r30_base_head": (
+            REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD
+        ),
+        "published_r30_base_tree": (
+            REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_TREE
+        ),
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r28_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "failed_unpublished_r29_head": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r29_tree": (
+            REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_BASE_TREE
+        ),
+        "failed_unpublished_r31_head": base_head,
+        "failed_unpublished_r31_tree": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "unreceipted_effective_changed_paths": list(
+            ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+        "unreceipted_effective_patch_digest": _git_patch_digest(
+            ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+            head,
+        ),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R30"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "durable_candidate_witness": durable_witness,
+        "candidate_git_guard": candidate_git_guard,
+        "sealed_validation_executor_contract": (
+            _r32_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        **{name: dict(value) for name, value in inherited.items()},
+        "r27_initial_health_failure_evidence": r27_failure_evidence,
+        "r28_authorization_failure_evidence": r28_failure_evidence,
+        "r29_authorization_failure_evidence": r29_failure_evidence,
+        "r29_authorization_attempt": failed_r29_attempt,
+        "r30_initial_health_failure_evidence": r30_failure_evidence,
+        "r31_authorization_attempt": failed_r31_attempt,
+        "r31_authorization_failure_evidence": r31_failure_evidence,
+        "authorization_attempt": authorization_attempt,
+        "terminal_success_criteria": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_foreign_grok_waiter_census_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=prior_receipt,
+        rerun_validations=False,
+    )
+    _atomic_json_create(
+        r32_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
 def _load_exact_r30_receipt_chain(
     paths: Mapping[str, Path],
 ) -> list[Mapping[str, Any]]:
@@ -25367,6 +26792,32 @@ def _assert_exact_run_launch_admission(
         ):
             raise OperatorError(
                 "current R30 candidate lacks its exact admitted validation seal"
+            )
+    elif parents == [REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r32_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r30_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or transition.get("base_head")
+            != REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+            or r30_admitted.get("receipt_cid")
+            != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or transition.get("r31_authorization_attempt_cid")
+            != ASEH_R32_FAILED_R31_AUTHORIZATION_ATTEMPT_CID
+        ):
+            raise OperatorError(
+                "current R32 candidate lacks its exact admitted validation seal"
             )
     elif parents == [REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD]:
         transition = admission.get("repair_transition")
@@ -27177,7 +28628,7 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     """Run the bounded R16-R30 repair matrix against committed bytes."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     }:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
@@ -27185,7 +28636,14 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 31:
+    if _revision == 32:
+        matrix = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r32_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r32_validation_working_tree_scope
+        executor_class_for = _r32_validation_executor_class
+    elif _revision == 31:
         matrix = REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_VALIDATIONS
         executor_contract_value = (
             _r31_sealed_receipt_validation_executor_contract()
@@ -28155,6 +29613,16 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-sealed-native-lane-preload-authorization-attempt.json"
+    )
+    result["repair_foreign_grok_waiter_census_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-foreign-grok-waiter-census-transition.json"
+    )
+    result["repair_foreign_grok_waiter_census_authorization_attempt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-foreign-grok-waiter-census-authorization-attempt.json"
     )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
@@ -33067,11 +34535,32 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     """Admit one immutable transition in the exact R16-R30 suffix."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
     }:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 31:
+    if _revision == 32:
+        receipt_id = _repair_foreign_grok_waiter_census_transition_receipt_id(
+            receipt
+        )
+        previous_receipt_id = (
+            _repair_candidate_git_epoch_guard_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_BASE_HEAD
+        changed_paths_value = (
+            REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_AUTHORITY
+        commands = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r32_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_FOREIGN_GROK_WAITER_CENSUS_TRANSITION_SCHEMA
+        executor_class_for = _r32_validation_executor_class
+        scope_for = _r32_validation_working_tree_scope
+    elif _revision == 31:
         receipt_id = _repair_sealed_native_lane_preload_transition_receipt_id(
             receipt
         )
@@ -33545,7 +35034,11 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             (
                 "ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"
                 if _revision in {29, 30}
-                else f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"
+                else (
+                    "ASEH-BOOTSTRAP-002@ASEH-PLAN-R30"
+                    if _revision in {31, 32}
+                    else f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"
+                )
             )
         ]
         or receipt.get("owning_repository") != "ipfs_accelerate_py"
@@ -33656,6 +35149,27 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     ):
         raise OperatorError(
             "bootstrap repair R31 unreceipted effective Git proof differs"
+        )
+    if _revision == 32 and (
+        _git("show", "-s", "--format=%P", base_head).split()
+        != [REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD]
+        or _git("rev-parse", f"{ASEH_R30_PUBLISHED_R27_BASE_HEAD}^{{tree}}")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or receipt.get("published_r27_base_head")
+        != ASEH_R30_PUBLISHED_R27_BASE_HEAD
+        or receipt.get("published_r27_base_tree")
+        != ASEH_R30_PUBLISHED_R27_BASE_TREE
+        or receipt.get("failed_unpublished_r31_head") != base_head
+        or receipt.get("failed_unpublished_r31_tree") != base_tree
+        or _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+        != ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        or receipt.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or receipt.get("unreceipted_effective_patch_digest")
+        != _git_patch_digest(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair R32 unreceipted effective Git proof differs"
         )
     expected_witness_fields = {
         "head",
@@ -33987,7 +35501,33 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "candidate_git_guard": dict(receipt["candidate_git_guard"]),
             }
         )
-    if _revision in {26, 27, 28, 29, 30, 31}:
+    if _revision == 32:
+        transition_result.update(
+            {
+                "published_r27_base_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+                "published_r27_base_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+                "published_r30_base_head": (
+                    REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD
+                ),
+                "published_r30_base_tree": (
+                    REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_TREE
+                ),
+                "failed_unpublished_r31_head": base_head,
+                "failed_unpublished_r31_tree": base_tree,
+                "unreceipted_effective_changed_paths": list(
+                    ASEH_R32_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+                ),
+                "unreceipted_effective_patch_digest": str(
+                    receipt.get("unreceipted_effective_patch_digest") or ""
+                ),
+                "authorization_attempt": dict(receipt["authorization_attempt"]),
+                "durable_candidate_witness": dict(
+                    receipt["durable_candidate_witness"]
+                ),
+                "candidate_git_guard": dict(receipt["candidate_git_guard"]),
+            }
+        )
+    if _revision in {26, 27, 28, 29, 30, 31, 32}:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
             _validate_r25_projection_recovery_failure_evidence(failure_value)
@@ -34035,7 +35575,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         transition_result[
             "projection_recovery_prestart_semantic_admission_cid"
         ] = recovery["semantic_admission_cid"]
-        if _revision in {27, 28, 29, 30, 31}:
+        if _revision in {27, 28, 29, 30, 31, 32}:
             terminal_value = receipt.get("r26_terminal_failure_evidence")
             terminal = (
                 _validate_r27_r26_terminal_failure_evidence(terminal_value)
@@ -34047,7 +35587,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result["r26_terminal_failure_evidence_cid"] = (
                 terminal["evidence_cid"]
             )
-        if _revision in {28, 29, 30, 31}:
+        if _revision in {28, 29, 30, 31, 32}:
             r27_failure_value = receipt.get(
                 "r27_initial_health_failure_evidence"
             )
@@ -34187,6 +35727,36 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result[
                 "r30_initial_health_failure_evidence_cid"
             ] = r30_failure["evidence_cid"]
+        if _revision == 32:
+            r31_attempt_value = receipt.get("r31_authorization_attempt")
+            r31_failure_value = receipt.get(
+                "r31_authorization_failure_evidence"
+            )
+            r31_attempt = (
+                _validate_r32_failed_r31_authorization_attempt(
+                    r31_attempt_value
+                )
+                if isinstance(r31_attempt_value, Mapping)
+                else None
+            )
+            r31_failure = (
+                _validate_r32_r31_authorization_failure_evidence(
+                    r31_failure_value
+                )
+                if isinstance(r31_failure_value, Mapping)
+                else None
+            )
+            if not all(
+                isinstance(value, Mapping)
+                for value in (r31_attempt, r31_failure)
+            ):
+                raise OperatorError("R32 failed R31 authorization evidence is absent")
+            transition_result["r31_authorization_attempt_cid"] = (
+                r31_attempt["attempt_cid"]
+            )
+            transition_result[
+                "r31_authorization_failure_evidence_cid"
+            ] = r31_failure["evidence_cid"]
     elif _revision == 25:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
@@ -42763,6 +44333,22 @@ def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
+        r32_result = (
+            _authorize_repair_foreign_grok_waiter_census_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r32_result is not None:
+            return r32_result
         r31_result = (
             _authorize_repair_sealed_native_lane_preload_transition_if_applicable(
                 board=board,
