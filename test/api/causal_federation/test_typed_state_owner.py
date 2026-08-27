@@ -285,6 +285,99 @@ def test_error_code_preserves_duckdb_fatal_detail() -> None:
     assert "checkpoint" in code
 
 
+def test_owner_rebuilds_task_status_indexes_after_art_fatal(
+    tmp_path: Path,
+) -> None:
+    class FatalException(Exception):
+        pass
+
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    try:
+        names_before = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+            ).fetchall()
+        }
+        assert "tasks_status_idx" in names_before
+        assert "tasks_goal_idx" in names_before
+        gateway._recover_exclusive_handle_after_native_fatal(
+            FatalException(
+                "FATAL Error: Invalid Input Error: Failed to delete all rows "
+                "from index. Only deleted 0 out of 1 rows."
+            )
+        )
+        names = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+            ).fetchall()
+        }
+        assert "tasks_status_idx" in names
+        assert "tasks_goal_idx" in names
+        connection.execute(
+            "UPDATE tasks SET status = ?, revision = ? "
+            "WHERE task_cid = ? AND revision = ?",
+            ["in_progress", 1, "task:typed-owner", 0],
+        )
+        row = connection.execute(
+            "SELECT status, revision FROM tasks WHERE task_cid = 'task:typed-owner'"
+        ).fetchone()
+        if hasattr(row, "get"):
+            observed = (row["status"], int(row["revision"]))
+        else:
+            observed = (row[0], int(row[1]))
+        assert observed == ("in_progress", 1)
+    finally:
+        gateway.stop()
+        connection.close()
+
+
+def test_owner_drops_status_indexes_around_receipt_cas(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    try:
+        command = StateCommand(
+            command_id="cmd:status-cas",
+            command_kind=CommandKind.CLAIM,
+            store_id="control.duckdb",
+            session_id="session:status-cas",
+            expected_generation=1,
+            expected_revision=1,
+            fence_epoch=1,
+            idempotency_key="idem:status-cas",
+            parameters={"operation": "task.status.cas.receipt"},
+        )
+        dropped = gateway._task_status_cas_index_sql(command)
+        assert any("tasks_status_idx" in sql for sql in dropped)
+        names = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+            ).fetchall()
+        }
+        assert "tasks_status_idx" not in names
+        gateway._restore_task_status_cas_indexes(dropped)
+        names = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+            ).fetchall()
+        }
+        assert "tasks_status_idx" in names
+        assert "tasks_goal_idx" in names
+    finally:
+        gateway.stop()
+        connection.close()
+
+
 def test_gateway_attach_recovers_after_exclusive_owner_poison(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

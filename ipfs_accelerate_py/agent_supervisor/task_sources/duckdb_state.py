@@ -2971,6 +2971,19 @@ def _quote_duckdb_ident(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
+_ART_INDEX_DELETE_FATAL = "failed to delete all rows from index"
+_TASK_STATUS_INDEX_DDL = (
+    ("tasks_status_idx", "CREATE INDEX tasks_status_idx ON tasks(status, ordinal)"),
+    ("tasks_goal_idx", "CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)"),
+)
+
+
+def is_art_index_delete_fatal(exc: BaseException) -> bool:
+    """Return whether DuckDB poisoned the handle on a status-index UPDATE."""
+
+    return native_handle_is_dead(exc) and _ART_INDEX_DELETE_FATAL in str(exc).casefold()
+
+
 def _drop_task_status_indexes(connection: Any) -> list[str]:
     """Drop status-bearing task indexes that can fatal status UPDATEs.
 
@@ -3007,6 +3020,33 @@ def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> 
         if not text:
             continue
         connection.execute(text)
+
+
+def rebuild_task_status_indexes(connection: Any) -> list[str]:
+    """Recreate status-bearing task ART indexes after a fatal status CAS.
+
+    Reopening the exclusive DuckDB handle does not repair a poisoned ART
+    index.  The next ``tasks.status`` UPDATE then fatals again on COMMIT.
+    Dropping and recreating the indexes from live table bytes makes a later
+    claim or retry CAS succeed without operator surgery.
+    """
+
+    statements = _drop_task_status_indexes(connection)
+    if not statements:
+        for name, sql in _TASK_STATUS_INDEX_DDL:
+            try:
+                connection.execute(
+                    "DROP INDEX IF EXISTS " + _quote_duckdb_ident(name)
+                )
+            except Exception:
+                continue
+            statements.append(sql)
+    _restore_task_status_indexes(connection, statements)
+    try:
+        connection.execute("CHECKPOINT")
+    except Exception:
+        pass
+    return list(statements)
 
 
 def unstall_stale_in_progress_tasks(

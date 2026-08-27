@@ -51,7 +51,13 @@ from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
 )
-from .duckdb_state import DuckDBConnectionPolicyError
+from .duckdb_state import (
+    DuckDBConnectionPolicyError,
+    _drop_task_status_indexes,
+    _restore_task_status_indexes,
+    is_art_index_delete_fatal,
+    rebuild_task_status_indexes,
+)
 
 _OWNER_LOGGER = logging.getLogger(__name__)
 from .task_execution_route_policy import TaskExecutionRouteBinding
@@ -2359,6 +2365,14 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
     }
 )
 
+_TASK_STATUS_UPDATE_COMMANDS: Final[frozenset[str]] = frozenset(
+    {
+        "task.status.cas",
+        "task.status.cas.receipt",
+        TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+    }
+)
 _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
     set(_COMMAND_MUTATION_CATALOG)
     - {
@@ -3500,6 +3514,51 @@ class TypedStateOwnerGateway:
         finally:
             self._transaction_lock.release()
 
+    def _task_status_cas_index_sql(
+        self,
+        command: StateCommand | None,
+    ) -> list[str]:
+        """Drop status ART indexes before a ``tasks.status`` CAS transaction."""
+
+        if command is None:
+            return []
+        operation = str(command.parameters.get("operation") or "")
+        if operation not in _TASK_STATUS_UPDATE_COMMANDS:
+            return []
+        return _drop_task_status_indexes(self._connection)
+
+    def _restore_task_status_cas_indexes(
+        self,
+        statements: Sequence[str],
+    ) -> None:
+        if not statements:
+            return
+        try:
+            _restore_task_status_indexes(self._connection, statements)
+        except Exception:
+            _OWNER_LOGGER.exception(
+                "typed owner failed to restore task status indexes"
+            )
+
+    def _recover_exclusive_handle_after_native_fatal(
+        self,
+        exc: BaseException,
+    ) -> None:
+        """Reopen a poisoned exclusive handle and repair status ART indexes."""
+
+        connection = self._connection
+        with connection._execution_condition:
+            if not getattr(connection, "_closed", False):
+                if not getattr(connection, "_poisoned", False):
+                    connection._poison_locked()
+                connection._recover_exclusive_handle_locked()
+        if is_art_index_delete_fatal(exc):
+            rebuilt = rebuild_task_status_indexes(connection)
+            _OWNER_LOGGER.warning(
+                "rebuilt task status ART indexes after exclusive-handle fatal: %s",
+                rebuilt,
+            )
+
     def _serve_client(self, channel: socket.socket) -> None:
         transaction_active = False
         command: StateCommand | None = None
@@ -3510,6 +3569,7 @@ class TypedStateOwnerGateway:
         grant: OwnerClientGrant | None = None
         status_session_grant_id = ""
         session_id = ""
+        status_index_sql: list[str] = []
         try:
             channel.settimeout(30.0)
             peer_identity = _kernel_peer_identity(channel)
@@ -3666,8 +3726,13 @@ class TypedStateOwnerGateway:
                                 peer_identity=peer_identity,
                             )
                             self._authorize_command(command, client_id, grant=grant)
+                            status_index_sql = self._task_status_cas_index_sql(
+                                command
+                            )
                             self._connection.execute("BEGIN TRANSACTION")
                         except BaseException:
+                            self._restore_task_status_cas_indexes(status_index_sql)
+                            status_index_sql = []
                             command = None
                             self._transaction_lock.release()
                             raise
@@ -4054,6 +4119,8 @@ class TypedStateOwnerGateway:
                             observer = None
                             committed_command = None
                             committed_manifest = ()
+                        self._restore_task_status_cas_indexes(status_index_sql)
+                        status_index_sql = []
                         transaction_active = False
                         command = None
                         mutation_manifest = []
@@ -4115,12 +4182,12 @@ class TypedStateOwnerGateway:
                             action,
                         )
                         try:
-                            connection = self._connection
-                            with connection._execution_condition:
-                                if not getattr(connection, "_closed", False):
-                                    if not getattr(connection, "_poisoned", False):
-                                        connection._poison_locked()
-                                    connection._recover_exclusive_handle_locked()
+                            self._recover_exclusive_handle_after_native_fatal(exc)
+                            if not is_art_index_delete_fatal(exc):
+                                self._restore_task_status_cas_indexes(
+                                    status_index_sql
+                                )
+                            status_index_sql = []
                         except Exception:
                             _OWNER_LOGGER.exception(
                                 "typed owner failed to reopen the exclusive handle"
