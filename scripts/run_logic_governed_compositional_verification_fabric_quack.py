@@ -15071,11 +15071,20 @@ def _automatically_complete_protected_qualification_locked(
     )
     if not exact_candidate:
         return None
-    preflight, _prior_body = _protected_qualification_completion_preflight_locked(
-        paths,
-        root=root,
-        lock_custody=lock_custody,
-    )
+    try:
+        preflight, _prior_body = (
+            _protected_qualification_completion_preflight_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+            )
+        )
+    except SuccessorOperatorError as exc:
+        # A near-miss retrying row is not the hard-coded gap.  Do not stall
+        # successor launch on an uncompletable protected-qualification task.
+        if str(exc) == "protected qualification task prestate differs":
+            return None
+        raise
     result = _complete_protected_qualification_locked(
         paths,
         root=root,
