@@ -10166,6 +10166,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         _attempt: object,
         _coordination: object,
         callback: object,
+        **_kwargs: object,
     ) -> dict[str, object]:
         cas_result = callback()
         return {

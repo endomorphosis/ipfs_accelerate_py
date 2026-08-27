@@ -8058,6 +8058,33 @@ class _TaskProjectionMergeQueueView:
             return ()
         return tuple(row for row in rows if self.matches(row))
 
+    def pending_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("pending_requests")[:requested]
+
+    def processing_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("processing_requests")[:requested]
+
+    def completed_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("completed_requests")[:requested]
+
     def quarantined_requests(
         self,
         *,
@@ -39226,6 +39253,28 @@ class PortalImplementationDaemon:
                     "request_todo_path": str(request_todo_path),
                     "consumer_todo_path": str(self.todo_path),
                 }
+        authority_metadata_fields = {
+            "manual_completion_authority_context_id",
+            "manual_completion_authority_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_epoch_id",
+            "manual_completion_authority_revocation_generation",
+        }
+        missing_authority_metadata_fields = sorted(
+            authority_metadata_fields - set(metadata)
+        )
+        if foreign_cross_board_request and missing_authority_metadata_fields:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": (
+                    "cross_board_manual_completion_authority_metadata_missing"
+                ),
+                "request_todo_path": str(request_todo_path),
+                "consumer_todo_path": str(self.todo_path),
+                "missing_metadata_fields": missing_authority_metadata_fields,
+            }
         if (
             foreign_cross_board_request
             and self.todo_path.name != "task-projection.md"
@@ -39271,28 +39320,6 @@ class PortalImplementationDaemon:
                     "request_todo_path": str(request_todo_path),
                     "consumer_todo_path": str(self.todo_path),
                 }
-        authority_metadata_fields = {
-            "manual_completion_authority_context_id",
-            "manual_completion_authority_task_ids",
-            "manual_completion_authority_required_task_ids",
-            "manual_completion_authority_epoch_id",
-            "manual_completion_authority_revocation_generation",
-        }
-        missing_authority_metadata_fields = sorted(
-            authority_metadata_fields - set(metadata)
-        )
-        if foreign_cross_board_request and missing_authority_metadata_fields:
-            return {
-                "attempted": False,
-                "merged": False,
-                "returncode": 2,
-                "reason": (
-                    "cross_board_manual_completion_authority_metadata_missing"
-                ),
-                "request_todo_path": str(request_todo_path),
-                "consumer_todo_path": str(self.todo_path),
-                "missing_metadata_fields": missing_authority_metadata_fields,
-            }
         raw_authority_task_ids = metadata.get(
             "manual_completion_authority_task_ids"
         )
