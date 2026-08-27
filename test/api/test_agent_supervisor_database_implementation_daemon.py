@@ -10873,6 +10873,98 @@ def test_reconcile_rearms_blocked_missing_implementation_commit_at_attempt_cap(
         daemon.close()
 
 
+def test_typed_blocked_reopen_stamps_retry_deadline_before_cas() -> None:
+    """Quack cooldown binds the CAS receipt deadline, not a later clock."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentReceipt,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    captured: dict[str, Any] = {}
+    source = TypedDatabaseTaskSource.__new__(TypedDatabaseTaskSource)
+    source._clock_ms = lambda: 1_700_000  # type: ignore[method-assign]
+
+    def fake_cas(
+        task_cid: str,
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
+        evidence_digests: object = None,
+    ) -> SimpleNamespace:
+        captured["cas_receipt"] = dict(receipt or {})
+        captured["cas_status"] = status
+        captured["expected_revision"] = expected_revision
+        captured["expected_control_receipt"] = expected_control_receipt
+        return SimpleNamespace(
+            previous_status="blocked",
+            changed=True,
+            revision=int(expected_revision) + 1,
+        )
+
+    def fake_cooldown(**kwargs: Any) -> IntentReceipt:
+        captured["cooldown"] = dict(kwargs)
+        deadline = int(kwargs["now_ms"]) + int(kwargs["delay_ms"])
+        return IntentReceipt(
+            event_id="event:cooldown",
+            event_type="TASK_RETRY_COOLDOWN_RECORDED",
+            global_sequence=1,
+            recorded_at="typed-state-owner",
+            subject_id=str(kwargs["task_cid"]),
+            revision=1,
+            changed=True,
+            details={"retry_not_before_ms": deadline, "queue_revision": 1},
+        )
+
+    source.compare_and_set_status = fake_cas  # type: ignore[method-assign]
+    source.record_task_retry_cooldown = fake_cooldown  # type: ignore[method-assign]
+    receipt = {
+        "operation": "database_portal_validation_retry_recovery",
+        "attempt_id": "attempt:c2c70e3776d84c3b80aab21dece3b915",
+        "claim_id": "claim:30ef15e81c1a412fb329da1b6f1131da",
+        "lease_id": "lease:c74f619dda6a4bf897f1a689a4d59cc1",
+        "owner_session_id": "pcsm-v1-executor:shard:0-of-4:track:ef26cb9db64a",
+        "attempt_number": 2,
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "queue_reason": (
+            "database_portal_retry:attempt:c2c70e3776d84c3b80aab21dece3b915:"
+            "portal_completion_handshake_retry"
+        ),
+        "backoff_ms": 0,
+        "retry_not_before_ms": 0,
+        "control_expected_revision": 8,
+        "evidence_source": "portal_completion_handshake_reclassified",
+    }
+    result = source.record_queue_backoff_and_cas_status(
+        task_cid="baguqeera6mvj3326qcksmlmwafo3s7ppd4s22vnbsn4tjnk4ylbjyqiesypa",
+        expected_revision=8,
+        expected_control_receipt={
+            "operation": "database_portal_terminal_failure"
+        },
+        status="retrying",
+        receipt=receipt,
+        delay_ms=0,
+        reason=str(receipt["queue_reason"]),
+    )
+    assert captured["cas_status"] == "retrying"
+    assert captured["expected_revision"] == 8
+    assert captured["cas_receipt"]["retry_not_before_ms"] == 1_700_000
+    assert captured["cas_receipt"]["backoff_ms"] == 0
+    assert captured["cooldown"]["now_ms"] == 1_700_000
+    assert captured["cooldown"]["delay_ms"] == 0
+    assert captured["cooldown"]["expected_task_status"] == "retrying"
+    assert captured["cooldown"]["expected_task_revision"] == 8
+    assert captured["cooldown"]["attempt_number"] == 2
+    assert result["retry_not_before_ms"] == 1_700_000
+    assert result["transition_receipt"]["retry_not_before_ms"] == 1_700_000
+    assert result["previous_status"] == "blocked"
+
+
 def test_blocked_retry_prefers_atomic_queue_status_over_typed_cooldown(
     tmp_path: Path,
 ) -> None:

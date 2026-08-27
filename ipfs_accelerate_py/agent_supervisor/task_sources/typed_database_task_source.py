@@ -1675,13 +1675,6 @@ class TypedDatabaseTaskSource:
             or delay_ms < 0
         ):
             raise TaskSourceIntegrityError("typed retry delay_ms is invalid")
-        cas_result = self.compare_and_set_status(
-            task_cid,
-            expected_revision,
-            requested_status,
-            receipt_map,
-            expected_control_receipt=expected_control_receipt,
-        )
         retry_not_before_ms = exact_retry_not_before_ms
         if retry_not_before_ms is None:
             retry_not_before_ms = self._clock_ms() + delay_ms
@@ -1695,7 +1688,24 @@ class TypedDatabaseTaskSource:
             )
         cooldown_started_at_ms = retry_not_before_ms - delay_ms
         if cooldown_started_at_ms < 0:
-            cooldown_started_at_ms = 0
+            raise TaskSourceIntegrityError(
+                "typed retry deadline is earlier than its delay"
+            )
+        # Stamp the owner-visible deadline before CAS. The exclusive owner
+        # requires receipt.retry_not_before_ms == cooldown.retry_not_before_ms
+        # and receipt.backoff_ms == delay_ms; a 0-placeholder receipt leaves
+        # blocked handshake recovery (missing implementation commit) terminal.
+        if "retry_not_before_ms" in receipt_map:
+            receipt_map["retry_not_before_ms"] = retry_not_before_ms
+        if "backoff_ms" in receipt_map:
+            receipt_map["backoff_ms"] = delay_ms
+        cas_result = self.compare_and_set_status(
+            task_cid,
+            expected_revision,
+            requested_status,
+            receipt_map,
+            expected_control_receipt=expected_control_receipt,
+        )
         cooldown = self.record_task_retry_cooldown(
             task_cid=str(task_cid),
             expected_task_revision=int(expected_revision),
@@ -1713,14 +1723,16 @@ class TypedDatabaseTaskSource:
             now_ms=cooldown_started_at_ms,
         )
         queue_receipt = dict(cooldown.details)
+        queued_deadline = queue_receipt.get("retry_not_before_ms")
         return self._guarded_queue_status_result(
             {
                 "previous_status": cas_result.previous_status,
                 "queue_receipt": queue_receipt,
                 "queue_reused": not bool(cooldown.changed),
-                "retry_not_before_ms": int(
-                    queue_receipt.get("retry_not_before_ms")
-                    or retry_not_before_ms
+                "retry_not_before_ms": (
+                    int(queued_deadline)
+                    if queued_deadline is not None
+                    else retry_not_before_ms
                 ),
                 "transition_receipt": dict(receipt_map),
             },
