@@ -222,6 +222,9 @@ DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON: Final[str] = (
 DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON: Final[str] = (
     "portal_provider_failed"
 )
+DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON: Final[str] = (
+    "Portal pending-merge result does not match the database claim"
+)
 _PROTECTED_PATH_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-protected-path-recovery-intent.json"
 )
@@ -12107,6 +12110,11 @@ class DatabasePortalExecutionBridge:
         must remain alive while Portal reconciles the queue. Admit that wait
         only from the closed, identity-bound pending-merge result emitted by
         ``PortalImplementationDaemon``.
+
+        Portal-local ``attempt`` is the projection's implementation counter.
+        It is not the shared DuckDB fence attempt number; those counters
+        diverge after claim/release loops and must not fail-close a queued
+        merge.
         """
 
         implementation = result.get("implementation_result")
@@ -12147,7 +12155,6 @@ class DatabasePortalExecutionBridge:
             or canonical_task_cid != portal_task_cid
             or type(portal_attempt) is not int
             or portal_attempt < 1
-            or portal_attempt != binding.get("attempt_number")
             or board_completion.get("complete") is not False
             or board_completion.get("pending_merge") is not True
             or board_completion.get("reason")
@@ -12218,7 +12225,6 @@ class DatabasePortalExecutionBridge:
         attempts_by_cid = state.get("implementation_attempts_by_cid")
         return bool(
             alias == binding.get("task_alias")
-            and portal_attempt == binding.get("attempt_number")
             and isinstance(statuses, Mapping)
             and statuses.get(alias) == "merge-queued"
             and isinstance(attempts, Mapping)
@@ -19901,8 +19907,7 @@ class DatabasePortalExecutionBridge:
                 if claims_pending_merge:
                     if current_pending_merge_identity is None:
                         raise DatabasePortalBridgeError(
-                            "Portal pending-merge result does not match the "
-                            "database claim"
+                            DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON
                         )
                     if pending_merge_identity is None:
                         pending_merge_identity = current_pending_merge_identity

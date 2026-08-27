@@ -82699,6 +82699,9 @@ DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON = (
 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON = (
+    "Portal pending-merge result does not match the database claim"
+)
 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON = (
     "post-merge completion recovery seed target generation changed"
 )
@@ -92356,6 +92359,11 @@ class DatabaseImplementationDaemon:
             in reason
         ):
             return DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+        if (
+            reason == DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON
+            or DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON in reason
+        ):
+            return DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON
         return reason[:1024]
 
     @classmethod
@@ -110544,6 +110552,10 @@ class DatabaseImplementationDaemon:
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 }
+                pending_merge_claim_mismatch = (
+                    self._canonical_portal_failure_reason(reason)
+                    == DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON
+                )
                 remaining_budget = (
                     self.max_task_attempts > 0
                     and int(attempt.attempt_number) < self.max_task_attempts
@@ -110554,12 +110566,16 @@ class DatabaseImplementationDaemon:
                 # handshake is the same class of completion-authority gap:
                 # it freezes dependents (PCSM-010) after the attempt cap
                 # even though the worker can still produce a fresh commit.
+                # A queued merge rejected only because Portal-local attempt
+                # differed from the shared fence attempt is the same class:
+                # the candidate is already in the merge train.
                 if (
                     not dedicated_recovery_pending
                     and (
                         (reason == "portal_provider_failed" and remaining_budget)
                         or checkout_contention
                         or missing_completion_handshake
+                        or pending_merge_claim_mismatch
                     )
                 ):
                     coordination = self._reconcile_failed_attempt_coordination(
@@ -110574,6 +110590,11 @@ class DatabaseImplementationDaemon:
                         retry_reason = "portal_completion_handshake_retry"
                         evidence_source = (
                             "portal_completion_handshake_reclassified"
+                        )
+                    elif pending_merge_claim_mismatch:
+                        retry_reason = "portal_pending_merge_claim_retry"
+                        evidence_source = (
+                            "portal_pending_merge_claim_reclassified"
                         )
                     else:
                         retry_reason = "portal_candidate_retry"

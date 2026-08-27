@@ -4096,6 +4096,68 @@ def test_bridge_polls_pending_merge_through_nonpending_portal_pass(
     assert clock.sleeps == [15.0, 15.0]
 
 
+def test_bridge_admits_pending_merge_when_portal_attempt_differs_from_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class PendingThenCompletingPortal(_ProjectionIdentityCompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls == 1:
+                return _pending_merge_result(self.paths, self.task_alias)
+            return super().run_once()
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[PendingThenCompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> PendingThenCompletingPortal:
+        portal = PendingThenCompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+        implementation_timeout=16.0,
+    )
+
+    provider = bridge.run_provider(_attempt(attempt_number=629))
+
+    assert provider["accepted"] is True
+    assert len(portals) == 1
+    assert portals[0].calls == 2
+    assert portals[0].closed is True
+    assert clock.sleeps == [15.0]
+
+
 def test_bridge_rejects_pending_merge_with_forged_projection_identity(
     tmp_path: Path,
 ) -> None:
@@ -4268,7 +4330,6 @@ def test_bridge_rejects_pending_merge_state_with_nonlocal_last_key(
         ("implementation", "provider_dispatched", False),
         ("implementation", "attempt_consumed", False),
         ("implementation", "returncode", 1),
-        ("implementation", "attempt", 2),
         ("implementation", "implementation_commit", "not-a-commit"),
         ("implementation", "canonical_task_key", ""),
         ("board", "reason", "not_integrated"),
