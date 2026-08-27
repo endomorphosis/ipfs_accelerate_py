@@ -93115,10 +93115,14 @@ class DatabaseImplementationDaemon:
         try:
             history = history_projection(task_cid)
         except Exception as exc:
-            raise DatabaseImplementationAuthorityError(
-                "post-merge completion crash fence could not read canonical "
-                "history"
-            ) from exc
+            if require_current_blocked:
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge completion crash fence could not read canonical "
+                    "history"
+                ) from exc
+            # Operator blocked-retry recovery can leave sparse task_revisions.
+            # Ready-page exclusion must not fail-closed the whole claim loop.
+            return None
         revisions = history.get("revisions") if isinstance(history, Mapping) else None
         projection_body = dict(history) if isinstance(history, Mapping) else {}
         projection_cid = projection_body.pop("projection_cid", None)
