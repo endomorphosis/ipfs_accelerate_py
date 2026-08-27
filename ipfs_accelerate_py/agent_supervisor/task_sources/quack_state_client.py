@@ -84,11 +84,16 @@ from .typed_state_owner import (
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     _legacy_unstall_recovery_receipt,
     _process_birth_content_id,
     _process_runtime_facts,
+    _protected_qualification_completion_command_digest,
+    _protected_qualification_validation_identity_material,
     _validated_legacy_unstall_claim_receipt,
     _validated_stored_retry_cooldown,
     open_typed_state_owner_connection,
@@ -3060,6 +3065,340 @@ class QuackStateClient:
             }
 
         return self.submit_command(command, apply=apply_retry_cooldown)
+
+    def complete_protected_qualification_legacy_gap(
+        self,
+        *,
+        task_cid: str,
+        task_alias: str,
+        expected_task_revision: int,
+        expected_prior_body_sha256: str,
+        expected_prior_receipt_schema: str,
+        expected_prior_receipt_operation: str,
+        expected_prior_receipt_cid: str,
+        expected_history_revisions: Sequence[int],
+        expected_dependency_cids: Sequence[str],
+        prior_body: Mapping[str, Any],
+        reviewed_preflight_cid: str,
+        reviewed_preflight: Mapping[str, Any],
+        qualification_result_cid: str,
+        qualification_stable_projection_cid: str,
+        qualification_artifact_sha256: str,
+    ) -> CASResult:
+        """Atomically record protected validation and complete exact LGCVF-113."""
+
+        proof_body = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "protected-qualification-validation-evidence@1"
+            ),
+            "task_cid": str(task_cid),
+            "task_alias": str(task_alias),
+            "reviewed_preflight_cid": str(reviewed_preflight_cid),
+            "qualification_result_cid": str(qualification_result_cid),
+            "qualification_stable_projection_cid": str(
+                qualification_stable_projection_cid
+            ),
+            "qualification_artifact_sha256": str(
+                qualification_artifact_sha256
+            ),
+            "candidate_self_authority": False,
+            "release_qualified": False,
+            "production_authorized": False,
+        }
+        argv = [
+            "python",
+            "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+            "--check",
+        ]
+        command_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(argv)
+        ).hexdigest()
+        reviewed = dict(reviewed_preflight)
+        pins = reviewed.get("reviewed_pins")
+        qualification_pin = (
+            pins.get("qualification") if isinstance(pins, Mapping) else None
+        )
+        source_pin = (
+            pins.get("source_continuity") if isinstance(pins, Mapping) else None
+        )
+        dependency_binding_cid = (
+            str(pins.get("dependency_binding_cid") or "")
+            if isinstance(pins, Mapping)
+            else ""
+        )
+        recorded_at = (
+            str(qualification_pin.get("recorded_at") or "")
+            if isinstance(qualification_pin, Mapping)
+            else ""
+        )
+        identity_parameters = {
+            "schema": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
+            "operation": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+            "task_cid": str(task_cid),
+            "task_alias": str(task_alias),
+            "expected_task_revision": expected_task_revision,
+            "expected_task_status": "retrying",
+            "expected_prior_body_sha256": str(expected_prior_body_sha256),
+            "expected_prior_receipt_schema": str(expected_prior_receipt_schema),
+            "expected_prior_receipt_operation": str(
+                expected_prior_receipt_operation
+            ),
+            "expected_prior_receipt_cid": str(expected_prior_receipt_cid),
+            "expected_history_revisions_json": canonical_json_bytes(
+                list(expected_history_revisions)
+            ).decode("utf-8"),
+            "expected_dependency_cids_json": canonical_json_bytes(
+                list(expected_dependency_cids)
+            ).decode("utf-8"),
+            "reviewed_preflight_cid": str(reviewed_preflight_cid),
+            "reviewed_preflight_json": canonical_json_bytes(reviewed).decode(
+                "utf-8"
+            ),
+            "qualification_result_cid": str(qualification_result_cid),
+            "qualification_stable_projection_cid": str(
+                qualification_stable_projection_cid
+            ),
+            "qualification_artifact_sha256": str(
+                qualification_artifact_sha256
+            ),
+            "outcome": "passed",
+            "started_at": recorded_at,
+            "finished_at": recorded_at,
+            "command_digest": command_digest,
+        }
+        identity_material = _protected_qualification_validation_identity_material(
+            identity_parameters
+        )
+        run_id = content_identity(
+            {"protected_qualification_validation_run": identity_material}
+        )
+        result_id = content_identity(
+            {"protected_qualification_validation_result": identity_material}
+        )
+        evidence_id = content_identity(
+            {"protected_qualification_validation_evidence": identity_material}
+        )
+        attempt_id = f"protected-qualification:{run_id}"
+        run_body_json = canonical_json_bytes(
+            {"argv": argv, "body": proof_body}
+        ).decode("utf-8")
+        result_body_json = canonical_json_bytes(proof_body).decode("utf-8")
+        evidence_body_json = canonical_json_bytes(
+            {
+                "outcome": "passed",
+                "run_id": run_id,
+                "result_id": result_id,
+                "body": proof_body,
+            }
+        ).decode("utf-8")
+        receipt_body = {
+            "schema": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
+            "operation": (
+                TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION
+            ),
+            "task_cid": str(task_cid),
+            "task_alias": str(task_alias),
+            "prior_status": "retrying",
+            "prior_revision": expected_task_revision,
+            "completed_revision": expected_task_revision + 1,
+            "prior_body_sha256": str(expected_prior_body_sha256),
+            "prior_receipt_schema": str(expected_prior_receipt_schema),
+            "prior_receipt_operation": str(expected_prior_receipt_operation),
+            "prior_receipt_cid": str(expected_prior_receipt_cid),
+            "source_head": (
+                str(source_pin.get("current_head") or "")
+                if isinstance(source_pin, Mapping)
+                else ""
+            ),
+            "source_tree": (
+                str(source_pin.get("current_tree") or "")
+                if isinstance(source_pin, Mapping)
+                else ""
+            ),
+            "dependency_binding_cid": dependency_binding_cid,
+            "reviewed_preflight_cid": str(reviewed_preflight_cid),
+            "qualification_result_cid": str(qualification_result_cid),
+            "qualification_stable_projection_cid": str(
+                qualification_stable_projection_cid
+            ),
+            "qualification_artifact_sha256": str(
+                qualification_artifact_sha256
+            ),
+            "validation_run_id": run_id,
+            "validation_result_id": result_id,
+            "validation_evidence_id": evidence_id,
+            "validation_outcome": "passed",
+            "history_observed_revisions": list(expected_history_revisions),
+            "history_missing_revisions": [
+                revision
+                for revision in range(1, expected_task_revision + 1)
+                if revision not in set(expected_history_revisions)
+            ],
+            "appended_revision": expected_task_revision + 1,
+            "gap_preserved": True,
+            "repair_performed": False,
+            "fabricated_revisions": [],
+            "task_completion_scope": "protected_hermetic_qualification",
+            "scheduling_authority": False,
+            "release_qualified": False,
+            "production_authorized": False,
+        }
+        receipt = {
+            **receipt_body,
+            "receipt_cid": content_identity(receipt_body),
+        }
+        body = dict(prior_body)
+        body["completion_receipt"] = receipt
+        parameters = {
+            "schema": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
+            "operation": (
+                TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+            ),
+            "task_cid": str(task_cid),
+            "task_alias": str(task_alias),
+            "expected_task_revision": expected_task_revision,
+            "expected_task_status": "retrying",
+            "expected_prior_body_sha256": str(expected_prior_body_sha256),
+            "expected_prior_receipt_schema": str(expected_prior_receipt_schema),
+            "expected_prior_receipt_operation": str(
+                expected_prior_receipt_operation
+            ),
+            "expected_prior_receipt_cid": str(expected_prior_receipt_cid),
+            "expected_history_revisions_json": canonical_json_bytes(
+                list(expected_history_revisions)
+            ).decode("utf-8"),
+            "expected_dependency_cids_json": canonical_json_bytes(
+                list(expected_dependency_cids)
+            ).decode("utf-8"),
+            "status": "completed",
+            "body_json": canonical_json_bytes(body).decode("utf-8"),
+            "reviewed_preflight_cid": str(reviewed_preflight_cid),
+            "reviewed_preflight_json": canonical_json_bytes(reviewed).decode(
+                "utf-8"
+            ),
+            "qualification_result_cid": str(qualification_result_cid),
+            "qualification_stable_projection_cid": str(
+                qualification_stable_projection_cid
+            ),
+            "qualification_artifact_sha256": str(
+                qualification_artifact_sha256
+            ),
+            "run_id": run_id,
+            "result_id": result_id,
+            "evidence_id": evidence_id,
+            "attempt_id": attempt_id,
+            "outcome": "passed",
+            "evidence_digest": str(qualification_artifact_sha256),
+            "started_at": recorded_at,
+            "finished_at": recorded_at,
+            "command_digest": command_digest,
+            "run_body_json": run_body_json,
+            "result_body_json": result_body_json,
+            "evidence_body_json": evidence_body_json,
+        }
+        digest = _protected_qualification_completion_command_digest(parameters)
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:protected-qualification-completion:{digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=(
+                f"executor-protected-qualification-completion:{digest}"
+            ),
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_completion(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            txn.execute_named_operation(
+                "executor_insert_validation_run",
+                (
+                    values["run_id"],
+                    values["task_cid"],
+                    values["attempt_id"],
+                    values["started_at"],
+                    values["finished_at"],
+                    values["outcome"],
+                    values["command_digest"],
+                    values["run_body_json"],
+                ),
+            )
+            txn.execute_named_operation(
+                "executor_insert_validation_result",
+                (
+                    values["result_id"],
+                    values["run_id"],
+                    values["task_cid"],
+                    0,
+                    values["outcome"],
+                    values["evidence_digest"],
+                    values["result_body_json"],
+                ),
+            )
+            txn.execute_named_operation(
+                "executor_insert_validation_evidence",
+                (
+                    values["evidence_id"],
+                    "",
+                    values["task_cid"],
+                    "validation",
+                    values["evidence_digest"],
+                    values["finished_at"],
+                    values["evidence_body_json"],
+                ),
+            )
+            expected = int(values["expected_task_revision"])
+            result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "completed",
+                    expected + 1,
+                    values["finished_at"],
+                    values["body_json"],
+                    values["task_cid"],
+                    expected,
+                ),
+            )
+            if _fetch_one(result) is None:
+                raise OptimisticConflictError(
+                    "protected qualification completion task CAS failed"
+                )
+            history_result = txn.execute_named_operation(
+                "executor_insert_task_revision_history",
+                (values["task_cid"], expected + 1),
+            )
+            if _fetch_one(history_result) is None:
+                raise OptimisticConflictError(
+                    "protected qualification completion history append failed"
+                )
+            return {
+                "schema": (
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA
+                ),
+                "operation": (
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+                ),
+                "task_cid": values["task_cid"],
+                "task_revision": expected + 1,
+                "run_id": values["run_id"],
+                "result_id": values["result_id"],
+                "evidence_id": values["evidence_id"],
+                "completion_receipt_cid": receipt["receipt_cid"],
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_completion)
 
     def record_task_validation(
         self,

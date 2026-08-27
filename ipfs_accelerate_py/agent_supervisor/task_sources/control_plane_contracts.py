@@ -98,6 +98,15 @@ _LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
                     "evidence_body_json",
                 }
             ),
+            "task.legacy_history_gap.protected_qualification.complete": frozenset(
+                {
+                    "body_json",
+                    "run_body_json",
+                    "result_body_json",
+                    "evidence_body_json",
+                    "reviewed_preflight_json",
+                }
+            ),
         }
     )
 )

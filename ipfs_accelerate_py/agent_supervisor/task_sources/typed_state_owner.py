@@ -19,6 +19,7 @@ import hmac
 import json
 import math
 import os
+import re
 import secrets
 import socket
 import stat
@@ -38,14 +39,18 @@ from ..merge.worktree_lifecycle import (
     ProcessBirthIdentity,
     owner_liveness,
 )
-from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
+from .control_plane_contracts import (
+    StateCommand,
+    canonical_json_bytes,
+    content_identity,
+)
 from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
 )
 from .intent_repository import (
-    IntentRepositoryError,
     MAX_BODY_BYTES,
+    IntentRepositoryError,
     _prepare_database_virgin_transfer_receipt_on,
 )
 from .task_execution_route_policy import TaskExecutionRouteBinding
@@ -92,6 +97,42 @@ TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
 )
 TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
     "database_claim_legacy_unstall_dead_process"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-protected-qualification-completion@1"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: Final = (
+    "task.legacy_history_gap.protected_qualification.complete"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION: Final = (
+    "database_legacy_history_gap_protected_qualification_complete"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID: Final = (
+    "lgcvf-protected-qualification-completion"
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_TASK_CID: Final = (
+    "baguqeerakwvsckoysv5edcru3makxvmcwjjm2alzam5umsyqbkp3efngyqpa"
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES: Final = (
+    (
+        "LGCVF-111",
+        "baguqeerau4vdgcyn3sdorik7zawwgwrhy7mxxydb6gashctytbmdzwtmumea",
+    ),
+    (
+        "LGCVF-112",
+        "baguqeeramxjolmqp2rh7r5vfrrs5ne3mqqhbxh3pn74k27h5tbpf4luasfkq",
+    ),
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCY_CIDS: Final = tuple(
+    sorted(
+        cid
+        for _alias, cid in _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES
+    )
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION: Final = 8
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256: Final = (
+    "sha256:f8fe4ec9875cf786f2ca909b2268c784b080e9c86599b1e8d367d982e606829d"
 )
 TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -430,6 +471,7 @@ class OwnerClientGrant:
             "tree_id",
             "task_id",
             "task_cid",
+            "reviewed_preflight_cid",
             "subscription_id",
             "consumer_id",
             "event_id",
@@ -1475,6 +1517,673 @@ def _legacy_unstall_recovery_command_digest(
     return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
 
 
+_PROTECTED_QUALIFICATION_VALIDATION_IDENTITY_FIELDS: Final = (
+    "schema",
+    "operation",
+    "task_cid",
+    "task_alias",
+    "expected_task_revision",
+    "expected_task_status",
+    "expected_prior_body_sha256",
+    "expected_prior_receipt_schema",
+    "expected_prior_receipt_operation",
+    "expected_prior_receipt_cid",
+    "expected_history_revisions_json",
+    "expected_dependency_cids_json",
+    "reviewed_preflight_cid",
+    "reviewed_preflight_json",
+    "qualification_result_cid",
+    "qualification_stable_projection_cid",
+    "qualification_artifact_sha256",
+    "outcome",
+    "started_at",
+    "finished_at",
+    "command_digest",
+)
+
+
+def _protected_qualification_validation_identity_material(
+    parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive validation-row identities without caller-selected identifiers."""
+
+    try:
+        return {
+            name: parameters[name]
+            for name in _PROTECTED_QUALIFICATION_VALIDATION_IDENTITY_FIELDS
+        }
+    except KeyError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification validation identity is incomplete"
+        ) from exc
+
+
+def _validated_protected_qualification_completion_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the one closed legacy-gap qualification completion command."""
+
+    parameters = dict(value)
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "expected_task_revision",
+        "expected_task_status",
+        "expected_prior_body_sha256",
+        "expected_prior_receipt_schema",
+        "expected_prior_receipt_operation",
+        "expected_prior_receipt_cid",
+        "expected_history_revisions_json",
+        "expected_dependency_cids_json",
+        "status",
+        "body_json",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "qualification_artifact_sha256",
+        "reviewed_preflight_json",
+        "run_id",
+        "result_id",
+        "evidence_id",
+        "attempt_id",
+        "outcome",
+        "evidence_digest",
+        "started_at",
+        "finished_at",
+        "command_digest",
+        "run_body_json",
+        "result_body_json",
+        "evidence_body_json",
+    }
+    if set(parameters) != expected_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion command differs from its "
+            "closed schema"
+        )
+    revision = parameters.get("expected_task_revision")
+    cid_fields = (
+        "task_cid",
+        "expected_prior_receipt_cid",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "run_id",
+        "result_id",
+        "evidence_id",
+    )
+    digest_fields = (
+        "expected_prior_body_sha256",
+        "qualification_artifact_sha256",
+        "evidence_digest",
+        "command_digest",
+    )
+    if (
+        parameters.get("schema")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA
+        or parameters.get("operation")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+        or parameters.get("task_alias") != "LGCVF-113"
+        or parameters.get("task_cid")
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_TASK_CID
+        or parameters.get("expected_task_status") != "retrying"
+        or parameters.get("status") != "completed"
+        or parameters.get("expected_prior_receipt_operation")
+        != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        or parameters.get("expected_prior_receipt_schema")
+        != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
+        or parameters.get("outcome") != "passed"
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION
+        or parameters.get("expected_prior_body_sha256")
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(parameters.get(name) or ""))
+            is None
+            for name in cid_fields
+        )
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(parameters.get(name) or "")
+            )
+            is None
+            for name in digest_fields
+        )
+        or parameters.get("evidence_digest")
+        != parameters.get("qualification_artifact_sha256")
+        or not str(parameters.get("attempt_id") or "").strip()
+        or not str(parameters.get("started_at") or "").strip()
+        or parameters.get("finished_at") != parameters.get("started_at")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion is outside its closed transition"
+        )
+
+    def canonical_json(name: str, expected_type: type[Any]) -> Any:
+        raw = parameters.get(name)
+        if not isinstance(raw, str):
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is malformed"
+            )
+        try:
+            decoded = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is malformed"
+            ) from exc
+        if not isinstance(decoded, expected_type) or (
+            canonical_json_bytes(decoded).decode("utf-8") != raw
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is not canonical"
+            )
+        return decoded
+
+    history = canonical_json("expected_history_revisions_json", list)
+    dependencies = canonical_json("expected_dependency_cids_json", list)
+    body = canonical_json("body_json", dict)
+    run_body = canonical_json("run_body_json", dict)
+    result_body = canonical_json("result_body_json", dict)
+    evidence_body = canonical_json("evidence_body_json", dict)
+    reviewed_preflight = canonical_json("reviewed_preflight_json", dict)
+    reviewed_pins = reviewed_preflight.get("reviewed_pins")
+    task_pin = reviewed_pins.get("task") if isinstance(reviewed_pins, Mapping) else None
+    dependency_pins = (
+        reviewed_pins.get("dependencies")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    qualification_pin = (
+        reviewed_pins.get("qualification")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    source_pin = (
+        reviewed_pins.get("source_continuity")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    database_pins = (
+        reviewed_pins.get("databases")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    expected_result_body = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "protected-qualification-validation-evidence@1"
+        ),
+        "task_cid": parameters["task_cid"],
+        "task_alias": parameters["task_alias"],
+        "reviewed_preflight_cid": parameters["reviewed_preflight_cid"],
+        "qualification_result_cid": parameters["qualification_result_cid"],
+        "qualification_stable_projection_cid": parameters[
+            "qualification_stable_projection_cid"
+        ],
+        "qualification_artifact_sha256": parameters[
+            "qualification_artifact_sha256"
+        ],
+        "candidate_self_authority": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    if (
+        history != [1]
+        or any(isinstance(item, bool) or not isinstance(item, int) for item in history)
+        or history != sorted(set(history))
+        or history[0] != 1
+        or history[-1] >= revision
+        or history == list(range(1, revision + 1))
+        or dependencies
+        != list(_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCY_CIDS)
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(item or "")) is None
+            for item in dependencies
+        )
+        or dependencies != sorted(set(map(str, dependencies)))
+        or len(canonical_json_bytes(body)) > MAX_BODY_BYTES
+        or result_body != expected_result_body
+        or run_body
+        != {
+            "argv": [
+                "python",
+                "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+                "--check",
+            ],
+            "body": expected_result_body,
+        }
+        or evidence_body
+        != {
+            "outcome": "passed",
+            "run_id": parameters["run_id"],
+            "result_id": parameters["result_id"],
+            "body": expected_result_body,
+        }
+        or reviewed_preflight.get("preflight_cid") is not None
+        or set(reviewed_preflight) != {"schema", "operation", "reviewed_pins"}
+        or content_identity(reviewed_preflight)
+        != parameters["reviewed_preflight_cid"]
+        or reviewed_preflight.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "lgcvf-protected-qualification-completion-preflight@1"
+        )
+        or reviewed_preflight.get("operation")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION
+        or not isinstance(reviewed_pins, Mapping)
+        or set(reviewed_pins)
+        != {
+            "target_generation",
+            "source_provenance_cid",
+            "stopped_state_continuity_receipt_cid",
+            "stopped_controller_status_cid",
+            "source_continuity",
+            "databases",
+            "task",
+            "dependencies",
+            "dependency_binding_cid",
+            "qualification",
+        }
+        or reviewed_pins.get("target_generation") != "lgcvf-run-v39"
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(reviewed_pins.get(name) or ""))
+            is None
+            for name in (
+                "source_provenance_cid",
+                "stopped_state_continuity_receipt_cid",
+                "stopped_controller_status_cid",
+            )
+        )
+        or not isinstance(source_pin, Mapping)
+        or set(source_pin)
+        != {
+            "approved_branch",
+            "resolved_remote_head",
+            "current_head",
+            "current_tree",
+            "candidate_worktree_clean",
+            "datasets_head",
+            "datasets_tree",
+            "datasets_worktree_clean",
+            "python_bytecode_quarantine",
+            "superproject_runtime_inventory",
+            "datasets_runtime_inventory",
+        }
+        or source_pin.get("approved_branch")
+        != "agent/logic-governed-compositional-verification-fabric-v1"
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(source_pin.get("resolved_remote_head") or "")
+        )
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("current_head") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("current_tree") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("datasets_head") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("datasets_tree") or ""))
+        is None
+        or source_pin.get("candidate_worktree_clean") is not True
+        or source_pin.get("datasets_worktree_clean") is not True
+        or source_pin.get("python_bytecode_quarantine")
+        != {
+            "enabled": True,
+            "ephemeral": True,
+            "ignored_worktree_pycache": "quarantined_not_imported",
+            "outside_candidate_root": True,
+            "private": True,
+        }
+        or any(
+            not isinstance(source_pin.get(name), Mapping)
+            or set(source_pin[name])
+            != {"tracked_object_count", "tracked_inventory_root"}
+            or isinstance(source_pin[name].get("tracked_object_count"), bool)
+            or not isinstance(source_pin[name].get("tracked_object_count"), int)
+            or int(source_pin[name]["tracked_object_count"]) < 1
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(source_pin[name].get("tracked_inventory_root") or ""),
+            )
+            is None
+            for name in (
+                "superproject_runtime_inventory",
+                "datasets_runtime_inventory",
+            )
+        )
+        or not isinstance(database_pins, Mapping)
+        or set(database_pins) != {"control", "coordination", "execution"}
+        or any(
+            not isinstance(database_pins.get(name), Mapping)
+            or set(database_pins[name]) != {"path", "sha256"}
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(database_pins[name].get("sha256") or ""),
+            )
+            is None
+            for name in ("control", "coordination", "execution")
+        )
+        or not str(database_pins["control"].get("path") or "").endswith(
+            "/run-v39/control.duckdb"
+        )
+        or not str(database_pins["coordination"].get("path") or "").endswith(
+            "/run-v39/control.coordination.duckdb"
+        )
+        or not str(database_pins["execution"].get("path") or "").endswith(
+            "/run-v39/control.execution.duckdb"
+        )
+        or not isinstance(task_pin, Mapping)
+        or task_pin
+        != {
+            "task_cid": parameters["task_cid"],
+            "task_alias": parameters["task_alias"],
+            "status": parameters["expected_task_status"],
+            "revision": revision,
+            "body_sha256": parameters["expected_prior_body_sha256"],
+            "prior_receipt_schema": parameters["expected_prior_receipt_schema"],
+            "prior_receipt_operation": parameters[
+                "expected_prior_receipt_operation"
+            ],
+            "prior_receipt_cid": parameters["expected_prior_receipt_cid"],
+            "history_observed_revisions": history,
+            "history_missing_revisions": list(range(2, revision + 1)),
+            "gap_preserved": True,
+            "repair_authority": False,
+        }
+        or not isinstance(dependency_pins, list)
+        or len(dependency_pins) != 2
+        or any(not isinstance(item, Mapping) for item in dependency_pins)
+        or [str(item.get("task_cid") or "") for item in dependency_pins]
+        != dependencies
+        or [str(item.get("task_alias") or "") for item in dependency_pins]
+        != [
+            alias
+            for alias, _cid in sorted(
+                _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES,
+                key=lambda item: item[1],
+            )
+        ]
+        or any(
+            set(item) != {
+                "task_cid",
+                "task_alias",
+                "status",
+                "revision",
+                "body_sha256",
+            }
+            or item.get("status") != "completed"
+            or isinstance(item.get("revision"), bool)
+            or not isinstance(item.get("revision"), int)
+            or int(item["revision"]) < 1
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(item.get("body_sha256") or "")
+            )
+            is None
+            for item in dependency_pins
+        )
+        or reviewed_pins.get("dependency_binding_cid")
+        != content_identity(dependency_pins)
+        or not isinstance(qualification_pin, Mapping)
+        or set(qualification_pin)
+        != {
+            "argv",
+            "validator_path",
+            "validator_blob_oid",
+            "validator_sha256",
+            "artifact_path",
+            "artifact_blob_oid",
+            "artifact_sha256",
+            "stored_result_cid",
+            "stored_stable_projection_cid",
+            "replay_stable_projection_cid",
+            "replay_exit_code",
+            "recorded_at",
+            "passed",
+            "test_qualification_complete",
+            "independent_fixed_manifest_executed",
+            "candidate_suites_are_self_authority",
+            "task_implementation_complete",
+            "objective_complete",
+            "release_qualified",
+            "production_authoritative",
+            "production_authorized",
+        }
+        or qualification_pin.get("argv")
+        != [
+            "python",
+            "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+            "--check",
+        ]
+        or qualification_pin.get("validator_path")
+        != "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+        or qualification_pin.get("artifact_path")
+        != (
+            "data/agent_supervisor/logic_governed_compositional_verification_"
+            "fabric/independent_qualification_result.json"
+        )
+        or any(
+            re.fullmatch(r"[0-9a-f]{40}", str(qualification_pin.get(name) or ""))
+            is None
+            for name in ("validator_blob_oid", "artifact_blob_oid")
+        )
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(qualification_pin.get(name) or "")
+            )
+            is None
+            for name in (
+                "validator_sha256",
+                "artifact_sha256",
+            )
+        )
+        or qualification_pin.get("stored_result_cid")
+        != parameters["qualification_result_cid"]
+        or qualification_pin.get("stored_stable_projection_cid")
+        != parameters["qualification_stable_projection_cid"]
+        or qualification_pin.get("replay_stable_projection_cid")
+        != parameters["qualification_stable_projection_cid"]
+        or qualification_pin.get("replay_exit_code") != 0
+        or qualification_pin.get("artifact_sha256")
+        != parameters["qualification_artifact_sha256"]
+        or qualification_pin.get("recorded_at") != parameters["started_at"]
+        or qualification_pin.get("passed") is not True
+        or qualification_pin.get("test_qualification_complete") is not True
+        or qualification_pin.get("independent_fixed_manifest_executed") is not True
+        or qualification_pin.get("candidate_suites_are_self_authority") is not False
+        or qualification_pin.get("task_implementation_complete") is not False
+        or qualification_pin.get("objective_complete") is not False
+        or qualification_pin.get("release_qualified") is not False
+        or qualification_pin.get("production_authoritative") is not False
+        or qualification_pin.get("production_authorized") is not False
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion authority observations differ"
+        )
+    validation_identity = _protected_qualification_validation_identity_material(
+        parameters
+    )
+    expected_run_id = content_identity(
+        {"protected_qualification_validation_run": validation_identity}
+    )
+    expected_result_id = content_identity(
+        {"protected_qualification_validation_result": validation_identity}
+    )
+    expected_evidence_id = content_identity(
+        {"protected_qualification_validation_evidence": validation_identity}
+    )
+    expected_command_digest = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(
+            [
+                "python",
+                "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+                "--check",
+            ]
+        )
+    ).hexdigest()
+    if (
+        parameters["run_id"] != expected_run_id
+        or parameters["result_id"] != expected_result_id
+        or parameters["evidence_id"] != expected_evidence_id
+        or parameters["attempt_id"]
+        != f"protected-qualification:{expected_run_id}"
+        or parameters["command_digest"] != expected_command_digest
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification validation identities differ"
+        )
+    return {
+        **parameters,
+        "history_revisions": list(history),
+        "dependency_cids": list(map(str, dependencies)),
+        "body": dict(body),
+        "run_body": dict(run_body),
+        "result_body": dict(result_body),
+        "evidence_body": dict(evidence_body),
+        "reviewed_preflight": dict(reviewed_preflight),
+        "reviewed_pins": dict(reviewed_pins),
+        "task_pin": dict(task_pin),
+        "dependency_pins": [dict(item) for item in dependency_pins],
+        "qualification_pin": dict(qualification_pin),
+        "source_pin": dict(source_pin),
+    }
+
+
+def _protected_qualification_completion_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    validated = _validated_protected_qualification_completion_parameters(
+        parameters
+    )
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name
+        not in {
+            "history_revisions",
+            "dependency_cids",
+            "body",
+            "run_body",
+            "result_body",
+            "evidence_body",
+            "reviewed_preflight",
+            "reviewed_pins",
+            "task_pin",
+            "dependency_pins",
+            "qualification_pin",
+            "source_pin",
+        }
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _validated_protected_qualification_completion_receipt(
+    value: Any,
+    *,
+    parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind the persisted completion receipt to every reviewed command pin."""
+
+    if not isinstance(value, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion receipt is absent"
+        )
+    receipt = dict(value)
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "prior_status",
+        "prior_revision",
+        "completed_revision",
+        "prior_body_sha256",
+        "prior_receipt_schema",
+        "prior_receipt_operation",
+        "prior_receipt_cid",
+        "source_head",
+        "source_tree",
+        "dependency_binding_cid",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "qualification_artifact_sha256",
+        "validation_run_id",
+        "validation_result_id",
+        "validation_evidence_id",
+        "validation_outcome",
+        "history_observed_revisions",
+        "history_missing_revisions",
+        "appended_revision",
+        "gap_preserved",
+        "repair_performed",
+        "fabricated_revisions",
+        "task_completion_scope",
+        "scheduling_authority",
+        "release_qualified",
+        "production_authorized",
+        "receipt_cid",
+    }
+    revision = int(parameters["expected_task_revision"])
+    observed = list(parameters["history_revisions"])
+    missing = [
+        item for item in range(1, revision + 1) if item not in set(observed)
+    ]
+    body = {name: member for name, member in receipt.items() if name != "receipt_cid"}
+    expected = {
+        "schema": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
+        "operation": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+        "task_cid": parameters["task_cid"],
+        "task_alias": parameters["task_alias"],
+        "prior_status": parameters["expected_task_status"],
+        "prior_revision": revision,
+        "completed_revision": revision + 1,
+        "prior_body_sha256": parameters["expected_prior_body_sha256"],
+        "prior_receipt_schema": parameters["expected_prior_receipt_schema"],
+        "prior_receipt_operation": parameters[
+            "expected_prior_receipt_operation"
+        ],
+        "prior_receipt_cid": parameters["expected_prior_receipt_cid"],
+        "source_head": parameters["source_pin"]["current_head"],
+        "source_tree": parameters["source_pin"]["current_tree"],
+        "dependency_binding_cid": parameters["reviewed_pins"][
+            "dependency_binding_cid"
+        ],
+        "reviewed_preflight_cid": parameters["reviewed_preflight_cid"],
+        "qualification_result_cid": parameters["qualification_result_cid"],
+        "qualification_stable_projection_cid": parameters[
+            "qualification_stable_projection_cid"
+        ],
+        "qualification_artifact_sha256": parameters[
+            "qualification_artifact_sha256"
+        ],
+        "validation_run_id": parameters["run_id"],
+        "validation_result_id": parameters["result_id"],
+        "validation_evidence_id": parameters["evidence_id"],
+        "validation_outcome": "passed",
+        "history_observed_revisions": observed,
+        "history_missing_revisions": missing,
+        "appended_revision": revision + 1,
+        "gap_preserved": True,
+        "repair_performed": False,
+        "fabricated_revisions": [],
+        "task_completion_scope": "protected_hermetic_qualification",
+        "scheduling_authority": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    if (
+        set(receipt) != expected_fields
+        or body != expected
+        or receipt.get("receipt_cid") != content_identity(expected)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion receipt differs from its pins"
+        )
+    return receipt
+
+
 _RETRY_COOLDOWN_ROW_FIELDS: Final[tuple[str, ...]] = (
     "task_cid",
     "claim_cid",
@@ -1857,6 +2566,15 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_update_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            }
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -1881,6 +2599,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -1961,6 +2680,11 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                     "executor_cas_task_status_receipt",
                     "executor_insert_task_revision_history",
                 }
+            ),
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+                ]
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
@@ -3668,6 +4392,7 @@ class TypedStateOwnerGateway:
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -3706,6 +4431,20 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "legacy unstall recovery replay identity differs from "
                     "its parameters"
+                )
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            digest = _protected_qualification_completion_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:protected-qualification-completion:{digest}"
+                or command.idempotency_key
+                != f"executor-protected-qualification-completion:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion replay identity differs "
+                    "from its parameters"
                 )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             requested_status = command.parameters.get("status")
@@ -4290,6 +5029,174 @@ class TypedStateOwnerGateway:
                 "prior_queue": prior_queue,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            values = _validated_protected_qualification_completion_parameters(
+                command.parameters
+            )
+            if (
+                grant.client_id
+                != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID
+                or grant.allowed_operations
+                != frozenset(
+                    {
+                        "whoami_metadata",
+                        "load_store_generation",
+                        "txn_load_generation",
+                        "txn_lookup_idempotency",
+                        "txn_advance_store_revision",
+                        "txn_record_idempotency",
+                        "executor_insert_validation_run",
+                        "executor_insert_validation_result",
+                        "executor_insert_validation_evidence",
+                        "executor_cas_task_status_receipt",
+                        "executor_insert_task_revision_history",
+                    }
+                )
+                or grant.allowed_command_operations
+                != frozenset(
+                    {TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND}
+                )
+                or dict(grant.entity_scopes)
+                != {
+                    "task_cid": values["task_cid"],
+                    "reviewed_preflight_cid": values[
+                        "reviewed_preflight_cid"
+                    ],
+                }
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion grant is not exact"
+                )
+            task_rows = self._connection.execute(
+                """
+                SELECT task_alias, status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion task is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            task_alias = task_row[0]
+            status = task_row[1]
+            revision = task_row[2]
+            prior_body_json = task_row[3]
+            if (
+                str(task_alias or "") != values["task_alias"]
+                or str(status or "") != values["expected_task_status"]
+                or type(revision) is not int
+                or revision != values["expected_task_revision"]
+                or not isinstance(prior_body_json, str)
+                or "sha256:"
+                + hashlib.sha256(prior_body_json.encode("utf-8")).hexdigest()
+                != values["expected_prior_body_sha256"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion task pin is stale"
+                )
+            try:
+                prior_body = json.loads(prior_body_json)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion prior body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(prior_body, Mapping)
+                or not isinstance(prior_receipt, Mapping)
+                or prior_receipt.get("schema")
+                != values["expected_prior_receipt_schema"]
+                or prior_receipt.get("operation")
+                != values["expected_prior_receipt_operation"]
+                or content_identity(prior_receipt)
+                != values["expected_prior_receipt_cid"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion prior receipt differs"
+                )
+            history_rows = self._connection.execute(
+                "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                "ORDER BY revision",
+                [values["task_cid"]],
+            ).fetchall()
+            observed_history = [int(row[0]) for row in history_rows]
+            if observed_history != values["history_revisions"]:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion history pin is stale"
+                )
+            dependency_rows = self._connection.execute(
+                """
+                SELECT d.dependency_task_cid, t.task_alias, t.status,
+                       t.revision, t.body_json
+                FROM task_dependencies AS d
+                JOIN tasks AS t ON t.task_cid = d.dependency_task_cid
+                WHERE d.task_cid = ? ORDER BY d.dependency_task_cid
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            observed_dependencies = [str(row[0]) for row in dependency_rows]
+            observed_dependency_pins = [
+                {
+                    "task_cid": str(row[0]),
+                    "task_alias": str(row[1]),
+                    "status": str(row[2]),
+                    "revision": int(row[3]),
+                    "body_sha256": "sha256:"
+                    + hashlib.sha256(str(row[4]).encode("utf-8")).hexdigest(),
+                }
+                for row in dependency_rows
+            ]
+            if (
+                observed_dependencies != values["dependency_cids"]
+                or observed_dependency_pins != values["dependency_pins"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion dependencies differ"
+                )
+            next_body = dict(values["body"])
+            next_receipt = next_body.get("completion_receipt")
+            _validated_protected_qualification_completion_receipt(
+                next_receipt,
+                parameters=values,
+            )
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = dict(next_receipt)
+            expected_body_json = canonical_json_bytes(expected_body).decode("utf-8")
+            if values["body_json"] != expected_body_json:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion changed immutable task body"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "history_revisions": list(observed_history),
+                "dependency_cids": list(observed_dependencies),
+                "dependency_pins": list(observed_dependency_pins),
+                "validation": {
+                    name: values[name]
+                    for name in (
+                        "run_id",
+                        "result_id",
+                        "evidence_id",
+                        "outcome",
+                        "evidence_digest",
+                        "started_at",
+                        "finished_at",
+                        "command_digest",
+                        "run_body_json",
+                        "result_body_json",
+                        "evidence_body_json",
+                    )
+                },
             }
         if operation == "task.status.cas.receipt":
             try:
@@ -5583,6 +6490,7 @@ class TypedStateOwnerGateway:
                 in {
                     "task.database.claim.phase",
                     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
                 }
             ):
                 expected_body_json = semantic_authority.get("body_json")
@@ -5598,6 +6506,12 @@ class TypedStateOwnerGateway:
                 "status": command.parameters.get("status"),
                 "body_json": expected_body_json,
             }
+            if (
+                semantic_authority
+                and semantic_authority.get("operation")
+                == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+            ):
+                expected["updated_at"] = command.parameters.get("finished_at")
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt mutation differs from the admitted command"
@@ -5922,6 +6836,160 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            values = dict(authority["validation"])
+            expected_revision = int(authority["expected_revision"])
+            exact_domain_sequence = [
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            ]
+            if [
+                name for name, _bound in manifest if name in exact_domain_sequence
+            ] != exact_domain_sequence:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion mutation order differs"
+                )
+            exact(
+                one("executor_insert_validation_run"),
+                {
+                    "run_id": values["run_id"],
+                    "task_cid": authority["task_cid"],
+                    "attempt_id": command.parameters["attempt_id"],
+                    "started_at": values["started_at"],
+                    "finished_at": values["finished_at"],
+                    "status": "passed",
+                    "command_digest": values["command_digest"],
+                    "body_json": values["run_body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_validation_result"),
+                {
+                    "result_id": values["result_id"],
+                    "run_id": values["run_id"],
+                    "task_cid": authority["task_cid"],
+                    "ordinal": 0,
+                    "outcome": "passed",
+                    "evidence_digest": values["evidence_digest"],
+                    "body_json": values["result_body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_validation_evidence"),
+                {
+                    "evidence_id": values["evidence_id"],
+                    "parent_evidence_id": "",
+                    "task_cid": authority["task_cid"],
+                    "evidence_kind": "validation",
+                    "digest": values["evidence_digest"],
+                    "created_at": values["finished_at"],
+                    "body_json": values["evidence_body_json"],
+                },
+            )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "completed",
+                    "body_json": authority["body_json"],
+                },
+            )
+            task_rows = self._connection.execute(
+                "SELECT status, revision, body_json, updated_at FROM tasks "
+                "WHERE task_cid = ? LIMIT 2",
+                [authority["task_cid"]],
+            ).fetchall()
+            history_rows = self._connection.execute(
+                "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                "ORDER BY revision",
+                [authority["task_cid"]],
+            ).fetchall()
+            validation_run = self._connection.execute(
+                "SELECT task_cid, attempt_id, started_at, finished_at, status, "
+                "command_digest, body_json "
+                "FROM validation_runs WHERE run_id = ? LIMIT 2",
+                [values["run_id"]],
+            ).fetchall()
+            validation_result = self._connection.execute(
+                "SELECT run_id, task_cid, ordinal, outcome, evidence_digest, "
+                "body_json FROM validation_results WHERE result_id = ? LIMIT 2",
+                [values["result_id"]],
+            ).fetchall()
+            validation_evidence = self._connection.execute(
+                "SELECT parent_evidence_id, task_cid, evidence_kind, digest, "
+                "body_json FROM evidence_nodes WHERE evidence_id = ? LIMIT 2",
+                [values["evidence_id"]],
+            ).fetchall()
+            normalized_task_rows = [
+                tuple(row[index] for index in range(4)) for row in task_rows
+            ]
+            normalized_validation_run = [
+                tuple(row[index] for index in range(7)) for row in validation_run
+            ]
+            normalized_validation_result = [
+                tuple(row[index] for index in range(6))
+                for row in validation_result
+            ]
+            normalized_validation_evidence = [
+                tuple(row[index] for index in range(5))
+                for row in validation_evidence
+            ]
+            if (
+                normalized_task_rows
+                != [
+                    (
+                        "completed",
+                        expected_revision + 1,
+                        authority["body_json"],
+                        values["finished_at"],
+                    )
+                ]
+                or [int(row[0]) for row in history_rows]
+                != [*authority["history_revisions"], expected_revision + 1]
+                or normalized_validation_run
+                != [
+                    (
+                        authority["task_cid"],
+                        command.parameters["attempt_id"],
+                        values["started_at"],
+                        values["finished_at"],
+                        "passed",
+                        values["command_digest"],
+                        values["run_body_json"],
+                    )
+                ]
+                or normalized_validation_result
+                != [
+                    (
+                        values["run_id"],
+                        authority["task_cid"],
+                        0,
+                        "passed",
+                        values["evidence_digest"],
+                        values["result_body_json"],
+                    )
+                ]
+                or normalized_validation_evidence
+                != [
+                    (
+                        "",
+                        authority["task_cid"],
+                        "validation",
+                        values["evidence_digest"],
+                        values["evidence_body_json"],
+                    )
+                ]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion post-state differs"
+                )
+            return
 
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             values = dict(authority["cooldown_parameters"])
@@ -7179,6 +8247,10 @@ __all__ = [
     "TYPED_STATE_OWNER_SOCKET_FILENAME",
     "TYPED_STATE_OWNER_TOKEN_ENV",
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA",
     "TYPED_RETRY_COOLDOWN_SCHEMA",
     "compact_default_owner_socket_path",
     "TYPED_TASK_STATUS_VOCABULARY",

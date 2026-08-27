@@ -12,6 +12,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -5902,6 +5903,197 @@ def test_lgcvf_successor_owner_disables_legacy_board_unstall() -> None:
         if keyword.arg == "allow_legacy_board_unstall"
     )
     assert isinstance(policy, ast.Constant) and policy.value is False
+
+
+def test_protected_qualification_command_is_synchronous_and_ttl_covers_timeout(
+) -> None:
+    operator = _operator()
+    caller_thread = threading.get_ident()
+    observed_threads: list[int] = []
+    sentinel = object()
+
+    def submit() -> object:
+        observed_threads.append(threading.get_ident())
+        return sentinel
+
+    assert (
+        operator._service_protected_qualification_completion_command(submit)
+        is sentinel
+    )
+    assert observed_threads == [caller_thread]
+    assert operator.PROTECTED_QUALIFICATION_COMMAND_TIMEOUT_SECONDS > 0.0
+    assert (
+        operator.PROTECTED_QUALIFICATION_COMMAND_GRANT_TTL_SECONDS
+        > operator.PROTECTED_QUALIFICATION_COMMAND_TIMEOUT_SECONDS
+    )
+
+
+def test_protected_qualification_never_restores_after_owner_start_attempt() -> None:
+    tree = ast.parse(OPERATOR_PATH.read_text(encoding="utf-8"))
+    completion = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_complete_protected_qualification_locked"
+    )
+    start_call = next(
+        node
+        for node in ast.walk(completion)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "server"
+        and node.func.attr == "start"
+    )
+    start_attempt = next(
+        node
+        for node in ast.walk(completion)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "start_attempted"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is True
+    )
+    restore_guard = next(
+        node.test
+        for node in ast.walk(completion)
+        if isinstance(node, ast.If)
+        and any(
+            isinstance(descendant, ast.Call)
+            and isinstance(descendant.func, ast.Name)
+            and descendant.func.id
+            == "_restore_or_retire_stopped_restart_admission"
+            for descendant in ast.walk(node)
+        )
+    )
+    emergency_stop_guard = next(
+        node.test
+        for node in ast.walk(completion)
+        if isinstance(node, ast.If)
+        and "start_attempted" in ast.unparse(node.test)
+        and any(
+            isinstance(descendant, ast.Call)
+            and isinstance(descendant.func, ast.Attribute)
+            and isinstance(descendant.func.value, ast.Name)
+            and descendant.func.value.id == "server"
+            and descendant.func.attr == "stop"
+            for descendant in ast.walk(node)
+        )
+    )
+
+    assert start_attempt.lineno < start_call.lineno
+    assert isinstance(restore_guard, ast.BoolOp)
+    assert any(
+        isinstance(value, ast.Name) and value.id == "claimed"
+        for value in restore_guard.values
+    )
+    assert any(
+        isinstance(value, ast.UnaryOp)
+        and isinstance(value.op, ast.Not)
+        and isinstance(value.operand, ast.Name)
+        and value.operand.id == "start_attempted"
+        for value in restore_guard.values
+    )
+    assert ast.unparse(emergency_stop_guard) == (
+        "server is not None and (not start_attempted)"
+    )
+
+
+def test_protected_qualification_finalizer_covers_every_post_start_exit() -> None:
+    tree = ast.parse(OPERATOR_PATH.read_text(encoding="utf-8"))
+    completion = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_complete_protected_qualification_locked"
+    )
+    finalizer = next(
+        node
+        for node in ast.walk(completion)
+        if isinstance(node, ast.Try)
+        and any(
+            isinstance(descendant, ast.Call)
+            and isinstance(descendant.func, ast.Name)
+            and descendant.func.id
+            == "_publish_protected_qualification_stopped_continuity"
+            for statement in node.finalbody
+            for descendant in ast.walk(statement)
+        )
+    )
+    finalizer_calls = tuple(
+        descendant
+        for statement in finalizer.finalbody
+        for descendant in ast.walk(statement)
+        if isinstance(descendant, ast.Call)
+    )
+
+    assert any(
+        isinstance(call.func, ast.Attribute) and call.func.attr == "close"
+        for call in finalizer_calls
+    )
+    assert any(
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "revoke_typed_client_grant"
+        for call in finalizer_calls
+    )
+    assert any(
+        isinstance(call.func, ast.Name)
+        and call.func.id
+        == "_checkpoint_and_stop_protected_qualification_owner"
+        for call in finalizer_calls
+    )
+    assert any(
+        isinstance(call.func, ast.Name)
+        and call.func.id
+        == "_publish_protected_qualification_stopped_continuity"
+        for call in finalizer_calls
+    )
+
+
+def test_protected_qualification_checkpoint_failure_preserves_ready_owner() -> None:
+    operator = _operator()
+    events: list[str] = []
+    identity = SimpleNamespace(server_id="owner:test")
+
+    class CheckpointFailureServer:
+        def checkpoint(self) -> object:
+            events.append("checkpoint")
+            raise RuntimeError("injected checkpoint failure")
+
+        def stop(self) -> object:
+            events.append("stop")
+            raise AssertionError("uncheckpointed owner must remain READY")
+
+    with pytest.raises(RuntimeError, match="injected checkpoint failure"):
+        operator._checkpoint_and_stop_protected_qualification_owner(
+            CheckpointFailureServer(),
+            identity,
+        )
+    assert events == ["checkpoint"]
+
+
+def test_interrupted_protected_publication_recovers_before_new_completion() -> None:
+    tree = ast.parse(OPERATOR_PATH.read_text(encoding="utf-8"))
+    launch = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "run_successor"
+    )
+
+    def call_line(name: str) -> int:
+        return next(
+            node.lineno
+            for node in ast.walk(launch)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        )
+
+    assert call_line(
+        "_recover_interrupted_protected_qualification_publication_locked"
+    ) < call_line("_automatically_complete_protected_qualification_locked")
 
 
 def test_typed_retry_writer_and_reader_share_one_closed_vocabulary() -> None:

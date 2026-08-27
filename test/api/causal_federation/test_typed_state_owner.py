@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import multiprocessing
 import os
 import threading
@@ -9,12 +11,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     typed_state_owner as typed_owner,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     CommandKind,
     StateCommand,
+    canonical_json_bytes,
+    content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
@@ -160,6 +165,269 @@ def _attached_client(client_id: str) -> QuackStateClient:
     return client
 
 
+def _install_protected_qualification_completion_fixture(
+    db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    """Seed the exact legacy gap while substituting only its unavailable body."""
+
+    task_cid = "baguqeerakwvsckoysv5edcru3makxvmcwjjm2alzam5umsyqbkp3efngyqpa"
+    dependency_specs = (
+        (
+            "LGCVF-112",
+            "baguqeeramxjolmqp2rh7r5vfrrs5ne3mqqhbxh3pn74k27h5tbpf4luasfkq",
+            5,
+        ),
+        (
+            "LGCVF-111",
+            "baguqeerau4vdgcyn3sdorik7zawwgwrhy7mxxydb6gashctytbmdzwtmumea",
+            4,
+        ),
+    )
+    prior_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-recovery@1"
+        ),
+        "operation": "database_claim_lost_sidecar_recovery",
+    }
+    prior_body = {
+        "completion_receipt": prior_receipt,
+        "fixture": "protected-qualification-legacy-gap",
+    }
+    prior_body_json = canonical_json_bytes(prior_body).decode("utf-8")
+    prior_body_sha256 = "sha256:" + hashlib.sha256(
+        prior_body_json.encode("utf-8")
+    ).hexdigest()
+    monkeypatch.setattr(
+        typed_owner,
+        "_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256",
+        prior_body_sha256,
+    )
+
+    db.parent.mkdir(mode=0o700, parents=True)
+    _install(db)
+    dependency_pins: list[dict[str, Any]] = []
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            """
+            INSERT INTO tasks (
+                task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                ordinal, status, revision, priority, created_at, updated_at,
+                identity_json, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                task_cid,
+                "LGCVF-113",
+                "goal:typed-owner",
+                "plan:protected-qualification",
+                "objective:typed-owner",
+                113,
+                "retrying",
+                8,
+                "P0",
+                "1970-01-01T00:00:00Z",
+                "1970-01-08T00:00:00Z",
+                "{}",
+                prior_body_json,
+            ],
+        )
+        connection.execute(
+            "INSERT INTO task_revisions "
+            "(task_cid, revision, status, body_json, recorded_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                task_cid,
+                1,
+                "ready",
+                "{}",
+                "1970-01-01T00:00:00Z",
+            ],
+        )
+        for alias, dependency_cid, revision in dependency_specs:
+            dependency_body_json = canonical_json_bytes(
+                {"fixture": alias}
+            ).decode("utf-8")
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                    ordinal, status, revision, priority, created_at, updated_at,
+                    identity_json, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    dependency_cid,
+                    alias,
+                    "goal:typed-owner",
+                    "plan:protected-qualification",
+                    "objective:typed-owner",
+                    int(alias.rsplit("-", 1)[1]),
+                    "completed",
+                    revision,
+                    "P0",
+                    "1970-01-01T00:00:00Z",
+                    f"1970-01-0{revision}T00:00:00Z",
+                    "{}",
+                    dependency_body_json,
+                ],
+            )
+            connection.execute(
+                "INSERT INTO task_dependencies "
+                "(task_cid, dependency_task_cid, kind) VALUES (?, ?, ?)",
+                [task_cid, dependency_cid, "hard"],
+            )
+            dependency_pins.append(
+                {
+                    "task_cid": dependency_cid,
+                    "task_alias": alias,
+                    "status": "completed",
+                    "revision": revision,
+                    "body_sha256": "sha256:"
+                    + hashlib.sha256(
+                        dependency_body_json.encode("utf-8")
+                    ).hexdigest(),
+                }
+            )
+
+    def fixture_cid(name: str) -> str:
+        return content_identity({"protected_qualification_fixture": name})
+
+    def fixture_sha256(digit: str) -> str:
+        return "sha256:" + digit * 64
+    qualification_result_cid = fixture_cid("qualification-result")
+    qualification_stable_projection_cid = fixture_cid(
+        "qualification-stable-projection"
+    )
+    qualification_artifact_sha256 = fixture_sha256("7")
+    source_continuity = {
+        "approved_branch": (
+            "agent/logic-governed-compositional-verification-fabric-v1"
+        ),
+        "resolved_remote_head": "1" * 40,
+        "current_head": "2" * 40,
+        "current_tree": "3" * 40,
+        "candidate_worktree_clean": True,
+        "datasets_head": "4" * 40,
+        "datasets_tree": "5" * 40,
+        "datasets_worktree_clean": True,
+        "python_bytecode_quarantine": {
+            "enabled": True,
+            "ephemeral": True,
+            "ignored_worktree_pycache": "quarantined_not_imported",
+            "outside_candidate_root": True,
+            "private": True,
+        },
+        "superproject_runtime_inventory": {
+            "tracked_object_count": 1,
+            "tracked_inventory_root": fixture_sha256("1"),
+        },
+        "datasets_runtime_inventory": {
+            "tracked_object_count": 1,
+            "tracked_inventory_root": fixture_sha256("2"),
+        },
+    }
+    qualification = {
+        "argv": [
+            "python",
+            "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+            "--check",
+        ],
+        "validator_path": (
+            "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+        ),
+        "validator_blob_oid": "6" * 40,
+        "validator_sha256": fixture_sha256("3"),
+        "artifact_path": (
+            "data/agent_supervisor/logic_governed_compositional_verification_"
+            "fabric/independent_qualification_result.json"
+        ),
+        "artifact_blob_oid": "7" * 40,
+        "artifact_sha256": qualification_artifact_sha256,
+        "stored_result_cid": qualification_result_cid,
+        "stored_stable_projection_cid": (
+            qualification_stable_projection_cid
+        ),
+        "replay_stable_projection_cid": qualification_stable_projection_cid,
+        "replay_exit_code": 0,
+        "recorded_at": "1970-01-08T00:00:00Z",
+        "passed": True,
+        "test_qualification_complete": True,
+        "independent_fixed_manifest_executed": True,
+        "candidate_suites_are_self_authority": False,
+        "task_implementation_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authoritative": False,
+        "production_authorized": False,
+    }
+    reviewed_pins = {
+        "target_generation": "lgcvf-run-v39",
+        "source_provenance_cid": fixture_cid("source-provenance"),
+        "stopped_state_continuity_receipt_cid": fixture_cid(
+            "stopped-continuity"
+        ),
+        "stopped_controller_status_cid": fixture_cid("stopped-status"),
+        "source_continuity": source_continuity,
+        "databases": {
+            "control": {
+                "path": str(db),
+                "sha256": fixture_sha256("4"),
+            },
+            "coordination": {
+                "path": str(db.with_name("control.coordination.duckdb")),
+                "sha256": fixture_sha256("5"),
+            },
+            "execution": {
+                "path": str(db.with_name("control.execution.duckdb")),
+                "sha256": fixture_sha256("6"),
+            },
+        },
+        "task": {
+            "task_cid": task_cid,
+            "task_alias": "LGCVF-113",
+            "status": "retrying",
+            "revision": 8,
+            "body_sha256": prior_body_sha256,
+            "prior_receipt_schema": prior_receipt["schema"],
+            "prior_receipt_operation": prior_receipt["operation"],
+            "prior_receipt_cid": content_identity(prior_receipt),
+            "history_observed_revisions": [1],
+            "history_missing_revisions": list(range(2, 9)),
+            "gap_preserved": True,
+            "repair_authority": False,
+        },
+        "dependencies": dependency_pins,
+        "dependency_binding_cid": content_identity(dependency_pins),
+        "qualification": qualification,
+    }
+    reviewed_preflight = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "lgcvf-protected-qualification-completion-preflight@1"
+        ),
+        "operation": (
+            typed_owner.TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION
+        ),
+        "reviewed_pins": reviewed_pins,
+    }
+    return {
+        "task_cid": task_cid,
+        "prior_receipt": prior_receipt,
+        "prior_body": prior_body,
+        "prior_body_sha256": prior_body_sha256,
+        "dependency_cids": [item["task_cid"] for item in dependency_pins],
+        "reviewed_preflight": reviewed_preflight,
+        "reviewed_preflight_cid": content_identity(reviewed_preflight),
+        "qualification_result_cid": qualification_result_cid,
+        "qualification_stable_projection_cid": (
+            qualification_stable_projection_cid
+        ),
+        "qualification_artifact_sha256": qualification_artifact_sha256,
+    }
+
+
 def test_default_owner_socket_path_compacts_an_overlong_store_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -181,6 +449,152 @@ def test_explicit_owner_socket_path_is_not_silently_rewritten(
 ) -> None:
     explicit = tmp_path / "launcher-owned" / "owner.sock"
     assert typed_owner.typed_owner_socket_path("ignored", str(explicit)) == explicit
+
+
+def test_protected_qualification_completion_is_atomic_and_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = tmp_path / "run-v39" / "control.duckdb"
+    socket_path = tmp_path / "protected-qualification-owner.sock"
+    fixture = _install_protected_qualification_completion_fixture(
+        db,
+        monkeypatch,
+    )
+    gateway, owner_connection = _gateway(db, socket_path)
+    client_id = (
+        typed_owner.TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID
+    )
+    process_birth_id = "birth:protected-qualification-completion-test"
+    allowed_operations = (
+        "whoami_metadata",
+        "load_store_generation",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+        "executor_insert_validation_run",
+        "executor_insert_validation_result",
+        "executor_insert_validation_evidence",
+        "executor_cas_task_status_receipt",
+        "executor_insert_task_revision_history",
+    )
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        allowed_operations=allowed_operations,
+        allowed_command_operations=(
+            typed_owner.TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+        ),
+        entity_scopes={
+            "task_cid": fixture["task_cid"],
+            "reviewed_preflight_cid": fixture["reviewed_preflight_cid"],
+        },
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(socket_path))
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id="control.duckdb",
+        process_birth_id=process_birth_id,
+    )
+
+    def complete() -> Any:
+        return client.complete_protected_qualification_legacy_gap(
+            task_cid=fixture["task_cid"],
+            task_alias="LGCVF-113",
+            expected_task_revision=8,
+            expected_prior_body_sha256=fixture["prior_body_sha256"],
+            expected_prior_receipt_schema=fixture["prior_receipt"]["schema"],
+            expected_prior_receipt_operation=fixture["prior_receipt"][
+                "operation"
+            ],
+            expected_prior_receipt_cid=content_identity(
+                fixture["prior_receipt"]
+            ),
+            expected_history_revisions=[1],
+            expected_dependency_cids=fixture["dependency_cids"],
+            prior_body=fixture["prior_body"],
+            reviewed_preflight_cid=fixture["reviewed_preflight_cid"],
+            reviewed_preflight=fixture["reviewed_preflight"],
+            qualification_result_cid=fixture["qualification_result_cid"],
+            qualification_stable_projection_cid=fixture[
+                "qualification_stable_projection_cid"
+            ],
+            qualification_artifact_sha256=fixture[
+                "qualification_artifact_sha256"
+            ],
+        )
+
+    before_revision_row = owner_connection.execute(
+        "SELECT revision FROM store_generations ORDER BY generation DESC LIMIT 1"
+    ).fetchone()
+    assert before_revision_row is not None
+    before_revision = int(before_revision_row[0])
+    try:
+        client.attach(
+            "quack:127.0.0.1:7777",
+            server_id="server:typed-owner-test",
+        )
+        accepted = complete()
+        replay = complete()
+    finally:
+        client.close()
+        gateway.stop()
+
+    assert (accepted.outcome.value, accepted.changed) == ("accepted", True)
+    assert (replay.outcome.value, replay.changed) == (
+        "idempotent_replay",
+        False,
+    )
+    assert dict(replay.result) == dict(accepted.result)
+    assert replay.result_digest == accepted.result_digest
+    assert accepted.result["task_revision"] == 9
+    assert accepted.result["completion_receipt_cid"]
+
+    task_row = owner_connection.execute(
+        "SELECT status, revision, body_json FROM tasks WHERE task_cid = ?",
+        [fixture["task_cid"]],
+    ).fetchone()
+    assert task_row is not None
+    assert (str(task_row[0]), int(task_row[1])) == ("completed", 9)
+    completed_body = json.loads(str(task_row[2]))
+    completion_receipt = completed_body["completion_receipt"]
+    assert completion_receipt["receipt_cid"] == accepted.result[
+        "completion_receipt_cid"
+    ]
+    assert completion_receipt["reviewed_preflight_cid"] == fixture[
+        "reviewed_preflight_cid"
+    ]
+    assert completion_receipt["history_observed_revisions"] == [1]
+    assert completion_receipt["history_missing_revisions"] == list(range(2, 9))
+    assert completion_receipt["appended_revision"] == 9
+    assert completion_receipt["gap_preserved"] is True
+    assert completion_receipt["repair_performed"] is False
+    assert completion_receipt["fabricated_revisions"] == []
+
+    history_rows = owner_connection.execute(
+        "SELECT revision FROM task_revisions WHERE task_cid = ? ORDER BY revision",
+        [fixture["task_cid"]],
+    ).fetchall()
+    assert [int(row[0]) for row in history_rows] == [1, 9]
+    for table, key, value in (
+        ("validation_runs", "run_id", accepted.result["run_id"]),
+        ("validation_results", "result_id", accepted.result["result_id"]),
+        ("evidence_nodes", "evidence_id", accepted.result["evidence_id"]),
+    ):
+        count_row = owner_connection.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {key} = ?",  # noqa: S608
+            [value],
+        ).fetchone()
+        assert count_row is not None and int(count_row[0]) == 1
+    after_revision_row = owner_connection.execute(
+        "SELECT revision FROM store_generations ORDER BY generation DESC LIMIT 1"
+    ).fetchone()
+    assert after_revision_row is not None
+    assert int(after_revision_row[0]) == before_revision + 1
+    owner_connection.close()
 
 
 def test_closed_owner_command_is_atomic_and_rolls_back_callback_failure(

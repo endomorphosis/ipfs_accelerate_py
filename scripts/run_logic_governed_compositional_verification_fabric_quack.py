@@ -286,6 +286,53 @@ FAILED_START_SOURCE_MAINTENANCE_OPERATION: Final = (
 STOPPED_TASK_HISTORY_AUDIT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-stopped-task-history-audit@1"
 )
+PROTECTED_QUALIFICATION_COMPLETION_PREFLIGHT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-protected-qualification-completion-preflight@1"
+)
+PROTECTED_QUALIFICATION_COMPLETION_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-protected-qualification-completion-result@1"
+)
+PROTECTED_QUALIFICATION_COMPLETION_INTENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-protected-qualification-completion-intent@1"
+)
+PROTECTED_QUALIFICATION_COMPLETION_OPERATION: Final = (
+    "database_legacy_history_gap_protected_qualification_complete"
+)
+PROTECTED_QUALIFICATION_COMPLETION_PRIOR_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-recovery@1"
+)
+PROTECTED_QUALIFICATION_COMPLETION_STATUS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-protected-qualification-completion-status@1"
+)
+PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS: Final = "LGCVF-113"
+PROTECTED_QUALIFICATION_COMPLETION_TASK_CID: Final = (
+    "baguqeerakwvsckoysv5edcru3makxvmcwjjm2alzam5umsyqbkp3efngyqpa"
+)
+PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION: Final = 8
+PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256: Final = (
+    "sha256:f8fe4ec9875cf786f2ca909b2268c784b080e9c86599b1e8d367d982e606829d"
+)
+PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES: Final = {
+    "LGCVF-111": (
+        "baguqeerau4vdgcyn3sdorik7zawwgwrhy7mxxydb6gashctytbmdzwtmumea"
+    ),
+    "LGCVF-112": (
+        "baguqeeramxjolmqp2rh7r5vfrrs5ne3mqqhbxh3pn74k27h5tbpf4luasfkq"
+    ),
+}
+PROTECTED_QUALIFICATION_RELATIVE: Final = Path(
+    "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+)
+PROTECTED_QUALIFICATION_RESULT_RELATIVE: Final = (
+    PROGRAM_ROOT_RELATIVE / "independent_qualification_result.json"
+)
+PROTECTED_QUALIFICATION_CHECK_TIMEOUT_SECONDS: Final = 1_800.0
+PROTECTED_QUALIFICATION_COMMAND_TIMEOUT_SECONDS: Final = 300.0
+PROTECTED_QUALIFICATION_COMMAND_GRANT_TTL_SECONDS: Final = 600.0
 ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-abandoned-owner-recovery-preflight@1"
@@ -6712,6 +6759,51 @@ def _validate_stopped_controller_tree_births(
             )
         return controller, owner, owner
 
+    protected_completion = stopped_status.get(
+        "protected_qualification_completion"
+    )
+    if protected_completion is not None:
+        if (
+            not isinstance(protected_completion, Mapping)
+            or set(protected_completion)
+            != {
+                "schema",
+                "preflight_cid",
+                "completion_receipt_cid",
+                "completed",
+                "scheduling_attempted",
+            }
+            or protected_completion.get("schema")
+            != PROTECTED_QUALIFICATION_COMPLETION_STATUS_SCHEMA
+            or re.fullmatch(
+                r"b[a-z2-7]{20,200}",
+                str(protected_completion.get("preflight_cid") or ""),
+            )
+            is None
+            or type(protected_completion.get("completed")) is not bool
+            or (
+                protected_completion.get("completed") is True
+                and re.fullmatch(
+                    r"b[a-z2-7]{20,200}",
+                    str(
+                        protected_completion.get("completion_receipt_cid") or ""
+                    ),
+                )
+                is None
+            )
+            or (
+                protected_completion.get("completed") is False
+                and protected_completion.get("completion_receipt_cid") != ""
+            )
+            or protected_completion.get("scheduling_attempted") is not False
+            or raw_owner != raw_controller
+            or raw_scheduler != {}
+        ):
+            raise SuccessorOperatorError(
+                "stopped-state protected qualification binding differs"
+            )
+        return controller, owner, owner
+
     scheduler = exact_birth(raw_scheduler, noun="scheduler")
     if (
         raw_owner != raw_controller
@@ -6807,11 +6899,13 @@ def _validate_unbound_stopped_controller_status(
         "ducklake_projection",
         "status_cid",
     }
-    expected_fields = (
-        base_fields | {"stopped_recovery_anchors"}
-        if "stopped_recovery_anchors" in stopped_status
-        else base_fields
-    )
+    expected_fields = set(base_fields)
+    for optional_field in (
+        "stopped_recovery_anchors",
+        "protected_qualification_completion",
+    ):
+        if optional_field in stopped_status:
+            expected_fields.add(optional_field)
     updated_at = stopped_status.get("updated_at")
     projection = stopped_status.get("ducklake_projection")
     projection_fields = {
@@ -9766,6 +9860,31 @@ def run_successor(
             raise SuccessorOperatorError(
                 "abandoned state owner recovered; restart the successor "
                 "controller against the new continuity receipt"
+            )
+        protected_publication = (
+            _recover_interrupted_protected_qualification_publication_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+            )
+        )
+        if protected_publication is not None:
+            raise SuccessorOperatorError(
+                "protected qualification stopped-state publication recovered; "
+                "restart the successor controller against the new continuity "
+                "receipt"
+            )
+        protected_completion = (
+            _automatically_complete_protected_qualification_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+            )
+        )
+        if protected_completion is not None:
+            raise SuccessorOperatorError(
+                "protected LGCVF-113 qualification completed; restart the "
+                "successor controller against the new continuity receipt"
             )
         result = _run_locked_successor(
             config_path,
@@ -13534,6 +13653,1438 @@ def stopped_task_history_audit(root: Path = ROOT) -> dict[str, Any]:
             return {**body, "audit_cid": _content_id(body)}
 
 
+def _closed_json_object_bytes(raw: bytes, *, noun: str) -> dict[str, Any]:
+    """Decode one bounded JSON object while rejecting duplicate/non-finite data."""
+
+    def closed_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for name, member in pairs:
+            if name in value:
+                raise ValueError(f"duplicate {noun} field")
+            value[name] = member
+        return value
+
+    def reject_constant(_value: str) -> Any:
+        raise ValueError(f"non-finite {noun} number")
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=closed_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise SuccessorOperatorError(f"{noun} is malformed") from exc
+    if not isinstance(value, dict):
+        raise SuccessorOperatorError(f"{noun} root is not an object")
+    return value
+
+
+def _protected_qualification_stable_projection(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reproduce the tracked qualifier's deliberately duration-free projection."""
+
+    raw_suites = value.get("suites")
+    if not isinstance(raw_suites, list) or any(
+        not isinstance(item, Mapping) for item in raw_suites
+    ):
+        raise SuccessorOperatorError(
+            "protected qualification suite projection is malformed"
+        )
+    suites = [
+        {
+            key: item.get(key)
+            for key in (
+                "schema",
+                "suite_id",
+                "manifest",
+                "collected",
+                "passed_count",
+                "failed_count",
+                "skipped_count",
+                "xfailed_count",
+                "xpassed_count",
+                "error_count",
+                "nodeids_cid",
+                "exit_code",
+                "passed",
+                "isolation",
+            )
+        }
+        for item in raw_suites
+    ]
+    return {
+        key: value.get(key)
+        for key in (
+            "schema",
+            "plan_cid",
+            "predecessor_plan_cid",
+            "cohort",
+            "candidate_suites_are_self_authority",
+            "independent_fixed_manifest_executed",
+            "checkout_fingerprint_cid",
+            "checkout_unchanged",
+            "passed",
+            "totals",
+            "task_implementation_complete",
+            "test_qualification_complete",
+            "objective_complete",
+            "release_qualified",
+            "production_authorized",
+            "production_authoritative",
+            "limitations",
+        )
+    } | {"suites": suites}
+
+
+def _validate_protected_qualification_result(
+    value: Mapping[str, Any],
+    *,
+    noun: str,
+) -> None:
+    expected_fields = {
+        "schema",
+        "plan_cid",
+        "predecessor_plan_cid",
+        "cohort",
+        "candidate_suites_are_self_authority",
+        "independent_fixed_manifest_executed",
+        "checkout_fingerprint_cid",
+        "checkout_unchanged",
+        "passed",
+        "totals",
+        "suites",
+        "task_implementation_complete",
+        "test_qualification_complete",
+        "objective_complete",
+        "release_qualified",
+        "production_authorized",
+        "production_authoritative",
+        "limitations",
+        "result_cid",
+    }
+    body = {name: member for name, member in value.items() if name != "result_cid"}
+    if (
+        set(value) != expected_fields
+        or value.get("schema") != "lgcvf-independent-hermetic-qualification@1"
+        or value.get("cohort") != "hermetic_local_execution"
+        or value.get("result_cid") != _content_id(body)
+        or value.get("candidate_suites_are_self_authority") is not False
+        or value.get("independent_fixed_manifest_executed") is not True
+        or value.get("checkout_unchanged") is not True
+        or value.get("passed") is not True
+        or value.get("test_qualification_complete") is not True
+        or value.get("task_implementation_complete") is not False
+        or value.get("objective_complete") is not False
+        or value.get("release_qualified") is not False
+        or value.get("production_authorized") is not False
+        or value.get("production_authoritative") is not False
+    ):
+        raise SuccessorOperatorError(f"{noun} authority binding differs")
+    _protected_qualification_stable_projection(value)
+
+
+def _tracked_regular_file_pin(
+    root: Path,
+    relative: Path,
+    *,
+    noun: str,
+    max_bytes: int,
+) -> tuple[bytes, dict[str, str]]:
+    path = _contained(root, relative)
+    raw = _read_bounded_regular_file(path, max_bytes=max_bytes, noun=noun)
+    observed_blob = _regular_git_blob_oid(path, noun=noun)
+    expected_blob = _git_text(
+        root,
+        ("rev-parse", f"HEAD:{relative.as_posix()}"),
+        noun=f"{noun} tracked blob",
+    )
+    if observed_blob != expected_blob or re.fullmatch(
+        r"[0-9a-f]{40}", expected_blob
+    ) is None:
+        raise SuccessorOperatorError(f"{noun} differs from tracked HEAD")
+    return raw, {
+        "path": relative.as_posix(),
+        "blob_oid": expected_blob,
+        "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def _run_protected_qualification_check(root: Path) -> dict[str, Any]:
+    """Run and bind the tracked fixed-manifest qualifier without provider access."""
+
+    validator_raw, validator_pin = _tracked_regular_file_pin(
+        root,
+        PROTECTED_QUALIFICATION_RELATIVE,
+        noun="protected qualification validator",
+        max_bytes=MAX_JSON_BYTES * 4,
+    )
+    artifact_raw, artifact_pin = _tracked_regular_file_pin(
+        root,
+        PROTECTED_QUALIFICATION_RESULT_RELATIVE,
+        noun="protected qualification result",
+        max_bytes=MAX_JSON_BYTES,
+    )
+    stored = _closed_json_object_bytes(
+        artifact_raw,
+        noun="stored protected qualification result",
+    )
+    expected_artifact_encoding = (
+        json.dumps(stored, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    )
+    if artifact_raw != expected_artifact_encoding:
+        raise SuccessorOperatorError(
+            "stored protected qualification result encoding differs"
+        )
+    _validate_protected_qualification_result(
+        stored,
+        noun="stored protected qualification result",
+    )
+    environment = {
+        "HOME": str(Path(tempfile.gettempdir()).resolve()),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "NO_COLOR": "1",
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin",
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    }
+    argv = [
+        sys.executable,
+        "-B",
+        str(_contained(root, PROTECTED_QUALIFICATION_RELATIVE)),
+        "--check",
+    ]
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            check=False,
+            timeout=PROTECTED_QUALIFICATION_CHECK_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SuccessorOperatorError(
+            "protected qualification replay could not complete"
+        ) from exc
+    if (
+        len(completed.stdout) > MAX_JSON_BYTES
+        or len(completed.stderr) > MAX_JSON_BYTES
+        or completed.returncode != 0
+    ):
+        detail = completed.stderr[-1000:] or completed.stdout[-1000:]
+        raise SuccessorOperatorError(
+            "protected qualification replay failed: "
+            + detail.decode("utf-8", errors="replace").strip()
+        )
+    replay = _closed_json_object_bytes(
+        completed.stdout,
+        noun="replayed protected qualification result",
+    )
+    if completed.stdout != (
+        json.dumps(replay, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    ):
+        raise SuccessorOperatorError(
+            "replayed protected qualification result encoding differs"
+        )
+    _validate_protected_qualification_result(
+        replay,
+        noun="replayed protected qualification result",
+    )
+    stored_stable = _protected_qualification_stable_projection(stored)
+    replay_stable = _protected_qualification_stable_projection(replay)
+    if stored_stable != replay_stable:
+        raise SuccessorOperatorError(
+            "protected qualification stable projection differs"
+        )
+    recorded_at = _git_text(
+        root,
+        (
+            "log",
+            "-1",
+            "--format=%cI",
+            "HEAD",
+            "--",
+            PROTECTED_QUALIFICATION_RESULT_RELATIVE.as_posix(),
+        ),
+        noun="protected qualification recording time",
+    ).replace("+00:00", "Z")
+    if re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z",
+        recorded_at,
+    ) is None:
+        raise SuccessorOperatorError(
+            "protected qualification recording time is malformed"
+        )
+    stable_cid = _content_id(stored_stable)
+    return {
+        "argv": [
+            "python",
+            PROTECTED_QUALIFICATION_RELATIVE.as_posix(),
+            "--check",
+        ],
+        "validator_path": validator_pin["path"],
+        "validator_blob_oid": validator_pin["blob_oid"],
+        "validator_sha256": "sha256:" + hashlib.sha256(validator_raw).hexdigest(),
+        "artifact_path": artifact_pin["path"],
+        "artifact_blob_oid": artifact_pin["blob_oid"],
+        "artifact_sha256": artifact_pin["sha256"],
+        "stored_result_cid": stored["result_cid"],
+        "stored_stable_projection_cid": stable_cid,
+        "replay_stable_projection_cid": _content_id(replay_stable),
+        "replay_exit_code": 0,
+        "recorded_at": recorded_at,
+        "passed": True,
+        "test_qualification_complete": True,
+        "independent_fixed_manifest_executed": True,
+        "candidate_suites_are_self_authority": False,
+        "task_implementation_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authoritative": False,
+        "production_authorized": False,
+    }
+
+
+def _protected_qualification_completion_snapshot(
+    connection: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read the exact LGCVF-113 prestate from one immutable control snapshot."""
+
+    task_rows = connection.execute(
+        "SELECT task_alias, status, revision, body_json FROM tasks "
+        "WHERE task_cid = ? LIMIT 2",
+        [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+    ).fetchall()
+    if len(task_rows) != 1:
+        raise SuccessorOperatorError(
+            "protected qualification task is absent or ambiguous"
+        )
+    task_alias, status, revision, body_json = task_rows[0]
+    if not isinstance(body_json, str):
+        raise SuccessorOperatorError(
+            "protected qualification task body is malformed"
+        )
+    prior_body = _closed_json_object_bytes(
+        body_json.encode("utf-8"),
+        noun="protected qualification task body",
+    )
+    if _canonical_bytes(prior_body).decode("utf-8") != body_json:
+        raise SuccessorOperatorError(
+            "protected qualification task body is not canonical"
+        )
+    body_sha256 = "sha256:" + hashlib.sha256(body_json.encode("utf-8")).hexdigest()
+    prior_receipt = prior_body.get("completion_receipt")
+    if not isinstance(prior_receipt, Mapping):
+        raise SuccessorOperatorError(
+            "protected qualification prior receipt is absent"
+        )
+    history = [
+        int(row[0])
+        for row in connection.execute(
+            "SELECT revision FROM task_revisions WHERE task_cid = ? "
+            "ORDER BY revision",
+            [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+        ).fetchall()
+    ]
+    dependency_rows = connection.execute(
+        "SELECT d.dependency_task_cid, t.task_alias, t.status, t.revision, "
+        "t.body_json FROM task_dependencies AS d JOIN tasks AS t "
+        "ON t.task_cid = d.dependency_task_cid WHERE d.task_cid = ? "
+        "ORDER BY d.dependency_task_cid",
+        [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+    ).fetchall()
+    dependencies = [
+        {
+            "task_cid": str(row[0]),
+            "task_alias": str(row[1]),
+            "status": str(row[2]),
+            "revision": int(row[3]),
+            "body_sha256": "sha256:"
+            + hashlib.sha256(str(row[4]).encode("utf-8")).hexdigest(),
+        }
+        for row in dependency_rows
+    ]
+    expected_dependency_pairs = sorted(
+        (
+            cid,
+            alias,
+        )
+        for alias, cid in PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES.items()
+    )
+    if (
+        str(task_alias) != PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS
+        or str(status) != "retrying"
+        or type(revision) is not int
+        or revision != PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION
+        or body_sha256 != PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256
+        or prior_receipt.get("schema")
+        != PROTECTED_QUALIFICATION_COMPLETION_PRIOR_RECEIPT_SCHEMA
+        or prior_receipt.get("operation")
+        != "database_claim_lost_sidecar_recovery"
+        or history != [1]
+        or [
+            (item["task_cid"], item["task_alias"])
+            for item in dependencies
+        ]
+        != expected_dependency_pairs
+        or any(item["status"] != "completed" for item in dependencies)
+    ):
+        raise SuccessorOperatorError(
+            "protected qualification task prestate differs"
+        )
+    task_pin = {
+        "task_cid": PROTECTED_QUALIFICATION_COMPLETION_TASK_CID,
+        "task_alias": PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS,
+        "status": "retrying",
+        "revision": PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION,
+        "body_sha256": body_sha256,
+        "prior_receipt_schema": prior_receipt["schema"],
+        "prior_receipt_operation": prior_receipt["operation"],
+        "prior_receipt_cid": _content_id(prior_receipt),
+        "history_observed_revisions": history,
+        "history_missing_revisions": list(
+            range(2, PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION + 1)
+        ),
+        "gap_preserved": True,
+        "repair_authority": False,
+    }
+    return (
+        {
+            "task": task_pin,
+            "dependencies": dependencies,
+            "dependency_binding_cid": _content_id(dependencies),
+        },
+        prior_body,
+    )
+
+
+def _protected_qualification_completion_preflight_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Reconstruct deterministic review pins while all databases stay sealed."""
+
+    with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
+        continuity = _load_projection_source_continuity(
+            paths,
+            root=root,
+            stopped_database_snapshots=snapshots,
+            lock_custody=lock_custody,
+        )
+        source_continuity = _observe_candidate_runtime_continuity(
+            root,
+            require_resolved_remote=False,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            connect_duckdb_with_policy,
+        )
+
+        import duckdb
+
+        connection = connect_duckdb_with_policy(
+            duckdb,
+            str(snapshots["control"]["snapshot_path"]),
+            read_only=True,
+        )
+        try:
+            state_pins, prior_body = _protected_qualification_completion_snapshot(
+                connection
+            )
+        finally:
+            connection.close()
+        qualification = _run_protected_qualification_check(root)
+        observed_databases = _validate_stopped_database_snapshots(
+            paths,
+            lock_custody,
+            snapshots,
+        )
+        if (
+            observed_databases != continuity["databases"]
+            or _observe_candidate_runtime_continuity(
+                root,
+                require_resolved_remote=False,
+            )
+            != source_continuity
+        ):
+            raise SuccessorOperatorError(
+                "protected qualification preflight source changed"
+            )
+        reviewed_pins = {
+            "target_generation": SUCCESSOR_STORE_GENERATION,
+            "source_provenance_cid": continuity["provenance"]["receipt_cid"],
+            "stopped_state_continuity_receipt_cid": continuity["receipt"][
+                "receipt_cid"
+            ],
+            "stopped_controller_status_cid": continuity["controller_status"][
+                "status_cid"
+            ],
+            "source_continuity": source_continuity,
+            "databases": observed_databases,
+            **state_pins,
+            "qualification": qualification,
+        }
+        binding = {
+            "schema": PROTECTED_QUALIFICATION_COMPLETION_PREFLIGHT_SCHEMA,
+            "operation": PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+            "reviewed_pins": reviewed_pins,
+        }
+        report = {
+            **binding,
+            "observed_at": _utc_now(),
+            "preflight_cid": _content_id(binding),
+            "valid": True,
+            "controller_lock_held": True,
+            "owner_lock_held": False,
+            "mutation_authority": False,
+            "completion_authority": False,
+            "scheduling_authority": False,
+            "release_qualified": False,
+            "production_authorized": False,
+        }
+        return report, prior_body
+
+
+def protected_qualification_completion_preflight(
+    root: Path = ROOT,
+) -> dict[str, Any]:
+    """Report exact qualification/task pins without mutating live state."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(
+        paths,
+        _read_only_existing_lock=True,
+    ) as lock_custody:
+        report, _prior_body = _protected_qualification_completion_preflight_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+        )
+        return report
+
+
+def _protected_qualification_completion_intent_path(
+    paths: Mapping[str, Path],
+    preflight_cid: str,
+) -> Path:
+    reviewed = str(preflight_cid or "").strip()
+    if re.fullmatch(r"b[a-z2-7]{20,200}", reviewed) is None:
+        raise SuccessorOperatorError(
+            "protected qualification completion preflight CID is malformed"
+        )
+    return Path(paths["abandoned_owner_recovery_evidence"]) / (
+        f"protected-qualification-completion-intent.{reviewed}.json"
+    )
+
+
+def _write_protected_qualification_completion_intent(
+    paths: Mapping[str, Path],
+    *,
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist exact reviewed authority before consuming restart custody."""
+
+    reviewed = str(preflight.get("preflight_cid") or "")
+    path = _protected_qualification_completion_intent_path(paths, reviewed)
+    intent: dict[str, Any] = {
+        "schema": PROTECTED_QUALIFICATION_COMPLETION_INTENT_SCHEMA,
+        "issued_at": _utc_now(),
+        "operation": PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+        "preflight_cid": reviewed,
+        "reviewed_pins": dict(preflight.get("reviewed_pins") or {}),
+        "task_completion_scope": PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS,
+        "objective_completion_authority": False,
+        "scheduling_authority": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    intent["intent_cid"] = _content_id(intent)
+    if os.path.lexists(path):
+        existing = _strict_json(
+            path,
+            expected_schema=PROTECTED_QUALIFICATION_COMPLETION_INTENT_SCHEMA,
+            require_private_owner=True,
+        )
+        repeated = dict(intent)
+        repeated["issued_at"] = existing.get("issued_at")
+        repeated["intent_cid"] = _content_id(
+            {name: value for name, value in repeated.items() if name != "intent_cid"}
+        )
+        if existing != repeated:
+            raise SuccessorOperatorError(
+                "protected qualification completion intent differs"
+            )
+        return existing
+    _atomic_json(path, intent, replace=False)
+    if _strict_json(
+        path,
+        expected_schema=PROTECTED_QUALIFICATION_COMPLETION_INTENT_SCHEMA,
+        require_private_owner=True,
+    ) != intent:
+        raise SuccessorOperatorError(
+            "protected qualification completion intent changed"
+        )
+    return intent
+
+
+def _observe_protected_qualification_completion_poststate(
+    paths: Mapping[str, Path],
+    *,
+    lock_custody: Mapping[str, Any],
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Classify only exact pre- or post-command state through sealed snapshots."""
+
+    with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            connect_duckdb_with_policy,
+        )
+
+        import duckdb
+
+        connection = connect_duckdb_with_policy(
+            duckdb,
+            str(snapshots["control"]["snapshot_path"]),
+            read_only=True,
+        )
+        try:
+            rows = connection.execute(
+                "SELECT task_alias, status, revision, body_json FROM tasks "
+                "WHERE task_cid = ? LIMIT 2",
+                [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+            ).fetchall()
+            history = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                    "ORDER BY revision",
+                    [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+                ).fetchall()
+            ]
+        finally:
+            connection.close()
+        _validate_stopped_database_snapshots(paths, lock_custody, snapshots)
+    if len(rows) != 1 or not isinstance(rows[0][3], str):
+        raise SuccessorOperatorError(
+            "protected qualification completion poststate is ambiguous"
+        )
+    alias, status, revision, body_json = rows[0]
+    body = _closed_json_object_bytes(
+        body_json.encode("utf-8"),
+        noun="protected qualification completion poststate body",
+    )
+    receipt = body.get("completion_receipt")
+    if (
+        str(alias) == PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS
+        and str(status) == "completed"
+        and type(revision) is int
+        and revision == PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION + 1
+        and history
+        == [1, PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION + 1]
+        and isinstance(receipt, Mapping)
+        and receipt.get("operation")
+        == PROTECTED_QUALIFICATION_COMPLETION_OPERATION
+        and receipt.get("reviewed_preflight_cid") == reviewed_preflight_cid
+        and receipt.get("receipt_cid")
+        == _content_id(
+            {name: value for name, value in receipt.items() if name != "receipt_cid"}
+        )
+    ):
+        return {
+            "completed": True,
+            "task_revision": revision,
+            "completion_receipt_cid": receipt["receipt_cid"],
+            "history_revisions": history,
+        }
+    body_sha256 = "sha256:" + hashlib.sha256(body_json.encode("utf-8")).hexdigest()
+    if (
+        str(alias) == PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS
+        and str(status) == "retrying"
+        and type(revision) is int
+        and revision == PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION
+        and history == [1]
+        and body_sha256 == PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256
+    ):
+        return {
+            "completed": False,
+            "task_revision": revision,
+            "completion_receipt_cid": "",
+            "history_revisions": history,
+        }
+    raise SuccessorOperatorError(
+        "protected qualification completion reached an unreviewed poststate"
+    )
+
+
+def _service_protected_qualification_completion_command(
+    submit: Any,
+) -> Any:
+    """Submit on this thread through the client's bounded typed socket.
+
+    The typed gateway is already serviced by its own owner threads.  Keeping
+    this call synchronous is important: after it returns or raises there is no
+    operator-created worker that can still be using ``client`` while the
+    lifecycle finalizer closes the client, checkpoints, and stops the owner.
+    """
+
+    return submit()
+
+
+def _checkpoint_and_stop_protected_qualification_owner(
+    server: Any,
+    identity: Any,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """Stop only after an exact checkpoint; otherwise preserve READY evidence."""
+
+    owner_checkpoint = server.checkpoint()
+    if (
+        owner_checkpoint.get("checkpointed") is not True
+        or owner_checkpoint.get("server_id") != identity.server_id
+    ):
+        raise SuccessorOperatorError(
+            "protected qualification owner checkpoint differs"
+        )
+    owner_stop = server.stop()
+    if (
+        owner_stop.get("stopped") is not True
+        or owner_stop.get("server_id") != identity.server_id
+    ):
+        raise SuccessorOperatorError(
+            "protected qualification owner clean stop differs"
+        )
+    return owner_checkpoint, owner_stop
+
+
+def _publish_protected_qualification_stopped_continuity(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    io_paths: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    identity: Any,
+    controller_birth: Any,
+    owner_checkpoint: Mapping[str, Any],
+    owner_stop: Mapping[str, Any],
+    reviewed_preflight_cid: str,
+    owner_token: str,
+    grant_token: str,
+) -> dict[str, Any]:
+    """Classify and publish exact stopped custody after one returned owner."""
+
+    poststate = _observe_protected_qualification_completion_poststate(
+        paths,
+        lock_custody=lock_custody,
+        reviewed_preflight_cid=reviewed_preflight_cid,
+    )
+    credential_leak = bool(tuple(paths["owner_state"].glob("*.quack-token")))
+    for secret in (owner_token, grant_token):
+        if not secret:
+            continue
+        for surface in (
+            Path(io_paths["controller_status"]),
+            Path(io_paths["owner_status"]),
+        ):
+            credential_leak = credential_leak or _regular_file_contains(
+                surface,
+                secret.encode("ascii"),
+            )
+    if credential_leak:
+        raise SuccessorOperatorError(
+            "protected qualification credential reached persistent state"
+        )
+    stopped = _status_payload(
+        lifecycle="stopped",
+        controller_birth=controller_birth.to_dict(),
+        provenance_cid=str(provenance["receipt_cid"]),
+        owner_identity=identity.to_dict(),
+        scheduler_birth={},
+        scheduler_returncode=0,
+        error="",
+        projection_root=paths["projection_root"],
+    )
+    stopped.pop("status_cid", None)
+    stopped["protected_qualification_completion"] = {
+        "schema": PROTECTED_QUALIFICATION_COMPLETION_STATUS_SCHEMA,
+        "preflight_cid": reviewed_preflight_cid,
+        "completion_receipt_cid": poststate["completion_receipt_cid"],
+        "completed": poststate["completed"],
+        "scheduling_attempted": False,
+    }
+    stopped["status_cid"] = _content_id(stopped)
+    anchors = _capture_stopped_recovery_anchors(
+        paths,
+        root=root,
+        stopped_status=stopped,
+        provenance=provenance,
+        io_paths=io_paths,
+        lock_custody=lock_custody,
+    )
+    stopped = _bind_stopped_recovery_anchors_status(stopped, anchors)
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    _write_status(
+        Path(io_paths["controller_status"]),
+        stopped,
+        token=owner_token,
+    )
+    continuity = _write_stopped_state_continuity(
+        paths,
+        root=root,
+        stopped_status=stopped,
+        provenance=provenance,
+        owner_checkpoint=owner_checkpoint,
+        owner_stop=owner_stop,
+        _io_paths=io_paths,
+    )
+    final_status = _bind_stopped_state_continuity_status(
+        stopped,
+        continuity,
+    )
+    _write_status(
+        Path(io_paths["controller_status"]),
+        final_status,
+        token=owner_token,
+    )
+    return {
+        "poststate": poststate,
+        "continuity": continuity,
+        "final_status": final_status,
+    }
+
+
+def _complete_protected_qualification_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Apply one exact typed validation/CAS/history transaction and reseal."""
+
+    reviewed = str(reviewed_preflight_cid or "").strip()
+    if re.fullmatch(r"b[a-z2-7]{20,200}", reviewed) is None:
+        raise SuccessorOperatorError(
+            "reviewed protected qualification preflight CID is required"
+        )
+    preflight, prior_body = _protected_qualification_completion_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+    )
+    if preflight.get("preflight_cid") != reviewed:
+        raise SuccessorOperatorError(
+            "reviewed protected qualification preflight CID differs"
+        )
+    pins = preflight["reviewed_pins"]
+    assert isinstance(pins, Mapping)
+    task_pin = pins["task"]
+    qualification = pins["qualification"]
+    assert isinstance(task_pin, Mapping)
+    assert isinstance(qualification, Mapping)
+    intent = _write_protected_qualification_completion_intent(
+        paths,
+        preflight=preflight,
+    )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    receipt_paths = _stopped_receipt_io_view(paths, io_paths)
+    provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    if provenance.get("receipt_cid") != pins["source_provenance_cid"]:
+        raise SuccessorOperatorError(
+            "protected qualification provenance changed after review"
+        )
+    live_launch: Mapping[str, Any] | None = None
+    server: Any | None = None
+    identity: Any | None = None
+    client: Any | None = None
+    grant: Any | None = None
+    grant_token = ""
+    owner_token = ""
+    command_result: Any | None = None
+    primary_error: BaseException | None = None
+    primary_phase = ""
+    command_attempted = False
+    cleanup_errors: list[tuple[str, BaseException]] = []
+    owner_checkpoint: Mapping[str, Any] = {}
+    owner_stop: Mapping[str, Any] = {}
+    publication: Mapping[str, Any] | None = None
+    finalization_error: BaseException | None = None
+    previous_environment: dict[str, str | None] = {}
+    claimed = False
+    start_attempted = False
+    config_path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
+    try:
+        live_launch = _prepare_lgcvf_configured_board_live_launch(
+            root=root,
+            config_path=config_path,
+            provenance=provenance,
+            stopped_restart=True,
+        )
+        if live_launch.get("continuity") != pins["source_continuity"]:
+            raise SuccessorOperatorError(
+                "protected qualification source changed after review"
+            )
+        launch_home = Path(str(live_launch["launch_home"]))
+        extension_environment = {
+            "HOME": str(launch_home),
+            "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(launch_home),
+            "XDG_CACHE_HOME": str(launch_home / ".cache" / "xdg"),
+            "CUDA_CACHE_PATH": str(launch_home / ".cache" / "cuda"),
+            "CUDA_CACHE_DISABLE": "1",
+            BOARD_EXTENSION_INSTALL_POLICY_ENV: (
+                BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
+            ),
+            STORE_GENERATION_ENV: SUCCESSOR_STORE_GENERATION,
+        }
+        previous_environment.update(
+            {name: os.environ.get(name) for name in extension_environment}
+        )
+        if any(
+            name.startswith("LD_") or name == "GLIBC_TUNABLES"
+            for name in os.environ
+        ):
+            raise SuccessorOperatorError(
+                "LGCVF protected completion inherited loader authority"
+            )
+        os.environ.update(extension_environment)
+        from ipfs_accelerate_py.llm_router import (
+            preload_agent_supervisor_native_dependency,
+        )
+
+        preload_agent_supervisor_native_dependency(live_launch["native_launch"])
+        from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+            process_birth_id,
+        )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            current_process_birth,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+            configured_board_launch_plan,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+            establish_state_authority_process_boundary,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+            build_server,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+            QuackStateClient,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID,
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            TYPED_STATE_OWNER_TOKEN_ENV,
+        )
+
+        board = live_launch["board"]
+        program = live_launch["program"]
+        rendered = configured_board_launch_plan(
+            board,
+            implement=False,
+            detach=False,
+            duration_seconds=1.0,
+        ).get("environment")
+        if not isinstance(rendered, Mapping):
+            raise SuccessorOperatorError(
+                "protected qualification database program is unavailable"
+            )
+        owner_program_json = str(
+            rendered.get(DATABASE_PROGRAM_JSON_ENV) or ""
+        ).strip()
+        if not owner_program_json:
+            raise SuccessorOperatorError(
+                "protected qualification database program is unavailable"
+            )
+        previous_environment[DATABASE_PROGRAM_JSON_ENV] = os.environ.get(
+            DATABASE_PROGRAM_JSON_ENV
+        )
+        os.environ[DATABASE_PROGRAM_JSON_ENV] = owner_program_json
+        establish_state_authority_process_boundary()
+        paths["owner_state"].mkdir(mode=0o700, parents=True, exist_ok=True)
+        _prepare_private_owner_socket(paths["owner_socket"])
+        controller_birth = current_process_birth()
+        birth_id = process_birth_id(controller_birth)
+        server = build_server(
+            database_path=paths["successor_database"],
+            state_dir=paths["owner_state"],
+            host=str(live_launch["host"]),
+            port=int(live_launch["port"]),
+            repository_id="repository:lgcvf-quack-successor",
+            store_id=program.store_id,
+            secret_handle=program.endpoint_secret_handle,
+            migrate=datasets_profile_migration,
+            typed_command_socket_path=paths["owner_socket"],
+            allow_legacy_board_unstall=False,
+        )
+        claimed = _claim_stopped_state_restart_admission(
+            receipt_paths,
+            expected_restart=True,
+            expected_receipt_cid=str(
+                pins["stopped_state_continuity_receipt_cid"]
+            ),
+            expected_controller_status_cid=str(
+                pins["stopped_controller_status_cid"]
+            ),
+        )
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        # From this point forward the old receipt must never be restored.  A
+        # failed start can already have opened/migrated the database or left
+        # READY evidence for the abandoned-owner recovery path.
+        start_attempted = True
+        identity = server.start()
+        try:
+            if (
+                identity.listen_uri != program.quack_endpoint
+                or identity.store_id != program.store_id
+                or identity.database_uuid != provenance.get("database_uuid")
+                or not _owner_schema_fingerprint_matches_canonical_cid(
+                    identity.schema_fingerprint,
+                    provenance.get("schema_fingerprint"),
+                )
+                or server.typed_command_socket_path() != paths["owner_socket"]
+                or server.status().get("legacy_board_unstall_enabled") is not False
+            ):
+                raise SuccessorOperatorError(
+                    "protected qualification owner identity differs"
+                )
+            if server._vault is None:
+                raise SuccessorOperatorError(
+                    "protected qualification owner vault is unavailable"
+                )
+            owner_token = server._vault.resolve(identity.secret_handle)
+            allowed_operations = (
+                "whoami_metadata",
+                "load_store_generation",
+                "txn_load_generation",
+                "txn_lookup_idempotency",
+                "txn_advance_store_revision",
+                "txn_record_idempotency",
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            )
+            grant_token, grant = server.issue_typed_client_grant_record(
+                client_id=(
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID
+                ),
+                process_birth_id=birth_id,
+                allowed_operations=allowed_operations,
+                allowed_command_operations=(
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+                ),
+                entity_scopes={
+                    "task_cid": PROTECTED_QUALIFICATION_COMPLETION_TASK_CID,
+                    "reviewed_preflight_cid": reviewed,
+                },
+                peer_pid=os.getpid(),
+                ttl_seconds=(
+                    PROTECTED_QUALIFICATION_COMMAND_GRANT_TTL_SECONDS
+                ),
+            )
+            previous_environment[TYPED_STATE_OWNER_TOKEN_ENV] = os.environ.get(
+                TYPED_STATE_OWNER_TOKEN_ENV
+            )
+            previous_environment[TYPED_STATE_OWNER_SOCKET_ENV] = os.environ.get(
+                TYPED_STATE_OWNER_SOCKET_ENV
+            )
+            os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = grant_token
+            os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = str(paths["owner_socket"])
+            client = QuackStateClient(
+                owner_id=(
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID
+                ),
+                store_id=str(program.store_id),
+                process_birth_id=birth_id,
+                connect_timeout_seconds=(
+                    PROTECTED_QUALIFICATION_COMMAND_TIMEOUT_SECONDS
+                ),
+            )
+            client.attach(
+                str(program.quack_endpoint),
+                server_id=identity.server_id,
+            )
+            os.environ.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+            os.environ.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+            reviewed_binding = {
+                "schema": preflight["schema"],
+                "operation": preflight["operation"],
+                "reviewed_pins": pins,
+            }
+            command_attempted = True
+            command_result = _service_protected_qualification_completion_command(
+                lambda: client.complete_protected_qualification_legacy_gap(
+                    task_cid=PROTECTED_QUALIFICATION_COMPLETION_TASK_CID,
+                    task_alias=PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS,
+                    expected_task_revision=int(task_pin["revision"]),
+                    expected_prior_body_sha256=str(task_pin["body_sha256"]),
+                    expected_prior_receipt_schema=str(
+                        task_pin["prior_receipt_schema"]
+                    ),
+                    expected_prior_receipt_operation=str(
+                        task_pin["prior_receipt_operation"]
+                    ),
+                    expected_prior_receipt_cid=str(
+                        task_pin["prior_receipt_cid"]
+                    ),
+                    expected_history_revisions=list(
+                        task_pin["history_observed_revisions"]
+                    ),
+                    expected_dependency_cids=[
+                        str(item["task_cid"])
+                        for item in pins["dependencies"]
+                    ],
+                    prior_body=prior_body,
+                    reviewed_preflight_cid=reviewed,
+                    reviewed_preflight=reviewed_binding,
+                    qualification_result_cid=str(
+                        qualification["stored_result_cid"]
+                    ),
+                    qualification_stable_projection_cid=str(
+                        qualification["stored_stable_projection_cid"]
+                    ),
+                    qualification_artifact_sha256=str(
+                        qualification["artifact_sha256"]
+                    ),
+                )
+            )
+        except BaseException as exc:  # noqa: BLE001
+            primary_error = exc
+            primary_phase = "command" if command_attempted else "owner setup"
+        finally:
+            if TYPED_STATE_OWNER_TOKEN_ENV in previous_environment:
+                os.environ.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+            if TYPED_STATE_OWNER_SOCKET_ENV in previous_environment:
+                os.environ.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+            if client is not None:
+                try:
+                    client.close()
+                except BaseException as exc:  # noqa: BLE001
+                    cleanup_errors.append(("client close", exc))
+                client = None
+            if grant is not None:
+                try:
+                    server.revoke_typed_client_grant(grant.grant_id)
+                except BaseException as exc:  # noqa: BLE001
+                    cleanup_errors.append(("grant revoke", exc))
+                grant = None
+            # Do not turn an uncheckpointed READY owner into unclassified
+            # STOPPED residue.  Its durable READY/marker evidence is the input
+            # to the next-process abandoned-owner recovery path.
+            try:
+                owner_checkpoint, owner_stop = (
+                    _checkpoint_and_stop_protected_qualification_owner(
+                        server,
+                        identity,
+                    )
+                )
+            except BaseException as exc:  # noqa: BLE001
+                finalization_error = exc
+            else:
+                server = None
+            if finalization_error is None:
+                try:
+                    publication = (
+                        _publish_protected_qualification_stopped_continuity(
+                            paths,
+                            root=root,
+                            lock_custody=lock_custody,
+                            io_paths=io_paths,
+                            provenance=provenance,
+                            identity=identity,
+                            controller_birth=controller_birth,
+                            owner_checkpoint=owner_checkpoint,
+                            owner_stop=owner_stop,
+                            reviewed_preflight_cid=reviewed,
+                            owner_token=owner_token,
+                            grant_token=grant_token,
+                        )
+                    )
+                except BaseException as exc:  # noqa: BLE001
+                    finalization_error = exc
+        owner_token = ""
+        for phase, cleanup_error in cleanup_errors:
+            if primary_error is not None:
+                primary_error.add_note(
+                    "protected qualification cleanup recovered from "
+                    f"{phase}: {type(cleanup_error).__name__}"
+                )
+            else:
+                sys.stderr.write(
+                    "LGCVF protected completion cleanup recovered from "
+                    f"{phase}: {type(cleanup_error).__name__}\n"
+                )
+        if finalization_error is not None:
+            if primary_error is not None:
+                primary_error.add_note(
+                    "protected qualification stopped-state finalization also "
+                    f"failed: {type(finalization_error).__name__}"
+                )
+                raise primary_error
+            raise finalization_error
+        if publication is None:
+            raise SuccessorOperatorError(
+                "protected qualification stopped-state publication is absent"
+            )
+        poststate = publication["poststate"]
+        continuity = publication["continuity"]
+        final_status = publication["final_status"]
+        assert isinstance(poststate, Mapping)
+        assert isinstance(continuity, Mapping)
+        assert isinstance(final_status, Mapping)
+        if not poststate["completed"]:
+            if primary_error is not None:
+                raise SuccessorOperatorError(
+                    "protected qualification completion "
+                    f"{primary_phase} failed safely"
+                ) from primary_error
+            raise SuccessorOperatorError(
+                "protected qualification completion did not commit"
+            )
+        if primary_error is not None and primary_phase != "command":
+            raise SuccessorOperatorError(
+                "protected qualification reached a completed poststate after "
+                "an owner setup failure"
+            ) from primary_error
+        if command_result is None and primary_error is None:
+            raise SuccessorOperatorError(
+                "protected qualification completion result is absent"
+            )
+        if command_result is not None and (
+            command_result.outcome.value not in {"accepted", "idempotent_replay"}
+            or command_result.changed
+            is not (command_result.outcome.value == "accepted")
+            or command_result.result.get("task_revision")
+            != PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION + 1
+            or command_result.result.get("completion_receipt_cid")
+            != poststate["completion_receipt_cid"]
+        ):
+            raise SuccessorOperatorError(
+                "protected qualification completion result differs"
+            )
+        return {
+            "schema": PROTECTED_QUALIFICATION_COMPLETION_RESULT_SCHEMA,
+            "operation": PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+            "completed": True,
+            "response_recovered": primary_error is not None,
+            "preflight_cid": reviewed,
+            "intent_cid": intent["intent_cid"],
+            "completion_receipt_cid": poststate["completion_receipt_cid"],
+            "task_alias": PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS,
+            "task_revision": poststate["task_revision"],
+            "history_revisions": poststate["history_revisions"],
+            "stopped_state_continuity_receipt_cid": continuity["receipt_cid"],
+            "controller_status_cid": final_status["status_cid"],
+            "task_completion_effect": True,
+            "objective_completion_authority": False,
+            "scheduling_authority": False,
+            "release_qualified": False,
+            "production_authorized": False,
+        }
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except BaseException as cleanup_exc:  # noqa: BLE001
+                sys.stderr.write(
+                    "LGCVF protected completion client cleanup failed: "
+                    f"{type(cleanup_exc).__name__}\n"
+                )
+        if grant is not None and server is not None:
+            try:
+                server.revoke_typed_client_grant(grant.grant_id)
+            except BaseException as cleanup_exc:  # noqa: BLE001
+                sys.stderr.write(
+                    "LGCVF protected completion grant cleanup failed: "
+                    f"{type(cleanup_exc).__name__}\n"
+                )
+        if server is not None and not start_attempted:
+            try:
+                server.stop()
+            except BaseException as cleanup_exc:  # noqa: BLE001
+                sys.stderr.write(
+                    "LGCVF protected completion owner stop failed: "
+                    f"{type(cleanup_exc).__name__}\n"
+                )
+        if claimed and not start_attempted:
+            try:
+                _restore_or_retire_stopped_restart_admission(receipt_paths)
+            except BaseException as cleanup_exc:  # noqa: BLE001
+                sys.stderr.write(
+                    "LGCVF protected completion receipt restore failed: "
+                    f"{type(cleanup_exc).__name__}\n"
+                )
+        for name, previous in previous_environment.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        try:
+            _close_lgcvf_configured_board_live_launch(live_launch)
+        except BaseException as cleanup_exc:  # noqa: BLE001
+            sys.stderr.write(
+                "LGCVF protected completion capsule cleanup failed: "
+                f"{type(cleanup_exc).__name__}\n"
+            )
+
+
+def complete_protected_qualification(
+    root: Path = ROOT,
+    *,
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Complete exact LGCVF-113 under one reviewed owner transaction."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(paths) as lock_custody:
+        return _complete_protected_qualification_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            reviewed_preflight_cid=reviewed_preflight_cid,
+        )
+
+
+def _recover_interrupted_protected_qualification_publication_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Finish only an anchored protected-completion continuity publication."""
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    status_path = Path(io_paths["controller_status"])
+    if not os.path.lexists(status_path):
+        return None
+    status = _strict_json(
+        status_path,
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    completion = status.get("protected_qualification_completion")
+    if not isinstance(completion, Mapping):
+        return None
+    if (
+        completion.get("schema")
+        != PROTECTED_QUALIFICATION_COMPLETION_STATUS_SCHEMA
+        or status.get("lifecycle") != "stopped"
+        or status.get("error") != ""
+        or type(status.get("scheduler_returncode")) is not int
+        or status.get("scheduler_returncode") != 0
+    ):
+        raise SuccessorOperatorError(
+            "interrupted protected qualification status differs"
+        )
+    linked_receipt = status.get("stopped_state_continuity_receipt_cid")
+    linked_status = status.get("stopped_state_continuity_status_cid")
+    if (linked_receipt is None) != (linked_status is None):
+        raise SuccessorOperatorError(
+            "interrupted protected qualification continuity links are partial"
+        )
+    if linked_receipt is not None:
+        return None
+    provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    receipt = _recover_interrupted_stopped_state_continuity(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        provenance=provenance,
+    )
+    if not isinstance(receipt, Mapping):
+        raise SuccessorOperatorError(
+            "interrupted protected qualification continuity was not published"
+        )
+    return {
+        "recovered": True,
+        "completed": completion.get("completed") is True,
+        "preflight_cid": completion.get("preflight_cid"),
+        "stopped_state_continuity_receipt_cid": receipt["receipt_cid"],
+        "controller_status_cid": receipt["controller_status_cid"],
+    }
+
+
+def _automatically_complete_protected_qualification_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Apply the one hard-coded safe completion whenever its exact gap recurs."""
+
+    with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            connect_duckdb_with_policy,
+        )
+
+        import duckdb
+
+        connection = connect_duckdb_with_policy(
+            duckdb,
+            str(snapshots["control"]["snapshot_path"]),
+            read_only=True,
+        )
+        try:
+            rows = connection.execute(
+                "SELECT task_alias, status, revision, body_json FROM tasks "
+                "WHERE task_cid = ? LIMIT 2",
+                [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+            ).fetchall()
+            history = [
+                int(row[0])
+                for row in connection.execute(
+                    "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                    "ORDER BY revision",
+                    [PROTECTED_QUALIFICATION_COMPLETION_TASK_CID],
+                ).fetchall()
+            ]
+        finally:
+            connection.close()
+        _validate_stopped_database_snapshots(paths, lock_custody, snapshots)
+    if len(rows) != 1 or not isinstance(rows[0][3], str):
+        return None
+    alias, status, revision, body_json = rows[0]
+    exact_candidate = (
+        str(alias) == PROTECTED_QUALIFICATION_COMPLETION_TASK_ALIAS
+        and str(status) == "retrying"
+        and type(revision) is int
+        and revision == PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION
+        and history == [1]
+        and "sha256:"
+        + hashlib.sha256(body_json.encode("utf-8")).hexdigest()
+        == PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256
+    )
+    if not exact_candidate:
+        return None
+    preflight, _prior_body = _protected_qualification_completion_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+    )
+    result = _complete_protected_qualification_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        reviewed_preflight_cid=str(preflight["preflight_cid"]),
+    )
+    return {**result, "automatically_invoked": True}
+
+
 def _private_regular_stat_pin(
     path: Path,
     *,
@@ -15489,6 +17040,11 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("projection-preflight")
     subparsers.add_parser("projection-once")
     subparsers.add_parser("history-audit")
+    subparsers.add_parser("protected-qualification-completion-preflight")
+    protected_completion = subparsers.add_parser(
+        "complete-protected-qualification"
+    )
+    protected_completion.add_argument("--reviewed-preflight-cid", required=True)
     return parser
 
 
@@ -15558,6 +17114,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = project_ducklake_once(root)
         elif args.command == "history-audit":
             result = stopped_task_history_audit(root)
+        elif args.command == "protected-qualification-completion-preflight":
+            result = protected_qualification_completion_preflight(root)
+        elif args.command == "complete-protected-qualification":
+            result = complete_protected_qualification(
+                root,
+                reviewed_preflight_cid=str(args.reviewed_preflight_cid),
+            )
         else:  # pragma: no cover - argparse closes this branch.
             parser.error("unsupported command")
         print(json.dumps(result, indent=2, sort_keys=True))
