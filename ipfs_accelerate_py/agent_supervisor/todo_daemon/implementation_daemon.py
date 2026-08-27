@@ -95583,6 +95583,70 @@ class DatabaseImplementationDaemon:
             body={},
         )
 
+    def _database_virgin_transfer_lineage_for_transition(
+        self,
+        task: Any,
+    ) -> dict[str, Any]:
+        """Reproduce an owner-stamped transfer binding without rotating it."""
+
+        receipt = self._database_task_status_receipt(task)
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        carried = set(receipt) & transfer_fields
+        if not carried:
+            return {}
+        expected_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        binding_raw = receipt.get("virgin_task_transfer")
+        cursor_raw = receipt.get("virgin_task_transfer_claim_cursor")
+        if (
+            carried != expected_fields
+            or not isinstance(binding_raw, Mapping)
+            or not isinstance(cursor_raw, Mapping)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database status transition found incomplete virgin-transfer "
+                "lineage"
+            )
+        try:
+            binding = database_virgin_transfer_binding_for_task(
+                task,
+                shard_count=self.task_shard_count,
+            )
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "database status transition found invalid virgin-transfer "
+                "lineage"
+            ) from exc
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        # Retrying/blocked receipts may omit claim identity.  The owner-stamped
+        # binding and cursor are the lineage; compare them to the live lane,
+        # not to whatever optional identity the current receipt carries.
+        if (
+            binding is None
+            or binding.get("mode") != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            or binding.get("task_cid") != task_cid
+            or binding.get("task_alias") != task_alias
+            or binding.get("task_prefix") != self.task_prefix
+            or binding.get("task_shard_count") != self.task_shard_count
+            or binding.get("recipient_shard_index") != self.task_shard_index
+            or cursor_raw.get("binding_id") != binding.get("binding_id")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database status transition changed its virgin-transfer "
+                "lineage"
+            )
+        return {
+            "virgin_task_transfer": dict(binding_raw),
+            "virgin_task_transfer_claim_cursor": dict(cursor_raw),
+        }
+
     def _cas_task_status_database(
         self,
         task_cid: str,
@@ -95639,6 +95703,66 @@ class DatabaseImplementationDaemon:
             if isinstance(prior_status_receipt, Mapping)
             else {}
         )
+        transfer_lineage = (
+            self._database_virgin_transfer_lineage_for_transition(task)
+            if task is not None
+            else {}
+        )
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        supplied_transfer_fields = set(receipt_payload) & transfer_fields
+        database_claim = bool(
+            new_status == "in_progress"
+            and receipt_payload.get("operation") == "database_claim"
+        )
+        if transfer_lineage:
+            request = receipt_payload.get("virgin_task_transfer_request")
+            if request is not None:
+                expected_request = {
+                    "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "task_prefix": self.task_prefix,
+                }
+                # Retry claims still emit the original request.  The owner
+                # pops it and advances the claim cursor; non-claim writes
+                # must not re-propose a transfer.
+                if (
+                    not database_claim
+                    or not isinstance(request, Mapping)
+                    or dict(request) != expected_request
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "task status transition tried to rotate its "
+                        "virgin-transfer lineage"
+                    )
+            if any(
+                field in receipt_payload
+                and dict(receipt_payload[field]) != value
+                for field, value in transfer_lineage.items()
+                if isinstance(receipt_payload.get(field), Mapping)
+            ) or any(
+                field in receipt_payload
+                and not isinstance(receipt_payload.get(field), Mapping)
+                for field in transfer_lineage
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "task status transition tried to rotate its "
+                    "virgin-transfer lineage"
+                )
+            receipt_payload.update(transfer_lineage)
+        elif supplied_transfer_fields & {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }:
+            raise DatabaseImplementationAuthorityError(
+                "task status transition supplied owner-reserved "
+                "virgin-transfer lineage"
+            )
         supplied_route = receipt_payload.get("execution_route_binding")
         prior_route = prior_status_receipt.get("execution_route_binding")
         if (
@@ -102297,7 +102421,16 @@ class DatabaseImplementationDaemon:
             "execution_route_policy_id",
             "execution_route_origin_revision",
         }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
         carried_route_fields = set(receipt) & route_fields
+        carried_transfer_fields = set(receipt) & transfer_fields
+        expected_transfer_lineage = (
+            self._database_virgin_transfer_lineage_for_transition(task)
+        )
         operation = receipt.get("operation")
         operation_contracts = {
             "database_portal_validation_retry": {
@@ -102314,7 +102447,13 @@ class DatabaseImplementationDaemon:
         if (
             operation not in operation_contracts
             or carried_route_fields not in (set(), route_fields)
-            or set(receipt) != base_fields | carried_route_fields
+            or carried_transfer_fields != set(expected_transfer_lineage)
+            or any(
+                receipt.get(field) != value
+                for field, value in expected_transfer_lineage.items()
+            )
+            or set(receipt)
+            != base_fields | carried_route_fields | carried_transfer_fields
         ):
             raise DatabaseImplementationAuthorityError(
                 "validation retry control receipt has an invalid operation "
@@ -106432,6 +106571,9 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
+        retry_transfer_lineage = (
+            self._database_virgin_transfer_lineage_for_transition(task)
+        )
         if (
             callable(record_task_retry_cooldown)
             and task_status == "blocked"
@@ -106577,6 +106719,7 @@ class DatabaseImplementationDaemon:
                     }
                 ),
                 **retry_route_lineage,
+                **retry_transfer_lineage,
                 **(
                     {
                         "validation_retry_seed": dict(
