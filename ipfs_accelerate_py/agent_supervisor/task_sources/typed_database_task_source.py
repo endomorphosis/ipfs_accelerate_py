@@ -35,20 +35,12 @@ from .database_task_source import (
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
-    _cas_result_from_dict,
-    _raise_typed_owner_error,
 )
 from .database_task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
 )
 from .database_task_source import (
     CASResult as DatabaseCASResult,
-)
-from .duckdb_state import (
-    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
-    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
-    QuackOwnerCommandRemoteError,
-    submit_quack_owner_command,
 )
 from .intent_repository import (
     MAX_PLAN_PROJECTION_BYTES,
@@ -1654,11 +1646,12 @@ class TypedDatabaseTaskSource:
         exact_retry_not_before_ms: int | None = None,
         _post_merge_recovery_admission: object | None = None,
     ) -> Mapping[str, Any]:
-        """Atomically cool and reopen one blocked task through the owner command.
+        """Reopen one blocked task through birth-bound typed CAS + cooldown.
 
-        ``record_task_retry_cooldown`` refuses ``blocked`` because that split
-        write is not coupled to the control CAS.  The daemon's blocked
-        recovery path therefore requires this owner-mediated transaction.
+        ``record_task_retry_cooldown`` refuses ``blocked`` so the daemon can
+        only reopen through this method.  Lane processes do not receive the
+        opaque owner-command token, so this path uses the granted typed
+        socket operations instead of the filesystem owner-command rendezvous.
         """
 
         if _post_merge_recovery_admission is not None:
@@ -1676,83 +1669,63 @@ class TypedDatabaseTaskSource:
                 "leftover-wait recovery is unavailable through the generic "
                 "remote queue/status command"
             )
-        try:
-            result = submit_quack_owner_command(
-                QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
-                {
-                    "task_cid": task_cid,
-                    "expected_revision": expected_revision,
-                    "expected_control_receipt": dict(expected_control_receipt),
-                    "status": requested_status,
-                    "receipt": receipt_map,
-                    "delay_ms": delay_ms,
-                    "reason": reason,
-                    "selection_penalty": selection_penalty,
-                    **(
-                        {
-                            "exact_retry_not_before_ms": (
-                                exact_retry_not_before_ms
-                            )
-                        }
-                        if exact_retry_not_before_ms is not None
-                        else {}
-                    ),
-                },
-            )
-        except QuackOwnerCommandRemoteError as exc:
-            _raise_typed_owner_error(exc)
-        if not isinstance(result, Mapping) or "cas_result" not in result:
-            raise TaskSourceIntegrityError(
-                "guarded queue/status owner response is malformed"
-            )
-        result_map = dict(result)
-        cas_payload = result_map.pop("cas_result")
-        if not isinstance(cas_payload, Mapping):
-            raise TaskSourceIntegrityError(
-                "guarded queue/status owner CAS response is malformed"
-            )
-        return self._guarded_queue_status_result(
-            result_map,
-            cas_result=_cas_result_from_dict(cas_payload),
+        if (
+            isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or delay_ms < 0
+        ):
+            raise TaskSourceIntegrityError("typed retry delay_ms is invalid")
+        cas_result = self.compare_and_set_status(
+            task_cid,
+            expected_revision,
+            requested_status,
+            receipt_map,
+            expected_control_receipt=expected_control_receipt,
         )
-
-    def rearm_blocked_task(
-        self,
-        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
-        *,
-        receipt: Mapping[str, Any] | None = None,
-    ) -> DatabaseCASResult:
-        """CAS a blocked task to retrying using the exclusive owner's revision."""
-
-        if isinstance(task_cid_or_alias, TaskRecord):
-            key = task_cid_or_alias.task_cid
-        elif isinstance(task_cid_or_alias, Mapping):
-            key = str(
-                task_cid_or_alias.get("task_cid")
-                or task_cid_or_alias.get("task_alias")
-                or ""
-            ).strip()
-        else:
-            key = str(task_cid_or_alias or "").strip()
-        if not key:
-            raise TaskSourceIntegrityError("task identity must not be empty")
-        compact = dict(receipt or {})
-        compact.setdefault("operation", "database_declared_outputs_on_head_rearm")
-        try:
-            result = submit_quack_owner_command(
-                QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
-                {
-                    "task_cid_or_alias": key,
-                    "receipt": compact,
-                },
-            )
-        except QuackOwnerCommandRemoteError as exc:
-            _raise_typed_owner_error(exc)
-        if not isinstance(result, Mapping):
+        retry_not_before_ms = exact_retry_not_before_ms
+        if retry_not_before_ms is None:
+            retry_not_before_ms = self._clock_ms() + delay_ms
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
             raise TaskSourceIntegrityError(
-                "blocked-task rearm owner response is malformed"
+                "typed retry deadline is invalid"
             )
-        return _cas_result_from_dict(result)
+        cooldown_started_at_ms = retry_not_before_ms - delay_ms
+        if cooldown_started_at_ms < 0:
+            cooldown_started_at_ms = 0
+        cooldown = self.record_task_retry_cooldown(
+            task_cid=str(task_cid),
+            expected_task_revision=int(expected_revision),
+            expected_task_status=requested_status,
+            attempt_id=str(receipt_map.get("attempt_id") or ""),
+            claim_id=str(receipt_map.get("claim_id") or ""),
+            lease_id=str(receipt_map.get("lease_id") or ""),
+            owner_session_id=str(receipt_map.get("owner_session_id") or ""),
+            attempt_number=int(receipt_map.get("attempt_number") or 0),
+            fencing_token=int(receipt_map.get("fencing_token") or 0),
+            fence_epoch=int(receipt_map.get("fence_epoch") or 0),
+            delay_ms=delay_ms,
+            reason=str(reason),
+            selection_penalty=selection_penalty,
+            now_ms=cooldown_started_at_ms,
+        )
+        queue_receipt = dict(cooldown.details)
+        return self._guarded_queue_status_result(
+            {
+                "previous_status": cas_result.previous_status,
+                "queue_receipt": queue_receipt,
+                "queue_reused": not bool(cooldown.changed),
+                "retry_not_before_ms": int(
+                    queue_receipt.get("retry_not_before_ms")
+                    or retry_not_before_ms
+                ),
+                "transition_receipt": dict(receipt_map),
+            },
+            cas_result=cas_result,
+        )
 
     @staticmethod
     def _guarded_queue_status_result(
