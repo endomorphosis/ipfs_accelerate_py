@@ -145,7 +145,11 @@ class FederationCreateTransport(ClosedContract):
 
 
 def _command_name(operation: FederationOperation) -> str:
-    return operation.value.removeprefix("federation.").replace("_", "-")
+    prefix = "federation."
+    value = operation.value
+    if not value.startswith(prefix):
+        raise FederationContractError("federation CLI operation prefix differs")
+    return value[len(prefix) :].replace("_", "-")
 
 
 FEDERATION_CLI_COMMANDS: Final[Mapping[str, FederationOperation]] = {
