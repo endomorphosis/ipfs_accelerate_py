@@ -39293,15 +39293,9 @@ class PortalImplementationDaemon:
                 if queued_task is not None
                 else False
             )
-            if output_identity is None:
-                return {
-                    "attempted": False,
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "declared_output_identity_unavailable",
-                }
             if (
                 queued_task is not None
+                and getattr(request, "canonical_task_id", None)
                 and MergeTrain._request_is_database_portal_projection_candidate(
                     request
                 )
