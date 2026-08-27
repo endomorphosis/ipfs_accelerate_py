@@ -579,6 +579,14 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS = 30
 CHECKOUT_MUTATION_TRANSACTION_MAX_WAIT_SECONDS = 5.0
+# The default remains zero.  Only current-tree callback requalification may
+# use this wider ceiling, and it rechecks queue/database authority after the
+# wait.  The bound covers a finite convoy of ordinary protected maintenance
+# holders while retaining a closed upper limit for the consumer lease.
+CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_MAX_WAIT_SECONDS = 30.0
+CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_OPERATION = (
+    "requalify_post_merge_callback_integration"
+)
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE = "implementation_dispatch_intent"
@@ -71200,11 +71208,19 @@ class PortalImplementationDaemon:
                 "checkout mutation transaction timeout_seconds is invalid"
             )
         transaction_timeout_seconds = float(timeout_seconds)
+        transaction_max_wait_seconds = (
+            CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_MAX_WAIT_SECONDS
+            if (
+                operation
+                == CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_OPERATION
+            )
+            else CHECKOUT_MUTATION_TRANSACTION_MAX_WAIT_SECONDS
+        )
         if (
             not math.isfinite(transaction_timeout_seconds)
             or transaction_timeout_seconds < 0.0
             or transaction_timeout_seconds
-            > CHECKOUT_MUTATION_TRANSACTION_MAX_WAIT_SECONDS
+            > transaction_max_wait_seconds
         ):
             raise ValueError(
                 "checkout mutation transaction timeout_seconds is invalid"
@@ -71236,7 +71252,7 @@ class PortalImplementationDaemon:
                     )
                     if (
                         operation
-                        != "requalify_post_merge_callback_integration"
+                        != CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_OPERATION
                         or timeout_deadline is None
                         or external_live_owner is None
                     ):
@@ -71469,7 +71485,7 @@ class PortalImplementationDaemon:
                 return callback()
             finally:
                 self._checkout_mutation_context.transaction_depth = 0
-        lease, reason, existing, _waited = (
+        lease, reason, existing, waited_seconds = (
             self._acquire_checkout_mutation_lease(
                 task_id=task_id,
                 attempt=attempt,
@@ -71488,6 +71504,18 @@ class PortalImplementationDaemon:
                 "reason": f"checkout_mutation_{reason}",
                 "lock_path": str(self._repo_merge_lock_path()),
             }
+            if timeout_deadline is not None:
+                result.update(
+                    {
+                        "checkout_mutation_timeout_seconds": (
+                            transaction_timeout_seconds
+                        ),
+                        "checkout_mutation_waited_seconds": max(
+                            0.0,
+                            float(waited_seconds),
+                        ),
+                    }
+                )
             if existing:
                 result["lock_owner_pid"] = int(
                     existing.get("pid") or 0
@@ -82646,6 +82674,10 @@ DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
 )
+DATABASE_POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-callback-checkout-deferral@1"
+)
 DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
@@ -86036,6 +86068,99 @@ class DatabaseImplementationDaemon:
                 "write_count": 1,
             }
 
+    @staticmethod
+    def _valid_post_merge_checkout_deferral(
+        value: Mapping[str, Any],
+    ) -> bool:
+        """Validate the closed no-write checkout-contention diagnostic."""
+
+        expected_fields = {
+            "schema",
+            "attempted",
+            "recovered",
+            "reason",
+            "stage",
+            "deferral_reason",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "write_count",
+            "changed",
+            "deferred",
+            "deferral",
+        }
+        deferral = value.get("deferral")
+        if set(value) != expected_fields or not isinstance(deferral, Mapping):
+            return False
+        expected_deferral_fields = {
+            "schema",
+            "operation",
+            "stage",
+            "reason",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "owner_pid",
+            "owner_lease_id",
+            "owner_task_id",
+            "waited_ms",
+            "timeout_ms",
+        }
+        if set(deferral) != expected_deferral_fields:
+            return False
+        request_id = value.get("request_id")
+        task_id = value.get("task_id")
+        task_cid = value.get("task_cid")
+        owner_pid = deferral.get("owner_pid")
+        waited_ms = deferral.get("waited_ms")
+        timeout_ms = deferral.get("timeout_ms")
+        return bool(
+            value.get("schema") == DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            and value.get("attempted") is True
+            and value.get("recovered") is False
+            and value.get("reason") == "post_merge_recovery_deferred"
+            and value.get("stage") == "callback_checkout_contention"
+            and value.get("deferral_reason")
+            == "checkout_mutation_lock_exists"
+            and value.get("write_count") == 0
+            and value.get("changed") is False
+            and value.get("deferred") is True
+            and isinstance(request_id, str)
+            and 0 < len(request_id) <= 256
+            and isinstance(task_id, str)
+            and 0 < len(task_id) <= 128
+            and isinstance(task_cid, str)
+            and 0 < len(task_cid) <= 256
+            and deferral.get("schema")
+            == DATABASE_POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA
+            and deferral.get("operation")
+            == CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_OPERATION
+            and deferral.get("stage") == value.get("stage")
+            and deferral.get("reason") == value.get("deferral_reason")
+            and deferral.get("request_id") == request_id
+            and deferral.get("task_id") == task_id
+            and deferral.get("task_cid") == task_cid
+            and not isinstance(owner_pid, bool)
+            and isinstance(owner_pid, int)
+            and owner_pid > 0
+            and isinstance(deferral.get("owner_lease_id"), str)
+            and 0 < len(deferral.get("owner_lease_id")) <= 256
+            and isinstance(deferral.get("owner_task_id"), str)
+            and len(deferral.get("owner_task_id")) <= 128
+            and not isinstance(waited_ms, bool)
+            and isinstance(waited_ms, int)
+            and 0 <= waited_ms <= 31_000
+            and not isinstance(timeout_ms, bool)
+            and isinstance(timeout_ms, int)
+            and timeout_ms
+            == int(
+                round(
+                    CALLBACK_REQUALIFICATION_CHECKOUT_MUTATION_MAX_WAIT_SECONDS
+                    * 1000.0
+                )
+            )
+        )
+
     def _run_post_merge_recovery(self) -> dict[str, Any]:
         callback = self._post_merge_recovery_fn
         if not callable(callback):
@@ -86084,6 +86209,10 @@ class DatabaseImplementationDaemon:
             }
         result = dict(raw)
         raw_write_count = result.get("write_count", 0)
+        strict_deferral_invalid = (
+            result.get("reason") == "post_merge_recovery_deferred"
+            and not self._valid_post_merge_checkout_deferral(result)
+        )
         envelope_invalid = (
             result.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
             or result.get("attempted") is not True
@@ -86096,6 +86225,7 @@ class DatabaseImplementationDaemon:
                 result.get("recovered") is False
                 and not str(result.get("reason") or "").strip()
             )
+            or strict_deferral_invalid
         )
         write_count_invalid = (
             isinstance(raw_write_count, bool)
