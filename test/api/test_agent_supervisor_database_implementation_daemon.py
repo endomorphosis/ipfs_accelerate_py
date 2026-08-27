@@ -10824,6 +10824,89 @@ def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_reconcile_rearms_blocked_missing_implementation_commit_at_attempt_cap(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-missing-commit-cap",
+        max_task_attempts=1,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["evidence_source"] == (
+            "portal_completion_handshake_reclassified"
+        )
+        task = daemon.task_source.get(failed.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_blocked_retry_prefers_atomic_queue_status_over_typed_cooldown(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:blocked-retry-atomic-queue",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        def typed_cooldown(**_kwargs: object) -> object:
+            raise AssertionError(
+                "typed cooldown must not run for blocked recovery"
+            )
+
+        daemon.task_source.record_task_retry_cooldown = typed_cooldown  # type: ignore[method-assign]
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     tmp_path: Path,
 ) -> None:

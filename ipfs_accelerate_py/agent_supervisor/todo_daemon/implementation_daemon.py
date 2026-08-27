@@ -101216,9 +101216,15 @@ class DatabaseImplementationDaemon:
             "record_task_retry_cooldown",
             None,
         )
+        guarded_queue_status = getattr(
+            self.task_source,
+            "record_queue_backoff_and_cas_status",
+            None,
+        )
         if not callable(get_queue_entry) or not (
             callable(record_task_retry_cooldown)
             or callable(record_queue_backoff)
+            or callable(guarded_queue_status)
         ):
             raise DatabaseImplementationAuthorityError(
                 "task source cannot persist typed retry cooldown state"
@@ -101317,10 +101323,11 @@ class DatabaseImplementationDaemon:
         if (
             callable(record_task_retry_cooldown)
             and task_status == "blocked"
+            and not callable(guarded_queue_status)
         ):
-            # The typed owner has no coordination-coupled transaction for this
-            # blocked reopen. Reject before the independently committed queue
-            # mutation so no failed recovery can leave a stale cooldown.
+            # Split cooldown-then-CAS is not coupled.  Typed sources must
+            # expose record_queue_backoff_and_cas_status so blocked recovery
+            # can reopen through one owner transaction.
             raise DatabaseImplementationAuthorityError(
                 "typed blocked recovery is unavailable without "
                 "coordination-coupled owner authority"
@@ -101966,19 +101973,14 @@ class DatabaseImplementationDaemon:
         # queue-and-status CAS.  Keep its queue deadline, prior control
         # receipt, and retry status in one owner transaction for every retry
         # authority, including expanded blocked recoveries.  Typed Quack
-        # sources use ``record_task_retry_cooldown`` below.
-        guarded_queue_status = getattr(
-            self.task_source,
-            "record_queue_backoff_and_cas_status",
-            None,
-        )
+        # sources use ``record_task_retry_cooldown`` for in-progress/retrying
+        # rows, and the same guarded command for blocked reopen.
         if blocked_recovery and not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "blocked retry recovery requires atomic queue/status authority"
             )
-        if (
-            callable(guarded_queue_status)
-            and not callable(record_task_retry_cooldown)
+        if callable(guarded_queue_status) and (
+            blocked_recovery or not callable(record_task_retry_cooldown)
         ):
             if task_status == "retrying":
                 control_operations = (
@@ -110546,35 +110548,51 @@ class DatabaseImplementationDaemon:
                 checkout_contention = (
                     reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS
                 )
+                missing_completion_handshake = reason in {
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                }
                 remaining_budget = (
                     self.max_task_attempts > 0
                     and int(attempt.attempt_number) < self.max_task_attempts
                 )
                 # Checkout contention never dispatched a provider, so it must
                 # rearm even when the misclassified attempt sat at the cap.
+                # A missing implementation-commit / evaluated-baseline
+                # handshake is the same class of completion-authority gap:
+                # it freezes dependents (PCSM-010) after the attempt cap
+                # even though the worker can still produce a fresh commit.
                 if (
                     not dedicated_recovery_pending
                     and (
                         (reason == "portal_provider_failed" and remaining_budget)
                         or checkout_contention
+                        or missing_completion_handshake
                     )
                 ):
                     coordination = self._reconcile_failed_attempt_coordination(
                         attempt
                     )
+                    if checkout_contention:
+                        retry_reason = "portal_checkout_contention_retry"
+                        evidence_source = (
+                            "portal_checkout_contention_reclassified"
+                        )
+                    elif missing_completion_handshake:
+                        retry_reason = "portal_completion_handshake_retry"
+                        evidence_source = (
+                            "portal_completion_handshake_reclassified"
+                        )
+                    else:
+                        retry_reason = "portal_candidate_retry"
+                        evidence_source = (
+                            "portal_provider_failed_reclassified"
+                        )
                     outcome = self._persist_task_retry_state(
                         attempt,
-                        reason=(
-                            "portal_checkout_contention_retry"
-                            if checkout_contention
-                            else "portal_candidate_retry"
-                        ),
+                        reason=retry_reason,
                         backoff_ms=0,
-                        evidence_source=(
-                            "portal_checkout_contention_reclassified"
-                            if checkout_contention
-                            else "portal_provider_failed_reclassified"
-                        ),
+                        evidence_source=evidence_source,
                         coordination_evidence=coordination,
                         allow_blocked_recovery=True,
                     )
@@ -110791,6 +110809,7 @@ class DatabaseImplementationDaemon:
                         "portal_candidate_retry",
                         "portal_provider_failed_reclassified",
                         "portal_checkout_contention_reclassified",
+                        "portal_completion_handshake_reclassified",
                     }
                     and operation
                     == "database_portal_validation_retry_recovery"

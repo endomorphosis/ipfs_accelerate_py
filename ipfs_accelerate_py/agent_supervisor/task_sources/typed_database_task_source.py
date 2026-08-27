@@ -35,12 +35,20 @@ from .database_task_source import (
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
+    _cas_result_from_dict,
+    _raise_typed_owner_error,
 )
 from .database_task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
 )
 from .database_task_source import (
     CASResult as DatabaseCASResult,
+)
+from .duckdb_state import (
+    QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+    QuackOwnerCommandRemoteError,
+    submit_quack_owner_command,
 )
 from .intent_repository import (
     MAX_PLAN_PROJECTION_BYTES,
@@ -1630,6 +1638,160 @@ class TypedDatabaseTaskSource:
             revision=int(row["revision"]),
             changed=bool(result.changed),
             details=frozen,
+        )
+
+    def record_queue_backoff_and_cas_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically cool and reopen one blocked task through the owner command.
+
+        ``record_task_retry_cooldown`` refuses ``blocked`` because that split
+        write is not coupled to the control CAS.  The daemon's blocked
+        recovery path therefore requires this owner-mediated transaction.
+        """
+
+        if _post_merge_recovery_admission is not None:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        requested_status = str(status or "").strip().lower()
+        receipt_map = dict(receipt)
+        if (
+            requested_status in _PROTECTED_REOPENED_TASK_STATUSES
+            and receipt_map.get("operation")
+            == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+        ):
+            raise TaskSourceConflictError(
+                "leftover-wait recovery is unavailable through the generic "
+                "remote queue/status command"
+            )
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                {
+                    "task_cid": task_cid,
+                    "expected_revision": expected_revision,
+                    "expected_control_receipt": dict(expected_control_receipt),
+                    "status": requested_status,
+                    "receipt": receipt_map,
+                    "delay_ms": delay_ms,
+                    "reason": reason,
+                    "selection_penalty": selection_penalty,
+                    **(
+                        {
+                            "exact_retry_not_before_ms": (
+                                exact_retry_not_before_ms
+                            )
+                        }
+                        if exact_retry_not_before_ms is not None
+                        else {}
+                    ),
+                },
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        if not isinstance(result, Mapping) or "cas_result" not in result:
+            raise TaskSourceIntegrityError(
+                "guarded queue/status owner response is malformed"
+            )
+        result_map = dict(result)
+        cas_payload = result_map.pop("cas_result")
+        if not isinstance(cas_payload, Mapping):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status owner CAS response is malformed"
+            )
+        return self._guarded_queue_status_result(
+            result_map,
+            cas_result=_cas_result_from_dict(cas_payload),
+        )
+
+    def rearm_blocked_task(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> DatabaseCASResult:
+        """CAS a blocked task to retrying using the exclusive owner's revision."""
+
+        if isinstance(task_cid_or_alias, TaskRecord):
+            key = task_cid_or_alias.task_cid
+        elif isinstance(task_cid_or_alias, Mapping):
+            key = str(
+                task_cid_or_alias.get("task_cid")
+                or task_cid_or_alias.get("task_alias")
+                or ""
+            ).strip()
+        else:
+            key = str(task_cid_or_alias or "").strip()
+        if not key:
+            raise TaskSourceIntegrityError("task identity must not be empty")
+        compact = dict(receipt or {})
+        compact.setdefault("operation", "database_declared_outputs_on_head_rearm")
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+                {
+                    "task_cid_or_alias": key,
+                    "receipt": compact,
+                },
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        if not isinstance(result, Mapping):
+            raise TaskSourceIntegrityError(
+                "blocked-task rearm owner response is malformed"
+            )
+        return _cas_result_from_dict(result)
+
+    @staticmethod
+    def _guarded_queue_status_result(
+        payload: Mapping[str, Any],
+        *,
+        cas_result: DatabaseCASResult,
+    ) -> Mapping[str, Any]:
+        expected = {
+            "previous_status",
+            "queue_receipt",
+            "queue_reused",
+            "retry_not_before_ms",
+            "transition_receipt",
+        }
+        if set(payload) != expected:
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result fields are malformed"
+            )
+        queue_receipt = payload.get("queue_receipt")
+        transition_receipt = payload.get("transition_receipt")
+        if (
+            not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or type(payload.get("queue_reused")) is not bool
+            or type(payload.get("retry_not_before_ms")) is not int
+            or int(payload["retry_not_before_ms"]) < 0
+        ):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result values are malformed"
+            )
+        return MappingProxyType(
+            {
+                "previous_status": str(payload["previous_status"]),
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(payload["queue_reused"]),
+                "retry_not_before_ms": int(payload["retry_not_before_ms"]),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": cas_result,
+            }
         )
 
     @staticmethod
