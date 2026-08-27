@@ -2522,12 +2522,15 @@ class DatabaseCoordinator:
                     existing is not None
                     and (existing_ready != ready or existing_body != projection_body)
                 ):
-                    connection.execute(
-                        """
-                        UPDATE coordination_tasks
-                        SET ready = ?, body_json = ? WHERE task_cid = ?
-                        """,
-                        [ready, _canonical_json(projection_body), cid],
+                    # UPDATE rewrites the primary-key ART index and can fatal
+                    # with ``Only deleted 0 out of 1 rows``.  Rebuild the
+                    # registry table instead, the same way ready-bit rearm
+                    # already avoids that poison.
+                    self._set_task_ready_with_table_rebuild_unlocked(
+                        connection,
+                        task_cid=cid,
+                        ready=ready,
+                        body_json=_canonical_json(projection_body),
                     )
                     changed = True
                 self._commit_if_idle(connection)
@@ -3166,6 +3169,7 @@ class DatabaseCoordinator:
         *,
         task_cid: str,
         ready: bool,
+        body_json: str | None = None,
     ) -> None:
         """Replace the task registry without mutating either of its ART indexes.
 
@@ -3203,6 +3207,10 @@ class DatabaseCoordinator:
                 "task ready-bit rearm lost its exact registry row"
             )
 
+        selected_body = None if body_json is None else str(body_json)
+        connection.execute(
+            "DROP TABLE IF EXISTS coordination_tasks_rearm_staging"
+        )
         connection.execute(
             """
             CREATE TABLE coordination_tasks_rearm_staging (
@@ -3215,19 +3223,34 @@ class DatabaseCoordinator:
             )
             """
         )
-        connection.execute(
-            """
-            INSERT INTO coordination_tasks_rearm_staging(
-                task_cid, task_id, worktree_id, registered_at_ms,
-                ready, body_json
+        if selected_body is None:
+            connection.execute(
+                """
+                INSERT INTO coordination_tasks_rearm_staging(
+                    task_cid, task_id, worktree_id, registered_at_ms,
+                    ready, body_json
+                )
+                SELECT task_cid, task_id, worktree_id, registered_at_ms,
+                       CASE WHEN task_cid = ? THEN ? ELSE ready END,
+                       body_json
+                FROM coordination_tasks
+                """,
+                [task_cid, bool(ready)],
             )
-            SELECT task_cid, task_id, worktree_id, registered_at_ms,
-                   CASE WHEN task_cid = ? THEN ? ELSE ready END,
-                   body_json
-            FROM coordination_tasks
-            """,
-            [task_cid, bool(ready)],
-        )
+        else:
+            connection.execute(
+                """
+                INSERT INTO coordination_tasks_rearm_staging(
+                    task_cid, task_id, worktree_id, registered_at_ms,
+                    ready, body_json
+                )
+                SELECT task_cid, task_id, worktree_id, registered_at_ms,
+                       CASE WHEN task_cid = ? THEN ? ELSE ready END,
+                       CASE WHEN task_cid = ? THEN ? ELSE body_json END
+                FROM coordination_tasks
+                """,
+                [task_cid, bool(ready), task_cid, selected_body],
+            )
         row = connection.execute(
             """
             SELECT COUNT(*) AS row_count,
@@ -3261,14 +3284,21 @@ class DatabaseCoordinator:
             """
         )
         row = connection.execute(
-            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
             [task_cid],
         ).fetchone()
-        if row is None or bool(
-            _row_get(_row_mapping(row), "ready", "0", default=not ready)
+        observed = None if row is None else _row_mapping(row)
+        if observed is None or bool(
+            _row_get(observed, "ready", "0", default=not ready)
         ) is not bool(ready):
             raise DatabaseCoordinationStaleFenceError(
                 "task ready-bit rearm lost its exact registry row"
+            )
+        if selected_body is not None and str(
+            _row_get(observed, "body_json", "1", default="")
+        ) != selected_body:
+            raise DatabaseCoordinationStaleFenceError(
+                "task registry rebuild lost its exact projection body"
             )
         _validate_coordination_authority(connection)
 
