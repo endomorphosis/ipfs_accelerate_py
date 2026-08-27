@@ -708,7 +708,48 @@ DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
     FENCE_CONTENTION_BACKOFF_SECONDS
 )
-_POST_MERGE_CALLBACK_REQUALIFICATION_LOCK_TIMEOUT_SECONDS: Final[float] = 5.0
+_POST_MERGE_CALLBACK_REQUALIFICATION_LOCK_TIMEOUT_SECONDS: Final[float] = 30.0
+_POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "post-merge-callback-checkout-deferral@1"
+)
+_POST_MERGE_CALLBACK_REQUALIFICATION_OPERATION: Final[str] = (
+    "requalify_post_merge_callback_integration"
+)
+_POST_MERGE_RECOVERY_LOG_STAGES: Final[frozenset[str]] = frozenset(
+    {
+        "authority_preauthorization_conflict",
+        "authority_projection_changed",
+        "authority_projection_rejected",
+        "authority_queue_row_changed",
+        "authority_revalidated",
+        "callback_authority_rejected_after_checkout",
+        "callback_authority_rejected_before_receipt",
+        "callback_cached_receipt_rejected",
+        "callback_checkout_contention",
+        "callback_checkout_deferral_rejected",
+        "callback_identity_rejected",
+        "callback_loaded_task_rejected",
+        "callback_projection_rejected",
+        "callback_target_changed_after_checkout",
+        "callback_target_changed_before_receipt",
+        "callback_transaction_rejected",
+        "callback_validation_exception",
+        "callback_worktree_add_failed",
+        "current_projection_rejected",
+        "current_request_missing",
+        "initial_preauthorization_admitted",
+        "initial_preauthorization_conflict",
+        "priority_consumer_lease_deferred",
+        "priority_request_not_found",
+        "priority_request_selected",
+        "recovery_evidence_rejected",
+        "snapshot_projection_rejected",
+    }
+)
+_POST_MERGE_RECOVERY_DEBUG_STAGES: Final[frozenset[str]] = frozenset(
+    _POST_MERGE_RECOVERY_LOG_STAGES - {"callback_checkout_contention"}
+)
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
 _POST_MERGE_RECOVERY_SCAN_LIMIT: Final[int] = 256
@@ -1395,6 +1436,13 @@ class _DatabasePortalRecoveryProjection:
     binding: Mapping[str, Any]
     projected_task: Any
     task_status: str
+
+
+@dataclass(frozen=True)
+class _PostMergeRecoveryDisposition:
+    """Request-local, non-authoritative recovery maintenance outcome."""
+
+    result: Mapping[str, Any]
 
 
 PortalDaemonFactory = Callable[[DatabasePortalAttemptPaths, str], Any]
@@ -2805,6 +2853,142 @@ class DatabasePortalExecutionBridge:
     INTERFACE = DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
     RECEIPT_SCHEMA = DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
 
+    @staticmethod
+    def _record_post_merge_recovery_stage(
+        stage: str,
+        *,
+        request: Any | None = None,
+        reason: str = "",
+    ) -> None:
+        """Expose one bounded recovery gate without granting authority.
+
+        Most rejected post-merge candidates intentionally remain an idle
+        maintenance result.  Retain a bounded operational trace, and let the
+        small explicitly typed deferral paths remain distinguishable, so a
+        live checkout deferral, stale authority, or malformed projection
+        cannot masquerade as an empty queue forever.
+        """
+
+        bounded_stage = str(stage or "unknown")[:96]
+        unknown_stage = bounded_stage not in _POST_MERGE_RECOVERY_LOG_STAGES
+        if unknown_stage:
+            bounded_stage = "unclassified"
+        raw_reason = str(reason or "")[:512]
+        bounded_reason = re.sub(
+            r"[^A-Za-z0-9_.:=+/@-]",
+            "_",
+            "_".join(raw_reason.split()),
+        )[-256:]
+        raw_request_id = str(
+            getattr(request, "request_id", "") or ""
+        )[:512]
+        request_id = re.sub(
+            r"[^A-Za-z0-9_.:=+/@-]",
+            "_",
+            raw_request_id,
+        )[:256]
+        raw_task_id = str(getattr(request, "task_id", "") or "")[:256]
+        task_id = re.sub(
+            r"[^A-Za-z0-9_.:=+/@-]",
+            "_",
+            raw_task_id,
+        )[:128]
+        log = (
+            _LOG.debug
+            if unknown_stage
+            or bounded_stage in _POST_MERGE_RECOVERY_DEBUG_STAGES
+            else _LOG.info
+        )
+        log(
+            "Database post-merge recovery stage=%s request_id=%s task_id=%s reason=%s",
+            bounded_stage,
+            request_id,
+            task_id,
+            bounded_reason,
+        )
+
+    @classmethod
+    def _post_merge_checkout_deferral_result(
+        cls,
+        *,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        transaction: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Validate and project exact live-owner checkout contention."""
+
+        request_id = str(getattr(request, "request_id", "") or "")
+        task_id = str(getattr(request, "task_id", "") or "")
+        task_cid = str(projection.binding.get("task_cid") or "")
+        owner_pid = transaction.get("lock_owner_pid")
+        owner_lease_id = transaction.get("lock_owner_lease_id")
+        owner_task_id = transaction.get("lock_owner_task_id")
+        waited = transaction.get("checkout_mutation_waited_seconds")
+        timeout = transaction.get("checkout_mutation_timeout_seconds")
+        if (
+            transaction.get("passed") is not False
+            or transaction.get("reason") != "checkout_mutation_lock_exists"
+            or not request_id
+            or len(request_id) > 256
+            or not task_id
+            or len(task_id) > 128
+            or not task_cid
+            or len(task_cid) > 256
+            or isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+            or not isinstance(owner_lease_id, str)
+            or not owner_lease_id
+            or len(owner_lease_id) > 256
+            or not isinstance(owner_task_id, str)
+            or len(owner_task_id) > 128
+            or isinstance(waited, bool)
+            or not isinstance(waited, (int, float))
+            or not math.isfinite(float(waited))
+            or float(waited) < 0.0
+            or isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(float(timeout))
+            or float(timeout)
+            != _POST_MERGE_CALLBACK_REQUALIFICATION_LOCK_TIMEOUT_SECONDS
+        ):
+            return None
+        timeout_ms = int(round(float(timeout) * 1000.0))
+        waited_ms = int(round(float(waited) * 1000.0))
+        if waited_ms > timeout_ms + 1000:
+            return None
+        result: dict[str, Any] = {
+            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "attempted": True,
+            "recovered": False,
+            "reason": "post_merge_recovery_deferred",
+            "stage": "callback_checkout_contention",
+            "deferral_reason": "checkout_mutation_lock_exists",
+            "request_id": request_id,
+            "task_id": task_id,
+            "task_cid": task_cid,
+            "write_count": 0,
+            "changed": False,
+            "deferred": True,
+            "deferral": {
+                "schema": _POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA,
+                "operation": (
+                    _POST_MERGE_CALLBACK_REQUALIFICATION_OPERATION
+                ),
+                "stage": "callback_checkout_contention",
+                "reason": "checkout_mutation_lock_exists",
+                "request_id": request_id,
+                "task_id": task_id,
+                "task_cid": task_cid,
+                "owner_pid": owner_pid,
+                "owner_lease_id": owner_lease_id,
+                "owner_task_id": owner_task_id,
+                "waited_ms": waited_ms,
+                "timeout_ms": timeout_ms,
+            },
+        }
+        return result
+
     def __init__(
         self,
         *,
@@ -3832,7 +4016,7 @@ class DatabasePortalExecutionBridge:
         evidence_digest: Callable[[Mapping[str, Any]], str],
         train: Any | None = None,
         revalidate_authority: Callable[[], bool] | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any] | _PostMergeRecoveryDisposition | None:
         """Compile the exact completed-row receipt into the database contract."""
 
         metadata = getattr(request, "metadata", None)
@@ -6589,7 +6773,7 @@ class DatabasePortalExecutionBridge:
         request: Any,
         projection: _DatabasePortalRecoveryProjection,
         revalidate_authority: Callable[[], bool] | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any] | _PostMergeRecoveryDisposition | None:
         """Run one fresh uncached declared validation at the bound target."""
 
         if self.repository_root is None or self.merge_queue is None:
@@ -6621,7 +6805,12 @@ class DatabasePortalExecutionBridge:
                     allowed_root=projection.paths.root.parent,
                 )
             )
-        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError) as exc:
+            self._record_post_merge_recovery_stage(
+                "callback_projection_rejected",
+                request=request,
+                reason=type(exc).__name__,
+            )
             return None
         if (
             source.get("task_ids") != [task_alias]
@@ -6629,6 +6818,10 @@ class DatabasePortalExecutionBridge:
             or observed_portal_cid != portal_task_cid
             or observed_portal_key != portal_task_key
         ):
+            self._record_post_merge_recovery_stage(
+                "callback_identity_rejected",
+                request=request,
+            )
             return None
         path = self._post_merge_callback_integration_receipt_path(
             projection,
@@ -6636,11 +6829,6 @@ class DatabasePortalExecutionBridge:
             current_head=current_head,
             current_tree=current_tree,
         )
-        if path.exists():
-            return self._load_post_merge_callback_integration_receipt(
-                path,
-                source=source,
-            )
         portal = self.portal_factory(projection.paths, task_alias)
         if portal is None:
             raise DatabasePortalBridgeError(
@@ -6680,7 +6868,158 @@ class DatabasePortalExecutionBridge:
                 != database_task_cid
                 or not tuple(getattr(tasks[0], "validation", ()) or ())
             ):
+                self._record_post_merge_recovery_stage(
+                    "callback_loaded_task_rejected",
+                    request=request,
+                )
                 return None
+
+            def target_generation_is_current() -> bool:
+                try:
+                    generation = subprocess.run(
+                        [
+                            "git",
+                            "show",
+                            "-s",
+                            "--format=%H%x00%T",
+                            f"refs/heads/{self.merge_target_branch}^{{commit}}",
+                        ],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    return False
+                identities = generation.stdout.rstrip("\n").split("\x00")
+                return bool(
+                    generation.returncode == 0
+                    and identities == [current_head, current_tree]
+                )
+
+            def admit_qualification(
+                result: dict[str, Any],
+                *,
+                allow_build: bool,
+            ) -> dict[str, Any]:
+                """Seal or reuse one receipt while checkout authority is held."""
+
+                cached = (
+                    self._load_post_merge_callback_integration_receipt(
+                        path,
+                        source=source,
+                    )
+                    if path.exists()
+                    else None
+                )
+                if path.exists() and cached is None:
+                    result.update(
+                        passed=False,
+                        reason="callback_cached_receipt_rejected",
+                    )
+                    self._record_post_merge_recovery_stage(
+                        "callback_cached_receipt_rejected",
+                        request=request,
+                    )
+                    return result
+                qualified: dict[str, Any]
+                if cached is not None:
+                    qualified = dict(cached)
+                else:
+                    validations = result.get("validation")
+                    workspace_hygiene = result.get("workspace_hygiene")
+                    if (
+                        not allow_build
+                        or result.get("passed") is not True
+                        or not isinstance(validations, list)
+                        or len(validations) != 1
+                    ):
+                        result.update(
+                            passed=False,
+                            reason="callback_cached_receipt_rejected",
+                        )
+                        return result
+                    from ..proof.formal_verification_contracts import (
+                        content_identity,
+                    )
+
+                    qualified = {
+                        "schema": (
+                            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+                            if workspace_hygiene is not None
+                            else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+                            if settled_source
+                            else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+                        ),
+                        **dict(source),
+                        "validation": [dict(item) for item in validations],
+                    }
+                    if workspace_hygiene is not None:
+                        qualified["workspace_hygiene"] = dict(
+                            workspace_hygiene
+                        )
+                    qualified["receipt_id"] = content_identity(qualified)
+                if (
+                    revalidate_authority is not None
+                    and revalidate_authority() is not True
+                ):
+                    result.update(
+                        passed=False,
+                        reason="callback_authority_rejected_before_receipt",
+                    )
+                    self._record_post_merge_recovery_stage(
+                        "callback_authority_rejected_before_receipt",
+                        request=request,
+                    )
+                    return result
+                if not target_generation_is_current():
+                    result.update(
+                        passed=False,
+                        reason="callback_target_changed_before_receipt",
+                    )
+                    self._record_post_merge_recovery_stage(
+                        "callback_target_changed_before_receipt",
+                        request=request,
+                    )
+                    return result
+                if cached is None:
+                    _atomic_write_once(
+                        path,
+                        json.dumps(
+                            qualified,
+                            indent=2,
+                            sort_keys=True,
+                        ).encode("utf-8")
+                        + b"\n",
+                    )
+                    admitted = self._load_post_merge_callback_integration_receipt(
+                        path,
+                        source=source,
+                    )
+                    if admitted is None:
+                        result.update(
+                            passed=False,
+                            reason="callback_cached_receipt_rejected",
+                        )
+                        self._record_post_merge_recovery_stage(
+                            "callback_cached_receipt_rejected",
+                            request=request,
+                        )
+                        return result
+                    qualified = dict(admitted)
+                result.update(
+                    passed=True,
+                    validation=[
+                        dict(item) for item in qualified["validation"]
+                    ],
+                    qualification=qualified,
+                )
+                if "workspace_hygiene" in qualified:
+                    result["workspace_hygiene"] = dict(
+                        qualified["workspace_hygiene"]
+                    )
+                return result
 
             def validate() -> dict[str, Any]:
                 result: dict[str, Any] = {"passed": False, "validation": []}
@@ -6688,7 +7027,25 @@ class DatabasePortalExecutionBridge:
                     revalidate_authority is not None
                     and revalidate_authority() is not True
                 ):
+                    result["reason"] = (
+                        "callback_authority_rejected_after_checkout"
+                    )
+                    self._record_post_merge_recovery_stage(
+                        "callback_authority_rejected_after_checkout",
+                        request=request,
+                    )
                     return result
+                if not target_generation_is_current():
+                    result["reason"] = (
+                        "callback_target_changed_after_checkout"
+                    )
+                    self._record_post_merge_recovery_stage(
+                        "callback_target_changed_after_checkout",
+                        request=request,
+                    )
+                    return result
+                if path.exists():
+                    return admit_qualification(result, allow_build=False)
                 root = projection.paths.root / "post-merge-callback-integration-requalification"
                 root.mkdir(parents=True, exist_ok=True)
                 temporary = Path(tempfile.mkdtemp(prefix="worktree-", dir=root))
@@ -6704,6 +7061,13 @@ class DatabasePortalExecutionBridge:
                         timeout=10,
                     )
                     if before.returncode != 0 or before.stdout.strip() != current_head:
+                        result["reason"] = (
+                            "callback_target_changed_after_checkout"
+                        )
+                        self._record_post_merge_recovery_stage(
+                            "callback_target_changed_after_checkout",
+                            request=request,
+                        )
                         return result
                     worktree = subprocess.run(
                         ["git", "worktree", "add", "--detach", str(temporary), current_head],
@@ -6714,6 +7078,12 @@ class DatabasePortalExecutionBridge:
                         timeout=30,
                     )
                     if worktree.returncode != 0:
+                        result["reason"] = "callback_worktree_add_failed"
+                        self._record_post_merge_recovery_stage(
+                            "callback_worktree_add_failed",
+                            request=request,
+                            reason=f"returncode={worktree.returncode}",
+                        )
                         return result
                     added = True
                     pre_identities: list[dict[str, str]] | None = None
@@ -7018,8 +7388,12 @@ class DatabasePortalExecutionBridge:
                     )
                     if workspace_hygiene is not None:
                         result["workspace_hygiene"] = workspace_hygiene
-                    return result
                 except (OSError, subprocess.SubprocessError):
+                    result["reason"] = "callback_validation_exception"
+                    self._record_post_merge_recovery_stage(
+                        "callback_validation_exception",
+                        request=request,
+                    )
                     return result
                 finally:
                     if added:
@@ -7029,11 +7403,14 @@ class DatabasePortalExecutionBridge:
                             or cleanup.get("cleaned") is not True
                         ):
                             result["passed"] = False
+                if result.get("passed") is not True:
+                    return result
+                return admit_qualification(result, allow_build=True)
 
             transaction = run_mutation(
                 task_id=task_alias,
                 branch=self.merge_target_branch,
-                operation="requalify_post_merge_callback_integration",
+                operation=_POST_MERGE_CALLBACK_REQUALIFICATION_OPERATION,
                 callback=validate,
                 failure_fields={"passed": False},
                 extra={
@@ -7073,39 +7450,75 @@ class DatabasePortalExecutionBridge:
                     )
                 )
             ):
+                transaction_reason = (
+                    str(transaction.get("reason") or "")
+                    if isinstance(transaction, Mapping)
+                    else "non_mapping_transaction"
+                )
+                if isinstance(transaction, Mapping) and (
+                    "checkout_mutation_waited_seconds" in transaction
+                    or "checkout_mutation_timeout_seconds" in transaction
+                ):
+                    transaction_reason = (
+                        f"{transaction_reason} "
+                        "waited_seconds="
+                        f"{transaction.get('checkout_mutation_waited_seconds')} "
+                        "timeout_seconds="
+                        f"{transaction.get('checkout_mutation_timeout_seconds')}"
+                    )
+                transaction_code = transaction_reason.split(" ", 1)[0]
+                if transaction_code not in {
+                    "callback_authority_rejected_after_checkout",
+                    "callback_authority_rejected_before_receipt",
+                    "callback_target_changed_after_checkout",
+                    "callback_target_changed_before_receipt",
+                    "callback_validation_exception",
+                    "callback_worktree_add_failed",
+                }:
+                    self._record_post_merge_recovery_stage(
+                        "callback_transaction_rejected",
+                        request=request,
+                        reason=transaction_reason,
+                    )
+                if (
+                    transaction_code == "checkout_mutation_lock_exists"
+                    and isinstance(transaction, Mapping)
+                ):
+                    deferral = self._post_merge_checkout_deferral_result(
+                        request=request,
+                        projection=projection,
+                        transaction=transaction,
+                    )
+                    if deferral is None:
+                        self._record_post_merge_recovery_stage(
+                            "callback_checkout_deferral_rejected",
+                            request=request,
+                        )
+                        return None
+                    self._record_post_merge_recovery_stage(
+                        "callback_checkout_contention",
+                        request=request,
+                        reason="checkout_mutation_lock_exists",
+                    )
+                    return _PostMergeRecoveryDisposition(
+                        result=deferral
+                    )
                 return None
+            qualification = transaction.get("qualification")
+            if not isinstance(qualification, Mapping):
+                self._record_post_merge_recovery_stage(
+                    "callback_cached_receipt_rejected",
+                    request=request,
+                )
+                return None
+            # The transaction callback obtains this value only from the
+            # production receipt verifier after sealing or cache loading.
+            # Keeping it in the checkout-serialized result also avoids a
+            # second, racy filesystem admission after releasing the lease.
+            return dict(qualification)
         finally:
             if callable(close):
                 close()
-        from ..proof.formal_verification_contracts import content_identity
-
-        qualified = {
-            "schema": (
-                _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
-                if workspace_hygiene is not None
-                else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
-                if settled_source
-                else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
-            ),
-            **dict(source),
-            "validation": [dict(item) for item in validations],
-        }
-        if workspace_hygiene is not None:
-            qualified["workspace_hygiene"] = dict(workspace_hygiene)
-        qualified["receipt_id"] = content_identity(qualified)
-        if (
-            revalidate_authority is not None
-            and revalidate_authority() is not True
-        ):
-            return None
-        _atomic_write_once(
-            path,
-            json.dumps(qualified, indent=2, sort_keys=True).encode("utf-8") + b"\n",
-        )
-        return self._load_post_merge_callback_integration_receipt(
-            path,
-            source=source,
-        )
 
     def _post_merge_callback_integration_evidence(
         self,
@@ -7115,7 +7528,7 @@ class DatabasePortalExecutionBridge:
         evidence_digest: Callable[[Mapping[str, Any]], str],
         train: Any | None = None,
         revalidate_authority: Callable[[], bool] | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, Any] | _PostMergeRecoveryDisposition | None:
         if train is None:
             if self.repository_root is None or self.merge_queue is None:
                 return None
@@ -7140,6 +7553,8 @@ class DatabasePortalExecutionBridge:
             projection=projection,
             revalidate_authority=revalidate_authority,
         )
+        if isinstance(qualification, _PostMergeRecoveryDisposition):
+            return qualification
         if qualification is None:
             return None
         binding = projection.binding
@@ -19980,11 +20395,23 @@ class DatabasePortalExecutionBridge:
                     if current is not None
                     else None
                 )
-                if (
-                    current != completed
-                    or current_projection is None
-                    or current_projection != projection
-                ):
+                if current != completed:
+                    self._record_post_merge_recovery_stage(
+                        "authority_queue_row_changed",
+                        request=completed,
+                    )
+                    return False
+                if current_projection is None:
+                    self._record_post_merge_recovery_stage(
+                        "authority_projection_rejected",
+                        request=completed,
+                    )
+                    return False
+                if current_projection != projection:
+                    self._record_post_merge_recovery_stage(
+                        "authority_projection_changed",
+                        request=completed,
+                    )
                     return False
                 try:
                     self._preauthorize_post_merge_recovery(
@@ -19996,7 +20423,16 @@ class DatabasePortalExecutionBridge:
                 except Exception as exc:
                     if not _is_implementation_conflict(exc):
                         raise
+                    self._record_post_merge_recovery_stage(
+                        "authority_preauthorization_conflict",
+                        request=completed,
+                        reason=type(exc).__name__,
+                    )
                     return False
+                self._record_post_merge_recovery_stage(
+                    "authority_revalidated",
+                    request=completed,
+                )
                 return True
 
             return revalidate
@@ -20014,6 +20450,11 @@ class DatabasePortalExecutionBridge:
                     )
                 )
                 if snapshot_projection is None:
+                    if allow_shared_lane_source:
+                        self._record_post_merge_recovery_stage(
+                            "snapshot_projection_rejected",
+                            request=snapshot,
+                        )
                     continue
                 completed = self.merge_queue.get(
                     str(getattr(snapshot, "request_id", "") or "")
@@ -20027,6 +20468,15 @@ class DatabasePortalExecutionBridge:
                     else None
                 )
                 if projection is None:
+                    if allow_shared_lane_source:
+                        self._record_post_merge_recovery_stage(
+                            (
+                                "current_request_missing"
+                                if completed is None
+                                else "current_projection_rejected"
+                            ),
+                            request=(completed or snapshot),
+                        )
                     continue
                 try:
                     self._preauthorize_post_merge_recovery(
@@ -20038,7 +20488,18 @@ class DatabasePortalExecutionBridge:
                 except Exception as exc:
                     if not _is_implementation_conflict(exc):
                         raise
+                    if allow_shared_lane_source:
+                        self._record_post_merge_recovery_stage(
+                            "initial_preauthorization_conflict",
+                            request=completed,
+                            reason=type(exc).__name__,
+                        )
                     continue
+                if allow_shared_lane_source:
+                    self._record_post_merge_recovery_stage(
+                        "initial_preauthorization_admitted",
+                        request=completed,
+                    )
                 evidence = self._post_merge_recovery_evidence(
                     completed,
                     projection,
@@ -20054,6 +20515,8 @@ class DatabasePortalExecutionBridge:
                         )
                     ),
                 )
+                if isinstance(evidence, _PostMergeRecoveryDisposition):
+                    return dict(evidence.result)
                 if evidence is not None:
                     try:
                         result = recover(evidence)
@@ -20066,6 +20529,11 @@ class DatabasePortalExecutionBridge:
                             "database post-merge recovery returned a non-object"
                         )
                     return dict(result)
+                if allow_shared_lane_source:
+                    self._record_post_merge_recovery_stage(
+                        "recovery_evidence_rejected",
+                        request=completed,
+                    )
                 reopened = reopen_under_checkout_transaction(
                     completed,
                     projection,
@@ -20104,6 +20572,11 @@ class DatabasePortalExecutionBridge:
             priority_task_cids
         )
         if priority_completed_page:
+            for priority_request in priority_completed_page:
+                self._record_post_merge_recovery_stage(
+                    "priority_request_selected",
+                    request=priority_request,
+                )
             acquired, priority_result = train.run_under_consumer_lease(
                 lambda: replay_completed_page(
                     priority_completed_page,
@@ -20111,9 +20584,30 @@ class DatabasePortalExecutionBridge:
                 )
             )
             if not acquired:
+                self._record_post_merge_recovery_stage(
+                    "priority_consumer_lease_deferred",
+                    request=priority_completed_page[0],
+                )
                 return None
+        elif priority_task_cids:
+            self._record_post_merge_recovery_stage(
+                "priority_request_not_found",
+                reason=f"candidate_count={len(priority_task_cids)}",
+            )
         else:
             priority_result = None
+        if (
+            isinstance(priority_result, Mapping)
+            and priority_result.get("schema")
+            == _DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            and priority_result.get("reason")
+            == "post_merge_recovery_deferred"
+            and priority_result.get("write_count") == 0
+        ):
+            # Checkout contention is global to this target repository.  Keep
+            # the exact database-priority cursor at its predecessor so the
+            # same authority row is retried as soon as the live owner exits.
+            return dict(priority_result)
         if cursors["priority_task_cids"] != priority_next_cursor:
             cursors["priority_task_cids"] = priority_next_cursor
             self._save_post_merge_recovery_cursors(cursors)
@@ -20451,6 +20945,9 @@ class DatabasePortalExecutionBridge:
                 if completed is not None and projection is not None
                 else None
             )
+            if isinstance(evidence, _PostMergeRecoveryDisposition):
+                database_result = dict(evidence.result)
+                return
             if evidence is None:
                 return
             try:

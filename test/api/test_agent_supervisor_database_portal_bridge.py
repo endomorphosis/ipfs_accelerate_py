@@ -84,6 +84,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
     _is_implementation_conflict,
+    _PostMergeRecoveryDisposition,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
     verify_database_portal_attempt_projection,
@@ -12930,7 +12931,12 @@ def _run_vrif_callback_hygiene_requalification(
     task_alias: str = "VRIF-032",
     loaded_validation: tuple[str, ...] | None = None,
     transaction_calls: list[dict[str, object]] | None = None,
+    transaction_failure_reason: str = "",
+    deferred_results: list[dict[str, object]] | None = None,
     advance_target_before_validation: bool = False,
+    advance_target_on_authority_call: int | None = None,
+    advance_target_with_empty_commit: bool = False,
+    repeat_cached_admission: bool = False,
     revalidate_authority: object | None = None,
 ) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
     repo = tmp_path / "repo"
@@ -13054,6 +13060,22 @@ def _run_vrif_callback_hygiene_requalification(
             assert callable(callback)
             if transaction_calls is not None:
                 transaction_calls.append(dict(kwargs))
+            if transaction_failure_reason:
+                result: dict[str, object] = {
+                    "passed": False,
+                    "reason": transaction_failure_reason,
+                }
+                if transaction_failure_reason == "checkout_mutation_lock_exists":
+                    result.update(
+                        {
+                            "lock_owner_pid": 4242,
+                            "lock_owner_lease_id": "lease:maintenance-owner",
+                            "lock_owner_task_id": "",
+                            "checkout_mutation_waited_seconds": 30.0,
+                            "checkout_mutation_timeout_seconds": 30.0,
+                        }
+                    )
+                return result
             if advance_target_before_validation:
                 (repo / "advanced-during-checkout-wait.txt").write_text(
                     "advanced\n",
@@ -13133,23 +13155,93 @@ def _run_vrif_callback_hygiene_requalification(
         binding={"task_cid": database_task_cid},
         projected_task=task,
     )
+    authority_call_count = 0
+
+    def bound_revalidate_authority() -> bool:
+        nonlocal authority_call_count
+        assert callable(revalidate_authority)
+        authority_call_count += 1
+        result = revalidate_authority()
+        if authority_call_count == advance_target_on_authority_call:
+            if advance_target_with_empty_commit:
+                subprocess.run(
+                    [
+                        "git",
+                        "commit",
+                        "--allow-empty",
+                        "-qm",
+                        f"empty advance at authority {authority_call_count}",
+                    ],
+                    cwd=repo,
+                    check=True,
+                )
+            else:
+                advanced = (
+                    repo
+                    / f"advanced-at-authority-{authority_call_count}.txt"
+                )
+                advanced.write_text("advanced\n", encoding="utf-8")
+                subprocess.run(
+                    ["git", "add", advanced.name],
+                    cwd=repo,
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "git",
+                        "commit",
+                        "-qm",
+                        f"advance at authority {authority_call_count}",
+                    ],
+                    cwd=repo,
+                    check=True,
+                )
+        return result
+
     receipt = bridge._requalify_callback_integration(
         source,
         request=SimpleNamespace(
+            request_id="request:callback-requalification",
             task_id=task_alias,
             canonical_task_id=task_cid,
             canonical_task_key=task_key,
         ),
         projection=projection,
         revalidate_authority=(
-            revalidate_authority
+            bound_revalidate_authority
             if callable(revalidate_authority)
             else None
         ),
     )
-    if advance_target_before_validation:
+    if isinstance(receipt, _PostMergeRecoveryDisposition):
+        if deferred_results is not None:
+            deferred_results.append(dict(receipt.result))
+        receipt = None
+    if repeat_cached_admission:
+        receipt = bridge._requalify_callback_integration(
+            source,
+            request=SimpleNamespace(
+                request_id="request:callback-requalification",
+                task_id=task_alias,
+                canonical_task_id=task_cid,
+                canonical_task_key=task_key,
+            ),
+            projection=projection,
+            revalidate_authority=(
+                bound_revalidate_authority
+                if callable(revalidate_authority)
+                else None
+            ),
+        )
+    if (
+        advance_target_before_validation
+        or advance_target_on_authority_call is not None
+    ):
         assert git_text("rev-parse", "HEAD") != head
-        assert git_text("rev-parse", "HEAD^{tree}") != tree
+        if advance_target_with_empty_commit:
+            assert git_text("rev-parse", "HEAD^{tree}") == tree
+        else:
+            assert git_text("rev-parse", "HEAD^{tree}") != tree
     else:
         assert git_text("rev-parse", "HEAD") == head
         assert git_text("rev-parse", "HEAD^{tree}") == tree
@@ -13184,7 +13276,107 @@ def test_callback_requalification_requests_one_bounded_checkout_wait(
     )
     timeout_seconds = transaction["timeout_seconds"]
     assert isinstance(timeout_seconds, float)
-    assert 0.0 < timeout_seconds <= 5.0
+    assert timeout_seconds == 30.0
+
+
+def test_callback_requalification_surfaces_checkout_transaction_deferral(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    deferred_results: list[dict[str, object]] = []
+    caplog.set_level(
+        "INFO",
+        logger=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "database_portal_bridge"
+        ),
+    )
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "deferred checkout transaction reached validation"
+            ),
+            transaction_failure_reason="checkout_mutation_lock_exists",
+            deferred_results=deferred_results,
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses == []
+    assert deferred_results == [
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-declared-output-recovery@1"
+            ),
+            "attempted": True,
+            "recovered": False,
+            "reason": "post_merge_recovery_deferred",
+            "stage": "callback_checkout_contention",
+            "deferral_reason": "checkout_mutation_lock_exists",
+            "request_id": "request:callback-requalification",
+            "task_id": "VRIF-032",
+            "task_cid": "task:database:vrif-032",
+            "write_count": 0,
+            "changed": False,
+            "deferred": True,
+            "deferral": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "post-merge-callback-checkout-deferral@1"
+                ),
+                "operation": "requalify_post_merge_callback_integration",
+                "stage": "callback_checkout_contention",
+                "reason": "checkout_mutation_lock_exists",
+                "request_id": "request:callback-requalification",
+                "task_id": "VRIF-032",
+                "task_cid": "task:database:vrif-032",
+                "owner_pid": 4242,
+                "owner_lease_id": "lease:maintenance-owner",
+                "owner_task_id": "",
+                "waited_ms": 30_000,
+                "timeout_ms": 30_000,
+            },
+        }
+    ]
+    assert any(
+        "stage=callback_checkout_contention" in record.getMessage()
+        and "reason=checkout_mutation_lock_exists" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    (
+        "callback_validation_exception",
+        "callback_worktree_add_failed",
+        "validation_failed",
+        "protected_paths_dirty_before_mutation",
+    ),
+)
+def test_callback_requalification_does_not_mislabel_rejection_as_deferral(
+    tmp_path: Path,
+    reason: str,
+) -> None:
+    dispositions: list[dict[str, object]] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "rejected transaction reached callback validation"
+            ),
+            transaction_failure_reason=reason,
+            deferred_results=dispositions,
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses == []
+    assert dispositions == []
 
 
 def test_callback_requalification_rechecks_target_after_checkout_wait(
@@ -13261,6 +13453,92 @@ def test_callback_requalification_does_not_cache_authority_revoked_during_valida
             / "post-merge-callback-integration-requalification"
         ).glob("*.json")
     )
+
+
+def test_callback_requalification_rejects_target_advanced_before_fresh_receipt(
+    tmp_path: Path,
+) -> None:
+    authority_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: validation_calls.append("validated"),
+            advance_target_on_authority_call=2,
+            revalidate_authority=lambda: (
+                authority_calls.append("revalidated") or True
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert authority_calls == ["revalidated", "revalidated"]
+    assert validation_calls == ["validated"]
+    assert cleanup_statuses == [b""]
+    assert not list(
+        (
+            tmp_path
+            / "state"
+            / "post-merge-callback-integration-requalification"
+        ).glob("*.json")
+    )
+
+
+def test_callback_requalification_rejects_same_tree_target_advance(
+    tmp_path: Path,
+) -> None:
+    authority_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: validation_calls.append("validated"),
+            advance_target_on_authority_call=2,
+            advance_target_with_empty_commit=True,
+            revalidate_authority=lambda: (
+                authority_calls.append("revalidated") or True
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert authority_calls == ["revalidated", "revalidated"]
+    assert validation_calls == ["validated"]
+    assert cleanup_statuses == [b""]
+    assert not list(
+        (
+            tmp_path
+            / "state"
+            / "post-merge-callback-integration-requalification"
+        ).glob("*.json")
+    )
+
+
+def test_callback_requalification_rejects_cached_receipt_after_target_advance(
+    tmp_path: Path,
+) -> None:
+    authority_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: validation_calls.append("validated"),
+            advance_target_on_authority_call=4,
+            advance_target_with_empty_commit=True,
+            repeat_cached_admission=True,
+            revalidate_authority=lambda: (
+                authority_calls.append("revalidated") or True
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert authority_calls == ["revalidated"] * 4
+    assert validation_calls == ["validated"]
+    assert cleanup_statuses == [b""]
 
 
 def test_callback_requalification_propagates_malformed_authority(
@@ -14178,6 +14456,325 @@ def test_post_merge_completion_recovery_priority_pages_cannot_pin_after_32(
         )
     )
     assert restarted == first
+
+
+def test_priority_checkout_deferral_retains_cursor_and_retries_publicly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_cid = "task:database:pcsm-010"
+    request = SimpleNamespace(
+        request_id="request:pcsm-010",
+        task_id="PCSM-010",
+        status="completed",
+    )
+    projection = SimpleNamespace(binding={"task_cid": task_cid})
+    transaction = {
+        "passed": False,
+        "reason": "checkout_mutation_lock_exists",
+        "lock_owner_pid": 4242,
+        "lock_owner_lease_id": "lease:maintenance-owner",
+        "lock_owner_task_id": "",
+        "checkout_mutation_waited_seconds": 30.0,
+        "checkout_mutation_timeout_seconds": 30.0,
+    }
+    deferral = (
+        DatabasePortalExecutionBridge._post_merge_checkout_deferral_result(
+            request=request,
+            projection=projection,
+            transaction=transaction,
+        )
+    )
+    assert deferral is not None
+
+    class Queue:
+        max_attempts = 3
+
+        @staticmethod
+        def completed_requests(**_kwargs: object) -> tuple[object, ...]:
+            return ()
+
+        @staticmethod
+        def get(request_id: str) -> object | None:
+            return request if request_id == request.request_id else None
+
+    class Train:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        @staticmethod
+        def run_under_consumer_lease(callback: object) -> tuple[bool, object]:
+            assert callable(callback)
+            return True, callback()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train.MergeTrain",
+        Train,
+    )
+    cursor = {
+        "completed_requests": "",
+        "pending_requests": "",
+        "processing_requests": "",
+        "quarantined_requests": "",
+        "priority_task_cids": "",
+    }
+    cursor_writes: list[dict[str, str]] = []
+    evidence_calls: list[str] = []
+    recover_calls: list[dict[str, object]] = []
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = tmp_path
+    bridge.merge_queue = Queue()
+    bridge.merge_target_branch = "main"
+    bridge._load_post_merge_recovery_cursors = lambda: dict(cursor)
+
+    def save_cursors(value: object) -> None:
+        assert isinstance(value, dict)
+        cursor.clear()
+        cursor.update(value)
+        cursor_writes.append(dict(cursor))
+
+    bridge._save_post_merge_recovery_cursors = save_cursors
+    bridge._priority_repaired_completion_requests = (
+        lambda task_cids: (request,) if task_cids == (task_cid,) else ()
+    )
+    bridge._owned_post_merge_recovery_projection = (
+        lambda current, **_kwargs: projection if current is request else None
+    )
+    bridge._preauthorize_post_merge_recovery = lambda *_args, **_kwargs: None
+
+    def recovery_evidence(
+        current: object,
+        _projection: object,
+        **_kwargs: object,
+    ) -> object:
+        assert current is request
+        evidence_calls.append(request.request_id)
+        if len(evidence_calls) == 1:
+            return _PostMergeRecoveryDisposition(result=deferral)
+        return {"evidence": "second-pass-current-authority"}
+
+    bridge._post_merge_recovery_evidence = recovery_evidence
+
+    class Authority:
+        @staticmethod
+        def _database_portal_evidence_digest(_value: object) -> str:
+            return "sha256:" + "d" * 64
+
+        @staticmethod
+        def preauthorize_post_merge_declared_output_recovery(
+            _source: object,
+        ) -> dict[str, object]:
+            return {}
+
+        @staticmethod
+        def post_merge_completion_recovery_task_cids() -> tuple[str, ...]:
+            return (task_cid,)
+
+        @staticmethod
+        def recover_blocked_post_merge_declared_outputs(
+            evidence: object,
+        ) -> dict[str, object]:
+            assert isinstance(evidence, dict)
+            recover_calls.append(dict(evidence))
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-post-merge-declared-output-recovery@1"
+                ),
+                "attempted": True,
+                "recovered": True,
+                "changed": True,
+                "write_count": 1,
+            }
+
+    authority = Authority()
+    first = bridge.recover_post_merge_declared_outputs(authority)
+
+    assert first == deferral
+    assert cursor["priority_task_cids"] == ""
+    assert cursor_writes == []
+    assert recover_calls == []
+    assert Queue.get(request.request_id) is request
+
+    outer = object.__new__(DatabaseImplementationDaemon)
+    outer._post_merge_recovery_fn = lambda: first
+    assert outer._run_post_merge_recovery() == first
+
+    second = bridge.recover_post_merge_declared_outputs(authority)
+
+    assert second is not None and second["recovered"] is True
+    assert evidence_calls == [request.request_id, request.request_id]
+    assert recover_calls == [{"evidence": "second-pass-current-authority"}]
+    assert cursor["priority_task_cids"] == task_cid
+    assert cursor_writes[-1]["priority_task_cids"] == task_cid
+
+
+def test_outer_rejects_malformed_checkout_deferral_vectors() -> None:
+    request = SimpleNamespace(
+        request_id="request:pcsm-010",
+        task_id="PCSM-010",
+    )
+    projection = SimpleNamespace(
+        binding={"task_cid": "task:database:pcsm-010"}
+    )
+    valid = DatabasePortalExecutionBridge._post_merge_checkout_deferral_result(
+        request=request,
+        projection=projection,
+        transaction={
+            "passed": False,
+            "reason": "checkout_mutation_lock_exists",
+            "lock_owner_pid": 4242,
+            "lock_owner_lease_id": "lease:maintenance-owner",
+            "lock_owner_task_id": "",
+            "checkout_mutation_waited_seconds": 30.0,
+            "checkout_mutation_timeout_seconds": 30.0,
+        },
+    )
+    assert valid is not None
+
+    malformed: list[dict[str, object]] = []
+    for mutate in (
+        lambda value: value.update(request_id=""),
+        lambda value: value.update(write_count=1),
+        lambda value: value.update(unexpected=True),
+        lambda value: value["deferral"].update(owner_pid=True),
+        lambda value: value["deferral"].update(waited_ms=float("nan")),
+        lambda value: value["deferral"].update(timeout_ms=29_999),
+        lambda value: value["deferral"].pop("owner_lease_id"),
+    ):
+        candidate = {
+            **valid,
+            "deferral": dict(valid["deferral"]),
+        }
+        mutate(candidate)
+        malformed.append(candidate)
+
+    outer = object.__new__(DatabaseImplementationDaemon)
+    for candidate in malformed:
+        outer._post_merge_recovery_fn = lambda value=candidate: value
+        rejected = outer._run_post_merge_recovery()
+        assert rejected["reason"] == "post_merge_recovery_result_invalid"
+        assert rejected["write_count"] == 1
+
+
+def test_post_settlement_checkout_deferral_never_reaches_database_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = SimpleNamespace(
+        request_id="request:post-settlement",
+        task_id="PCSM-010",
+        status="completed",
+    )
+    projection = SimpleNamespace(
+        binding={"task_cid": "task:database:pcsm-010"}
+    )
+    deferral = DatabasePortalExecutionBridge._post_merge_checkout_deferral_result(
+        request=request,
+        projection=projection,
+        transaction={
+            "passed": False,
+            "reason": "checkout_mutation_lock_exists",
+            "lock_owner_pid": 4242,
+            "lock_owner_lease_id": "lease:supervisor-maintenance",
+            "lock_owner_task_id": "",
+            "checkout_mutation_waited_seconds": 30.0,
+            "checkout_mutation_timeout_seconds": 30.0,
+        },
+    )
+    assert deferral is not None
+
+    class Queue:
+        max_attempts = 3
+
+        @staticmethod
+        def completed_requests(**_kwargs: object) -> tuple[object, ...]:
+            return ()
+
+        @staticmethod
+        def pending_requests(**_kwargs: object) -> tuple[object, ...]:
+            return (request,)
+
+        @staticmethod
+        def quarantined_requests(**_kwargs: object) -> tuple[object, ...]:
+            return ()
+
+        @staticmethod
+        def processing_requests(**_kwargs: object) -> tuple[object, ...]:
+            return ()
+
+        @staticmethod
+        def get(request_id: str) -> object | None:
+            return request if request_id == request.request_id else None
+
+    class Train:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        @staticmethod
+        def recover_one_integrated_quarantine(
+            *,
+            request_filter: object,
+            after_process: object,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            assert callable(request_filter) and request_filter(request) is True
+            assert callable(after_process)
+            after_process(request, {"status": "already_merged"})
+            return {"status": "already_merged"}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train.MergeTrain",
+        Train,
+    )
+    cursors = {
+        "completed_requests": "",
+        "pending_requests": "",
+        "processing_requests": "",
+        "quarantined_requests": "",
+        "priority_task_cids": "",
+    }
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = tmp_path
+    bridge.merge_queue = Queue()
+    bridge.merge_target_branch = "main"
+    bridge._load_post_merge_recovery_cursors = lambda: dict(cursors)
+    bridge._save_post_merge_recovery_cursors = lambda _value: None
+    bridge._owned_post_merge_recovery_projection = (
+        lambda current, **_kwargs: projection if current is request else None
+    )
+    bridge._preauthorize_post_merge_recovery = lambda *_args, **_kwargs: None
+    bridge._post_merge_recovery_evidence = (
+        lambda *_args, **_kwargs: _PostMergeRecoveryDisposition(
+            result=deferral
+        )
+    )
+    recover_calls: list[object] = []
+
+    class Authority:
+        @staticmethod
+        def _database_portal_evidence_digest(_value: object) -> str:
+            return "sha256:" + "d" * 64
+
+        @staticmethod
+        def preauthorize_post_merge_declared_output_recovery(
+            _source: object,
+        ) -> dict[str, object]:
+            return {}
+
+        @staticmethod
+        def recover_blocked_post_merge_declared_outputs(
+            evidence: object,
+        ) -> dict[str, object]:
+            recover_calls.append(evidence)
+            return {"unexpected": True}
+
+    result = bridge.recover_post_merge_declared_outputs(Authority())
+
+    assert result == deferral
+    assert recover_calls == []
+    assert Queue.get(request.request_id) is request
 
 
 def test_bridge_apply_effect_rejects_resealed_nonancestor_baseline(

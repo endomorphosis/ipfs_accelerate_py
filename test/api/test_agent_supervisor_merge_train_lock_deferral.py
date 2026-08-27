@@ -481,6 +481,8 @@ def test_checkout_transaction_times_out_on_persistent_foreign_protected_owner(
 
     assert result["passed"] is False
     assert result["reason"] == "checkout_mutation_lock_exists"
+    assert result["checkout_mutation_timeout_seconds"] == 0.06
+    assert 0.04 <= result["checkout_mutation_waited_seconds"] <= elapsed
     assert result["lock_owner_lease_id"] == lease.lease_id
     assert callback_calls == []
     assert 0.04 <= elapsed < 0.5
@@ -530,7 +532,7 @@ def test_other_checkout_operation_does_not_wait_through_protected_owner(
 
 @pytest.mark.parametrize(
     "timeout_seconds",
-    (True, "0", None, -0.01, float("nan"), float("inf"), 5.01),
+    (True, "0", None, -0.01, float("nan"), float("inf"), 30.01),
 )
 def test_checkout_transaction_rejects_invalid_wait_bound(
     tmp_path: Path,
@@ -598,6 +600,50 @@ def test_checkout_transaction_default_remains_zero_wait(
     timeout_seconds, waited_seconds = observed_acquisitions[0]
     assert timeout_seconds == 0.0
     assert waited_seconds < 0.1
+
+
+def test_other_checkout_operation_retains_narrow_wait_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumer = _transaction_daemon(
+        _repo(tmp_path),
+        state_name="consumer-state",
+    )
+    monkeypatch.setattr(
+        consumer,
+        "_recover_protected_checkout_mutation",
+        lambda: pytest.fail("invalid ordinary wait reached lease recovery"),
+    )
+
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        consumer._run_checkout_mutation_transaction(
+            task_id="INVALID-ORDINARY-WAIT",
+            operation="merge_branch_to_main",
+            callback=lambda: pytest.fail(
+                "invalid ordinary wait reached callback"
+            ),
+            timeout_seconds=5.01,
+        )
+
+
+def test_callback_requalification_accepts_wait_above_ordinary_ceiling(
+    tmp_path: Path,
+) -> None:
+    consumer = _transaction_daemon(
+        _repo(tmp_path),
+        state_name="consumer-state",
+    )
+
+    result = consumer._run_checkout_mutation_transaction(
+        task_id="CALLBACK-REQUALIFICATION",
+        operation="requalify_post_merge_callback_integration",
+        callback=lambda: {"passed": True},
+        timeout_seconds=5.01,
+    )
+
+    assert result == {"passed": True}
+    assert consumer._current_checkout_mutation_lease() is None
 
 
 def test_merge_train_rejects_merge_lock_outside_git_common_dir(
