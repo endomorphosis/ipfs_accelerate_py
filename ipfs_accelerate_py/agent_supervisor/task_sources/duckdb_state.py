@@ -100,6 +100,22 @@ _THREAD_LOCKS: dict[str, threading.RLock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 
 
+_DEAD_NATIVE_HANDLE_TYPES = frozenset(
+    {
+        "FatalException",
+        "InternalException",
+        "ConnectionException",
+        "InterruptException",
+    }
+)
+
+
+def native_handle_is_dead(exc: BaseException) -> bool:
+    """Return whether a native DuckDB error destroyed the live handle."""
+
+    return type(exc).__name__ in _DEAD_NATIVE_HANDLE_TYPES
+
+
 class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
 
@@ -885,7 +901,7 @@ class DuckDBConnection:
                     )
                 try:
                     result = self._execute_locked(statement, normalized, parameters)
-                except BaseException:
+                except BaseException as exc:
                     if begins_transaction:
                         self._quack_pending_mutations = []
                         try:
@@ -894,7 +910,7 @@ class DuckDBConnection:
                             evict_uri = self._poison_locked()
                         else:
                             self._transaction_finished_locked()
-                    elif ends_transaction:
+                    elif ends_transaction or native_handle_is_dead(exc):
                         evict_uri = self._poison_locked()
                     raise
                 if begins_transaction and self._transaction_active:

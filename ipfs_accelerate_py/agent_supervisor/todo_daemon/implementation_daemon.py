@@ -113845,7 +113845,44 @@ def main(argv: list[str] | None = None) -> None:
             return
         last_idle_info_at: float | None = None
         while True:
-            result = daemon.run_once()
+            try:
+                result = daemon.run_once()
+            except BaseException as exc:
+                from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+                    TransactionConflictKind,
+                    TransactionError,
+                    is_retryable_exception,
+                )
+
+                if args.once or isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                kind = (
+                    exc.kind
+                    if isinstance(exc, TransactionError)
+                    else None
+                )
+                if kind in {
+                    TransactionConflictKind.STALE_GENERATION,
+                    TransactionConflictKind.FENCE_MISMATCH,
+                }:
+                    raise
+                if not (
+                    is_retryable_exception(exc)
+                    or "fatalexception" in str(exc).casefold()
+                    or "unusable after an uncertain" in str(exc).casefold()
+                ):
+                    raise
+                logger.exception(
+                    "implementation daemon pass failed retryably; continuing"
+                )
+                result = {
+                    "unchanged": True,
+                    "write_count": 0,
+                    "active_task_id": "",
+                    "selection_idle_reason": "retryable_owner_failure",
+                    "implementation_result": None,
+                    "backoff_seconds": 1.0,
+                }
             materialize_database_task_state_compatibility_projection(
                 daemon,
                 state_path=args.state_dir / f"{args.state_prefix}_task_state.json",

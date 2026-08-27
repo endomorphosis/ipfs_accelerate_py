@@ -393,6 +393,39 @@ def test_exclusive_file_connection_recovers_after_uncertain_transaction(
         assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
 
 
+def test_exclusive_file_connection_recovers_after_native_fatal_dml(
+    tmp_path: Path,
+) -> None:
+    class FatalException(Exception):
+        pass
+
+    class FatalOnce:
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self._fatal_inserts = 1
+
+        def execute(self, sql, parameters=None):
+            if self._fatal_inserts and "INSERT" in str(sql).upper():
+                self._fatal_inserts -= 1
+                raise FatalException("native handle died")
+            if parameters is None:
+                return self._inner.execute(sql)
+            return self._inner.execute(sql, parameters)
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    path = tmp_path / "fatal-dml.duckdb"
+    with open_duckdb_connection(path) as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection._connection = FatalOnce(connection._connection)
+        with pytest.raises(FatalException):
+            connection.execute("INSERT INTO items VALUES (1)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
+        connection.execute("INSERT INTO items VALUES (1)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+
+
 def test_wrapped_memory_connection_stays_unusable_after_poison() -> None:
     import duckdb
 
