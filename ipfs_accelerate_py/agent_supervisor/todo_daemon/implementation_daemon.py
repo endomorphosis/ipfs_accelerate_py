@@ -196,6 +196,7 @@ from ..task_sources.board_control_plane import (
 from ..task_sources.database_task_source import (
     CASResult as DatabaseTaskCASResult,
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
+    TaskSourceIntegrityError as DatabaseTaskSourceIntegrityError,
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
     typed_deferral_budget_supersession_matches,
@@ -101867,20 +101868,47 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "typed retry repair has no exact cooldown validator"
                     )
-                existing_entry = validate_retrying_cooldown(
-                    attempt.task_cid,
-                    expected_attempt_identity={
+                expected_identity = {
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "attempt_number": int(attempt.attempt_number),
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                }
+                try:
+                    existing_entry = validate_retrying_cooldown(
+                        attempt.task_cid,
+                        expected_attempt_identity=expected_identity,
+                        expected_reason=queue_reason,
+                        expected_delay_ms=delay_ms,
+                    )
+                except (TaskSourceIntegrityError, DatabaseTaskSourceIntegrityError):
+                    # The durable retrying receipt may already own a bound
+                    # cooldown from a later repair.  A local failed attempt
+                    # with a different delay must not crash the lane.
+                    existing_entry = validate_retrying_cooldown(
+                        attempt.task_cid
+                    )
+                    return {
+                        "task_cid": attempt.task_cid,
                         "attempt_id": attempt.attempt_id,
-                        "claim_id": attempt.claim_id,
-                        "lease_id": attempt.lease_id,
-                        "owner_session_id": attempt.owner_session_id,
-                        "attempt_number": int(attempt.attempt_number),
-                        "fencing_token": int(attempt.fencing_token),
-                        "fence_epoch": int(attempt.fence_epoch),
-                    },
-                    expected_reason=queue_reason,
-                    expected_delay_ms=delay_ms,
-                )
+                        "status": "retrying",
+                        "changed": False,
+                        "backoff_seconds": delay_seconds,
+                        "backoff_ms": delay_ms,
+                        "retry_not_before_ms": int(
+                            getattr(existing_entry, "retry_not_before_ms", 0)
+                            or 0
+                        ),
+                        "evidence_source": evidence_source,
+                        "queue_reused": True,
+                        "queue_receipt": {},
+                        "reason": (
+                            "retrying_cooldown_bound_to_control_receipt"
+                        ),
+                    }
                 queue_receipt_dict = {}
             elif existing_entry is None:
                 queue_receipt = self._execute_with_retry_transition_authority(

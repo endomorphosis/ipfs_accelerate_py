@@ -13279,6 +13279,94 @@ def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> 
     )
 
 
+def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    calls: list[str] = []
+    entry = SimpleNamespace(
+        retry_not_before_ms=1_000,
+        reason=(
+            "database_portal_retry:attempt:bound-receipt:"
+            "portal_pending_merge_claim_retry"
+        ),
+    )
+
+    class _TypedRetryingSource:
+        task = SimpleNamespace(
+            task_cid="task:bound-receipt-cooldown",
+            status="retrying",
+            revision=13,
+            body={
+                "completion_receipt": {
+                    "operation": "database_portal_validation_retry_recovery"
+                }
+            },
+        )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace:
+            return entry
+
+        @staticmethod
+        def record_task_retry_cooldown(**_kwargs: object) -> None:
+            raise AssertionError("bound receipt cooldown must not be rewritten")
+
+        @staticmethod
+        def validate_retrying_task_cooldown(
+            _task_cid: str,
+            **kwargs: object,
+        ) -> SimpleNamespace:
+            if kwargs:
+                calls.append("expected")
+                raise TaskSourceIntegrityError(
+                    "retrying task cooldown differs from the expected delay"
+                )
+            calls.append("bound")
+            return entry
+
+    source = _TypedRetryingSource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 5_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:local-failed-delay",
+        claim_id="claim:local-failed-delay",
+        task_cid=source.task.task_cid,
+        task_alias="PCSM-010",
+        attempt_number=1,
+        owner_session_id="session:local-failed-delay",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:local-failed-delay",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+    outcome = DatabaseImplementationDaemon._persist_task_retry_state(
+        daemon,
+        attempt,
+        reason="typed_deferral",
+        backoff_ms=300_000,
+        evidence_source="portal_provider_failed",
+    )
+    assert calls == ["expected", "bound"]
+    assert outcome["changed"] is False
+    assert outcome["queue_reused"] is True
+    assert outcome["reason"] == "retrying_cooldown_bound_to_control_receipt"
+    assert outcome["retry_not_before_ms"] == 1_000
+
+
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:
