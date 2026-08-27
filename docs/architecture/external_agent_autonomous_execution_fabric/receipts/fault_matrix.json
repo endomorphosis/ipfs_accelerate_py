@@ -1,0 +1,72 @@
+{
+  "accepted_stale_write": false,
+  "evidence_mode": "observed_hermetic",
+  "invented_authority": false,
+  "live_quack_contacted": false,
+  "live_quack_invoked": false,
+  "live_runtime_invoked": true,
+  "observations": [
+    {
+      "evidence_cid": "sha256:469c3f62f6074993daa3e88ee0dfb7885850938eaf8b9b267e51da1dfd211c42",
+      "observed": true,
+      "operation": "exclusive_owner_second_start_refused",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:1b03519a7c17c0c47e5b56bd2818367f6c5876e11b53b6dc5d8718df7b3fd4a8",
+      "observed": true,
+      "operation": "stale_owner_rejected",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:845ae750c7d3f63e3ee910971ed1f11e0cc38aa0c998133d5d77359aea1a08aa",
+      "observed": true,
+      "operation": "retired_in_memory_envelope",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:508b0cd8355cd898ec38a35a23eda2695aa75e3657fce5f7303e93a0016b3aac",
+      "observed": true,
+      "operation": "remote_sql_refused",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:e9ed119813907e2ed8a23fced49a2efb3038b5740cade571ab7583994489759b",
+      "observed": true,
+      "operation": "production_daemon_gateway_blocked",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:fc7d9a486d661dafebd590a0bebfa51abb0e7b3a5b93ef68b4dca36ef462d58c",
+      "observed": true,
+      "operation": "stale_recovery_rejected",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:d1058141955908513287592aaae781fe57c00c6dcfa81c3e44adc0199b20e645",
+      "observed": true,
+      "operation": "duplicate_recovery_rejected",
+      "outcome": "passed"
+    }
+  ],
+  "observed_server_id": "server:observed-hermetic-owner",
+  "owner_dispatch_admitted": false,
+  "owner_evidence": {
+    "backing_owner_interface": "QuackStateServer@1",
+    "interface": "ExternalQuackOwner@1",
+    "lease_cid": "sha256:766ac52f0c760fbc7be34b8abd6d09ea40f0e099395cd89f4d12b32b0e11f765",
+    "production_admitted": false,
+    "production_blockers": [
+      "canonical_39_operation_owner_handler_unqualified"
+    ],
+    "server_id": "server:observed-hermetic-owner"
+  },
+  "production_blockers": [
+    "canonical_39_operation_owner_handler_unqualified"
+  ],
+  "qualification_status": "fail_closed_owner_facade_observed",
+  "result": "pass",
+  "schema": "qualification-receipt@1",
+  "task_id": "EAAEF-144",
+  "terminal": "completed"
+}

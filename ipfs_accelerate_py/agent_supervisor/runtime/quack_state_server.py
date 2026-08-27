@@ -4055,6 +4055,7 @@ class QuackStateServer:
                 self.config.database_path,
                 threads=1,
                 memory_limit=DEFAULT_MEMORY_LIMIT,
+                prefer_quack=False,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 

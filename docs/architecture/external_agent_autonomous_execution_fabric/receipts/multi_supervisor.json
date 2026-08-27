@@ -1,0 +1,60 @@
+{
+  "docker_workers_started": 0,
+  "evidence_mode": "observed_hermetic",
+  "exclusive_write_owner": "server:observed-hermetic-owner",
+  "live_eight_container_qualification": false,
+  "live_quack_contacted": false,
+  "live_runtime_invoked": true,
+  "observations": [
+    {
+      "evidence_cid": "sha256:8d5efeb3f8721627be7091d01df09b6e7f8e7790c0d2083beb1257b6630998ec",
+      "observed": true,
+      "operation": "three_supervisor_roles",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:403d59a607922c04f890101ab780d9c25ad0c97ab8a1f16bab4a1b79917a44f0",
+      "observed": true,
+      "operation": "eight_worker_leases",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:b7d13998f52aacca41cbf328254efe1566412b28c6f800c81d4d4a0945bb1475",
+      "observed": true,
+      "operation": "exclusive_owner_second_start_refused",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:e7a7b485ff57cbe05a1753e7a73aef21ac4a38c5c2db94c27c2b90bbbb8946c5",
+      "observed": true,
+      "operation": "conflict_free_frontier",
+      "outcome": "passed"
+    },
+    {
+      "evidence_cid": "sha256:d033e49bd27ba0406609450883363cc3222ff9c38022ae6d3188289ace98546e",
+      "observed": true,
+      "operation": "stale_owner_rejected",
+      "outcome": "passed"
+    }
+  ],
+  "observed_server_id": "server:observed-hermetic-owner",
+  "owner_dispatch_admitted": false,
+  "owner_evidence": {
+    "backing_owner_interface": "QuackStateServer@1",
+    "interface": "ExternalQuackOwner@1",
+    "lease_cid": "sha256:f1f45c349da3a506001de3f227cbca60e4a79b3745612d3bd42643293503244c",
+    "production_admitted": false,
+    "production_blockers": [
+      "canonical_39_operation_owner_handler_unqualified"
+    ],
+    "server_id": "server:observed-hermetic-owner"
+  },
+  "production_blockers": [
+    "canonical_39_operation_owner_handler_unqualified"
+  ],
+  "qualification_status": "fail_closed_owner_facade_observed",
+  "result": "pass",
+  "schema": "qualification-receipt@1",
+  "task_id": "EAAEF-141",
+  "terminal": "completed"
+}

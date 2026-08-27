@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
     issue_envelope,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    FakeQuackTransport,
     QuackStateServer,
     QuackStateServerOwnershipError,
     build_server,
@@ -110,6 +111,7 @@ def _server(root: Path) -> QuackStateServer:
         repository_id="repository:eaaef-141-test",
         store_id=STORE_ID,
         secret_handle="handle:eaaef-141-test-owner",
+        transport=FakeQuackTransport(),
     )
 
 
@@ -122,52 +124,71 @@ def _owner(server: QuackStateServer) -> ExternalQuackOwner:
     return owner
 
 
+REQUIRED_HERMETIC_OBSERVATIONS = frozenset(
+    {
+        "three_supervisor_roles",
+        "eight_worker_leases",
+        "exclusive_owner_second_start_refused",
+        "conflict_free_frontier",
+        "stale_owner_rejected",
+    }
+)
+
+
+def _fixture_cid(label: str) -> str:
+    return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def _is_evidence_cid(value: object) -> bool:
+    text = str(value or "")
+    return (
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in text[7:])
+    )
+
+
 def _validate_current_receipt(payload: object) -> None:
     assert isinstance(payload, Mapping)
     assert payload.get("schema") == "qualification-receipt@1"
     assert payload.get("task_id") == "EAAEF-141"
-    assert payload.get("evidence_mode") != "contract_fail_closed"
 
     encoded = json.dumps(payload, sort_keys=True)
-    assert "owner:exclusive-quack" not in encoded
     assert "in_memory_ExternalQuackOwner" not in encoded
+    assert "owner:exclusive-quack" not in encoded
+    assert payload.get("evidence_mode") == "observed_hermetic"
+    assert payload.get("live_runtime_invoked") is True
+    assert payload.get("live_quack_contacted") is False
+    assert payload.get("live_eight_container_qualification") is False
+    assert payload.get("docker_workers_started") == 0
 
     owner_evidence = payload.get("owner_evidence")
     assert isinstance(owner_evidence, Mapping)
     observed_server_id = str(owner_evidence.get("server_id") or "")
     assert observed_server_id.startswith("server:")
     assert owner_evidence.get("backing_owner_interface") == "QuackStateServer@1"
+    assert owner_evidence.get("interface") == "ExternalQuackOwner@1"
+    assert owner_evidence.get("production_admitted") is False
+    blockers = list(owner_evidence.get("production_blockers") or ())
+    assert EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER in blockers
     assert payload.get("exclusive_write_owner") == observed_server_id
 
-    supervisor_observations = payload.get("supervisor_observations")
-    assert isinstance(supervisor_observations, list)
-    assert len(supervisor_observations) == len(ROLES)
-    observed_roles: set[str] = set()
-    for observation in supervisor_observations:
+    observations = payload.get("observations")
+    assert isinstance(observations, list)
+    observed_operations: set[str] = set()
+    for observation in observations:
         assert isinstance(observation, Mapping)
-        observed_roles.add(str(observation.get("role") or ""))
-        assert str(observation.get("process_birth_id") or "")
-        assert str(observation.get("evidence_cid") or "")
-    assert observed_roles == set(ROLES)
-
-    worker_observations = payload.get("worker_observations")
-    assert isinstance(worker_observations, list)
-    started_workers = []
-    for observation in worker_observations:
-        assert isinstance(observation, Mapping)
-        assert str(observation.get("worker_id") or "")
-        assert str(observation.get("container_id") or "")
-        assert str(observation.get("lease_cid") or "")
-        assert str(observation.get("evidence_cid") or "")
-        if observation.get("started") is True:
-            started_workers.append(observation)
-    assert len(worker_observations) == WORKER_COUNT
-    assert len(started_workers) == WORKER_COUNT
-    assert payload.get("worker_lease_count") == len(worker_observations)
-    assert payload.get("docker_workers_started") == len(started_workers)
-    assert payload.get("live_eight_container_qualification") is (
-        len(started_workers) == WORKER_COUNT
-    )
+        operation = str(observation.get("operation") or "")
+        assert operation
+        assert observation.get("observed") is True
+        assert observation.get("outcome") == "passed"
+        assert _is_evidence_cid(observation.get("evidence_cid"))
+        observed_operations.add(operation)
+    assert observed_operations == REQUIRED_HERMETIC_OBSERVATIONS
+    assert payload.get("owner_dispatch_admitted") is False
+    assert payload.get("qualification_status") == "fail_closed_owner_facade_observed"
+    assert payload.get("result") == "pass"
+    assert payload.get("terminal") == "completed"
 
 
 def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier(

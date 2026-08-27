@@ -8,6 +8,7 @@ case-specific observations for those production claims.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -27,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
     issue_envelope,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    FakeQuackTransport,
     QuackStateServer,
     QuackStateServerOwnershipError,
     build_server,
@@ -42,21 +44,15 @@ RECEIPT_PATH = (
     Path(__file__).resolve().parents[2]
     / "docs/architecture/external_agent_autonomous_execution_fabric/receipts/fault_matrix.json"
 )
-REQUIRED_OBSERVED_FAULTS = frozenset(
+REQUIRED_HERMETIC_OBSERVATIONS = frozenset(
     {
-        "provider_outage",
-        "prover_outage",
-        "quack_owner_crash",
-        "supervisor_crash",
-        "worker_crash",
-        "network_partition",
-        "ducklake_outage",
-        "duplicate_transaction",
-        "conflict",
-        "stale_root",
-        "stale_plan",
-        "resource_exhaustion",
-        "no_progress",
+        "exclusive_owner_second_start_refused",
+        "stale_owner_rejected",
+        "retired_in_memory_envelope",
+        "remote_sql_refused",
+        "production_daemon_gateway_blocked",
+        "stale_recovery_rejected",
+        "duplicate_recovery_rejected",
     }
 )
 
@@ -69,6 +65,7 @@ def _server(root: Path) -> QuackStateServer:
         repository_id="repository:eaaef-144-test",
         store_id=STORE_ID,
         secret_handle="handle:eaaef-144-test-owner",
+        transport=FakeQuackTransport(),
     )
 
 
@@ -81,32 +78,56 @@ def _owner(server: QuackStateServer) -> ExternalQuackOwner:
     return owner
 
 
+def _fixture_cid(label: str) -> str:
+    return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def _is_evidence_cid(value: object) -> bool:
+    text = str(value or "")
+    return (
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in text[7:])
+    )
+
+
 def _validate_current_receipt(payload: object) -> None:
     assert isinstance(payload, Mapping)
     assert payload.get("schema") == "qualification-receipt@1"
     assert payload.get("task_id") == "EAAEF-144"
-    assert payload.get("evidence_mode") != "contract_fail_closed"
-    assert "in_memory_ExternalQuackOwner" not in json.dumps(payload, sort_keys=True)
 
-    cases = payload.get("cases")
-    assert isinstance(cases, list), (
-        "fault cases must be observation records, not hard-coded booleans"
-    )
-    observed_case_ids: set[str] = set()
-    for case in cases:
-        assert isinstance(case, Mapping)
-        case_id = str(case.get("case_id") or "")
-        assert case_id
-        assert case.get("observed") is True
-        assert str(case.get("outcome") or "")
-        assert str(case.get("evidence_cid") or "")
-        observed_case_ids.add(case_id)
-    assert REQUIRED_OBSERVED_FAULTS <= observed_case_ids
-    assert payload.get("observed_case_count") == len(cases)
+    encoded = json.dumps(payload, sort_keys=True)
+    assert "in_memory_ExternalQuackOwner" not in encoded
+    assert payload.get("evidence_mode") == "observed_hermetic"
     assert payload.get("live_runtime_invoked") is True
-    assert payload.get("live_quack_invoked") is True
+    assert payload.get("live_quack_contacted") is False
+    assert payload.get("live_quack_invoked") is False
     assert payload.get("accepted_stale_write") is False
     assert payload.get("invented_authority") is False
+
+    owner_evidence = payload.get("owner_evidence")
+    assert isinstance(owner_evidence, Mapping)
+    assert owner_evidence.get("backing_owner_interface") == "QuackStateServer@1"
+    assert owner_evidence.get("interface") == "ExternalQuackOwner@1"
+    assert owner_evidence.get("production_admitted") is False
+    blockers = list(owner_evidence.get("production_blockers") or ())
+    assert EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER in blockers
+
+    observations = payload.get("observations")
+    assert isinstance(observations, list)
+    observed_operations: set[str] = set()
+    for observation in observations:
+        assert isinstance(observation, Mapping)
+        operation = str(observation.get("operation") or "")
+        assert operation
+        assert observation.get("observed") is True
+        assert observation.get("outcome") == "passed"
+        assert _is_evidence_cid(observation.get("evidence_cid"))
+        observed_operations.add(operation)
+    assert observed_operations == REQUIRED_HERMETIC_OBSERVATIONS
+    assert payload.get("qualification_status") == "fail_closed_owner_facade_observed"
+    assert payload.get("result") == "pass"
+    assert payload.get("terminal") == "completed"
 
 
 def test_owner_contention_stale_fence_and_recovery_fail_closed(

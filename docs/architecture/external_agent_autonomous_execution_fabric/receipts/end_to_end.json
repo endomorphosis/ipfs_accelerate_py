@@ -1,0 +1,64 @@
+{
+  "completion_claimed": false,
+  "evidence_mode": "observed_hermetic",
+  "live_eight_container_qualification": false,
+  "live_quack_contacted": false,
+  "live_runtime_invoked": true,
+  "owner_dispatch_admitted": false,
+  "owner_evidence": {
+    "backing_owner_interface": "QuackStateServer@1",
+    "interface": "ExternalQuackOwner@1",
+    "lease_cid": "sha256:fe7ffd9271bed5f3e119e28e12b53e99dfd593dae959947e2589bdaa2310f5d8",
+    "production_admitted": false,
+    "production_blockers": [
+      "canonical_39_operation_owner_handler_unqualified"
+    ],
+    "server_id": "server:observed-hermetic-owner"
+  },
+  "production_blockers": [
+    "canonical_39_operation_owner_handler_unqualified"
+  ],
+  "qualification_status": "fail_closed_owner_facade_observed",
+  "result": "pass",
+  "schema": "qualification-receipt@1",
+  "stages": [
+    {
+      "evidence_cid": "sha256:089522a29649c988b65bbcc4ab7974e5128c775543b126fa2c714606a97f0ab0",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "handoff"
+    },
+    {
+      "evidence_cid": "sha256:e43c68fc7ac08da4a92175916e1b39095ca113256fde76890a93b75faa00104d",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "plan_admit"
+    },
+    {
+      "evidence_cid": "sha256:06f4496d9354e2ef75c6ba47a37fbd8d645caa164afea899d8459d9c032947ff",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "frontier"
+    },
+    {
+      "evidence_cid": "sha256:f1f3dd3490c4fa9df939ef2421980e7e7b19f9ff6159de96f267abf455784f1b",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "typed_quack_owner_boundary"
+    },
+    {
+      "evidence_cid": "sha256:7fee638bd2c9aacfe7524d31ad7070ca009760ed51210d2482a96533db084689",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "recovery"
+    },
+    {
+      "evidence_cid": "sha256:743f64c15b1bf21b431d9df5496d81858141e0e855b20310fb97db38ea612683",
+      "observed": true,
+      "outcome": "passed",
+      "stage": "remains_nonterminal"
+    }
+  ],
+  "task_id": "EAAEF-145",
+  "terminal": "completed"
+}
