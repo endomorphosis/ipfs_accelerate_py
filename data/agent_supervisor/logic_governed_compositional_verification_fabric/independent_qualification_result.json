@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeera46zpmhya6nu4534f2d2lfrupybf2xbwezolktwz2le3c5pslmhla",
+  "checkout_fingerprint_cid": "baguqeera6u2lbgdrf7u7m2pex2nnp5vbjlijmzejwkriwcnywnrfjsj6elaq",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeeranwpnq4wa645lhwbyftop4mau43xoe5r4xl747q44nqknsguiv4mq",
+  "result_cid": "baguqeerar5cjggam4xiryio7swvq6lhkt4rnp6y6p4ehev4yxpwe3fohshva",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
-      "collected": 10,
-      "duration_ms": 3908,
+      "collected": 37,
+      "duration_ms": 4251,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -39,7 +39,7 @@
         "pytest_log_sink_redirected": true,
         "resource_limits": {
           "address_space_bytes": 8589934592,
-          "cpu_seconds": 900,
+          "cpu_seconds": 3600,
           "file_size_bytes": 67108864,
           "open_files": 256,
           "processes": 511830
@@ -48,7 +48,7 @@
       },
       "manifest": {
         "candidate_authored": true,
-        "manifest_cid": "baguqeeraklddxaet357ygrsqdthpiaqvjeonjtgzfffpusdaw64xflne5ena",
+        "manifest_cid": "baguqeerajicfoacuqaylg45zdxuzqsfupi67wtaaobohpbntk45cgfgt3lta",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_lgcvf_focused_qualification.py"
@@ -56,26 +56,26 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_lgcvf_focused_qualification.py",
-            "sha256": "sha256:be4444d30cf61f078ae5bc31856f63ce6cd65e642f0885dc9c330fa570ca5bc2",
-            "size_bytes": 9109
+            "sha256": "sha256:4297dd2cbd17fd5f038ad5304e5976e1dc4e051cde56feba09993bdcc4e2abfb",
+            "size_bytes": 44908
           }
         ],
         "suite_id": "candidate_focused"
       },
-      "nodeids_cid": "baguqeerafwmd4ygnfehnjsdwf34z62xq3pr7o2d4pjqe5i2pnlnxt2kmnfiq",
-      "observation_cid": "baguqeeraycddp3evagv5ey3y7ieyo4nmbzkgf55h7fxfzlbc5ot7spjngauq",
+      "nodeids_cid": "baguqeeraw3dwne3kik3c2srzyhahzzr33ykdocaca2irjwk7xffryg2ncsfq",
+      "observation_cid": "baguqeeraoih2ggnac2mr3mjb2hdcqpgqrf64gjf3oytjjysuzlht7kdhdn4q",
       "passed": true,
-      "passed_count": 10,
+      "passed_count": 37,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:8dfdd1f7d254295d4895bc98d8ca837b49d234849a0d3eec9e37b89f475435ca",
+      "transcript_sha256": "sha256:a99d5f7fc2f71fe0de58c3247039d01a49807afb1c118c434102594aead35cb7",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 10,
-      "duration_ms": 2828,
+      "collected": 13,
+      "duration_ms": 2758,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -91,7 +91,7 @@
         "pytest_log_sink_redirected": true,
         "resource_limits": {
           "address_space_bytes": 8589934592,
-          "cpu_seconds": 900,
+          "cpu_seconds": 3600,
           "file_size_bytes": 67108864,
           "open_files": 256,
           "processes": 511830
@@ -100,7 +100,7 @@
       },
       "manifest": {
         "candidate_authored": true,
-        "manifest_cid": "baguqeerarygh66ycp6uq22cy2g57q6tt2dyyzmif3wapcmf3w7kjgbeuksba",
+        "manifest_cid": "baguqeeraj3ue46xqt642airp27lm7qsphh5b4qcjvsd6rapkc4egkmr5js4a",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_lgcvf_adversarial.py"
@@ -108,26 +108,26 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_lgcvf_adversarial.py",
-            "sha256": "sha256:55bb713634d717f1874aa1c44405c58b25a3d56263a5f1ff69655ff2961bfae0",
-            "size_bytes": 8407
+            "sha256": "sha256:15acea77fc02e2fdba4f030096a752691eef9fd870e5f8851c4fc281fb7147ec",
+            "size_bytes": 15977
           }
         ],
         "suite_id": "candidate_adversarial"
       },
-      "nodeids_cid": "baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma",
-      "observation_cid": "baguqeeraopoyerwu5nkh7hkwmzh6dovq3j25smu3xgyyicnpci7r6btxgava",
+      "nodeids_cid": "baguqeeraptlkhqpswpfets5ppwk35h4vbtfc5sdx4dv7gymk5ddwscmecblq",
+      "observation_cid": "baguqeeravzogpo7quy3dyvcoxyt264xb2mpmzhs5jso4rwjft6h5isqp6lwq",
       "passed": true,
-      "passed_count": 10,
+      "passed_count": 13,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:e0f4d06796d1e7e6ac89790e56388d707e72d6e23f2921fb86db6432b2d8cdef",
+      "transcript_sha256": "sha256:861c2f2b820f10d9de6d73150312c654255c74a3d6c53e98864c8cc91e6535c3",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 143,
-      "duration_ms": 2977,
+      "collected": 169,
+      "duration_ms": 2850,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -143,7 +143,7 @@
         "pytest_log_sink_redirected": true,
         "resource_limits": {
           "address_space_bytes": 8589934592,
-          "cpu_seconds": 900,
+          "cpu_seconds": 3600,
           "file_size_bytes": 67108864,
           "open_files": 256,
           "processes": 511830
@@ -152,7 +152,7 @@
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeerakuzdgyylajfcx6tlqpuc2xvapr667ovk5qhopdkyhnhxg6hwerga",
+        "manifest_cid": "baguqeerayhjhogq2nxrlcd4thhllk3c4p76fi4ki7od3as6fp2ir577cstkq",
         "owner_root": "ipfs_datasets_py",
         "paths": [
           "tests/unit/logic/software_contracts/test_compositional_contract.py",
@@ -188,46 +188,46 @@
           },
           {
             "path": "tests/unit/logic/backends/test_interpolation.py",
-            "sha256": "sha256:67ad17496543a9731c5f91a2298986be5389e6597a82073c1e1151b41277648d",
-            "size_bytes": 15542
+            "sha256": "sha256:4717bebac37a83bcc6bca0bb8896a74317e0cea9120be0efce0bd3b8003c2506",
+            "size_bytes": 20579
           },
           {
             "path": "tests/unit/logic/software_verification/test_cegar.py",
-            "sha256": "sha256:e94e091d30e928219b090133f1f85bedad975028c767480982ec59ff58c4cfd9",
-            "size_bytes": 24373
+            "sha256": "sha256:c7723264ac7428cd0798a4fce4dac28f71c41317dca57c0bdbd3aa17e6ec20f6",
+            "size_bytes": 25769
           },
           {
             "path": "tests/unit/logic/formalization/test_translation_receipts.py",
-            "sha256": "sha256:1a321b9bced0237ee9dd28b796947d6a5e68ca419dad8e81a934b380f06e7548",
-            "size_bytes": 30085
+            "sha256": "sha256:d22cc2c07bb88abbec196bac8697b8b081647694e78e1a174b8650841290ddbe",
+            "size_bytes": 40132
           },
           {
             "path": "tests/unit/logic/software_verification/test_obligation_slicing.py",
-            "sha256": "sha256:487194ddf108167e647f5fe2cdce624854a7162f45d46b6a88f28395a608d65e",
-            "size_bytes": 32425
+            "sha256": "sha256:a0539072a015020c40ef42149cafe6b2e308d759f5704e5fd26a09a1b64bb1a6",
+            "size_bytes": 39212
           },
           {
             "path": "tests/unit/logic/test_compositional_verification_public_api.py",
-            "sha256": "sha256:ba35600a11a8d11e2a9c28bb03f0c258eedffdd0e7cfea011bbde166c62bf00e",
-            "size_bytes": 23799
+            "sha256": "sha256:119ad1a0a28a07ee46e7061fbebdf61171cbf9cdda325d64d5ce107e98591257",
+            "size_bytes": 31211
           }
         ],
         "suite_id": "fixed_datasets_semantics"
       },
-      "nodeids_cid": "baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya",
-      "observation_cid": "baguqeeraycvcfr2ktodhujntuf3c2yid5tivhoroigjsuzwizkxwxd637b3q",
+      "nodeids_cid": "baguqeeratilbv3y6fej6xzcawcurytsk4btgjldzgpz2ovm4nv3c6yu2vkra",
+      "observation_cid": "baguqeerausoimy5igk33jp2rgd7leprlum27wtdcypkixwsbygp6qbc55p4a",
       "passed": true,
-      "passed_count": 143,
+      "passed_count": 169,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:f767debf4c00d9345148b402bd8975a16fb3098daba42e2f396c96a4f1bda9cd",
+      "transcript_sha256": "sha256:f850bb18294c0641673ec35283201a15793d35c8c21c6e4d94d8ae3c99153f21",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 349,
-      "duration_ms": 785093,
+      "collected": 631,
+      "duration_ms": 1284786,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -243,7 +243,7 @@
         "pytest_log_sink_redirected": true,
         "resource_limits": {
           "address_space_bytes": 8589934592,
-          "cpu_seconds": 900,
+          "cpu_seconds": 3600,
           "file_size_bytes": 67108864,
           "open_files": 256,
           "processes": 511830
@@ -252,7 +252,7 @@
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeera36qn26vkccc5ece6za74c54s3ygum3ic76wyhv6nmv7zfucnxqha",
+        "manifest_cid": "baguqeeraaxz572exd4agikissu4n3q2gyztucotuefeioyttj4ejvugmtsna",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_compositional_verification_vertical.py",
@@ -267,18 +267,18 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_compositional_verification_vertical.py",
-            "sha256": "sha256:2fd61ec5585b8bcae4936019bbfb03b2f804c0afee6e83a61c5fdbb13df95a21",
-            "size_bytes": 9593
+            "sha256": "sha256:84e3bc6212c7c81677fa7b7f29465e521e8ee67d85df1160b95f0986f721373b",
+            "size_bytes": 10250
           },
           {
             "path": "test/api/test_agent_supervisor_database_implementation_daemon.py",
-            "sha256": "sha256:7c6c7db014a06a85dbb18c946d6030a8ff7ac79bae0da468cad0b79eb18381a9",
-            "size_bytes": 292160
+            "sha256": "sha256:3efc9dbf2a0983234774beae3382d992b76967cd3f9a84d345220e44b569cf42",
+            "size_bytes": 652101
           },
           {
             "path": "test/api/test_agent_supervisor_database_portal_bridge.py",
-            "sha256": "sha256:ddca2dad313d0a99e76ac39d9ec7188aef92412516d4a021be15cf5e20aa7617",
-            "size_bytes": 133307
+            "sha256": "sha256:7f84d2e45b3618743e3ede20f318f077d2555033f3606be9b786855eba43cdd0",
+            "size_bytes": 445252
           },
           {
             "path": "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
@@ -308,14 +308,14 @@
         ],
         "suite_id": "fixed_accelerator_authority"
       },
-      "nodeids_cid": "baguqeeraacn7efk2fnaowtsihyznravxz5mttsiieoyzaptvx2pdunuo5h6a",
-      "observation_cid": "baguqeera6klshqsn4svzcqxkflcy56sry3ejbqgordb7nclnsmtnv53uoyta",
+      "nodeids_cid": "baguqeeragqwx6lqesjki3ptgx4umy34a5mklbwbro5q3istubyelb5vinwbq",
+      "observation_cid": "baguqeeraqs6dkizj4oio5coiortdfw5bptgmlpljb6m2wbcgtdluryccwgza",
       "passed": true,
-      "passed_count": 349,
+      "passed_count": 631,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:cade3be0be708a688d1e6b4f0a5c45b96f62cd9f13db9e72dba6c2842b99f3c0",
+      "transcript_sha256": "sha256:16f94bfb390f321bdfb7bd5282d5fc1d7d0fbb78495b56622f9fb18c136c8299",
       "xfailed_count": 0,
       "xpassed_count": 0
     }
@@ -323,10 +323,10 @@
   "task_implementation_complete": false,
   "test_qualification_complete": true,
   "totals": {
-    "collected": 512,
+    "collected": 850,
     "error_count": 0,
     "failed_count": 0,
-    "passed_count": 512,
+    "passed_count": 850,
     "skipped_count": 0,
     "xfailed_count": 0,
     "xpassed_count": 0
