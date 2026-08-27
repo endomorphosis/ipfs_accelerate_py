@@ -9874,18 +9874,6 @@ def run_successor(
                 "restart the successor controller against the new continuity "
                 "receipt"
             )
-        protected_completion = (
-            _automatically_complete_protected_qualification_locked(
-                paths,
-                root=root,
-                lock_custody=lock_custody,
-            )
-        )
-        if protected_completion is not None:
-            raise SuccessorOperatorError(
-                "protected LGCVF-113 qualification completed; restart the "
-                "successor controller against the new continuity receipt"
-            )
         result = _run_locked_successor(
             config_path,
             root=root,
@@ -10888,6 +10876,19 @@ def _run_locked_successor(
         )
 
         preload_agent_supervisor_native_dependency(live_launch["native_launch"])
+        if _lock_custody is not None:
+            protected_completion = (
+                _automatically_complete_protected_qualification_locked(
+                    paths,
+                    root=root,
+                    lock_custody=_lock_custody,
+                )
+            )
+            if protected_completion is not None:
+                raise SuccessorOperatorError(
+                    "protected LGCVF-113 qualification completed; restart the "
+                    "successor controller against the new continuity receipt"
+                )
         # Recovery may publish restart authority only after the configured
         # capsule and native runtime have passed their read-only preparation.
         # Existing receipts remain exact-source authority: later maintenance
