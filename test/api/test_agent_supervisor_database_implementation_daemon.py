@@ -10604,7 +10604,7 @@ def test_transition_invalid_replay_rejects_a_foreign_database_claim(
         )
         with pytest.raises(
             DatabaseImplementationConflictError,
-            match="foreign durable receipt",
+            match="database task was claimed by a different fenced attempt",
         ):
             daemon._cas_task_status_database(
                 task.task_cid,
