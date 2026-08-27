@@ -1,0 +1,11 @@
+{
+  "admitted": [],
+  "admitted_count": 0,
+  "applied": true,
+  "configured_board_launch": false,
+  "live_launch_allowed": false,
+  "live_multi_supervisor": false,
+  "process_started": false,
+  "reason": "bootstrap_complete",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-controlled-plan-r2-frontier-admit@1"
+}

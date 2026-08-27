@@ -2420,6 +2420,10 @@ def test_runner_scope_parser_retains_explicit_legacy_selectors() -> None:
         runner._parse_args(["--immutable-observation"]).scope
         == "immutable_observation"
     )
+    assert (
+        runner._parse_args(["--host-controlled-plan-r2"]).scope
+        == "host_controlled_plan_r2"
+    )
 
 
 @pytest.mark.parametrize(

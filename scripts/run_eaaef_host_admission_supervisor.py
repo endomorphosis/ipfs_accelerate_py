@@ -6,8 +6,11 @@ evidence and never opens the control/task DuckDB; its EAAEF-182 capability probe
 may use only an isolated in-memory connection. ``--immutable-full-observation``
 extends one explicitly selected current early observation across EAAEF-180..191
 using static public evidence and likewise bypasses the control database, owner
-lease, and status. Historical mutable bootstrap selectors remain parseable for
-CLI compatibility but fail closed until the signed CASF owner fabric exists.
+lease, and status. ``--host-controlled-plan-r2`` admits cataloged held Plan-R2
+tasks into ``ready`` after the S/A bootstrap is complete and continues auto
+validations without configured-board live launch. Historical mutable bootstrap
+selectors remain parseable for CLI compatibility but fail closed until the
+signed CASF owner fabric exists.
 """
 
 from __future__ import annotations
@@ -86,6 +89,18 @@ S_PYTEST = {
     "EAAEF-191": "admission_bundle",
 }
 MAX_PASSES = 24
+HOST_CONTROLLED_PLAN_R2_MAX_PASSES = 96
+HOST_CONTROLLED_PLAN_R2_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-host-controlled-plan-r2-frontier-admit@1"
+)
+PLAN_R2_APPLY_RECEIPT = (
+    ROOT
+    / "docs/architecture/external_agent_autonomous_execution_fabric"
+    / "receipts"
+    / "host_admission"
+    / "host_controlled_plan_r2_frontier.json"
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -135,6 +150,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "disabled legacy mutable scope for the complete S/A bootstrap; "
             "use --immutable-full-observation"
+        ),
+    )
+    scope.add_argument(
+        "--host-controlled-plan-r2",
+        dest="scope",
+        action="store_const",
+        const="host_controlled_plan_r2",
+        default=argparse.SUPPRESS,
+        help=(
+            "after S/A bootstrap is complete, CAS blocked Plan-R2 rows to "
+            "ready and run host-controlled auto validations; live launch stays closed"
         ),
     )
     parser.add_argument(
@@ -1132,6 +1158,164 @@ def _reopen_invalid_host_admission_tasks(
     return reopened
 
 
+def _tasks_by_alias(source: DatabaseTaskSource) -> dict[str, object]:
+    return {item.task_alias: item for item in source.list_tasks(limit=1000).tasks}
+
+
+def bootstrap_complete(tasks_by_alias: dict[str, object]) -> bool:
+    return all(
+        getattr(tasks_by_alias.get(alias), "status", "") == "completed"
+        for alias in BOOTSTRAP
+    )
+
+
+def admit_held_plan_r2_frontier(source: DatabaseTaskSource) -> dict:
+    """Admit cataloged held tasks after bootstrap without live launch.
+
+    Completing EAAEF-009 via pytest does not replace Plan-R2 sentinels.  The
+    host-controlled path CASes ``blocked`` rows to ``ready`` so dependency
+    selection can form the B frontier.  Configured-board launch stays closed.
+    """
+
+    tasks_by_alias = _tasks_by_alias(source)
+    if not bootstrap_complete(tasks_by_alias):
+        return {
+            "schema": HOST_CONTROLLED_PLAN_R2_RECEIPT_SCHEMA,
+            "applied": False,
+            "reason": "bootstrap_incomplete",
+            "admitted": [],
+            "admitted_count": 0,
+            "configured_board_launch": False,
+            "live_launch_allowed": False,
+            "process_started": False,
+            "live_multi_supervisor": False,
+        }
+    admitted: list[str] = []
+    for alias, task in tasks_by_alias.items():
+        if alias in BOOTSTRAP or getattr(task, "status", "") != "blocked":
+            continue
+        result = source.compare_and_set_status(
+            task.task_cid,
+            int(task.revision),
+            "ready",
+            {
+                "schema": HOST_CONTROLLED_PLAN_R2_RECEIPT_SCHEMA,
+                "operation": "host_controlled_plan_r2_frontier_admit",
+                "configured_board_launch": False,
+                "process_started": False,
+                "live_launch_allowed": False,
+                "plan_r2_applied": True,
+            },
+        )
+        if result.changed:
+            admitted.append(alias)
+    payload = {
+        "schema": HOST_CONTROLLED_PLAN_R2_RECEIPT_SCHEMA,
+        "applied": True,
+        "reason": "bootstrap_complete",
+        "admitted": sorted(admitted),
+        "admitted_count": len(admitted),
+        "configured_board_launch": False,
+        "live_launch_allowed": False,
+        "process_started": False,
+        "live_multi_supervisor": False,
+    }
+    PLAN_R2_APPLY_RECEIPT.parent.mkdir(parents=True, exist_ok=True)
+    PLAN_R2_APPLY_RECEIPT.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return payload
+
+
+def run_host_controlled_plan_r2() -> dict:
+    """Admit the held Plan-R2 frontier and auto-validate without live launch."""
+
+    expected_identity = _current_host_admission_identity()
+    control = _active_control_db()
+    source_cls = _database_task_source_class()
+    completed: list[dict] = []
+    ready_before: list[str] = []
+    blocked_held: list[str] = []
+    plan_r2: dict = {"applied": False}
+    with source_cls(control, install_schema=False) as source:
+        first = source.ready_tasks(limit=1000)
+        ready_before = [
+            item.task_alias for item in first.tasks if item.task_alias in BOOTSTRAP
+        ]
+        for _pass in range(HOST_CONTROLLED_PLAN_R2_MAX_PASSES):
+            tasks_by_alias = _tasks_by_alias(source)
+            bootstrap_done = bootstrap_complete(tasks_by_alias)
+            if bootstrap_done and plan_r2.get("applied") is not True:
+                plan_r2 = admit_held_plan_r2_frontier(source)
+            page = source.ready_tasks(limit=1000)
+            ready = [
+                item.task_alias
+                for item in page.tasks
+                if item.task_alias in HOST_AUTO
+            ]
+            held_ready = [
+                item.task_alias
+                for item in page.tasks
+                if item.task_alias not in BOOTSTRAP
+            ]
+            blocked_held = held_ready
+            if held_ready and not bootstrap_done:
+                raise RuntimeError(
+                    "held Plan-R2 tasks became ready without EAAEF-009: "
+                    + ",".join(held_ready)
+                )
+            if bootstrap_done:
+                ready.extend(held_ready)
+            if not ready:
+                break
+            progressed = False
+            failed_this_pass: list[str] = []
+            for alias in ready:
+                result = _complete(source, alias, expected_identity)
+                completed.append(result)
+                if result.get("status") == "completed" and result.get("changed"):
+                    progressed = True
+                elif result.get("status") == "validation_failed":
+                    failed_this_pass.append(alias)
+            if not progressed:
+                if failed_this_pass and len(failed_this_pass) < len(ready):
+                    continue
+                break
+        after = source.ready_tasks(limit=1000)
+        ready_after = [item.task_alias for item in after.tasks]
+        page_all = source.list_tasks(limit=1000)
+        status_counts: dict[str, int] = {}
+        for item in page_all.tasks:
+            status_counts[item.status] = status_counts.get(item.status, 0) + 1
+    payload = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-host-admission-supervisor@1"
+        ),
+        "execution_scope": "host_controlled_plan_r2",
+        "process_started": True,
+        "configured_board_launch": False,
+        "live_multi_supervisor": False,
+        "live_launch_allowed": False,
+        "provider_invoked": False,
+        "control_database_path_resolved": True,
+        "control_database_opened": True,
+        "direct_database_binding_allowed": True,
+        "control_db": str(control.relative_to(ROOT)),
+        "plan_r2_frontier": plan_r2,
+        "completed": completed,
+        "ready_before": ready_before,
+        "ready_after": ready_after,
+        "blocked_held": blocked_held,
+        "task_count": sum(status_counts.values()),
+        "status_counts": status_counts,
+        "updated_at": int(time.time()),
+    }
+    _write_status(payload)
+    return payload
+
+
 def run_once(
     *,
     scope: str = "immutable_observation",
@@ -1142,6 +1326,7 @@ def run_once(
         "immutable_observation",
         "immutable_full_observation",
         "full_bootstrap",
+        "host_controlled_plan_r2",
     }:
         raise ValueError("EAAEF host-admission scope is invalid")
     selected_early_cid = str(early_observation_cid or "")
@@ -1212,6 +1397,8 @@ def run_once(
         raise ValueError(
             "early observation CID is valid only for immutable full observation"
         )
+    if scope == "host_controlled_plan_r2":
+        return run_host_controlled_plan_r2()
     if scope == "immutable_observation":
         expected_identity = _current_host_admission_identity()
         collection = _validated_early_frontier_collection(
