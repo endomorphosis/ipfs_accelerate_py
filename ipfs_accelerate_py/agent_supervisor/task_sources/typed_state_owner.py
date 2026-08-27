@@ -6894,11 +6894,28 @@ class TypedStateOwnerGateway:
                 [expected_history["task_cid"]],
             ).fetchone()
             expected_revision = expected_history["revision"]
+            predecessor = None
+            if (
+                type(expected_revision) is int
+                and expected_revision > 1
+            ):
+                predecessor = self._connection.execute(
+                    """
+                    SELECT 1 FROM task_revisions
+                    WHERE task_cid = ? AND revision = ? LIMIT 1
+                    """,
+                    [
+                        expected_history["task_cid"],
+                        expected_revision - 1,
+                    ],
+                ).fetchone()
             if (
                 population is None
                 or type(expected_revision) is not int
-                or tuple(population[index] for index in range(3))
-                != (expected_revision, 1, expected_revision)
+                or int(population[0] or 0) < 1
+                or int(population[1] or 0) != 1
+                or int(population[2] or 0) != expected_revision
+                or (expected_revision > 1 and predecessor is None)
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "task revision history is not contiguous through its receipt CAS"
