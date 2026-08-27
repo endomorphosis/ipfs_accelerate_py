@@ -5120,19 +5120,25 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
     expected = f"{os.getpid()}\n".encode("ascii")
     with serialized_lock_update(path):
         try:
-            payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
+            payload, evidence = _read_stable_regular_bytes(
+                path,
+                max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+            )
         except _StableArtifactReadError as exc:
             raise ValueError(f"unsafe master PID projection: {exc}") from exc
         if payload is not None:
             if (
-                payload != expected
-                or int(evidence.get("uid", -1)) != os.geteuid()
-                or int(evidence.get("link_count", -1)) != 1
-                or not stat.S_ISREG(int(evidence.get("mode", 0)))
-                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+                payload == expected
+                and int(evidence.get("uid", -1)) == os.geteuid()
+                and int(evidence.get("link_count", -1)) == 1
+                and stat.S_ISREG(int(evidence.get("mode", 0)))
+                and stat.S_IMODE(int(evidence.get("mode", 0))) == 0o600
             ):
-                raise ValueError("master PID projection is not owned by this runner")
-            return
+                return
+            # A dead leftover from a previous generation must not freeze
+            # foreground relaunch. Detached launch already quarantines this
+            # class; keep the same ESRCH-only reclaim for adopt-or-create.
+            _quarantine_stale_detached_master_pid_locked(path)
         descriptor, identity = _reserve_owned_pid_projection_locked(path)
         try:
             _publish_reserved_pid_projection(

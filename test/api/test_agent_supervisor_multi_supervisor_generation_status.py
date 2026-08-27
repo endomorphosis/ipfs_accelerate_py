@@ -252,3 +252,23 @@ def test_runner_recycles_prior_status_after_declared_startup_grace(
         and "restart_supervisor=true" in line
         for line in output
     )
+
+
+def test_adopt_master_pid_quarantines_dead_legacy_projection(tmp_path: Path) -> None:
+    import os
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _adopt_or_create_current_master_pid_projection,
+    )
+
+    pid_path = tmp_path / "configured-board-master.pid"
+    dead_pid = 999_999_999
+    pid_path.write_bytes(f"{dead_pid}\n".encode("ascii"))
+    os.chmod(pid_path, 0o600)
+
+    _adopt_or_create_current_master_pid_projection(pid_path)
+
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    quarantines = list(tmp_path.glob(".configured-board-master.pid.stale-*.quarantine"))
+    assert len(quarantines) == 1
+    assert quarantines[0].read_bytes() == f"{dead_pid}\n".encode("ascii")
