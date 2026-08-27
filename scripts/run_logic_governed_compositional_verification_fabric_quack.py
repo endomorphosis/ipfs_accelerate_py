@@ -302,8 +302,7 @@ PROTECTED_QUALIFICATION_COMPLETION_OPERATION: Final = (
     "database_legacy_history_gap_protected_qualification_complete"
 )
 PROTECTED_QUALIFICATION_COMPLETION_PRIOR_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "typed-database-legacy-unstall-recovery@1"
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-recovery@1"
 )
 PROTECTED_QUALIFICATION_COMPLETION_STATUS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
