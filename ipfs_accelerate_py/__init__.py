@@ -1021,9 +1021,25 @@ class _IPFSAccelerateModule(ModuleType):
             namespace = ModuleType.__getattribute__(self, "__dict__")
             return namespace["_load_legacy_worker"]()
         namespace = ModuleType.__getattribute__(self, "__dict__")
+        # Prefer an already-imported submodule over a lazy public export so
+        # dotted monkeypatch paths and sandbox workers can walk the package.
+        try:
+            return ModuleType.__getattribute__(self, name)
+        except AttributeError:
+            pass
         if name in namespace.get("_NAME_TO_GROUP", ()):
             return namespace["_resolve_public"](name)
-        return ModuleType.__getattribute__(self, name)
+        module_name = str(namespace.get("__name__") or "")
+        loaded = sys.modules.get(f"{module_name}.{name}" if module_name else name)
+        if loaded is not None and loaded is not self:
+            ModuleType.__setattr__(self, name, loaded)
+            return loaded
+        getattr_fn = namespace.get("__getattr__")
+        if name[:2] != "__" and callable(getattr_fn):
+            return getattr_fn(name)
+        raise AttributeError(
+            f"module {module_name!r} has no attribute {name!r}"
+        )
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name != "worker":
