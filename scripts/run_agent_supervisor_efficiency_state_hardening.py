@@ -187,6 +187,10 @@ ASEH_R40_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r40-historical-live-policy-admission@1"
 )
+ASEH_R41_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r41-historical-live-policy-admission@1"
+)
 ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r27-historical-live-execution@1"
@@ -397,6 +401,18 @@ ASEH_R40_R39_VALIDATION_DEPENDENCY_FAILURE_EVIDENCE_SCHEMA: Final = (
 ASEH_R40_APPROVED_VALIDATION_RUNTIME_DEPLOYMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r40-approved-validation-runtime-deployment@1"
+)
+ASEH_R41_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r41-authorization-attempt@1"
+)
+ASEH_R41_R40_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r41-r40-authorization-failure-evidence@1"
+)
+ASEH_R41_VALIDATION_DEPENDENCY_DIRECTORIES_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r41-validation-dependency-directories@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -1503,6 +1519,31 @@ ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256: Final = (
     "sha256:"
     + hashlib.sha256(
         ASEH_RECEIPT_VALIDATION_BOOTSTRAP.encode("utf-8")
+    ).hexdigest()
+)
+ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP: Final = (
+    ASEH_RECEIPT_VALIDATION_BOOTSTRAP.replace(
+        (
+            "        os.environ['IPFS_ACCELERATE_AGENT_SEALED_SYSTEM_"
+            "DEPENDENCY_DIRS_JSON']=args[11]"
+        ),
+        (
+            "        native_system_records=[record for record in "
+            "system_records if record['path'] in "
+            "{'/usr/lib/python3/dist-packages',"
+            "'/usr/local/lib/python3.12/dist-packages'}]\n"
+            "        os.environ['IPFS_ACCELERATE_AGENT_SEALED_SYSTEM_"
+            "DEPENDENCY_DIRS_JSON']=json.dumps(native_system_records,"
+            "sort_keys=True,separators=(',',':'))"
+        ),
+    )
+)
+if ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP == ASEH_RECEIPT_VALIDATION_BOOTSTRAP:
+    raise RuntimeError("R41 sealed validation bootstrap patch was not applied")
+ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256: Final = (
+    "sha256:"
+    + hashlib.sha256(
+        ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP.encode("utf-8")
     ).hexdigest()
 )
 
@@ -4551,6 +4592,94 @@ REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_NON_SUCCESS: Final =
     "unapproved validation runtime, inherited validation-environment drift, "
     "database read, skipped validation, or additional changed path is rejected."
 )
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-validation-runtime-sealed-dispatch-transition@1"
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD: Final = (
+    "7bf0019e009701946527ce608f74cd31002926e9"
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE: Final = (
+    "625331318825f8987ee4a3ccffd0312570918044"
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID: Final = (
+    "sha256:3959df186ffa53c48e1dc5f9995883a65ae2b6fe983bf3ae919e58819c0baa2e"
+)
+ASEH_R41_FAILED_R40_STARTED_AT: Final = 1787906047.72647
+ASEH_R41_FAILED_R40_SOURCE_BLOB_OID: Final = (
+    "673a494b732a33536b1fb22869c5a8f974bfc03c"
+)
+ASEH_R41_FAILED_R40_SOURCE_SHA256: Final = (
+    "sha256:c77d6844f1b0e1393798497d9741a77ed99dd68fe90d2cfc538ab555bd0b4f4c"
+)
+ASEH_R41_FAILED_R40_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:84f48cd486957db67bf84c2d0c980f08c6dbd8845324c04684678b6858c40e36"
+)
+ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS: Final = tuple(
+    sorted(
+        {
+            *ASEH_R40_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS,
+            *REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS,
+        }
+    )
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_board_control_plane.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract_v3.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue through one exact R41 child after R40 authorization failed "
+    "closed, without retrying R40, and to route the already approved "
+    "immutable validation runtime into only the sealed validation executor"
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SUCCESS: Final = (
+    "The exact R41 Git child retains immutable R1-R27 and published R30, R36, "
+    "R38, and R39 receipts; binds the failed unpublished R40 attempt without "
+    "retry; preserves the legacy native dependency environment; prepends the "
+    "attested approved validation roots only inside the R41 sealed executor; "
+    "and passes the complete R40 dependency regression matrix."
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_NON_SUCCESS: Final = (
+    "Any R40 receipt or retry, changed R40 attempt, mutable or reordered "
+    "validation root, reminted historical bootstrap, widened native system "
+    "directory environment, database read, skipped validation, or additional "
+    "changed path is rejected."
+)
 REPAIR_CANDIDATE_GIT_EPOCH_GUARD_TRANSITION_SUCCESS: Final = (
     "The exact R30 Git child retains immutable R1-R27 receipts, binds the "
     "failed R28 and R29 attempts without retrying either revision, holds a "
@@ -4758,6 +4887,10 @@ ASEH_R40_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_SCHEMA,
 )
+ASEH_R41_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA,
+)
 ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS: Final = ASEH_R31_EXACT_R1_R30_RECEIPT_CIDS
 ASEH_R33_EXACT_R1_R30_RECEIPT_CIDS: Final = ASEH_R32_EXACT_R1_R30_RECEIPT_CIDS
 ASEH_R34_EXACT_R1_R30_RECEIPT_CIDS: Final = ASEH_R33_EXACT_R1_R30_RECEIPT_CIDS
@@ -4776,6 +4909,9 @@ ASEH_R39_EXACT_R1_R38_RECEIPT_CIDS: Final = (
 ASEH_R40_EXACT_R1_R39_RECEIPT_CIDS: Final = (
     *ASEH_R39_EXACT_R1_R38_RECEIPT_CIDS,
     ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+)
+ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS: Final = (
+    ASEH_R40_EXACT_R1_R39_RECEIPT_CIDS
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -5066,6 +5202,23 @@ REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_RECEIPT_FIELDS: Fina
             "r39_validation_dependency_failure_evidence",
             "approved_validation_runtime_deployment",
             "approved_validation_runtime_post_promotion_preflight",
+        }
+    )
+)
+REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_RECEIPT_FIELDS
+    | frozenset(
+        {
+            "published_r39_base_head",
+            "published_r39_base_tree",
+            "failed_unpublished_r40_head",
+            "failed_unpublished_r40_tree",
+            "r40_authorization_attempt",
+            "r40_authorization_failure_evidence",
+            "r39_validation_dependency_failure_evidence",
+            "approved_validation_runtime_deployment",
+            "approved_validation_runtime_post_promotion_preflight",
+            "validation_dependency_directories_contract",
         }
     )
 )
@@ -9497,6 +9650,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r40 = globals().get(
         "REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_VALIDATIONS"
     )
+    r41 = globals().get(
+        "REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -9525,6 +9681,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r38,) if isinstance(r38, Sequence) else ()),
         *((r39,) if isinstance(r39, Sequence) else ()),
         *((r40,) if isinstance(r40, Sequence) else ()),
+        *((r41,) if isinstance(r41, Sequence) else ()),
     )
 
 
@@ -13671,6 +13828,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 39
     if schema == ASEH_R40_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 40
+    if schema == ASEH_R41_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 41
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -13913,11 +14072,12 @@ def _r19_active_policy_scope(
         38: _validate_r38_historical_live_policy_admission_record,
         39: _validate_r39_historical_live_policy_admission_record,
         40: _validate_r40_historical_live_policy_admission_record,
+        41: _validate_r41_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
     if (
-        (revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and not callable(pre_effect_guard))
-        or (revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and pre_effect_guard is not None)
+        (revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and not callable(pre_effect_guard))
+        or (revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and pre_effect_guard is not None)
     ):
         raise OperatorError(
             "historical live pre-effect guard differs from policy revision"
@@ -13931,7 +14091,7 @@ def _r19_active_policy_scope(
     # Only R30 introduces a distinct durable policy anchor plus active executor
     # endpoint; silently broadening R29 here would make sealed R29 receipts
     # impossible to admit after an owner restart.
-    dual_endpoint_policy = revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+    dual_endpoint_policy = revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
     active_witness = (
         dict(active_candidate_authorization_witness)
         if isinstance(active_candidate_authorization_witness, Mapping)
@@ -14435,39 +14595,43 @@ def _admit_sealed_receipt_validation_executor_contract(
         r39,
         r40,
     )
+    classifiers = (
+        _r16_validation_executor_class,
+        _r17_validation_executor_class,
+        _r18_validation_executor_class,
+        _r19_validation_executor_class,
+        _r20_validation_executor_class,
+        _r21_validation_executor_class,
+        _r22_validation_executor_class,
+        _r23_validation_executor_class,
+        _r24_validation_executor_class,
+        _r25_validation_executor_class,
+        _r26_validation_executor_class,
+        _r27_validation_executor_class,
+        _r28_validation_executor_class,
+        _r29_validation_executor_class,
+        _r30_validation_executor_class,
+        _r31_validation_executor_class,
+        _r32_validation_executor_class,
+        _r33_validation_executor_class,
+        _r34_validation_executor_class,
+        _r35_validation_executor_class,
+        _r36_validation_executor_class,
+        _r37_validation_executor_class,
+        _r38_validation_executor_class,
+        _r39_validation_executor_class,
+        _r40_validation_executor_class,
+    )
+    if supplied.get("policy_revision") == 41:
+        contracts = (*contracts, _r41_sealed_receipt_validation_executor_contract())
+        classifiers = (*classifiers, _r41_validation_executor_class)
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
     classifier = {
         _identity(contract): function
         for contract, function in zip(
             contracts,
-            (
-                _r16_validation_executor_class,
-                _r17_validation_executor_class,
-                _r18_validation_executor_class,
-                _r19_validation_executor_class,
-                _r20_validation_executor_class,
-                _r21_validation_executor_class,
-                _r22_validation_executor_class,
-                _r23_validation_executor_class,
-                _r24_validation_executor_class,
-                _r25_validation_executor_class,
-                _r26_validation_executor_class,
-                _r27_validation_executor_class,
-                _r28_validation_executor_class,
-                _r29_validation_executor_class,
-                _r30_validation_executor_class,
-                _r31_validation_executor_class,
-                _r32_validation_executor_class,
-                _r33_validation_executor_class,
-                _r34_validation_executor_class,
-                _r35_validation_executor_class,
-                _r36_validation_executor_class,
-                _r37_validation_executor_class,
-                _r38_validation_executor_class,
-                _r39_validation_executor_class,
-                _r40_validation_executor_class,
-            ),
+            classifiers,
             strict=True,
         )
     }[_identity(supplied)]
@@ -15718,6 +15882,7 @@ def _sealed_validation_execution_context(
     authorization_witness: Mapping[str, str],
     environment_identity: str,
     native_authorization_id: str,
+    validation_dependency_directories_cid: str | None = None,
 ) -> dict[str, Any]:
     """Name the exact immutable context acknowledged by the monitor."""
 
@@ -15727,9 +15892,15 @@ def _sealed_validation_execution_context(
         or re.fullmatch(r"sha256:[0-9a-f]{64}", environment_identity) is None
         or native_authorization_id
         != ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
+        or validation_dependency_directories_cid is not None
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            validation_dependency_directories_cid,
+        )
+        is None
     ):
         raise OperatorError("sealed validation execution context is invalid")
-    return {
+    context = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
             "aseh-sealed-validation-execution-context@1"
@@ -15743,6 +15914,43 @@ def _sealed_validation_execution_context(
         "environment_identity": environment_identity,
         "native_authorization_id": native_authorization_id,
     }
+    if validation_dependency_directories_cid is not None:
+        context.update(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "aseh-sealed-validation-execution-context@2"
+                ),
+                "validation_dependency_directories_cid": (
+                    validation_dependency_directories_cid
+                ),
+            }
+        )
+    return context
+
+
+def _sealed_validation_bootstrap_for_contract(
+    executor_contract: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Select a versioned bootstrap without reminting historical contracts."""
+
+    if executor_contract.get("policy_revision") == 41:
+        if executor_contract.get("bootstrap_sha256") != (
+            ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256
+        ):
+            raise OperatorError("R41 sealed validation bootstrap differs")
+        return (
+            ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP,
+            ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+        )
+    if executor_contract.get("bootstrap_sha256") != (
+        ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256
+    ):
+        raise OperatorError("historical sealed validation bootstrap differs")
+    return (
+        ASEH_RECEIPT_VALIDATION_BOOTSTRAP,
+        ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+    )
 
 
 def _sealed_validation_execution_binding(
@@ -15806,6 +16014,14 @@ def _validate_sealed_validation_execution_evidence(
         executor_contract,
         declared=declared,
     )
+    _bootstrap, bootstrap_sha256 = _sealed_validation_bootstrap_for_contract(
+        admitted_contract
+    )
+    validation_dependency_directories_cid = None
+    if admitted_contract.get("policy_revision") == 41:
+        validation_dependency_directories_cid = _identity(
+            json.loads(_r41_validation_dependency_directories_json())
+        )
     expected_fields = {
         "schema",
         "executor_contract_cid",
@@ -15843,6 +16059,9 @@ def _validate_sealed_validation_execution_evidence(
         authorization_witness=authorization_witness,
         environment_identity=environment_identity,
         native_authorization_id=ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID,
+        validation_dependency_directories_cid=(
+            validation_dependency_directories_cid
+        ),
     )
     expected_context_cid = _identity(expected_context)
     if (
@@ -15885,8 +16104,7 @@ def _validate_sealed_validation_execution_evidence(
         or not isinstance(ready.get("boot_id"), str)
         or ready.get("declared_argv_sha256")
         != _identity(list(declared))
-        or ready.get("bootstrap_sha256")
-        != ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256
+        or ready.get("bootstrap_sha256") != bootstrap_sha256
         or ready.get("native_authorization_id")
         != ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
         or ready.get("native_mode") != expected_mode
@@ -16557,6 +16775,20 @@ def _run_sealed_receipt_validation(
         executor_contract,
         declared=declared,
     )
+    bootstrap, bootstrap_sha256 = _sealed_validation_bootstrap_for_contract(
+        admitted_contract
+    )
+    validation_dependency_directories_json = (
+        executor.system_dependency_directories_json
+    )
+    validation_dependency_directories_cid = None
+    if admitted_contract.get("policy_revision") == 41:
+        validation_dependency_directories_json = (
+            _r41_validation_dependency_directories_json()
+        )
+        validation_dependency_directories_cid = _identity(
+            json.loads(validation_dependency_directories_json)
+        )
     _, _command_environment, python_argv = parsed
     native_mode = (
         "self_qualified"
@@ -16593,6 +16825,9 @@ def _run_sealed_receipt_validation(
         environment_identity=environment_identity,
         native_authorization_id=(
             executor.native_dependency.accepted_authorization_id
+        ),
+        validation_dependency_directories_cid=(
+            validation_dependency_directories_cid
         ),
     )
     execution_context_cid = _identity(execution_context)
@@ -16692,7 +16927,7 @@ def _run_sealed_receipt_validation(
             "-S",
             "-P",
             "-c",
-            ASEH_RECEIPT_VALIDATION_BOOTSTRAP,
+            bootstrap,
             str(interpreter.descriptor),
             str(native.descriptor.descriptor),
             str(cwd_fd),
@@ -16701,10 +16936,10 @@ def _run_sealed_receipt_validation(
             str(ready_write),
             str(release_read),
             str(completion_write),
-            ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+            bootstrap_sha256,
             _canonical_json(interpreter_record),
             native.to_json(),
-            executor.system_dependency_directories_json,
+            validation_dependency_directories_json,
             _canonical_json(cwd_record),
             _canonical_json(import_record),
             _canonical_json(script_record),
@@ -16779,7 +17014,7 @@ def _run_sealed_receipt_validation(
             "boot_id": executor.boot_id,
             "declared_argv_sha256": "sha256:"
             + hashlib.sha256(_canonical_json(list(declared)).encode()).hexdigest(),
-            "bootstrap_sha256": ASEH_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+            "bootstrap_sha256": bootstrap_sha256,
             "native_authorization_id": native.accepted_authorization_id,
             "native_mode": native_mode,
             "interpreter_sha256": interpreter.sha256,
@@ -16845,6 +17080,14 @@ def _run_sealed_receipt_validation(
             boundary="after validator completion",
             full=False,
         )
+        if (
+            admitted_contract.get("policy_revision") == 41
+            and _r41_validation_dependency_directories_json()
+            != validation_dependency_directories_json
+        ):
+            raise OperatorError(
+                "R41 validation dependency directories changed during execution"
+            )
         stdout_digest = _identity(stdout)
         stderr_digest = _identity(stderr)
         try:
@@ -19148,7 +19391,7 @@ def _r32_assert_unrelated_grok_waiter(
 def _r32_admit_grok_for_revision(revision: int) -> bool:
     """R32 named the Grok census; later one-shots keep the same names."""
 
-    return revision in {32, 33, 34, 35, 36, 37, 38, 39, 40}
+    return revision in {32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
 
 
 def _r19_detached_effect_snapshot(
@@ -20474,7 +20717,7 @@ def _validate_r19_historical_live_execution_evidence(
         }
         fields = (
             base_fields | {"foreign_recovery_ownership"}
-            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             else base_fields
         )
         script_identity = result.get("script_identity")
@@ -20552,7 +20795,7 @@ def _validate_r19_historical_live_execution_evidence(
             raise OperatorError(
                 "R19 historical live detached-effect entry is invalid"
             )
-        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
             ownership = result.get("foreign_recovery_ownership")
             if ownership is not None:
                 base_item = {
@@ -20598,7 +20841,7 @@ def _validate_r19_historical_live_execution_evidence(
             or result.get("schema")
             != (
                 ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
-                if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+                if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
                 else ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
             )
             or entries
@@ -20645,6 +20888,7 @@ def _validate_r19_historical_live_execution_evidence(
         38: _admit_r38_historical_live_policy_admission,
         39: _admit_r39_historical_live_policy_admission,
         40: _admit_r40_historical_live_policy_admission,
+        41: _admit_r41_historical_live_policy_admission,
     }[revision]
     policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -20654,7 +20898,7 @@ def _validate_r19_historical_live_execution_evidence(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
-    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         if not isinstance(durable_candidate_witness, Mapping):
             raise OperatorError(
                 f"R{revision} durable live witness is absent"
@@ -20706,7 +20950,7 @@ def _validate_r19_historical_live_execution_evidence(
         "evidence_cid",
     }
     expected_active_binding: dict[str, Any] | None = None
-    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         if all(
             value is None
             for value in (
@@ -20759,7 +21003,7 @@ def _validate_r19_historical_live_execution_evidence(
         or supplied.get("schema")
         != (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         )
         or supplied.get("executor_class")
@@ -20988,7 +21232,7 @@ def _validate_r19_historical_live_execution_evidence(
         before_docker=before_docker,
         before_detached=before_detached,
     )
-    if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         _r27_admit_stable_unrelated_baseline(
             first_docker=before_docker,
             confirmed_docker=confirmed_docker,
@@ -21137,7 +21381,7 @@ def _r19_release_historical_live_waiter(
 
     if type(release_write) is not int or release_write < 0:
         raise OperatorError("R19 historical live release descriptor is invalid")
-    if revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         if not callable(pre_effect_guard):
             raise OperatorError(
                 f"R{revision} historical live pre-effect guard is absent"
@@ -21207,6 +21451,7 @@ def _run_r19_historical_live_validation(
         ASEH_R38_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 38,
         ASEH_R39_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 39,
         ASEH_R40_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 40,
+        ASEH_R41_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 41,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -21231,12 +21476,13 @@ def _run_r19_historical_live_validation(
         38: _validate_r38_historical_live_policy_admission_record,
         39: _validate_r39_historical_live_policy_admission_record,
         40: _validate_r40_historical_live_policy_admission_record,
+        41: _validate_r41_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
     pre_effect_guard = active_policy.get("pre_effect_guard")
     active_candidate_binding = active_policy.get("active_candidate_binding")
     expected_active_candidate_binding = None
-    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         expected_active_candidate_binding = {
             "candidate_head": executor.candidate_head,
             "candidate_tree": executor.candidate_tree,
@@ -21245,14 +21491,14 @@ def _run_r19_historical_live_validation(
             ),
         }
     if (
-        (revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and not callable(pre_effect_guard))
-        or (revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and pre_effect_guard is not None)
+        (revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and not callable(pre_effect_guard))
+        or (revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and pre_effect_guard is not None)
         or (
-            revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             and active_candidate_binding != expected_active_candidate_binding
         )
         or (
-            revision not in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            revision not in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             and active_candidate_binding is not None
         )
     ):
@@ -21328,7 +21574,7 @@ def _run_r19_historical_live_validation(
             working_directory=working_directory,
             admit_grok=_r32_admit_grok_for_revision(revision),
         )
-        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
         else _r19_detached_effect_snapshot()
     )
     time.sleep(0.05)
@@ -21339,15 +21585,15 @@ def _run_r19_historical_live_validation(
             working_directory=working_directory,
             admit_grok=_r32_admit_grok_for_revision(revision),
         )
-        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
         else _r19_detached_effect_snapshot()
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
         else _r19_admit_stable_unrelated_baseline
     )
-    if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         baseline_admitter(
             first_docker=before_docker,
             confirmed_docker=confirmed_docker,
@@ -21381,7 +21627,7 @@ def _run_r19_historical_live_validation(
             working_directory=working_directory,
             admit_grok=_r32_admit_grok_for_revision(revision),
         )
-        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+        if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
         else _r19_terminal_scope_guard(
             before_docker=before_docker,
             before_detached=before_detached,
@@ -21624,7 +21870,7 @@ def _run_r19_historical_live_validation(
     evidence: dict[str, Any] = {
         "schema": (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            if revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         ),
         "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
@@ -21669,7 +21915,7 @@ def _run_r19_historical_live_validation(
             "verified_success" if returncode == 0 else "verified_failure"
         ),
     }
-    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         evidence["active_candidate_binding"] = active_candidate_binding
     evidence["evidence_cid"] = _identity(evidence)
     completed = subprocess.CompletedProcess(
@@ -21703,13 +21949,13 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         raise OperatorError("historical live policy revision is invalid")
     if (
-        (_revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and not callable(pre_effect_guard))
-        or (_revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40} and pre_effect_guard is not None)
+        (_revision in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and not callable(pre_effect_guard))
+        or (_revision not in {29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41} and pre_effect_guard is not None)
         or (
-            _revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            _revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             and (
                 re.fullmatch(
                     r"[0-9a-f]{40}", str(active_candidate_head or "")
@@ -21726,7 +21972,7 @@ def _qualify_r19_historical_live_policy(
             )
         )
         or (
-            _revision not in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+            _revision not in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
             and any(
                 value is not None
                 for value in (
@@ -21742,7 +21988,7 @@ def _qualify_r19_historical_live_policy(
         )
     executor_contract = (
         _r27_historical_live_validation_executor_contract()
-        if _revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}
+        if _revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}
         else _r19_sealed_receipt_validation_executor_contract()
     )
     policy_builder = {
@@ -21768,6 +22014,7 @@ def _qualify_r19_historical_live_policy(
         38: _r38_historical_live_policy_admission,
         39: _r39_historical_live_policy_admission,
         40: _r40_historical_live_policy_admission,
+        41: _r41_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -21792,6 +22039,7 @@ def _qualify_r19_historical_live_policy(
         38: _admit_r38_historical_live_policy_admission,
         39: _admit_r39_historical_live_policy_admission,
         40: _admit_r40_historical_live_policy_admission,
+        41: _admit_r41_historical_live_policy_admission,
     }[_revision]
     policy_arguments: dict[str, Any] = dict(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -21801,7 +22049,7 @@ def _qualify_r19_historical_live_policy(
         candidate_authorization_witness=candidate_authorization_witness,
         executor_contract=executor_contract,
     )
-    if _revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+    if _revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
         if not isinstance(durable_candidate_witness, Mapping):
             raise OperatorError(
                 f"R{_revision} durable policy witness is absent"
@@ -24084,6 +24332,10 @@ def _repair_authorization_candidate_git_guard_if_required(
     elif parents == [REPAIR_FOREIGN_GROK_TERMINAL_SCOPE_TRANSITION_BASE_HEAD]:
         pass
     elif parents == [REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_HEAD]:
+        pass
+    elif parents == [
+        REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+    ]:
         pass
     elif parents == [
         REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
@@ -36154,6 +36406,59 @@ def _r40_approved_validation_runtime_deployment() -> dict[str, Any]:
     )
 
 
+def _r41_validation_dependency_directories_json() -> str:
+    """Attest R40's approved roots ahead of the unchanged native roots."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        admit_trusted_system_dependency_directories,
+        trusted_system_dependency_directories_json,
+    )
+
+    _r40_approved_validation_runtime_deployment()
+    system_json = trusted_system_dependency_directories_json()
+    system_paths = admit_trusted_system_dependency_directories(system_json)
+    system_records = json.loads(system_json)
+    approved_paths = tuple(ASEH_R40_APPROVED_VALIDATION_PYTHONPATH_ENTRIES)
+    if (
+        tuple(str(item.get("path") or "") for item in system_records)
+        != system_paths
+        or len(set((*approved_paths, *system_paths)))
+        != len(approved_paths) + len(system_paths)
+    ):
+        raise OperatorError("R41 validation dependency ordering is invalid")
+    records: list[dict[str, Any]] = []
+    fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_nlink",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    for raw_path in approved_paths:
+        path = Path(raw_path)
+        before = os.lstat(path)
+        after = os.lstat(path)
+        if (
+            path.resolve(strict=True) != path
+            or any(getattr(before, name) != getattr(after, name) for name in fields)
+            or not stat.S_ISDIR(before.st_mode)
+            or before.st_uid != 0
+            or before.st_gid != 0
+            or stat.S_IMODE(before.st_mode) != 0o555
+        ):
+            raise OperatorError(
+                "R41 approved validation dependency directory differs"
+            )
+        records.append(
+            {"path": str(path)}
+            | {name: int(getattr(before, name)) for name in fields}
+        )
+    records.extend(dict(item) for item in system_records)
+    return _canonical_json(records)
+
+
 def _r40_expected_post_promotion_preflight_evidence() -> dict[str, Any]:
     accelerator_result = {
         "receipt_id": ASEH_R40_POST_PROMOTION_PREFLIGHT_RECEIPT_ID,
@@ -37656,6 +37961,2041 @@ def _authorize_repair_approved_validation_runtime_configuration_transition_if_ap
     }
 
 
+def _r41_expected_r40_authorization_attempt() -> dict[str, Any]:
+    """Reconstruct the exact failed R40 one-shot record, without retry."""
+
+    if (
+        _identity(_r40_sealed_receipt_validation_executor_contract())
+        != ASEH_R41_FAILED_R40_VALIDATION_EXECUTOR_CONTRACT_CID
+        or _git(
+            "rev-parse",
+            (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+                + ":scripts/run_agent_supervisor_efficiency_state_hardening.py"
+            ),
+        )
+        != ASEH_R41_FAILED_R40_SOURCE_BLOB_OID
+        or _identity(
+            _git_bytes(
+                "show",
+                (
+                    REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+                    + ":scripts/run_agent_supervisor_efficiency_state_hardening.py"
+                ),
+            )
+        )
+        != ASEH_R41_FAILED_R40_SOURCE_SHA256
+    ):
+        raise OperatorError("closed R40 executor identity drifted")
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R40_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 40,
+        "candidate_head": (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        ),
+        "candidate_tree": (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        ),
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "published_r36_receipt_cid": ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+        "published_r38_receipt_cid": ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+        "published_r39_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+        "published_r39_authorization_attempt_cid": (
+            ASEH_R40_PUBLISHED_R39_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "r39_validation_dependency_failure_evidence_cid": (
+            _r40_expected_r39_validation_dependency_failure_evidence()[
+                "evidence_cid"
+            ]
+        ),
+        "approved_validation_runtime_deployment_cid": (
+            _r40_expected_approved_validation_runtime_deployment()[
+                "deployment_cid"
+            ]
+        ),
+        "approved_validation_runtime_post_promotion_preflight_cid": (
+            _r40_expected_post_promotion_preflight_evidence()["evidence_cid"]
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": (
+            ASEH_R41_FAILED_R40_VALIDATION_EXECUTOR_CONTRACT_CID
+        ),
+        "candidate_authorization_witness_cid": (
+            "sha256:1ea09fa287fc12d6911a08eb805cecf57a6bf942524876843925bdca403836a6"
+        ),
+        "durable_candidate_witness_cid": (
+            "sha256:f026aa6520ccc0ebe63c64fbce10c280818928d7228b86f39249ba780d08cb53"
+        ),
+        "candidate_git_guard_cid": (
+            "sha256:4c712ada53303e107415a678b26fbd013d83ebdb38d57501e99bcbd37dc14f27"
+        ),
+        "attempt_state": (
+            "started_after_git_guard_before_validator_or_live_effect"
+        ),
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": ASEH_R41_FAILED_R40_STARTED_AT,
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    if attempt["attempt_cid"] != ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID:
+        raise OperatorError("closed R40 authorization attempt identity drifted")
+    return attempt
+
+
+def _validate_r41_failed_r40_authorization_attempt(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R41 failed R40 authorization attempt is invalid")
+    attempt = dict(value)
+    if attempt != _r41_expected_r40_authorization_attempt():
+        raise OperatorError("R41 failed R40 authorization attempt differs")
+    return attempt
+
+
+def _r41_expected_r40_authorization_failure_evidence() -> dict[str, Any]:
+    attempt = _r41_expected_r40_authorization_attempt()
+    failed_command = (
+        REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_VALIDATIONS[
+            1
+        ]
+    )
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R41_R40_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "failed_candidate_head": (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+        "authorization_attempt_cid": attempt["attempt_cid"],
+        "failed_declared_argv": list(failed_command),
+        "ok": False,
+        "error_type": "OperatorError",
+        "error_message": (
+            "bootstrap repair Docker-create-readiness/vendor-resolver "
+            "validation failed: " + " ".join(failed_command)
+        ),
+        "r40_receipt_published": False,
+        "r40_retry_authorized": False,
+        "validator_returncode": None,
+        "validator_stdout_digest": None,
+        "validator_stderr_digest": None,
+        "sealed_validation_execution_evidence": None,
+        "validator_effect": (
+            "failure_reported_without_published_terminal_execution_evidence"
+        ),
+        "historical_live_effect": "not_reached_after_validator_failure",
+        "provider_effect": "none_observed",
+        "database_effect": "none_observed",
+        "ducklake_effect": "none_observed",
+        "database_observed_during_evidence_capture": False,
+        "database_mutated_during_evidence_capture": False,
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _validate_r41_r40_authorization_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R41 R40 authorization-failure evidence is invalid")
+    evidence = dict(value)
+    expected = _r41_expected_r40_authorization_failure_evidence()
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if (
+        evidence != expected
+        or evidence_cid != _identity(unsigned)
+        or evidence_cid != expected["evidence_cid"]
+        or any(
+            evidence.get(name) is not None
+            for name in (
+                "validator_returncode",
+                "validator_stdout_digest",
+                "validator_stderr_digest",
+                "sealed_validation_execution_evidence",
+            )
+        )
+    ):
+        raise OperatorError("R41 R40 authorization-failure evidence differs")
+    return evidence
+
+
+def _r41_validation_dependency_directories_contract() -> dict[str, Any]:
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        admit_trusted_system_dependency_directories,
+        trusted_system_dependency_directories_json,
+    )
+
+    records_json = _r41_validation_dependency_directories_json()
+    records = json.loads(records_json)
+    system_paths = admit_trusted_system_dependency_directories(
+        trusted_system_dependency_directories_json()
+    )
+    ordered_paths = tuple(str(item.get("path") or "") for item in records)
+    approved_paths = tuple(ASEH_R40_APPROVED_VALIDATION_PYTHONPATH_ENTRIES)
+    if ordered_paths != (*approved_paths, *system_paths):
+        raise OperatorError("R41 validation dependency contract order differs")
+    contract: dict[str, Any] = {
+        "schema": ASEH_R41_VALIDATION_DEPENDENCY_DIRECTORIES_SCHEMA,
+        "approved_validation_runtime_deployment_cid": (
+            _r40_expected_approved_validation_runtime_deployment()[
+                "deployment_cid"
+            ]
+        ),
+        "ordered_paths": list(ordered_paths),
+        "directory_records_cid": _identity(records),
+        "directory_record_count": len(records),
+        "import_precedence": "approved_runtime_before_legacy_system",
+        "native_system_dependency_projection": "legacy_only",
+        "native_system_dependency_paths": list(system_paths),
+        "bootstrap_sha256": ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+        "scope": "r41_sealed_python_validation_only",
+    }
+    contract["contract_cid"] = _identity(contract)
+    return contract
+
+
+def _validate_r41_validation_dependency_directories_contract(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R41 validation dependency contract is invalid")
+    supplied = dict(value)
+    expected = _r41_validation_dependency_directories_contract()
+    unsigned = dict(supplied)
+    contract_cid = str(unsigned.pop("contract_cid", "") or "")
+    if (
+        supplied != expected
+        or contract_cid != _identity(unsigned)
+        or contract_cid != expected["contract_cid"]
+    ):
+        raise OperatorError("R41 validation dependency contract differs")
+    return supplied
+
+
+def _admit_exact_r41_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R41_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R41 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    last_index = len(ASEH_R41_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R41_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = (
+            None
+            if index == 0
+            else (
+                41
+                if index == last_index
+                else (
+                    39
+                    if index == last_index - 1
+                    else (
+                        38
+                        if index == last_index - 2
+                        else (
+                            36
+                            if index == last_index - 3
+                            else (30 if index == last_index - 4 else index + 1)
+                        )
+                    )
+                )
+            )
+        )
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R41 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R41 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS:
+        raise OperatorError("R41 historical receipt vector differs")
+    return chain
+
+
+def _r41_validation_executor_class(command: Sequence[str]) -> str:
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R41 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(declared, require_known=False)
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
+def _r41_validation_working_tree_scope(command: Sequence[str]) -> str:
+    if tuple(command) == (
+        REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r41_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    parent = _r39_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    failed_r40 = _r40_sealed_receipt_validation_executor_contract()
+    if _identity(failed_r40) != (
+        ASEH_R41_FAILED_R40_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("unpublished R40 validation contract drifted")
+    matrix = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(command, require_known=False)
+        is not None
+    ]
+    directory_contract = _r41_validation_dependency_directories_contract()
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r41-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 41,
+            "bootstrap_sha256": ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                (
+                    {
+                        "argv_sha256": _identity(list(command)),
+                        "executor_class": _r41_validation_executor_class(command),
+                    }
+                    for command in matrix
+                ),
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+            "published_r36_receipt_cid": ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+            "published_r38_receipt_cid": ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+            "published_r39_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+            "unpublished_r40_executor_contract_cid": (
+                ASEH_R41_FAILED_R40_VALIDATION_EXECUTOR_CONTRACT_CID
+            ),
+            "failed_r40_authorization_attempt_cid": (
+                ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+            ),
+            "validation_dependency_directories_contract_cid": (
+                directory_contract["contract_cid"]
+            ),
+            "approved_validation_runtime_deployment_cid": (
+                directory_contract[
+                    "approved_validation_runtime_deployment_cid"
+                ]
+            ),
+            "native_system_dependency_projection": "legacy_only",
+            "scope": (
+                "r41_guarded_authorization_pre_duckdb_and_materialized_"
+                "launch_admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r41_candidate_requires_policy(*, head: str, tree: str) -> bool:
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    base = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+    return (
+        _git("show", "-s", "--format=%P", head).split() == [base]
+        and _git("rev-parse", f"{base}^{{tree}}")
+        == REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(base, head)
+        == REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS
+        and _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head)
+        == ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    )
+
+
+def _r41_population_requires_policy(population: Mapping[str, Any]) -> bool:
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if _r41_candidate_requires_policy(head=head, tree=tree):
+        return True
+    base = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+        or head == base
+    ):
+        return False
+    return (
+        _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git("merge-base", base, head) == base
+    )
+
+
+def _r41_authorization_attempt_record(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    r40_authorization_attempt: Mapping[str, Any],
+    r40_authorization_failure_evidence: Mapping[str, Any],
+    r39_validation_dependency_failure_evidence: Mapping[str, Any],
+    approved_validation_runtime_deployment: Mapping[str, Any],
+    validation_dependency_directories_contract: Mapping[str, Any],
+    started_at: float,
+) -> dict[str, Any]:
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+        r40_authorization_attempt
+    )
+    r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        r40_authorization_failure_evidence
+    )
+    r39_failure = _validate_r40_r39_validation_dependency_failure_evidence(
+        r39_validation_dependency_failure_evidence
+    )
+    deployment = _validate_r40_approved_validation_runtime_deployment(
+        approved_validation_runtime_deployment,
+        recheck_filesystem=False,
+    )
+    directories = _validate_r41_validation_dependency_directories_contract(
+        validation_dependency_directories_contract
+    )
+    if (
+        witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("authorization_v1_witness_cid") != _identity(witness)
+        or durable.get("authorization_guard_cid") != guard.get("guard_cid")
+        or failed_attempt.get("attempt_cid")
+        != r40_failure.get("authorization_attempt_cid")
+        or type(started_at) not in {int, float}
+        or not math.isfinite(float(started_at))
+        or float(started_at) <= float(failed_attempt["started_at"])
+    ):
+        raise OperatorError("R41 authorization attempt identity is invalid")
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R41_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 41,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "published_r36_receipt_cid": ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+        "published_r38_receipt_cid": ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+        "published_r39_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+        "failed_r40_authorization_attempt_cid": failed_attempt["attempt_cid"],
+        "r40_authorization_failure_evidence_cid": r40_failure["evidence_cid"],
+        "r39_validation_dependency_failure_evidence_cid": (
+            r39_failure["evidence_cid"]
+        ),
+        "approved_validation_runtime_deployment_cid": (
+            deployment["deployment_cid"]
+        ),
+        "approved_validation_runtime_post_promotion_preflight_cid": (
+            _r40_expected_post_promotion_preflight_evidence()["evidence_cid"]
+        ),
+        "validation_dependency_directories_contract_cid": (
+            directories["contract_cid"]
+        ),
+        "authorization_argv": list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": _identity(
+            _r41_sealed_receipt_validation_executor_contract()
+        ),
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "candidate_git_guard_cid": guard["guard_cid"],
+        "attempt_state": (
+            "started_after_git_guard_before_validator_or_live_effect"
+        ),
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": float(started_at),
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    return _validate_r41_authorization_attempt_record(
+        attempt,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r40_authorization_attempt=failed_attempt,
+        r40_authorization_failure_evidence=r40_failure,
+        r39_validation_dependency_failure_evidence=r39_failure,
+        approved_validation_runtime_deployment=deployment,
+        validation_dependency_directories_contract=directories,
+    )
+
+
+def _validate_r41_authorization_attempt_record(
+    value: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    r40_authorization_attempt: Mapping[str, Any],
+    r40_authorization_failure_evidence: Mapping[str, Any],
+    r39_validation_dependency_failure_evidence: Mapping[str, Any],
+    approved_validation_runtime_deployment: Mapping[str, Any],
+    validation_dependency_directories_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R41 authorization attempt is invalid")
+    attempt = dict(value)
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+        r40_authorization_attempt
+    )
+    r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        r40_authorization_failure_evidence
+    )
+    r39_failure = _validate_r40_r39_validation_dependency_failure_evidence(
+        r39_validation_dependency_failure_evidence
+    )
+    deployment = _validate_r40_approved_validation_runtime_deployment(
+        approved_validation_runtime_deployment,
+        recheck_filesystem=False,
+    )
+    directories = _validate_r41_validation_dependency_directories_contract(
+        validation_dependency_directories_contract
+    )
+    unsigned = dict(attempt)
+    attempt_cid = str(unsigned.pop("attempt_cid", "") or "")
+    required = {
+        "schema", "program_id", "task_id", "transition_revision",
+        "candidate_head", "candidate_tree", "published_r30_receipt_cid",
+        "published_r36_receipt_cid", "published_r38_receipt_cid",
+        "published_r39_receipt_cid", "failed_r40_authorization_attempt_cid",
+        "r40_authorization_failure_evidence_cid",
+        "r39_validation_dependency_failure_evidence_cid",
+        "approved_validation_runtime_deployment_cid",
+        "approved_validation_runtime_post_promotion_preflight_cid",
+        "validation_dependency_directories_contract_cid",
+        "authorization_argv", "validation_executor_contract_cid",
+        "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid", "candidate_git_guard_cid",
+        "attempt_state", "retry_authorized", "validator_effect",
+        "historical_live_effect", "provider_effect", "database_effect",
+        "ducklake_effect", "started_at", "attempt_cid",
+    }
+    if (
+        set(attempt) != required
+        or attempt.get("schema") != ASEH_R41_AUTHORIZATION_ATTEMPT_SCHEMA
+        or attempt.get("program_id") != PROGRAM
+        or attempt.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or attempt.get("transition_revision") != 41
+        or attempt.get("candidate_head") != candidate_head
+        or attempt.get("candidate_tree") != candidate_tree
+        or attempt.get("published_r30_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or attempt.get("published_r36_receipt_cid")
+        != ASEH_R37_PUBLISHED_R36_RECEIPT_CID
+        or attempt.get("published_r38_receipt_cid")
+        != ASEH_R39_PUBLISHED_R38_RECEIPT_CID
+        or attempt.get("published_r39_receipt_cid")
+        != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+        or attempt.get("failed_r40_authorization_attempt_cid")
+        != failed_attempt.get("attempt_cid")
+        or attempt.get("r40_authorization_failure_evidence_cid")
+        != r40_failure.get("evidence_cid")
+        or attempt.get("r39_validation_dependency_failure_evidence_cid")
+        != r39_failure.get("evidence_cid")
+        or attempt.get("approved_validation_runtime_deployment_cid")
+        != deployment.get("deployment_cid")
+        or attempt.get(
+            "approved_validation_runtime_post_promotion_preflight_cid"
+        )
+        != _r40_expected_post_promotion_preflight_evidence()["evidence_cid"]
+        or attempt.get("validation_dependency_directories_contract_cid")
+        != directories.get("contract_cid")
+        or attempt.get("authorization_argv")
+        != list(ASEH_R30_FAILED_R29_AUTHORIZATION_ARGV)
+        or attempt.get("validation_executor_contract_cid")
+        != _identity(_r41_sealed_receipt_validation_executor_contract())
+        or attempt.get("candidate_authorization_witness_cid")
+        != _identity(witness)
+        or attempt.get("durable_candidate_witness_cid")
+        != durable.get("witness_cid")
+        or attempt.get("candidate_git_guard_cid") != guard.get("guard_cid")
+        or durable.get("authorization_v1_witness_cid") != _identity(witness)
+        or durable.get("authorization_guard_cid") != guard.get("guard_cid")
+        or attempt.get("attempt_state")
+        != "started_after_git_guard_before_validator_or_live_effect"
+        or attempt.get("retry_authorized") is not False
+        or any(
+            attempt.get(name) != "not_observed_at_attempt_creation"
+            for name in (
+                "validator_effect", "historical_live_effect", "provider_effect",
+                "database_effect", "ducklake_effect",
+            )
+        )
+        or type(attempt.get("started_at")) not in {int, float}
+        or not math.isfinite(float(attempt["started_at"]))
+        or float(attempt["started_at"])
+        <= float(failed_attempt["started_at"])
+        or attempt_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R41 authorization attempt differs")
+    return attempt
+
+
+def _validate_r41_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R41 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema", "program_id", "task_id", "policy_revision",
+        "authorization_basis", "bootstrap_receipt_id", "prior_receipt_count",
+        "prior_receipt_cids", "prior_receipt_chain_cid",
+        "previous_receipt_cid", "candidate_base_head", "candidate_head",
+        "candidate_tree", "candidate_authorization_witness_cid",
+        "durable_candidate_witness_cid", "published_r30_receipt_cid",
+        "published_r36_receipt_cid", "published_r38_receipt_cid",
+        "published_r39_receipt_cid", "failed_r40_authorization_attempt_cid",
+        "r40_authorization_failure_evidence_cid",
+        "r39_validation_dependency_failure_evidence_cid",
+        "approved_validation_runtime_deployment_cid",
+        "approved_validation_runtime_post_promotion_preflight_cid",
+        "validation_dependency_directories_contract_cid",
+        "executor_contract_cid", "logical_argv_sha256",
+        "validation_subject_head", "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_cid = str(unsigned.pop("policy_admission_cid", "") or "")
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R41_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 41
+        or supplied.get("authorization_basis")
+        != (
+            "validated_r1_r27_r30_r36_r38_r39_chain_plus_failed_r40_"
+            "attempt_plus_approved_runtime_dispatch_plus_guarded_r41_witness"
+        )
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+        or supplied.get("candidate_base_head")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("published_r30_receipt_cid")
+        != ASEH_R31_PUBLISHED_R30_RECEIPT_CID
+        or supplied.get("published_r36_receipt_cid")
+        != ASEH_R37_PUBLISHED_R36_RECEIPT_CID
+        or supplied.get("published_r38_receipt_cid")
+        != ASEH_R39_PUBLISHED_R38_RECEIPT_CID
+        or supplied.get("published_r39_receipt_cid")
+        != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+        or supplied.get("failed_r40_authorization_attempt_cid")
+        != ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+        or supplied.get("r40_authorization_failure_evidence_cid")
+        != _r41_expected_r40_authorization_failure_evidence()["evidence_cid"]
+        or supplied.get("r39_validation_dependency_failure_evidence_cid")
+        != _r40_expected_r39_validation_dependency_failure_evidence()[
+            "evidence_cid"
+        ]
+        or supplied.get("approved_validation_runtime_deployment_cid")
+        != _r40_expected_approved_validation_runtime_deployment()[
+            "deployment_cid"
+        ]
+        or supplied.get(
+            "approved_validation_runtime_post_promotion_preflight_cid"
+        )
+        != _r40_expected_post_promotion_preflight_evidence()["evidence_cid"]
+        or supplied.get("validation_dependency_directories_contract_cid")
+        != _r41_validation_dependency_directories_contract()["contract_cid"]
+        or supplied.get("executor_contract_cid")
+        != _identity(_r27_historical_live_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_cid != _identity(unsigned)
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(supplied.get(name) or ""))
+            is None
+            for name in (
+                "bootstrap_receipt_id", "prior_receipt_chain_cid",
+                "previous_receipt_cid", "candidate_authorization_witness_cid",
+                "durable_candidate_witness_cid", "published_r30_receipt_cid",
+                "published_r36_receipt_cid", "published_r38_receipt_cid",
+                "published_r39_receipt_cid",
+                "failed_r40_authorization_attempt_cid",
+                "r40_authorization_failure_evidence_cid",
+                "r39_validation_dependency_failure_evidence_cid",
+                "approved_validation_runtime_deployment_cid",
+                "approved_validation_runtime_post_promotion_preflight_cid",
+                "validation_dependency_directories_contract_cid",
+                "executor_contract_cid", "logical_argv_sha256",
+            )
+        )
+    ):
+        raise OperatorError("R41 historical live policy admission differs")
+    return supplied
+
+
+def _r41_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    admitted_chain = _admit_exact_r39_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None
+        or receipt_cids != ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS
+    ):
+        raise OperatorError("R41 historical live prior identity differs")
+    witness = dict(candidate_authorization_witness)
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    _assert_r30_durable_candidate_witness(
+        durable,
+        active_authorization_witness=witness,
+    )
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or durable.get("head") != candidate_head
+        or durable.get("tree") != candidate_tree
+        or witness.get("status_digest") != _identity(b"")
+    ):
+        raise OperatorError(
+            "R41 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    if admitted_contract != _r27_historical_live_validation_executor_contract():
+        raise OperatorError("R41 historical live executor contract differs")
+    admission: dict[str, Any] = {
+        "schema": ASEH_R41_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 41,
+        "authorization_basis": (
+            "validated_r1_r27_r30_r36_r38_r39_chain_plus_failed_r40_"
+            "attempt_plus_approved_runtime_dispatch_plus_guarded_r41_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "published_r36_receipt_cid": ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+        "published_r38_receipt_cid": ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+        "published_r39_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+        "failed_r40_authorization_attempt_cid": (
+            ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "r40_authorization_failure_evidence_cid": (
+            _r41_expected_r40_authorization_failure_evidence()["evidence_cid"]
+        ),
+        "r39_validation_dependency_failure_evidence_cid": (
+            _r40_expected_r39_validation_dependency_failure_evidence()[
+                "evidence_cid"
+            ]
+        ),
+        "approved_validation_runtime_deployment_cid": (
+            _r40_expected_approved_validation_runtime_deployment()[
+                "deployment_cid"
+            ]
+        ),
+        "approved_validation_runtime_post_promotion_preflight_cid": (
+            _r40_expected_post_promotion_preflight_evidence()["evidence_cid"]
+        ),
+        "validation_dependency_directories_contract_cid": (
+            _r41_validation_dependency_directories_contract()["contract_cid"]
+        ),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r41_historical_live_policy_admission_record(admission)
+
+
+def _admit_r41_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    **arguments: Any,
+) -> dict[str, Any]:
+    supplied = _validate_r41_historical_live_policy_admission_record(value)
+    expected = _r41_historical_live_policy_admission(**arguments)
+    if supplied != expected:
+        raise OperatorError("R41 historical live policy admission is unknown")
+    return supplied
+
+
+def _validate_r41_receipt_historical_live_execution_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    policy_admission: Mapping[str, Any],
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+) -> dict[str, Any]:
+    policy = _validate_r41_historical_live_policy_admission_record(
+        policy_admission
+    )
+    receipt_cids = policy.get("prior_receipt_cids")
+    if not isinstance(receipt_cids, list) or len(receipt_cids) != len(
+        ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R41 historical live prior receipt vector differs")
+    prior_chain: list[dict[str, Any]] = []
+    last_index = len(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, (schema, receipt_cid) in enumerate(
+        zip(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS, receipt_cids, strict=True)
+    ):
+        transition: dict[str, Any] = {
+            "schema": schema,
+            "transition_revision": (
+                None
+                if index == 0
+                else (
+                    39
+                    if index == last_index
+                    else (
+                        38
+                        if index == last_index - 1
+                        else (
+                            36
+                            if index == last_index - 2
+                            else (30 if index == last_index - 3 else index + 1)
+                        )
+                    )
+                )
+            ),
+            "receipt_cid": receipt_cid,
+        }
+        if prior_chain:
+            transition["previous_receipt_cid"] = prior_chain[-1]["receipt_cid"]
+        prior_chain.append(transition)
+    returncode = evidence.get("returncode")
+    if type(returncode) is not int or returncode != 0:
+        raise OperatorError("R41 historical live return code is invalid")
+    return _validate_r19_historical_live_execution_evidence(
+        evidence,
+        policy_admission=policy,
+        bootstrap_receipt_id=str(policy.get("bootstrap_receipt_id") or ""),
+        prior_chain=prior_chain,
+        candidate_head=str(policy.get("candidate_head") or ""),
+        candidate_tree=str(policy.get("candidate_tree") or ""),
+        candidate_authorization_witness=candidate_authorization_witness,
+        durable_candidate_witness=durable_candidate_witness,
+        executor_contract=_r27_historical_live_validation_executor_contract(),
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=returncode,
+        stdout_digest=str(evidence.get("stdout_digest") or ""),
+        stderr_digest=str(evidence.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+
+
+def _run_repair_validation_runtime_sealed_dispatch_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=41,
+    )
+
+
+def _validate_repair_validation_runtime_sealed_dispatch_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=41,
+    )
+
+
+def _repair_validation_runtime_sealed_dispatch_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    witness = payload.get("candidate_authorization_witness")
+    durable = payload.get("durable_candidate_witness")
+    guard = payload.get("candidate_git_guard")
+    attempt_value = payload.get("authorization_attempt")
+    failed_attempt_value = payload.get("r40_authorization_attempt")
+    r40_failure_value = payload.get("r40_authorization_failure_evidence")
+    r39_failure_value = payload.get(
+        "r39_validation_dependency_failure_evidence"
+    )
+    deployment_value = payload.get("approved_validation_runtime_deployment")
+    preflight_value = payload.get(
+        "approved_validation_runtime_post_promotion_preflight"
+    )
+    directories_value = payload.get(
+        "validation_dependency_directories_contract"
+    )
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    mappings = (
+        witness, durable, guard, attempt_value, failed_attempt_value,
+        r40_failure_value, r39_failure_value, deployment_value,
+        preflight_value, directories_value, policy_value, evidence_value,
+    )
+    if not all(isinstance(item, Mapping) for item in mappings):
+        raise OperatorError("bootstrap repair R41 receipt evidence is absent")
+    failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+        failed_attempt_value
+    )
+    r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        r40_failure_value
+    )
+    r39_failure = _validate_r40_r39_validation_dependency_failure_evidence(
+        r39_failure_value
+    )
+    deployment = _validate_r40_approved_validation_runtime_deployment(
+        deployment_value,
+        recheck_filesystem=False,
+    )
+    preflight = _validate_r40_post_promotion_preflight_evidence(preflight_value)
+    directories = _validate_r41_validation_dependency_directories_contract(
+        directories_value
+    )
+    attempt = _validate_r41_authorization_attempt_record(
+        attempt_value,
+        candidate_head=str(payload.get("repair_head") or ""),
+        candidate_tree=str(payload.get("repair_tree") or ""),
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r40_authorization_attempt=failed_attempt,
+        r40_authorization_failure_evidence=r40_failure,
+        r39_validation_dependency_failure_evidence=r39_failure,
+        approved_validation_runtime_deployment=deployment,
+        validation_dependency_directories_contract=directories,
+    )
+    policy = _validate_r41_historical_live_policy_admission_record(policy_value)
+    _validate_r41_receipt_historical_live_execution_evidence(
+        evidence_value,
+        policy_admission=policy,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_RECEIPT_FIELDS
+        or payload.get("program_id") != PROGRAM
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R41"
+        or payload.get("transition_revision") != 41
+        or payload.get("previous_receipt_cid")
+        != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+        or payload.get("base_head")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        or payload.get("base_tree")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        or payload.get("failed_unpublished_r40_head")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        or payload.get("failed_unpublished_r40_tree")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        or type(payload.get("authorized_at")) not in {int, float}
+        or not math.isfinite(float(payload["authorized_at"]))
+        or float(payload["authorized_at"]) < float(attempt["started_at"])
+        or payload.get("terminal_success_criteria")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r41_sealed_receipt_validation_executor_contract()
+        or failed_attempt.get("attempt_cid")
+        != ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+        or r40_failure.get("authorization_attempt_cid")
+        != failed_attempt.get("attempt_cid")
+        or r39_failure.get("evidence_cid")
+        != _r40_expected_r39_validation_dependency_failure_evidence()[
+            "evidence_cid"
+        ]
+        or deployment.get("deployment_cid")
+        != directories.get("approved_validation_runtime_deployment_cid")
+        or preflight.get("deployment_cid") != deployment.get("deployment_cid")
+    ):
+        raise OperatorError("bootstrap repair R41 receipt schema is invalid")
+    receipt_cid = str(payload.get("receipt_cid") or "")
+    unsigned = dict(payload)
+    unsigned.pop("receipt_cid", None)
+    if receipt_cid != _identity(unsigned):
+        raise OperatorError("bootstrap repair R41 receipt CID is invalid")
+    return receipt_cid
+
+
+def _assert_r41_one_shot_state(
+    *,
+    paths: Mapping[str, Path],
+    expected_r41_attempt: Mapping[str, Any] | None = None,
+    expected_r41_receipt: Mapping[str, Any] | None = None,
+    expected_r41_receipt_cid: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    r41_path = paths.get(
+        "repair_validation_runtime_sealed_dispatch_transition_receipt"
+    )
+    r41_attempt_path = paths.get(
+        "repair_validation_runtime_sealed_dispatch_authorization_attempt"
+    )
+    r40_attempt_path = paths.get(
+        "repair_approved_validation_runtime_configuration_authorization_attempt"
+    )
+    if not all(
+        isinstance(path, Path)
+        for path in (r41_path, r41_attempt_path, r40_attempt_path)
+    ):
+        raise OperatorError("R41 one-shot evidence paths are absent")
+    failed_attempt = _r41_expected_r40_authorization_attempt()
+    observed_failed_attempt = _secure_runtime_json(
+        r40_attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    if observed_failed_attempt != failed_attempt:
+        raise OperatorError("R41 failed R40 authorization attempt changed")
+    r39_failure, deployment = _assert_r40_one_shot_state(
+        paths=paths,
+        expected_r40_attempt=failed_attempt,
+    )
+    r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        _r41_expected_r40_authorization_failure_evidence()
+    )
+    directories = _validate_r41_validation_dependency_directories_contract(
+        _r41_validation_dependency_directories_contract()
+    )
+    if expected_r41_receipt_cid is None:
+        if expected_r41_receipt is not None or not _r29_receipt_name_is_absent(
+            r41_path
+        ):
+            raise OperatorError("R41 transition receipt appeared before publication")
+    else:
+        observed_receipt = _secure_runtime_json(
+            r41_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if (
+            _repair_validation_runtime_sealed_dispatch_transition_receipt_id(
+                observed_receipt
+            )
+            != expected_r41_receipt_cid
+            or expected_r41_receipt is not None
+            and observed_receipt
+            != json.loads(_canonical_json(expected_r41_receipt))
+        ):
+            raise OperatorError("R41 transition receipt changed")
+    if expected_r41_attempt is None:
+        with _anchored_directory_descriptor(
+            r41_attempt_path.parent
+        ) as directory_fd:
+            if not _r21_path_absent(directory_fd, r41_attempt_path.name):
+                raise OperatorError(
+                    "R41 authorization attempt already exists; retry is denied"
+                )
+    else:
+        observed_attempt = _secure_runtime_json(
+            r41_attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if observed_attempt != json.loads(_canonical_json(expected_r41_attempt)):
+            raise OperatorError("R41 authorization attempt changed")
+    return r39_failure, deployment, failed_attempt, r40_failure, directories
+
+
+def _assert_r41_historical_live_effect_admission(
+    *,
+    paths: Mapping[str, Path],
+    authorization_attempt: Mapping[str, Any],
+    authorization_candidate_head: str,
+    authorization_candidate_tree: str,
+    authorization_candidate_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    r40_authorization_attempt: Mapping[str, Any],
+    r40_authorization_failure_evidence: Mapping[str, Any],
+    r39_validation_dependency_failure_evidence: Mapping[str, Any],
+    approved_validation_runtime_deployment: Mapping[str, Any],
+    validation_dependency_directories_contract: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> None:
+    durable = _validate_r30_durable_candidate_witness(durable_candidate_witness)
+    guard = _validate_r30_candidate_git_guard_record(
+        candidate_git_guard,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+    )
+    failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+        r40_authorization_attempt
+    )
+    r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        r40_authorization_failure_evidence
+    )
+    r39_failure = _validate_r40_r39_validation_dependency_failure_evidence(
+        r39_validation_dependency_failure_evidence
+    )
+    deployment = _validate_r40_approved_validation_runtime_deployment(
+        approved_validation_runtime_deployment,
+        recheck_filesystem=False,
+    )
+    directories = _validate_r41_validation_dependency_directories_contract(
+        validation_dependency_directories_contract
+    )
+    attempt = _validate_r41_authorization_attempt_record(
+        authorization_attempt,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+        candidate_authorization_witness=authorization_candidate_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r40_authorization_attempt=failed_attempt,
+        r40_authorization_failure_evidence=r40_failure,
+        r39_validation_dependency_failure_evidence=r39_failure,
+        approved_validation_runtime_deployment=deployment,
+        validation_dependency_directories_contract=directories,
+    )
+    _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=authorization_candidate_head,
+        authorization_candidate_tree=authorization_candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+    current = _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=attempt,
+        expected_r41_receipt=authorization_receipt,
+        expected_r41_receipt_cid=authorizing_receipt_cid,
+    )
+    if current != (
+        r39_failure,
+        deployment,
+        failed_attempt,
+        r40_failure,
+        directories,
+    ):
+        raise OperatorError("R41 effect authority changed")
+    _assert_candidate_authorization_witness(
+        active_candidate_witness,
+        expected_head=active_candidate_head,
+        expected_tree=active_candidate_tree,
+        boundary="immediately before R41 historical live effect release",
+    )
+
+
+def _qualify_r41_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    durable_candidate_witness: Mapping[str, Any],
+    candidate_git_guard: Mapping[str, Any],
+    r40_authorization_attempt: Mapping[str, Any],
+    r40_authorization_failure_evidence: Mapping[str, Any],
+    r39_validation_dependency_failure_evidence: Mapping[str, Any],
+    approved_validation_runtime_deployment: Mapping[str, Any],
+    validation_dependency_directories_contract: Mapping[str, Any],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    authorization_attempt: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_authorization_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    sealed_attempt = json.loads(_canonical_json(authorization_attempt))
+    sealed_receipt = (
+        None
+        if authorization_receipt is None
+        else json.loads(_canonical_json(authorization_receipt))
+    )
+    sealed_witness = dict(candidate_authorization_witness)
+    sealed_durable = _validate_r30_durable_candidate_witness(
+        durable_candidate_witness
+    )
+    sealed_guard = dict(candidate_git_guard)
+    sealed_failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+        r40_authorization_attempt
+    )
+    sealed_r40_failure = _validate_r41_r40_authorization_failure_evidence(
+        r40_authorization_failure_evidence
+    )
+    sealed_r39_failure = (
+        _validate_r40_r39_validation_dependency_failure_evidence(
+            r39_validation_dependency_failure_evidence
+        )
+    )
+    sealed_deployment = _validate_r40_approved_validation_runtime_deployment(
+        approved_validation_runtime_deployment,
+        recheck_filesystem=False,
+    )
+    sealed_directories = (
+        _validate_r41_validation_dependency_directories_contract(
+            validation_dependency_directories_contract
+        )
+    )
+    sealed_active_witness = dict(active_candidate_authorization_witness)
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=candidate_head,
+        authorization_candidate_tree=candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+
+    def pre_effect_guard() -> None:
+        _assert_r41_historical_live_effect_admission(
+            paths=paths,
+            authorization_attempt=sealed_attempt,
+            authorization_candidate_head=candidate_head,
+            authorization_candidate_tree=candidate_tree,
+            authorization_candidate_witness=sealed_witness,
+            durable_candidate_witness=sealed_durable,
+            candidate_git_guard=sealed_guard,
+            r40_authorization_attempt=sealed_failed_attempt,
+            r40_authorization_failure_evidence=sealed_r40_failure,
+            r39_validation_dependency_failure_evidence=sealed_r39_failure,
+            approved_validation_runtime_deployment=sealed_deployment,
+            validation_dependency_directories_contract=sealed_directories,
+            authorization_receipt=sealed_receipt,
+            authorizing_receipt_cid=authorizing_receipt_cid,
+            active_candidate_head=active_candidate_head,
+            active_candidate_tree=active_candidate_tree,
+            active_candidate_witness=sealed_active_witness,
+            continuity_admission=sealed_continuity,
+        )
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        durable_candidate_witness=sealed_durable,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        pre_effect_guard=pre_effect_guard,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+        active_candidate_authorization_witness=sealed_active_witness,
+        _revision=41,
+    )
+
+
+def _recheck_r41_owner_start_authority(
+    *,
+    paths: Mapping[str, Path],
+    launch_admission: Mapping[str, Any],
+) -> None:
+    transition = launch_admission.get("repair_transition")
+    if not (
+        isinstance(transition, Mapping)
+        and transition.get("schema")
+        == REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+    ):
+        return
+    fields = (
+        "authorization_attempt",
+        "candidate_authorization_witness",
+        "durable_candidate_witness",
+        "candidate_git_guard",
+        "r40_authorization_attempt",
+        "r40_authorization_failure_evidence",
+        "r39_validation_dependency_failure_evidence",
+        "approved_validation_runtime_deployment",
+        "validation_dependency_directories_contract",
+    )
+    values = {name: transition.get(name) for name in fields}
+    if not all(isinstance(item, Mapping) for item in values.values()):
+        raise OperatorError("R41 owner-start authority is absent")
+    admitted_attempt = _validate_r41_authorization_attempt_record(
+        values["authorization_attempt"],
+        candidate_head=str(transition.get("repair_head") or ""),
+        candidate_tree=str(transition.get("repair_tree") or ""),
+        candidate_authorization_witness=values[
+            "candidate_authorization_witness"
+        ],
+        durable_candidate_witness=values["durable_candidate_witness"],
+        candidate_git_guard=values["candidate_git_guard"],
+        r40_authorization_attempt=values["r40_authorization_attempt"],
+        r40_authorization_failure_evidence=values[
+            "r40_authorization_failure_evidence"
+        ],
+        r39_validation_dependency_failure_evidence=values[
+            "r39_validation_dependency_failure_evidence"
+        ],
+        approved_validation_runtime_deployment=values[
+            "approved_validation_runtime_deployment"
+        ],
+        validation_dependency_directories_contract=values[
+            "validation_dependency_directories_contract"
+        ],
+    )
+    current = _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=admitted_attempt,
+        expected_r41_receipt=None,
+        expected_r41_receipt_cid=str(transition.get("receipt_cid") or ""),
+    )
+    expected = (
+        values["r39_validation_dependency_failure_evidence"],
+        values["approved_validation_runtime_deployment"],
+        values["r40_authorization_attempt"],
+        values["r40_authorization_failure_evidence"],
+        values["validation_dependency_directories_contract"],
+    )
+    if current != expected:
+        raise OperatorError("R41 owner-start authority changed")
+
+
+def _complete_r41_historical_live_prequalification(
+    *,
+    paths: Mapping[str, Path],
+    bundle: Mapping[str, Any],
+    continuity_admission: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    receipt = bundle.get("receipt")
+    prior_chain = bundle.get("prior_chain")
+    transition = bundle.get("transition")
+    stored_policy = bundle.get("stored_policy_admission")
+    stored_evidence = bundle.get("stored_evidence")
+    active_witness = bundle.get("active_source_witness")
+    required = (
+        "authorization_attempt",
+        "r40_authorization_attempt",
+        "r40_authorization_failure_evidence",
+        "r39_validation_dependency_failure_evidence",
+        "approved_validation_runtime_deployment",
+        "validation_dependency_directories_contract",
+    )
+    values = {name: bundle.get(name) for name in required}
+    receipt_cid = str(bundle.get("receipt_cid") or "")
+    active_head = str(bundle.get("active_source_head") or "")
+    active_tree = str(bundle.get("active_source_tree") or "")
+    if (
+        not isinstance(receipt, Mapping)
+        or not isinstance(prior_chain, list)
+        or not isinstance(transition, Mapping)
+        or not isinstance(stored_policy, Mapping)
+        or not isinstance(stored_evidence, Mapping)
+        or not isinstance(active_witness, Mapping)
+        or not all(isinstance(item, Mapping) for item in values.values())
+        or bundle.get("fresh_evidence") is not None
+    ):
+        raise OperatorError("R41 historical live prequalification is incomplete")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    stored_witness = transition.get("candidate_authorization_witness")
+    durable = transition.get("durable_candidate_witness")
+    stored_guard = transition.get("candidate_git_guard")
+    is_descendant = active_head != anchor_head or active_tree != anchor_tree
+    if (
+        not isinstance(stored_witness, Mapping)
+        or not isinstance(durable, Mapping)
+        or not isinstance(stored_guard, Mapping)
+        or bundle.get("receipt_anchor_is_current") is not (not is_descendant)
+        or bundle.get("historical_live_deferred") is not is_descendant
+    ):
+        raise OperatorError("R41 historical live source identity differs")
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=anchor_head,
+        authorization_candidate_tree=anchor_tree,
+        active_candidate_head=active_head,
+        active_candidate_tree=active_tree,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r41_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=str(bundle.get("bootstrap_receipt_id") or ""),
+            prior_chain=prior_chain,
+            candidate_head=anchor_head,
+            candidate_tree=anchor_tree,
+            candidate_authorization_witness=stored_witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=stored_guard,
+            r40_authorization_attempt=values["r40_authorization_attempt"],
+            r40_authorization_failure_evidence=values[
+                "r40_authorization_failure_evidence"
+            ],
+            r39_validation_dependency_failure_evidence=values[
+                "r39_validation_dependency_failure_evidence"
+            ],
+            approved_validation_runtime_deployment=values[
+                "approved_validation_runtime_deployment"
+            ],
+            validation_dependency_directories_contract=values[
+                "validation_dependency_directories_contract"
+            ],
+            policy_admission=stored_policy,
+            authorizing_receipt_cid=receipt_cid,
+            authorization_attempt=values["authorization_attempt"],
+            authorization_receipt=receipt,
+            active_candidate_head=active_head,
+            active_candidate_tree=active_tree,
+            active_candidate_authorization_witness=active_witness,
+            continuity_admission=sealed_continuity,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        active_witness,
+        expected_head=active_head,
+        expected_tree=active_tree,
+        boundary="after R41 live qualification on the active source",
+    )
+    current = _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=values["authorization_attempt"],
+        expected_r41_receipt=receipt,
+        expected_r41_receipt_cid=receipt_cid,
+    )
+    expected = (
+        values["r39_validation_dependency_failure_evidence"],
+        values["approved_validation_runtime_deployment"],
+        values["r40_authorization_attempt"],
+        values["r40_authorization_failure_evidence"],
+        values["validation_dependency_directories_contract"],
+    )
+    if (
+        current != expected
+        or admitted_policy != stored_policy
+        or fresh_evidence.get("active_policy_cid")
+        != stored_policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError("R41 receipt changed during prequalification")
+    result = dict(bundle)
+    result["policy_admission"] = admitted_policy
+    result["fresh_evidence"] = fresh_evidence
+    result["historical_live_deferred"] = False
+    result["historical_live_effect_continuity"] = sealed_continuity
+    return result
+
+
+def _prequalify_r41_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    r41_path = paths.get(
+        "repair_validation_runtime_sealed_dispatch_transition_receipt"
+    )
+    if not isinstance(r41_path, Path):
+        return None
+    exact_candidate = _r41_population_requires_policy(population)
+    if _r29_receipt_name_is_absent(r41_path):
+        if exact_candidate:
+            _assert_r41_one_shot_state(paths=paths)
+            raise OperatorError("active R41 sealed-dispatch receipt is absent")
+        return None
+    prior_chain = _load_exact_r39_receipt_chain(paths)
+    r39_receipt = prior_chain[-1]
+    receipt = _secure_runtime_json(
+        r41_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = _repair_validation_runtime_sealed_dispatch_transition_receipt_id(
+        receipt
+    )
+    transition = _validate_repair_validation_runtime_sealed_dispatch_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=r39_receipt,
+        rerun_validations=False,
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    stored_witness = transition.get("candidate_authorization_witness")
+    durable = transition.get("durable_candidate_witness")
+    stored_guard = transition.get("candidate_git_guard")
+    required = (
+        "authorization_attempt",
+        "r40_authorization_attempt",
+        "r40_authorization_failure_evidence",
+        "r39_validation_dependency_failure_evidence",
+        "approved_validation_runtime_deployment",
+        "validation_dependency_directories_contract",
+    )
+    values = {name: transition.get(name) for name in required}
+    if (
+        any(
+            re.fullmatch(r"[0-9a-f]{40}", value) is None
+            for value in (current_head, current_tree, anchor_head, anchor_tree)
+        )
+        or _git("rev-parse", f"{current_head}^{{tree}}") != current_tree
+        or not isinstance(stored_witness, Mapping)
+        or not isinstance(durable, Mapping)
+        or not isinstance(stored_guard, Mapping)
+        or not all(isinstance(item, Mapping) for item in values.values())
+    ):
+        raise OperatorError("active R41 policy does not bind the current tree")
+    admitted_attempt = _validate_r41_authorization_attempt_record(
+        values["authorization_attempt"],
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=stored_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=stored_guard,
+        r40_authorization_attempt=values["r40_authorization_attempt"],
+        r40_authorization_failure_evidence=values[
+            "r40_authorization_failure_evidence"
+        ],
+        r39_validation_dependency_failure_evidence=values[
+            "r39_validation_dependency_failure_evidence"
+        ],
+        approved_validation_runtime_deployment=values[
+            "approved_validation_runtime_deployment"
+        ],
+        validation_dependency_directories_contract=values[
+            "validation_dependency_directories_contract"
+        ],
+    )
+    current = _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=admitted_attempt,
+        expected_r41_receipt=receipt,
+        expected_r41_receipt_cid=receipt_cid,
+    )
+    expected = (
+        values["r39_validation_dependency_failure_evidence"],
+        values["approved_validation_runtime_deployment"],
+        values["r40_authorization_attempt"],
+        values["r40_authorization_failure_evidence"],
+        values["validation_dependency_directories_contract"],
+    )
+    if current != expected:
+        raise OperatorError("active R41 external authority differs")
+    is_descendant = current_head != anchor_head or current_tree != anchor_tree
+    if is_descendant:
+        _git("merge-base", "--is-ancestor", anchor_head, current_head)
+        if len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
+            raise OperatorError(
+                "R41 descendant live qualification requires a merge commit"
+            )
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != current_head
+        or active_guard.candidate_tree != current_tree
+    ):
+        raise OperatorError("R41 launch prequalification Git guard is absent")
+    _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="before R41 launch witness",
+    )
+    active_witness = _candidate_authorization_witness(
+        expected_head=current_head,
+        expected_tree=current_tree,
+    )
+    if not is_descendant:
+        _assert_r30_durable_candidate_witness(
+            durable,
+            active_authorization_witness=active_witness,
+        )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    stored_policy_value = receipt.get("historical_live_policy_admission")
+    stored_policy = _admit_r41_historical_live_policy_admission(
+        stored_policy_value if isinstance(stored_policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=stored_witness,
+        executor_contract=_r27_historical_live_validation_executor_contract(),
+        durable_candidate_witness=durable,
+    )
+    stored_evidence_value = receipt.get("historical_live_execution_evidence")
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError("active R41 stored live evidence is absent")
+    stored_evidence = _validate_r41_receipt_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=stored_policy,
+        candidate_authorization_witness=stored_witness,
+        durable_candidate_witness=durable,
+    )
+    exact_chain = _admit_exact_r41_transition_chain([*prior_chain, receipt])
+    bundle = {
+        "receipt": receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": stored_policy,
+        "stored_policy_admission": stored_policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": None,
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        **{name: dict(value) for name, value in values.items()},
+        "authorization_attempt": admitted_attempt,
+        "candidate_authorization_witness_cid": _identity(stored_witness),
+        "policy_candidate_witness_cid": _identity(stored_witness),
+        "active_source_witness": dict(active_witness),
+        "active_source_witness_cid": _identity(active_witness),
+        "active_source_head": current_head,
+        "active_source_tree": current_tree,
+        "receipt_anchor_is_current": not is_descendant,
+        "historical_live_deferred": is_descendant,
+        "historical_live_effect_continuity": None,
+        "r28_receipt_absent": True,
+        "r29_receipt_absent": True,
+        "r30_receipt_present": True,
+        "r40_receipt_absent": True,
+        "published_r30_receipt_cid": ASEH_R31_PUBLISHED_R30_RECEIPT_CID,
+        "published_r36_receipt_cid": ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+        "published_r38_receipt_cid": ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+        "published_r39_receipt_cid": ASEH_R40_PUBLISHED_R39_RECEIPT_CID,
+        "durable_candidate_witness_cid": durable["witness_cid"],
+    }
+    if is_descendant:
+        return bundle
+    return _complete_r41_historical_live_prequalification(
+        paths=paths,
+        bundle=bundle,
+        continuity_admission=None,
+    )
+
+
+def _authorize_repair_validation_runtime_sealed_dispatch_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R41 child without retrying failed R40."""
+
+    del board, config, previous_transition
+    r41_path = paths.get(
+        "repair_validation_runtime_sealed_dispatch_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_validation_runtime_sealed_dispatch_authorization_attempt"
+    )
+    r30_path = paths.get("repair_candidate_git_epoch_guard_transition_receipt")
+    if not isinstance(r41_path, Path) or not isinstance(attempt_path, Path):
+        return None
+    if r41_path.parent != attempt_path.parent or not _same_namespace_identity(
+        os.fstat(authorization_directory_fd),
+        os.stat(r41_path.parent, follow_symlinks=False),
+    ):
+        raise OperatorError("R41 authorization evidence directory differs")
+    if not isinstance(r30_path, Path) or _r29_receipt_name_is_absent(r30_path):
+        return None
+    waiter_chain = _admit_exact_r27_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in waiter_chain
+    ) != ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("bootstrap repair R41 waiter prior vector differs")
+    prior_chain = _load_exact_r39_receipt_chain(paths)
+    prior_receipt = prior_chain[-1]
+    if (
+        previous_receipt.get("receipt_cid")
+        != ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+        or prior_receipt.get("receipt_cid")
+        != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+    ):
+        raise OperatorError("bootstrap repair R41 prior chain differs")
+    if not _r29_receipt_name_is_absent(
+        r41_path,
+        authorization_directory_fd=authorization_directory_fd,
+    ):
+        receipt = _secure_runtime_json(
+            r41_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_validation_runtime_sealed_dispatch_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=prior_receipt,
+            rerun_validations=False,
+        )
+        attempt = transition.get("authorization_attempt")
+        if not isinstance(attempt, Mapping):
+            raise OperatorError("R41 authorization attempt is absent")
+        _assert_r41_one_shot_state(
+            paths=paths,
+            expected_r41_attempt=attempt,
+            expected_r41_receipt=receipt,
+            expected_r41_receipt_cid=str(transition.get("receipt_cid") or ""),
+        )
+        if receipt.get("repair_head") == head:
+            transition = (
+                _validate_repair_validation_runtime_sealed_dispatch_transition(
+                    receipt,
+                    bootstrap=bootstrap,
+                    previous_receipt=prior_receipt,
+                    rerun_validations=True,
+                )
+            )
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": [*prior_chain, receipt],
+            "runtime_source_head": head,
+        }
+
+    base_head = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R41 base tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R41 changed paths differ")
+    if _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, head) != (
+        ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R41 effective changed paths differ")
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    active_guard = _ASEH_CANDIDATE_GIT_GUARD
+    if (
+        active_guard is None
+        or active_guard.candidate_head != head
+        or active_guard.candidate_tree != candidate_tree
+    ):
+        raise OperatorError("R41 authorization Git guard is absent")
+    candidate_git_guard = _validate_candidate_git_guard_health(
+        active_guard,
+        boundary="before R41 authorization witness",
+    )
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    durable_witness = _r30_durable_candidate_witness(
+        authorization_witness=authorization_witness,
+        candidate_git_guard=candidate_git_guard,
+    )
+    (
+        r39_failure,
+        deployment,
+        failed_attempt,
+        r40_failure,
+        directories,
+    ) = _assert_r41_one_shot_state(paths=paths)
+    authorization_attempt = _r41_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=authorization_witness,
+        durable_candidate_witness=durable_witness,
+        candidate_git_guard=candidate_git_guard,
+        r40_authorization_attempt=failed_attempt,
+        r40_authorization_failure_evidence=r40_failure,
+        r39_validation_dependency_failure_evidence=r39_failure,
+        approved_validation_runtime_deployment=deployment,
+        validation_dependency_directories_contract=directories,
+        started_at=time.time(),
+    )
+    _atomic_json_create(
+        attempt_path,
+        authorization_attempt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=authorization_attempt,
+    )
+    validation_results = (
+        _run_repair_validation_runtime_sealed_dispatch_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r41_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            durable_candidate_witness=durable_witness,
+            candidate_git_guard=candidate_git_guard,
+            r40_authorization_attempt=failed_attempt,
+            r40_authorization_failure_evidence=r40_failure,
+            r39_validation_dependency_failure_evidence=r39_failure,
+            approved_validation_runtime_deployment=deployment,
+            validation_dependency_directories_contract=directories,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+            authorization_attempt=authorization_attempt,
+            authorization_receipt=None,
+            active_candidate_head=head,
+            active_candidate_tree=candidate_tree,
+            active_candidate_authorization_witness=authorization_witness,
+            continuity_admission=None,
+        )
+    )
+    receipt = dict(prior_receipt)
+    receipt.pop("receipt_cid", None)
+    receipt.update(
+        {
+            "schema": REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA,
+            "stable_identity": (
+                f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R41"
+            ),
+            "transition_revision": 41,
+            "previous_receipt_cid": prior_receipt["receipt_cid"],
+            "base_head": base_head,
+            "base_tree": (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+            ),
+            "published_r39_base_head": (
+                REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
+            ),
+            "published_r39_base_tree": (
+                REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_TREE
+            ),
+            "failed_unpublished_r40_head": base_head,
+            "failed_unpublished_r40_tree": (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+            ),
+            "repair_head": head,
+            "repair_tree": candidate_tree,
+            "changed_paths": list(
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS
+            ),
+            "patch_digest": _git_patch_digest(base_head, head),
+            "unreceipted_effective_changed_paths": list(
+                ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+            ),
+            "unreceipted_effective_patch_digest": _git_patch_digest(
+                ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+                head,
+            ),
+            "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R39"],
+            "authority_requirement": (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_AUTHORITY
+            ),
+            "validation_results": validation_results,
+            "candidate_authorization_witness": dict(authorization_witness),
+            "durable_candidate_witness": durable_witness,
+            "candidate_git_guard": candidate_git_guard,
+            "sealed_validation_executor_contract": (
+                _r41_sealed_receipt_validation_executor_contract()
+            ),
+            "historical_live_policy_admission": historical_policy,
+            "historical_live_execution_evidence": historical_evidence,
+            "r40_authorization_attempt": failed_attempt,
+            "r40_authorization_failure_evidence": r40_failure,
+            "r39_validation_dependency_failure_evidence": r39_failure,
+            "approved_validation_runtime_deployment": deployment,
+            "approved_validation_runtime_post_promotion_preflight": (
+                _r40_expected_post_promotion_preflight_evidence()
+            ),
+            "validation_dependency_directories_contract": directories,
+            "authorization_attempt": authorization_attempt,
+            "terminal_success_criteria": (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SUCCESS
+            ),
+            "terminal_non_success_criteria": (
+                REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_NON_SUCCESS
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+            "authorized_at": time.time(),
+        }
+    )
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_validation_runtime_sealed_dispatch_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=prior_receipt,
+        rerun_validations=False,
+    )
+    current = _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=authorization_attempt,
+    )
+    if current != (
+        r39_failure,
+        deployment,
+        failed_attempt,
+        r40_failure,
+        directories,
+    ):
+        raise OperatorError("R41 authority changed before publication")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R41 receipt publication",
+    )
+    _atomic_json_create(
+        r41_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_r41_one_shot_state(
+        paths=paths,
+        expected_r41_attempt=authorization_attempt,
+        expected_r41_receipt=receipt,
+        expected_r41_receipt_cid=receipt["receipt_cid"],
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -38476,6 +40816,71 @@ def _assert_exact_run_launch_admission(
                 "current R30 candidate lacks its exact admitted validation seal"
             )
     elif parents == [
+        REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r41_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r39_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or transition.get("base_head")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+            or transition.get("published_r39_base_head")
+            != REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
+            or transition.get("published_r39_base_tree")
+            != REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_TREE
+            or transition.get("failed_unpublished_r40_head")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+            or transition.get("failed_unpublished_r40_tree")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+            or r39_admitted.get("receipt_cid")
+            != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r39_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or transition.get("r40_authorization_attempt_cid")
+            != ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+            or transition.get("r40_authorization_failure_evidence_cid")
+            != _r41_expected_r40_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+            or transition.get(
+                "r39_validation_dependency_failure_evidence_cid"
+            )
+            != _r40_expected_r39_validation_dependency_failure_evidence().get(
+                "evidence_cid"
+            )
+            or transition.get("approved_validation_runtime_deployment_cid")
+            != _r40_expected_approved_validation_runtime_deployment().get(
+                "deployment_cid"
+            )
+            or transition.get(
+                "approved_validation_runtime_post_promotion_preflight_cid"
+            )
+            != _r40_expected_post_promotion_preflight_evidence().get(
+                "evidence_cid"
+            )
+            or transition.get(
+                "validation_dependency_directories_contract_cid"
+            )
+            != _r41_validation_dependency_directories_contract().get(
+                "contract_cid"
+            )
+        ):
+            raise OperatorError(
+                "current R41 candidate lacks its exact admitted validation seal"
+            )
+    elif parents == [
         REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
     ]:
         transition = admission.get("repair_transition")
@@ -38953,6 +41358,92 @@ def _assert_exact_run_launch_admission(
     else:
         transition = admission.get("repair_transition")
         continuity = admission.get("canonical_continuity")
+        if (
+            isinstance(transition, Mapping)
+            and transition.get("schema")
+            == REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+        ):
+            chain = _admit_exact_r41_transition_chain(
+                admission.get("repair_transition_chain")
+            )
+            r39_admitted = chain[-2]
+            active_admitted = chain[-1]
+            if (
+                len(parents) != 2
+                or transition.get("repair_head") == candidate_head
+                or transition.get("repair_head")
+                != active_admitted.get("repair_head")
+                or transition.get("repair_tree")
+                != active_admitted.get("repair_tree")
+                or transition.get("receipt_cid")
+                != active_admitted.get("receipt_cid")
+                or r39_admitted.get("receipt_cid")
+                != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+                or transition.get("previous_receipt_cid")
+                != r39_admitted.get("receipt_cid")
+                or transition.get("r40_authorization_attempt_cid")
+                != ASEH_R41_FAILED_R40_AUTHORIZATION_ATTEMPT_CID
+                or transition.get("r40_authorization_failure_evidence_cid")
+                != _r41_expected_r40_authorization_failure_evidence().get(
+                    "evidence_cid"
+                )
+                or transition.get(
+                    "r39_validation_dependency_failure_evidence_cid"
+                )
+                != _r40_expected_r39_validation_dependency_failure_evidence().get(
+                    "evidence_cid"
+                )
+                or transition.get(
+                    "approved_validation_runtime_deployment_cid"
+                )
+                != _r40_expected_approved_validation_runtime_deployment().get(
+                    "deployment_cid"
+                )
+                or transition.get(
+                    "approved_validation_runtime_post_promotion_preflight_cid"
+                )
+                != _r40_expected_post_promotion_preflight_evidence().get(
+                    "evidence_cid"
+                )
+                or transition.get(
+                    "validation_dependency_directories_contract_cid"
+                )
+                != _r41_validation_dependency_directories_contract().get(
+                    "contract_cid"
+                )
+                or not isinstance(continuity, Mapping)
+                or not isinstance(continuity.get("repair_to_current"), Mapping)
+                or admission.get("historical_live_authorizing_receipt_cid")
+                != transition.get("receipt_cid")
+                or type(admission.get("projection_matches_events")) is not bool
+            ):
+                raise OperatorError(
+                    "current descendant lacks its retained R41 validation seal"
+                )
+            continuity_edge = continuity.get(
+                "published_r39_to_validation_runtime_sealed_dispatch"
+            )
+            if (
+                not isinstance(continuity_edge, Mapping)
+                or dict(continuity_edge) != dict(transition)
+            ):
+                raise OperatorError(
+                    "current descendant lacks its explicit R39-to-R41 edge"
+                )
+            _validate_r29_historical_live_effect_continuity(
+                continuity["repair_to_current"],
+                authorization_candidate_head=str(transition["repair_head"]),
+                authorization_candidate_tree=str(transition["repair_tree"]),
+                active_candidate_head=candidate_head,
+                active_candidate_tree=candidate_tree,
+            )
+            _git(
+                "merge-base",
+                "--is-ancestor",
+                str(transition["repair_head"]),
+                candidate_head,
+            )
+            return
         if (
             isinstance(transition, Mapping)
             and transition.get("schema")
@@ -40750,7 +43241,7 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     """Run the bounded R16-R30 repair matrix against committed bytes."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41
     }:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
@@ -40758,7 +43249,14 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 40:
+    if _revision == 41:
+        matrix = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r41_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r41_validation_working_tree_scope
+        executor_class_for = _r41_validation_executor_class
+    elif _revision == 40:
         matrix = (
             REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_VALIDATIONS
         )
@@ -41896,6 +44394,19 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-approved-validation-runtime-configuration-"
+        "authorization-attempt.json"
+    )
+    result["repair_validation_runtime_sealed_dispatch_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-validation-runtime-sealed-dispatch-transition.json"
+    )
+    result[
+        "repair_validation_runtime_sealed_dispatch_authorization_attempt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-validation-runtime-sealed-dispatch-"
         "authorization-attempt.json"
     )
     result["owner_start_recovery_decisions"] = (
@@ -46809,11 +49320,38 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     """Admit one immutable transition in the exact R16-R30 suffix."""
 
     if _revision not in {
-        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41
     }:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 40:
+    if _revision == 41:
+        receipt_id = (
+            _repair_validation_runtime_sealed_dispatch_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_implementation_supervisor_handoff_bootstrap_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_AUTHORITY
+        )
+        commands = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r41_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+        executor_class_for = _r41_validation_executor_class
+        scope_for = _r41_validation_working_tree_scope
+    elif _revision == 40:
         receipt_id = (
             _repair_approved_validation_runtime_configuration_transition_receipt_id(
                 receipt
@@ -47543,7 +50081,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         != [
             (
                 "ASEH-BOOTSTRAP-002@ASEH-PLAN-R39"
-                if _revision == 40
+                if _revision in {40, 41}
                 else (
                     "ASEH-BOOTSTRAP-002@ASEH-PLAN-R38"
                     if _revision == 39
@@ -47578,6 +50116,30 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             "bootstrap repair Docker-create-readiness/vendor-resolver "
             "authority differs"
         )
+    if _revision == 41:
+        r41_replaced_r39_fields = {
+            "schema", "stable_identity", "transition_revision",
+            "previous_receipt_cid", "base_head", "base_tree", "repair_head",
+            "repair_tree", "changed_paths", "patch_digest",
+            "unreceipted_effective_changed_paths",
+            "unreceipted_effective_patch_digest", "dependencies",
+            "authority_requirement", "validation_results",
+            "candidate_authorization_witness", "durable_candidate_witness",
+            "candidate_git_guard", "sealed_validation_executor_contract",
+            "historical_live_policy_admission",
+            "historical_live_execution_evidence", "authorization_attempt",
+            "terminal_success_criteria", "terminal_non_success_criteria",
+            "authorized_at", "receipt_cid",
+        }
+        inherited_r39_fields = (
+            REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_RECEIPT_FIELDS
+            - r41_replaced_r39_fields
+        )
+        if any(
+            receipt.get(name) != previous_receipt.get(name)
+            for name in inherited_r39_fields
+        ):
+            raise OperatorError("R41 inherited published R39 receipt differs")
     if _revision == 40:
         r40_replaced_r39_fields = {
             "schema", "stable_identity", "transition_revision",
@@ -47743,6 +50305,26 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     ):
         raise OperatorError(
             "bootstrap repair R31 unreceipted effective Git proof differs"
+        )
+    if _revision == 41 and (
+        _git("rev-parse", f"{base_head}^{{tree}}")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        or receipt.get("published_r39_base_head")
+        != REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
+        or receipt.get("published_r39_base_tree")
+        != REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_TREE
+        or receipt.get("failed_unpublished_r40_head") != base_head
+        or receipt.get("failed_unpublished_r40_tree")
+        != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_TREE
+        or _git_changed_paths(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+        != ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        or receipt.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or receipt.get("unreceipted_effective_patch_digest")
+        != _git_patch_digest(ASEH_R30_PUBLISHED_R27_BASE_HEAD, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair R41 unreceipted effective Git proof differs"
         )
     if _revision == 40 and (
         _git("rev-parse", f"{base_head}^{{tree}}")
@@ -47964,6 +50546,118 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             "bootstrap repair Docker-create-readiness/vendor-resolver witness "
             "differs"
         )
+    if _revision == 41:
+        attempt_value = receipt.get("authorization_attempt")
+        durable_value = receipt.get("durable_candidate_witness")
+        guard_value = receipt.get("candidate_git_guard")
+        failed_attempt_value = receipt.get("r40_authorization_attempt")
+        r40_failure_value = receipt.get("r40_authorization_failure_evidence")
+        r39_failure_value = receipt.get(
+            "r39_validation_dependency_failure_evidence"
+        )
+        deployment_value = receipt.get("approved_validation_runtime_deployment")
+        preflight_value = receipt.get(
+            "approved_validation_runtime_post_promotion_preflight"
+        )
+        directories_value = receipt.get(
+            "validation_dependency_directories_contract"
+        )
+        policy_value = receipt.get("historical_live_policy_admission")
+        evidence_value = receipt.get("historical_live_execution_evidence")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (
+                attempt_value,
+                durable_value,
+                guard_value,
+                failed_attempt_value,
+                r40_failure_value,
+                r39_failure_value,
+                deployment_value,
+                preflight_value,
+                directories_value,
+                policy_value,
+                evidence_value,
+            )
+        ):
+            raise OperatorError("R41 current authorization evidence is absent")
+        durable = _validate_r30_durable_candidate_witness(durable_value)
+        failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+            failed_attempt_value
+        )
+        r40_failure = _validate_r41_r40_authorization_failure_evidence(
+            r40_failure_value
+        )
+        r39_failure = _validate_r40_r39_validation_dependency_failure_evidence(
+            r39_failure_value
+        )
+        deployment = _validate_r40_approved_validation_runtime_deployment(
+            deployment_value,
+            recheck_filesystem=False,
+        )
+        preflight = _validate_r40_post_promotion_preflight_evidence(
+            preflight_value
+        )
+        directories = _validate_r41_validation_dependency_directories_contract(
+            directories_value
+        )
+        admitted_attempt = _validate_r41_authorization_attempt_record(
+            attempt_value,
+            candidate_head=repair,
+            candidate_tree=repair_tree,
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=guard_value,
+            r40_authorization_attempt=failed_attempt,
+            r40_authorization_failure_evidence=r40_failure,
+            r39_validation_dependency_failure_evidence=r39_failure,
+            approved_validation_runtime_deployment=deployment,
+            validation_dependency_directories_contract=directories,
+        )
+        if (
+            not math.isfinite(float(receipt["authorized_at"]))
+            or float(receipt["authorized_at"])
+            < float(admitted_attempt["started_at"])
+        ):
+            raise OperatorError("R41 authorization time differs")
+        policy = _validate_r41_historical_live_policy_admission_record(
+            policy_value
+        )
+        _validate_r41_receipt_historical_live_execution_evidence(
+            evidence_value,
+            policy_admission=policy,
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable,
+        )
+        if (
+            policy.get("bootstrap_receipt_id")
+            != bootstrap.get("bootstrap_receipt_id")
+            or policy.get("candidate_head") != repair
+            or policy.get("candidate_tree") != repair_tree
+            or policy.get("candidate_authorization_witness_cid")
+            != _identity(witness)
+            or policy.get("durable_candidate_witness_cid")
+            != durable.get("witness_cid")
+            or policy.get("failed_r40_authorization_attempt_cid")
+            != failed_attempt.get("attempt_cid")
+            or policy.get("r40_authorization_failure_evidence_cid")
+            != r40_failure.get("evidence_cid")
+            or policy.get("r39_validation_dependency_failure_evidence_cid")
+            != r39_failure.get("evidence_cid")
+            or policy.get("approved_validation_runtime_deployment_cid")
+            != deployment.get("deployment_cid")
+            or policy.get(
+                "approved_validation_runtime_post_promotion_preflight_cid"
+            )
+            != preflight.get("evidence_cid")
+            or policy.get("validation_dependency_directories_contract_cid")
+            != directories.get("contract_cid")
+            or receipt.get("terminal_success_criteria")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SUCCESS
+            or receipt.get("terminal_non_success_criteria")
+            != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_NON_SUCCESS
+        ):
+            raise OperatorError("R41 current authorization evidence differs")
     if _revision == 40:
         attempt_value = receipt.get("authorization_attempt")
         durable_value = receipt.get("durable_candidate_witness")
@@ -48178,7 +50872,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     ):
         expected = by_owner.get(owner)
         observed_commit = _git("rev-parse", f"{repair}:{path}")
-        if _revision == 40 and owner == "ipfs_datasets_py":
+        if _revision in {40, 41} and owner == "ipfs_datasets_py":
             if (
                 not isinstance(expected, Mapping)
                 or observed_commit != ASEH_R40_DATASETS_REPAIR_HEAD
@@ -48409,6 +51103,70 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ),
         "receipt_cid": receipt_id,
     }
+    if _revision == 41:
+        transition_result.update(
+            {
+                "published_r27_base_head": ASEH_R30_PUBLISHED_R27_BASE_HEAD,
+                "published_r27_base_tree": ASEH_R30_PUBLISHED_R27_BASE_TREE,
+                "published_r30_base_head": (
+                    REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_HEAD
+                ),
+                "published_r30_base_tree": (
+                    REPAIR_SEALED_NATIVE_LANE_PRELOAD_TRANSITION_BASE_TREE
+                ),
+                "published_r36_base_head": (
+                    REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_HEAD
+                ),
+                "published_r36_base_tree": (
+                    REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_TREE
+                ),
+                "published_r38_base_head": (
+                    REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_BASE_HEAD
+                ),
+                "published_r38_base_tree": (
+                    REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_BASE_TREE
+                ),
+                "published_r39_base_head": (
+                    REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_HEAD
+                ),
+                "published_r39_base_tree": (
+                    REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_BASE_TREE
+                ),
+                "failed_unpublished_r40_head": base_head,
+                "failed_unpublished_r40_tree": base_tree,
+                "unreceipted_effective_changed_paths": list(
+                    ASEH_R41_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+                ),
+                "unreceipted_effective_patch_digest": str(
+                    receipt.get("unreceipted_effective_patch_digest") or ""
+                ),
+                "authorization_attempt": dict(receipt["authorization_attempt"]),
+                "durable_candidate_witness": dict(
+                    receipt["durable_candidate_witness"]
+                ),
+                "candidate_git_guard": dict(receipt["candidate_git_guard"]),
+                "r40_authorization_attempt": dict(
+                    receipt["r40_authorization_attempt"]
+                ),
+                "r40_authorization_failure_evidence": dict(
+                    receipt["r40_authorization_failure_evidence"]
+                ),
+                "r39_validation_dependency_failure_evidence": dict(
+                    receipt["r39_validation_dependency_failure_evidence"]
+                ),
+                "approved_validation_runtime_deployment": dict(
+                    receipt["approved_validation_runtime_deployment"]
+                ),
+                "approved_validation_runtime_post_promotion_preflight": dict(
+                    receipt[
+                        "approved_validation_runtime_post_promotion_preflight"
+                    ]
+                ),
+                "validation_dependency_directories_contract": dict(
+                    receipt["validation_dependency_directories_contract"]
+                ),
+            }
+        )
     if _revision == 40:
         transition_result.update(
             {
@@ -48756,7 +51514,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             }
         )
     if _revision in {
-        26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+        26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41
     }:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
@@ -48805,7 +51563,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         transition_result[
             "projection_recovery_prestart_semantic_admission_cid"
         ] = recovery["semantic_admission_cid"]
-        if _revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+        if _revision in {27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
             terminal_value = receipt.get("r26_terminal_failure_evidence")
             terminal = (
                 _validate_r27_r26_terminal_failure_evidence(terminal_value)
@@ -48817,7 +51575,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result["r26_terminal_failure_evidence_cid"] = (
                 terminal["evidence_cid"]
             )
-        if _revision in {28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:
+        if _revision in {28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:
             r27_failure_value = receipt.get(
                 "r27_initial_health_failure_evidence"
             )
@@ -49089,7 +51847,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result["r36_launch_failure_evidence_cid"] = (
                 r36_failure["evidence_cid"]
             )
-        if _revision in {38, 39, 40}:
+        if _revision in {38, 39, 40, 41}:
             r36_failure_value = receipt.get("r36_launch_failure_evidence")
             r37_attempt_value = receipt.get("r37_authorization_attempt")
             r37_failure_value = receipt.get(
@@ -49130,14 +51888,14 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result[
                 "r37_authorization_failure_evidence_cid"
             ] = r37_failure["evidence_cid"]
-        if _revision in {39, 40}:
+        if _revision in {39, 40, 41}:
             r38_failure = _validate_r39_r38_launch_failure_evidence(
                 receipt.get("r38_launch_failure_evidence")
             )
             transition_result["r38_launch_failure_evidence_cid"] = (
                 r38_failure["evidence_cid"]
             )
-        if _revision == 40:
+        if _revision in {40, 41}:
             r39_failure = (
                 _validate_r40_r39_validation_dependency_failure_evidence(
                     receipt.get("r39_validation_dependency_failure_evidence")
@@ -49161,6 +51919,27 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result[
                 "approved_validation_runtime_post_promotion_preflight_cid"
             ] = preflight["evidence_cid"]
+        if _revision == 41:
+            failed_attempt = _validate_r41_failed_r40_authorization_attempt(
+                receipt.get("r40_authorization_attempt")
+            )
+            r40_failure = _validate_r41_r40_authorization_failure_evidence(
+                receipt.get("r40_authorization_failure_evidence")
+            )
+            directories = (
+                _validate_r41_validation_dependency_directories_contract(
+                    receipt.get("validation_dependency_directories_contract")
+                )
+            )
+            transition_result["r40_authorization_attempt_cid"] = (
+                failed_attempt["attempt_cid"]
+            )
+            transition_result["r40_authorization_failure_evidence_cid"] = (
+                r40_failure["evidence_cid"]
+            )
+            transition_result[
+                "validation_dependency_directories_contract_cid"
+            ] = directories["contract_cid"]
         if _revision == 35:
             r34_attempt_value = receipt.get("r34_authorization_attempt")
             r34_failure_value = receipt.get(
@@ -52117,6 +54896,10 @@ def _recheck_active_owner_start_authority(
         launch_admission=launch_admission,
     )
     _recheck_r39_owner_start_authority(
+        paths=paths,
+        launch_admission=launch_admission,
+    )
+    _recheck_r41_owner_start_authority(
         paths=paths,
         launch_admission=launch_admission,
     )
@@ -55657,6 +58440,7 @@ def _read_continuity_state(
     r38_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r39_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r40_projection_recovery_prequalification: Mapping[str, Any] | None = None,
+    r41_projection_recovery_prequalification: Mapping[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
@@ -55671,7 +58455,8 @@ def _read_continuity_state(
         with _offline_merge_queue_guard(paths) as queue_database:
             recovery_admission: dict[str, Any] | None = None
             r26_projection_bundle = (
-                r40_projection_recovery_prequalification
+                r41_projection_recovery_prequalification
+                or r40_projection_recovery_prequalification
                 or r39_projection_recovery_prequalification
                 or r38_projection_recovery_prequalification
                 or r37_projection_recovery_prequalification
@@ -60038,6 +62823,22 @@ def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
+        r41_result = (
+            _authorize_repair_validation_runtime_sealed_dispatch_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r41_result is not None:
+            return r41_result
         r40_result = (
             _authorize_repair_approved_validation_runtime_configuration_transition_if_applicable(
                 board=board,
@@ -64301,14 +67102,26 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r40_prequalification = _prequalify_r40_historical_live_launch(
+    r41_prequalification = _prequalify_r41_historical_live_launch(
         paths=paths,
         population=population,
         bootstrap=bootstrap,
     )
+    r40_prequalification = (
+        None
+        if r41_prequalification is not None
+        else _prequalify_r40_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
+    )
+    r41_or_r40_prequalification = (
+        r41_prequalification or r40_prequalification
+    )
     r39_prequalification = (
         None
-        if r40_prequalification is not None
+        if r41_or_r40_prequalification is not None
         else _prequalify_r39_historical_live_launch(
             paths=paths,
             population=population,
@@ -64318,7 +67131,7 @@ def _admit_materialized_launch(
     r38_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
         )
         else _prequalify_r38_historical_live_launch(
@@ -64330,7 +67143,7 @@ def _admit_materialized_launch(
     r37_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
         )
@@ -64343,7 +67156,7 @@ def _admit_materialized_launch(
     r36_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64357,7 +67170,7 @@ def _admit_materialized_launch(
     r35_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64372,7 +67185,7 @@ def _admit_materialized_launch(
     r34_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64388,7 +67201,7 @@ def _admit_materialized_launch(
     r33_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64405,7 +67218,7 @@ def _admit_materialized_launch(
     r31_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64423,7 +67236,7 @@ def _admit_materialized_launch(
     r30_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64442,7 +67255,7 @@ def _admit_materialized_launch(
     r29_prequalification = (
         None
         if (
-            r40_prequalification is not None
+            r41_or_r40_prequalification is not None
             or r39_prequalification is not None
             or r38_prequalification is not None
             or r37_prequalification is not None
@@ -64460,7 +67273,8 @@ def _admit_materialized_launch(
         )
     )
     active_suffix_prequalification = (
-        r40_prequalification
+        r41_prequalification
+        or r40_prequalification
         or r39_prequalification
         or r38_prequalification
         or r37_prequalification
@@ -64680,6 +67494,7 @@ def _admit_materialized_launch(
             r38_projection_recovery_prequalification=r38_prequalification,
             r39_projection_recovery_prequalification=r39_prequalification,
             r40_projection_recovery_prequalification=r40_prequalification,
+            r41_projection_recovery_prequalification=r41_prequalification,
         )
         base_proof = _admit_canonical_merge_suffix(
             board,
@@ -64807,6 +67622,9 @@ def _admit_materialized_launch(
             approved_validation_runtime_configuration_transition: (
                 dict[str, Any] | None
             ) = None
+            validation_runtime_sealed_dispatch_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -64834,6 +67652,7 @@ def _admit_materialized_launch(
             r38_receipt: dict[str, Any] | None = None
             r39_receipt: dict[str, Any] | None = None
             r40_receipt: dict[str, Any] | None = None
+            r41_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -65901,7 +68720,8 @@ def _admit_materialized_launch(
                 )
             r27_reconstruction = r27_prequalification
             direct_r27_child_prequalification = (
-                r40_prequalification
+                r41_prequalification
+                or r40_prequalification
                 or r39_prequalification
                 or r38_prequalification
                 or r37_prequalification
@@ -65915,7 +68735,9 @@ def _admit_materialized_launch(
                 raw_direct_r27_prior = direct_r27_child_prequalification.get(
                     "prior_chain"
                 )
+                r41_direct = r41_prequalification is not None
                 r40_direct = r40_prequalification is not None
+                r41_or_r40_direct = r41_direct or r40_direct
                 r39_direct = r39_prequalification is not None
                 r37_direct = (
                     r38_prequalification is not None
@@ -65927,7 +68749,7 @@ def _admit_materialized_launch(
                 )
                 expected_direct_len = (
                     len(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS)
-                    if r40_direct
+                    if r41_or_r40_direct
                     else (
                         len(ASEH_R38_REPAIR_TRANSITION_CHAIN_SCHEMAS)
                         if r39_direct
@@ -65944,7 +68766,7 @@ def _admit_materialized_launch(
                 )
                 inherited_r27_index = (
                     -5
-                    if r40_direct
+                    if r41_or_r40_direct
                     else (
                         -4
                         if r39_direct
@@ -65953,7 +68775,7 @@ def _admit_materialized_launch(
                 )
                 inherited_r26_index = (
                     -6
-                    if r40_direct
+                    if r41_or_r40_direct
                     else (
                         -5
                         if r39_direct
@@ -65962,7 +68784,7 @@ def _admit_materialized_launch(
                 )
                 r27_prior_slice = (
                     -5
-                    if r40_direct
+                    if r41_or_r40_direct
                     else (
                         -4
                         if r39_direct
@@ -65980,21 +68802,25 @@ def _admit_materialized_launch(
                     )
                 ):
                     revision = (
-                        "R40"
-                        if r40_direct
+                        "R41"
+                        if r41_direct
                         else (
-                            "R39"
-                            if r39_direct
+                            "R40"
+                            if r40_direct
                             else (
-                                "R31"
-                                if r31_direct
+                                "R39"
+                                if r39_direct
                                 else (
-                                    "R30"
-                                    if r30_prequalification is not None
+                                    "R31"
+                                    if r31_direct
                                     else (
-                                        "R29"
-                                        if r29_prequalification is not None
-                                        else "R28"
+                                        "R30"
+                                        if r30_prequalification is not None
+                                        else (
+                                            "R29"
+                                            if r29_prequalification is not None
+                                            else "R28"
+                                        )
                                     )
                                 )
                             )
@@ -66583,6 +69409,63 @@ def _admit_materialized_launch(
                 active_transition = (
                     implementation_supervisor_handoff_bootstrap_transition
                 )
+            if r41_prequalification is not None:
+                raw_r41_transition = r41_prequalification.get("transition")
+                raw_r41_receipt = r41_prequalification.get("receipt")
+                raw_r41_prior_chain = r41_prequalification.get("prior_chain")
+                if (
+                    isinstance(raw_r41_prior_chain, list)
+                    and len(raw_r41_prior_chain) >= 4
+                ):
+                    raw_r39_from_chain = raw_r41_prior_chain[-1]
+                    raw_r38_from_chain = raw_r41_prior_chain[-2]
+                    raw_r36_from_chain = raw_r41_prior_chain[-3]
+                    raw_r30_from_chain = raw_r41_prior_chain[-4]
+                    if isinstance(raw_r39_from_chain, Mapping):
+                        implementation_supervisor_handoff_bootstrap_transition = dict(
+                            raw_r39_from_chain
+                        )
+                        r39_receipt = dict(raw_r39_from_chain)
+                    if isinstance(raw_r38_from_chain, Mapping):
+                        historical_live_policy_revision_transition = dict(
+                            raw_r38_from_chain
+                        )
+                        r38_receipt = dict(raw_r38_from_chain)
+                    if isinstance(raw_r36_from_chain, Mapping):
+                        foreign_grok_terminal_scope_transition = dict(
+                            raw_r36_from_chain
+                        )
+                        r36_receipt = dict(raw_r36_from_chain)
+                    if isinstance(raw_r30_from_chain, Mapping):
+                        candidate_git_epoch_guard_transition = dict(
+                            raw_r30_from_chain
+                        )
+                        r30_receipt = dict(raw_r30_from_chain)
+                if (
+                    not isinstance(raw_r41_transition, Mapping)
+                    or not isinstance(raw_r41_receipt, Mapping)
+                    or not isinstance(raw_r41_prior_chain, list)
+                    or len(raw_r41_prior_chain)
+                    != len(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r41_prior_chain[-1] != r39_receipt
+                    or raw_r41_transition.get("base_head")
+                    != REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_BASE_HEAD
+                    or raw_r41_transition.get("previous_receipt_cid")
+                    != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+                    or r41_prequalification.get("published_r39_receipt_cid")
+                    != ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+                    or r41_prequalification.get("r40_receipt_absent") is not True
+                ):
+                    raise OperatorError(
+                        "R41 sealed-dispatch repair does not extend published R39"
+                    )
+                validation_runtime_sealed_dispatch_transition = dict(
+                    raw_r41_transition
+                )
+                r41_receipt = dict(raw_r41_receipt)
+                active_transition = (
+                    validation_runtime_sealed_dispatch_transition
+                )
             if r40_prequalification is not None:
                 raw_r40_transition = r40_prequalification.get("transition")
                 raw_r40_receipt = r40_prequalification.get("receipt")
@@ -66786,7 +69669,22 @@ def _admit_materialized_launch(
                     "active R36 terminal-scope policy receipt is absent"
                 )
             if (
+                validation_runtime_sealed_dispatch_transition is None
+                and isinstance(
+                    paths.get(
+                        "repair_validation_runtime_sealed_dispatch_"
+                        "transition_receipt"
+                    ),
+                    Path,
+                )
+                and _r41_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R41 sealed-dispatch policy receipt is absent"
+                )
+            if (
                 approved_validation_runtime_configuration_transition is None
+                and validation_runtime_sealed_dispatch_transition is None
                 and isinstance(
                     paths.get(
                         "repair_approved_validation_runtime_configuration_"
@@ -66863,6 +69761,17 @@ def _admit_materialized_launch(
                 task_outputs=outputs,
                 completed_requests=requests,
             )
+            if (
+                r41_prequalification is not None
+                and r41_prequalification.get("historical_live_deferred") is True
+            ):
+                r41_prequalification = (
+                    _complete_r41_historical_live_prequalification(
+                        paths=paths,
+                        bundle=r41_prequalification,
+                        continuity_admission=current_proof,
+                    )
+                )
             if (
                 r40_prequalification is not None
                 and r40_prequalification.get("historical_live_deferred") is True
@@ -67063,6 +69972,7 @@ def _admit_materialized_launch(
                             and r38_prequalification is None
                             and r39_prequalification is None
                             and r40_prequalification is None
+                            and r41_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -67107,6 +70017,7 @@ def _admit_materialized_launch(
                             and r38_prequalification is None
                             and r39_prequalification is None
                             and r40_prequalification is None
+                            and r41_prequalification is None
                                 )
                                 or r22_receipt is None
                             ):
@@ -67152,6 +70063,7 @@ def _admit_materialized_launch(
                             and r38_prequalification is None
                             and r39_prequalification is None
                             and r40_prequalification is None
+                            and r41_prequalification is None
                                     )
                                     or r23_receipt is None
                                 ):
@@ -67197,6 +70109,7 @@ def _admit_materialized_launch(
                             and r38_prequalification is None
                             and r39_prequalification is None
                             and r40_prequalification is None
+                            and r41_prequalification is None
                                         )
                                         or r24_receipt is None
                                     ):
@@ -67404,6 +70317,7 @@ def _admit_materialized_launch(
                                                     r30_descendant_is_active = any(
                                                         bundle is not None
                                                         for bundle in (
+                                                            r41_prequalification,
                                                             r40_prequalification,
                                                             r39_prequalification,
                                                             r31_prequalification,
@@ -67648,6 +70562,50 @@ def _admit_materialized_launch(
                             _validate_repair_implementation_supervisor_handoff_bootstrap_transition
                         )
                         launch_previous_receipt = r38_receipt
+                    if r41_prequalification is not None:
+                        if (
+                            not isinstance(r41_receipt, Mapping)
+                            or validation_runtime_sealed_dispatch_transition is None
+                            or not isinstance(r39_receipt, Mapping)
+                            or implementation_supervisor_handoff_bootstrap_transition
+                            is None
+                            or not isinstance(r38_receipt, Mapping)
+                            or historical_live_policy_revision_transition is None
+                            or not isinstance(r36_receipt, Mapping)
+                            or foreign_grok_terminal_scope_transition is None
+                        ):
+                            raise OperatorError(
+                                "R41 pre-DuckDB qualification bundle is absent"
+                            )
+                        _append_exact_r36_transition_if_missing(
+                            repair_transition_chain,
+                            foreign_grok_terminal_scope_transition,
+                        )
+                        repair_transition_chain.append(
+                            historical_live_policy_revision_transition
+                        )
+                        repair_transition_chain.append(
+                            implementation_supervisor_handoff_bootstrap_transition
+                        )
+                        repair_transition_chain.append(
+                            validation_runtime_sealed_dispatch_transition
+                        )
+                        launch_chain = _admit_exact_r41_transition_chain(
+                            repair_transition_chain
+                        )
+                        launch_bundle = r41_prequalification
+                        launch_receipt = r41_receipt
+                        launch_transition = (
+                            validation_runtime_sealed_dispatch_transition
+                        )
+                        launch_path = paths.get(
+                            "repair_validation_runtime_sealed_dispatch_"
+                            "transition_receipt"
+                        )
+                        launch_validator = (
+                            _validate_repair_validation_runtime_sealed_dispatch_transition
+                        )
+                        launch_previous_receipt = r39_receipt
                     if r40_prequalification is not None:
                         if (
                             not isinstance(r40_receipt, Mapping)
@@ -67746,6 +70704,13 @@ def _admit_materialized_launch(
                                 "repair_transition": launch_transition,
                             },
                         )
+                    if launch_bundle is r41_prequalification:
+                        _recheck_r41_owner_start_authority(
+                            paths=paths,
+                            launch_admission={
+                                "repair_transition": launch_transition,
+                            },
+                        )
                     if launch_bundle is r40_prequalification:
                         _recheck_r40_owner_start_authority(
                             paths=paths,
@@ -67768,6 +70733,7 @@ def _admit_materialized_launch(
                             and launch_bundle is not r37_prequalification
                             and launch_bundle is not r38_prequalification
                             and launch_bundle is not r39_prequalification
+                            and launch_bundle is not r41_prequalification
                             and launch_bundle is not r40_prequalification
                         ),
                     )
@@ -67818,6 +70784,13 @@ def _admit_materialized_launch(
                                 "repair_transition": launch_transition,
                             },
                         )
+                    if launch_bundle is r41_prequalification:
+                        _recheck_r41_owner_start_authority(
+                            paths=paths,
+                            launch_admission={
+                                "repair_transition": launch_transition,
+                            },
+                        )
                     if launch_bundle is r40_prequalification:
                         _recheck_r40_owner_start_authority(
                             paths=paths,
@@ -67842,6 +70815,7 @@ def _admit_materialized_launch(
                             r37_prequalification,
                             r38_prequalification,
                             r39_prequalification,
+                            r41_prequalification,
                             r40_prequalification,
                         )
                         else policy_admission
@@ -67855,6 +70829,7 @@ def _admit_materialized_launch(
                             r37_prequalification,
                             r38_prequalification,
                             r39_prequalification,
+                            r41_prequalification,
                             r40_prequalification,
                         )
                         else launch_bundle.get(
@@ -68133,6 +71108,10 @@ def _admit_materialized_launch(
                 continuity[
                     "published_r39_to_approved_validation_runtime_configuration"
                 ] = approved_validation_runtime_configuration_transition
+            if validation_runtime_sealed_dispatch_transition is not None:
+                continuity[
+                    "published_r39_to_validation_runtime_sealed_dispatch"
+                ] = validation_runtime_sealed_dispatch_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -68192,6 +71171,7 @@ def _admit_materialized_launch(
         or r38_prequalification is not None
         or r39_prequalification is not None
         or r40_prequalification is not None
+        or r41_prequalification is not None
     ):
         admission["projection_matches_events"] = integrity[
             "projection_matches_events"
@@ -68233,6 +71213,11 @@ def _admit_materialized_launch(
         )
     if r40_prequalification is not None:
         _recheck_r40_owner_start_authority(
+            paths=paths,
+            launch_admission=admission,
+        )
+    if r41_prequalification is not None:
+        _recheck_r41_owner_start_authority(
             paths=paths,
             launch_admission=admission,
         )
