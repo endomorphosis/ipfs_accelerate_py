@@ -449,6 +449,140 @@ def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
     assert fixture["state_path"].read_bytes() == original_state
 
 
+def _seed_stale_predecessor_projection(fixture: dict[str, Any]) -> bytes:
+    state = PortalTaskState.load(fixture["state_path"])
+    state.active_task_id = "VRIF-009"
+    state.active_task_cid = "task:vrif-009"
+    state.active_attempt = 1
+    state.active_phase = "implementing"
+    state.implementation_in_progress = True
+    state.save(fixture["state_path"])
+    return fixture["state_path"].read_bytes()
+
+
+def test_watchdog_maintenance_defers_for_exact_nested_database_pool_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    original_state = _seed_stale_predecessor_projection(fixture)
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on stale predecessor VRIF-009",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda update: maintenance_calls.append(update),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize("lifecycle_state", ("preparing", "active", "settling"))
+def test_watchdog_maintenance_defers_for_exact_live_database_nonterminal_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle_state: str,
+) -> None:
+    fixture = _seed_live_unprojected_database_attempt(
+        tmp_path,
+        lifecycle_state=lifecycle_state,
+    )
+    supervisor = fixture["supervisor"]
+    original_state = _seed_stale_predecessor_projection(fixture)
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on stale predecessor VRIF-009",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda update: maintenance_calls.append(update),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+def test_watchdog_maintenance_resumes_without_exact_database_corroboration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_unprojected_database_attempt(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(fixture)
+    fixture["implementation_lock_path"].unlink()
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on stale predecessor VRIF-009",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def _maintenance(update: object) -> dict[str, Any]:
+        maintenance_calls.append(update)
+        return {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": False,
+        }
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        _maintenance,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert len(maintenance_calls) == 1
+
+
 @pytest.mark.parametrize(
     "case",
     [

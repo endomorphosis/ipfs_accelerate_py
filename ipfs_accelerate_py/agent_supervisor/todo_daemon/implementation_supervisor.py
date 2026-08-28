@@ -11967,6 +11967,17 @@ class PortalImplementationSupervisor:
             # the duration of that scan.
             return SupervisorLoopDecision.keep_running()
 
+        database_pool_activity = self._active_managed_database_pool_lease(
+            _child
+        )
+        database_nonterminal_activity = (
+            None
+            if database_pool_activity
+            else self._active_managed_database_nonterminal_claim(_child)
+        )
+        if database_pool_activity or database_nonterminal_activity:
+            return SupervisorLoopDecision.keep_running()
+
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
         daemon_process_birth = getattr(_child, "identity_process_birth", None)
