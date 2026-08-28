@@ -245,6 +245,20 @@ def _m7_migration_errors(
         return [f"M7 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m8_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M8 source-only successor contract across static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(module._m8_source_repair_errors(scheduler, seal, migration))
+    except Exception as exc:
+        return [f"M8 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _normalize_field(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().lower().replace("_", " "))
 
@@ -1682,12 +1696,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     if (
         program.get("authority_mode") != "quack"
         or program.get("task_source_kind") != "duckdb"
-        or program.get("quack_endpoint") != "quack:127.0.0.1:45249"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:45250"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "9"
+        or program.get("store_generation") != "10"
         or program.get("store_id")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/control.duckdb"
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/control.duckdb"
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
@@ -1704,6 +1718,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("append-only prior-SAWM migration binding mismatch")
     config_errors.extend(_m6_migration_errors(config, seal, migration))
     config_errors.extend(_m7_migration_errors(config, seal, migration))
+    config_errors.extend(_m8_migration_errors(config, seal, migration))
     config_errors.extend(_configured_board_dependency_errors(root, config, seal))
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (

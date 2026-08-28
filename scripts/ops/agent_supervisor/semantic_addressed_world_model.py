@@ -67,6 +67,29 @@ def _materializer():
     return _load_script("scripts/materialize_semantic_addressed_world_model_program.py", "_sawm_operator_materializer")
 
 
+def _active_source_repair_materialization(
+    config: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return the newest sealed source-only successor authority.
+
+    M8 is a successor to the immutable M7 repair record, not a rewrite of it.
+    Fall back to M7 only when the M8 key is absent; a present but malformed M8
+    authority must fail closed instead of silently selecting older evidence.
+    """
+
+    successor_key = "source_repair_successor_materialization"
+    historical_key = "source_repair_materialization"
+    if successor_key in config:
+        successor = config.get(successor_key)
+        if not isinstance(successor, Mapping):
+            raise OperatorError("active source-only successor authority is invalid")
+        return successor
+    historical = config.get(historical_key)
+    if not isinstance(historical, Mapping):
+        raise OperatorError("source-only successor authority is unavailable")
+    return historical
+
+
 def _quack_args(config: Mapping[str, Any], command: str) -> list[str]:
     owner = config["quack_owner"]
     return [
@@ -880,10 +903,16 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
-    if isinstance(config.get("source_repair_materialization"), Mapping):
+    if (
+        "source_repair_successor_materialization" in config
+        or isinstance(config.get("source_repair_materialization"), Mapping)
+    ):
+        _active_source_repair_materialization(config)
         checked = materializer.check_materialized(REPO_ROOT, config_path)
         if checked.get("valid") is not True:
-            raise OperatorError("M7 materialized authority does not verify")
+            raise OperatorError(
+                "current source-only successor authority does not verify"
+            )
         return MappingProxyType(
             {
                 "dependency_valid": True,
@@ -968,6 +997,12 @@ def _live_preflight(
         raise OperatorError("sealed dependency or board validation failed")
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
+    active_source_repair = _active_source_repair_materialization(config)
+    expected_event_cursor = int(active_source_repair["target_event_watermark"])
+    expected_projection_cid = str(
+        active_source_repair["target_projection_cid"]
+    )
+    expected_plan_revision = int(active_source_repair["target_plan_revision"])
     store = REPO_ROOT / config["database_program"]["store_id"]
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -1040,9 +1075,8 @@ def _live_preflight(
             or live_snapshot["goal_count"] != 29
             or live_snapshot["dependency_count"] != 136
             or live_snapshot["plan_count"] != 1
-            or live_snapshot["event_cursor"] != 170
-            or live_snapshot["projection_cid"]
-            != materializer._M7_EXPECTED_PROJECTION_CID
+            or live_snapshot["event_cursor"] != expected_event_cursor
+            or live_snapshot["projection_cid"] != expected_projection_cid
             or live_snapshot["plan_root_cid"] != population["plan_root_cid"]
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
@@ -1061,9 +1095,9 @@ def _live_preflight(
             raise OperatorError(
                 f"live Quack task authority conflict: {exc}"
             ) from exc
-        expected_semantic_authority_digest = config[
-            "source_repair_materialization"
-        ]["prior_semantic_authority_digest"]
+        expected_semantic_authority_digest = active_source_repair[
+            "prior_semantic_authority_digest"
+        ]
         if semantic_authority_digest != expected_semantic_authority_digest:
             raise OperatorError("live Quack semantic task authority differs")
         for expected in population["objectives"]:
@@ -1073,7 +1107,8 @@ def _live_preflight(
                 observed is None
                 or observed.get("goal_cid") != expected["goal_cid"]
                 or observed.get("goal_alias") != expected["goal_id"]
-                or observed.get("objective_id") != expected["objective_id"]
+                or observed.get("objective_id")
+                != str(expected.get("objective_id") or "")
                 or observed.get("parent_goal_cid")
                 != expected["parent_goal_cid"]
                 or int(observed.get("ordinal") or 0) != int(expected["ordinal"])
@@ -1086,6 +1121,22 @@ def _live_preflight(
                 != expected["definition_cid"]
             ):
                 raise OperatorError(f"live Quack goal definition conflict: {expected['goal_id']}")
+        live_plan = live.plans.get(str(population["plan_root_cid"]))
+        live_plan_body = (
+            live_plan.get("body") if isinstance(live_plan, Mapping) else {}
+        )
+        if (
+            live_plan is None
+            or live_plan.get("plan_cid") != population["plan_root_cid"]
+            or int(live_plan.get("revision") or 0) != expected_plan_revision
+            or live_plan_body.get("current_source_binding_cid")
+            != population["source_binding"]["source_binding_cid"]
+            or live_plan_body.get("source_migration_revision")
+            != active_source_repair["migration_revision"]
+        ):
+            raise OperatorError(
+                "live Quack plan head is not bound to the current successor source"
+            )
         if statuses.get("SAWM-000") not in {"completed", "complete", "done"}:
             raise OperatorError("live Quack authority lacks the SAWM-000 completion CAS")
     finally:
@@ -1212,7 +1263,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 discovery = discover_live_quack_endpoint(store)
                 if discovery.uri:
                     return _emit({"action": "checked_live", **_live_preflight(config, probe_provider=False)})
-                if isinstance(config.get("source_repair_materialization"), Mapping):
+                if (
+                    "source_repair_successor_materialization" in config
+                    or isinstance(
+                        config.get("source_repair_materialization"), Mapping
+                    )
+                ):
+                    _active_source_repair_materialization(config)
                     return _emit(materializer.check_materialized(REPO_ROOT, config_path))
                 materializer._assert_committed_clean_source(REPO_ROOT, population)
                 dependency = materializer._validator_report(

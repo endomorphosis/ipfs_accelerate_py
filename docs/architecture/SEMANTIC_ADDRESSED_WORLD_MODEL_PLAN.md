@@ -334,6 +334,19 @@ completion authority was reached. The bounded successor repair normalizes
 only those closed row projections by ordinal and records the typed failed
 attempt in M7's migration evidence before retrying materialization.
 
+M7 then materialized and reached a live, authenticated generation-9 Quack
+owner. Its first authenticated preflight verified the exact snapshot, all 45
+task contracts, and the frozen semantic-authority digest, but failed closed
+while checking the second goal: only the root goal has an `objective_id` in
+the canonical population, while the comparator incorrectly indexed that
+optional key for every child goal. The failure occurred before provider
+probing, task claim, task mutation, effects, commits, merges, or completion.
+Generation 9 was stopped and frozen. M8 is the append-only source successor:
+it retains M7 and its receipt as immutable history, appends only plan revision
+9 and typed operator migration evidence, binds the optional child-goal value
+as the existing empty string, and moves execution to a fresh generation-10
+owner. Changed controls are forbidden from restarting against generation 9.
+
 DuckDB plus a live Quack exclusive state owner is the authoritative multi-writer control path. DuckLake is optional non-authoritative history/projection storage and cannot substitute for DuckDB/Quack. This plan does not assert either service live; preflight must prove current capability and fail closed.
 
 The strongest honest terminal is one of: all mandatory work independently accepted with final transitive root verification; an explicitly permitted typed external-capability terminal; or an observed control-plane blocker that cannot be safely repaired within bootstrap authority. There is no background-completion claim.
