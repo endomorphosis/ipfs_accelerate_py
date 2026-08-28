@@ -12503,19 +12503,6 @@ class PortalImplementationSupervisor:
         ):
             return SupervisorLoopDecision.keep_running()
 
-        # Maintenance may repair the stale outer compatibility projection
-        # that produced ``result["stuck"]``.  Re-evaluate the durable state
-        # before using that pre-repair result as recycle authority.  A fresh
-        # non-stuck projection keeps the exact managed child alive; a genuine
-        # stuck projection still permits the existing recycle paths below.
-        post_maintenance_state = PortalTaskState.load(self.config.state_path)
-        post_maintenance_stuck, post_maintenance_reason = self.is_stuck(
-            post_maintenance_state,
-            now_ts=time.time(),
-        )
-        if not post_maintenance_stuck:
-            return SupervisorLoopDecision.keep_running()
-
         main_checkout_repair = dict(result.get("main_checkout_repair") or {})
         if main_checkout_repair.get("repaired"):
             return SupervisorLoopDecision.recycle(
@@ -12523,6 +12510,18 @@ class PortalImplementationSupervisor:
                 detail=main_checkout_repair,
             )
         if result.get("stuck"):
+            # Maintenance may repair the stale outer compatibility projection
+            # that produced ``result["stuck"]``.  Re-evaluate durable state
+            # before using that pre-repair result as recycle authority.
+            post_maintenance_state = PortalTaskState.load(
+                self.config.state_path
+            )
+            post_maintenance_stuck, post_maintenance_reason = self.is_stuck(
+                post_maintenance_state,
+                now_ts=time.time(),
+            )
+            if not post_maintenance_stuck:
+                return SupervisorLoopDecision.keep_running()
             return SupervisorLoopDecision.recycle(
                 str(
                     post_maintenance_reason

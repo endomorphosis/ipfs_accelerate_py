@@ -1039,6 +1039,81 @@ def test_watchdog_rereads_database_callback_gap_before_recycle(
     assert len(maintenance_calls) == 1
 
 
+def test_watchdog_checkout_repair_recycles_after_projection_clears(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    assert supervisor._active_managed_database_pool_lease(fixture["child"]) is None
+    assert (
+        supervisor._active_managed_database_nonterminal_claim(fixture["child"])
+        is None
+    )
+    assert (
+        supervisor._active_managed_database_portal_callback(fixture["child"])
+        is None
+    )
+    observed_task_ids: list[str] = []
+
+    def projected_is_stuck(
+        state: PortalTaskState,
+        **_kwargs: Any,
+    ) -> tuple[bool, str]:
+        observed_task_ids.append(state.active_task_id)
+        if state.active_task_id == "PCSM-027":
+            return True, "no progress on active task PCSM-027"
+        return False, ""
+
+    monkeypatch.setattr(supervisor, "is_stuck", projected_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def maintenance(_update: object) -> dict[str, Any]:
+        repaired = PortalTaskState.load(fixture["state_path"])
+        repaired.active_task_id = ""
+        repaired.active_task_cid = ""
+        repaired.active_attempt = 0
+        repaired.active_phase = ""
+        repaired.implementation_in_progress = False
+        repaired.save(fixture["state_path"])
+        return {
+            "main_checkout_repair": {
+                "repaired": True,
+                "reason": "merge_aborted",
+            },
+            "stuck": False,
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "main_checkout_merge_state_repaired"
+    assert PortalTaskState.load(fixture["state_path"]).active_task_id == ""
+    assert observed_task_ids == ["PCSM-027"]
+
+
 def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
