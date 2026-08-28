@@ -966,13 +966,11 @@ def _exact_v5_board_pytest_target(
         raise _ScopedDependencyContractError(
             "v5_board_validation_command_invalid"
         ) from exc
-    if relative_root:
+    command_uses_cd = False
+    if relative_root and tokens[:3] == ["cd", relative_root, "&&"]:
         prefix = ["cd", relative_root, "&&"]
-        if tokens[: len(prefix)] != prefix:
-            raise _ScopedDependencyContractError(
-                "v5_board_validation_command_invalid"
-            )
         tokens = tokens[len(prefix) :]
+        command_uses_cd = True
     target = ""
     if len(tokens) == 5 and tokens[:3] == ["python", "-m", "pytest"]:
         if tokens[3] == "-q" and not tokens[4].startswith("-"):
@@ -991,6 +989,13 @@ def _exact_v5_board_pytest_target(
         raise _ScopedDependencyContractError(
             "v5_board_validation_command_invalid"
         )
+    if relative_root and not command_uses_cd:
+        workspace_prefix = f"{relative_root}/"
+        if not target.startswith(workspace_prefix):
+            raise _ScopedDependencyContractError(
+                "v5_board_validation_command_invalid"
+            )
+        target = target[len(workspace_prefix) :]
     target = _require_safe_scoped_v4_file(
         target,
         reason="v5_board_validation_target_invalid",
@@ -1013,10 +1018,17 @@ def _exact_v5_board_pytest_target(
         f"python3 -m pytest {target} -q",
     }
     if relative_root:
+        local_commands = set(exact_commands)
         exact_commands = {
             f"cd {relative_root} && {candidate}"
-            for candidate in exact_commands
+            for candidate in local_commands
         }
+        exact_commands.update(
+            candidate.replace(
+                f" {target}", f" {relative_root}/{target}", 1
+            )
+            for candidate in local_commands
+        )
     if command not in exact_commands:
         raise _ScopedDependencyContractError(
             "v5_board_validation_command_invalid"
@@ -2736,6 +2748,7 @@ def _bounded_static_project(
     validation_commands: Sequence[str] = (),
     task_authority: Mapping[str, Any] | None = None,
     prior_seed_authority: Mapping[str, Any] | None = None,
+    validation_relative_root: str | None = None,
 ) -> dict[str, Any]:
     """Read one safe project root and return its static dependency contract."""
 
@@ -2995,7 +3008,11 @@ def _bounded_static_project(
                     project,
                     project_root,
                     project_root_snapshot,
-                    relative_root,
+                    (
+                        relative_root
+                        if validation_relative_root is None
+                        else validation_relative_root
+                    ),
                     validation_commands,
                     task_authority,
                     prior_seed_authority,
@@ -3010,6 +3027,20 @@ def _bounded_static_project(
                     "pyproject_sha256": pyproject_sha256,
                     "error_type": type(exc).__name__,
                 }
+                if (
+                    isinstance(raw_scoped_contract, Mapping)
+                    and raw_scoped_contract.get("schema")
+                    in {
+                        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA,
+                        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+                        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+                        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+                    }
+                ):
+                    failure["dependency_contract_schema"] = (
+                        raw_scoped_contract["schema"]
+                    )
                 if isinstance(exc, _ScopedDependencyContractError):
                     failure["contract_error_reason"] = exc.reason
                 return failure
@@ -3146,6 +3177,75 @@ def _bounded_static_project(
         "selected_validation_extras": selected_extras,
         **scoped_contract_metadata,
     }
+
+
+def _bounded_project_with_workspace_board_policy(
+    workspace_path: Path,
+    relative_root: str,
+    *,
+    pytest_invoked: bool,
+    validation_commands: Sequence[str],
+    task_authority: Mapping[str, Any] | None,
+    prior_seed_authority: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Prefer an exact workspace-sealed v5 board policy for nested tests.
+
+    A configured board is a workspace authority, while its validation target
+    may live in a nested authoritative package. Resolve that policy from the
+    workspace root without copying the taskboard into every package. If the
+    root does not declare the runtime board, retain the package's existing
+    dependency contract. Once a root board policy is selected, any later
+    contract failure remains fail-closed instead of falling back to a weaker
+    package-local declaration.
+    """
+
+    if relative_root:
+        workspace_policy = _bounded_static_project(
+            workspace_path,
+            "",
+            pytest_invoked=pytest_invoked,
+            validation_commands=validation_commands,
+            task_authority=task_authority,
+            prior_seed_authority=prior_seed_authority,
+            validation_relative_root=relative_root,
+        )
+        if (
+            workspace_policy.get("passed") is True
+            and workspace_policy.get("dependency_contract_schema")
+            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+            and workspace_policy.get("scoped_validation_selection_kind")
+            == "board_policy"
+        ):
+            selected = dict(workspace_policy)
+            selected["root"] = relative_root
+            selected["dependency_contract_root"] = ""
+            selected["dependency_policy_scope"] = (
+                "workspace_sealed_board_policy"
+            )
+            return selected
+        if (
+            workspace_policy.get("passed") is not True
+            and workspace_policy.get("dependency_contract_schema")
+            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+            and workspace_policy.get("contract_error_reason")
+            != "v5_board_policy_not_declared"
+        ):
+            failed = dict(workspace_policy)
+            failed["root"] = relative_root
+            failed["dependency_contract_root"] = ""
+            failed["dependency_policy_scope"] = (
+                "workspace_sealed_board_policy"
+            )
+            return failed
+
+    return _bounded_static_project(
+        workspace_path,
+        relative_root,
+        pytest_invoked=pytest_invoked,
+        validation_commands=validation_commands,
+        task_authority=task_authority,
+        prior_seed_authority=prior_seed_authority,
+    )
 
 
 class _DependencyClosureEvaluator:
@@ -4283,7 +4383,7 @@ def _preflight_validation_project_dependencies(
             pytest_roots.add(root)
 
     projects = [
-        _bounded_static_project(
+        _bounded_project_with_workspace_board_policy(
             workspace,
             relative_root,
             pytest_invoked=relative_root in pytest_roots,

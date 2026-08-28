@@ -5,7 +5,7 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "b2a1dd096278393d2bb3272aa8b8bce928b54e6ba659b39024139b30ea37de1e",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "c2eb2564a2f4622f15a0e83e2998ac19c78697f96822affe530b6492a259bd67",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "eae6b5833bd077f346c28ba4da9b1c4ce62cd9d5d917e821112a26a6ee38d54a",
-    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "297f9e054f56ae6985955772293df668df95b7a10ebd27a5f62038026dd7aa21",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "3f6f4777432c064f5e6023d43fb490b2add33da38ac7107b34e577f09b4b4a38",
     "pyproject.toml": "2d0e49455ebbeb87e8af037a8f3d1fd0d479800c8aaa6b8d4bb144021475a35e"
   },
   "control_file_sha256": {
@@ -484,7 +484,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:d104346aa8b58995b31a97a6dd78b13658e959cc0447846c666afe2ffbd34d14",
+  "seal_cid": "sha256:ade90ae01cba76b8957b24daa60a8c28d7f7fe6600543d2dab015f5df705333e",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

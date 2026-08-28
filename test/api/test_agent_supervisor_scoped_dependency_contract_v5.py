@@ -180,6 +180,193 @@ def test_v5_selects_exact_sealed_board_task_without_reading_target(
     assert not (tmp_path / TARGET).exists()
 
 
+@pytest.mark.parametrize("command_style", ["workspace", "cd"])
+def test_v5_workspace_policy_authorizes_exact_nested_project_task(
+    tmp_path: Path,
+    command_style: str,
+) -> None:
+    nested_root = "ipfs_datasets_py"
+    nested_target = "tests/test_nested_board_selected.py"
+    nested_source = "ipfs_datasets_py/semantic_refactoring/capsules.py"
+    nested_output = f"{nested_root}/{nested_target}"
+    nested_command = (
+        f"python3 -m pytest -q {nested_root}/{nested_target}"
+        if command_style == "workspace"
+        else f"cd {nested_root} && python3 -m pytest -q {nested_target}"
+    )
+    nested_outputs = [nested_source, nested_output]
+    requirements_payload = b"requests>=2.31.0\n"
+    (tmp_path / "requirements.txt").write_bytes(requirements_payload)
+    board_payload = f"""
+## SPAR-902 Nested board-selected task
+
+- Stable task ID: SPAR-902
+- Board namespace: {BOARD}
+- Validation: {nested_command}
+- Outputs: {", ".join(nested_outputs)}
+""".strip().encode("utf-8") + b"\n"
+    board_path = tmp_path / "docs/architecture/tasks.todo.md"
+    board_path.parent.mkdir(parents=True)
+    board_path.write_bytes(board_payload)
+    legacy_payload = b"def test_legacy():\n    assert True\n"
+    legacy_path = tmp_path / LEGACY_TARGET
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_bytes(legacy_payload)
+    (tmp_path / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "workspace-board-authority"
+version = "1.0.0"
+requires-python = ">=3.8"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+testing = {json.dumps(TESTING_EXTRA)}
+
+[tool.setuptools.dynamic]
+dependencies = {{ file = ["requirements.txt"] }}
+
+[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
+schema = {json.dumps(SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5)}
+requires-python = ">=3.8"
+authority = {{ file = "requirements.txt", sha256 = {json.dumps(hashlib.sha256(requirements_payload).hexdigest())}, extra = "testing", extra-requirements-sha256 = {json.dumps(_content_sha256(TESTING_EXTRA))} }}
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.board-policies]]
+board-namespace = {json.dumps(BOARD)}
+taskboard-path = "docs/architecture/tasks.todo.md"
+taskboard-sha256 = {json.dumps(hashlib.sha256(board_payload).hexdigest())}
+task-prefix = "SPAR-"
+requirements = [{json.dumps(PYTEST_REQUIREMENT)}]
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = {json.dumps(LEGACY_TARGET)}
+command-target = {json.dumps(LEGACY_TARGET)}
+command-kind = "pytest"
+validation-command-sha256 = {json.dumps(hashlib.sha256(LEGACY_COMMAND.encode()).hexdigest())}
+requirements = [{json.dumps(PYTEST_REQUIREMENT)}]
+task = {{ board-namespace = "legacy-board-v1", canonical-task-cid = {json.dumps(LEGACY_CID)}, declared-outputs = [{json.dumps(LEGACY_TARGET)}] }}
+baseline = {{ state = "present", sha256 = {json.dumps(hashlib.sha256(legacy_payload).hexdigest())} }}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    nested = tmp_path / nested_root
+    nested.mkdir()
+    setup_payload = b"# sealed fixture\n"
+    (nested / "setup.py").write_bytes(setup_payload)
+    (nested / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "nested-legacy-project"
+version = "1.0.0"
+requires-python = ">=3.8"
+dynamic = ["dependencies"]
+
+[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
+schema = "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@3"
+requires-python = ">=3.8"
+authority = {{ file = "setup.py", sha256 = {json.dumps(hashlib.sha256(setup_payload).hexdigest())}, extra = "test", extra-requirements-sha256 = {json.dumps(_content_sha256([]))} }}
+targets = []
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    payloads: list[dict[str, object]] = []
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [nested_command],
+        task_authority={
+            "board_namespace": BOARD,
+            "canonical_task_cid": TASK_CID,
+            "declared_outputs": nested_outputs,
+        },
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is True, json.dumps(
+        receipt, sort_keys=True, indent=2
+    )
+    project = receipt["projects"][0]
+    if command_style == "workspace":
+        assert project["root"] == ""
+        assert "dependency_contract_root" not in project
+    else:
+        assert project["root"] == nested_root
+        assert project["dependency_contract_root"] == ""
+        assert project["dependency_policy_scope"] == (
+            "workspace_sealed_board_policy"
+        )
+    assert project["dependency_contract_schema"] == (
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+    )
+    assert project["scoped_validation_selection_kind"] == "board_policy"
+    assert payloads[0]["projects"][0]["requirements"] == [
+        PYTEST_REQUIREMENT
+    ]
+    assert not (nested / nested_target).exists()
+
+
+def test_unrelated_workspace_v4_contract_defers_to_nested_project(
+    tmp_path: Path,
+) -> None:
+    _write_project(tmp_path)
+    root_pyproject = tmp_path / "pyproject.toml"
+    payload = root_pyproject.read_text(encoding="utf-8")
+    policy_heading = (
+        "[[tool.ipfs-accelerate-agent-supervisor."
+        "project-dependency-preflight.board-policies]]"
+    )
+    target_heading = (
+        "[[tool.ipfs-accelerate-agent-supervisor."
+        "project-dependency-preflight.targets]]"
+    )
+    before_policy, remainder = payload.split(policy_heading, 1)
+    _policy, after_policy = remainder.split(target_heading, 1)
+    payload = before_policy + target_heading + after_policy
+    payload = payload.replace(
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+        "ipfs_accelerate_py/agent-supervisor/"
+        "scoped-project-dependency-preflight@4",
+        1,
+    )
+    root_pyproject.write_text(payload, encoding="utf-8")
+
+    nested_root = "ipfs_datasets_py"
+    nested_target = "tests/test_nested_static_project.py"
+    nested = tmp_path / nested_root
+    nested.mkdir()
+    (nested / "pyproject.toml").write_text(
+        """
+[project]
+name = "nested-static-project"
+version = "1.0.0"
+requires-python = ">=3.8"
+dependencies = []
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    payloads: list[dict[str, object]] = []
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [f"cd {nested_root} && python3 -m pytest -q {nested_target}"],
+        task_authority={
+            "board_namespace": BOARD,
+            "canonical_task_cid": TASK_CID,
+            "declared_outputs": [f"{nested_root}/{nested_target}"],
+        },
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is True, json.dumps(
+        receipt, sort_keys=True, indent=2
+    )
+    assert receipt["projects"][0]["root"] == nested_root
+    assert receipt["projects"][0]["dependency_source"] == "pep621_static"
+    assert payloads[0]["projects"][0]["requirements"] == ["pytest"]
+
+
 def test_v5_preserves_exact_v4_legacy_target_semantics(
     tmp_path: Path,
 ) -> None:
