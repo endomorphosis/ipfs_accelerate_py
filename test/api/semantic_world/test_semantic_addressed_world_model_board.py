@@ -338,6 +338,18 @@ def test_materialization_rejects_a_dirty_or_uncommitted_source(
     with pytest.raises(materializer.MaterializationError, match="clean committed"):
         materializer._assert_committed_clean_source(REPO_ROOT, population)
 
+    monkeypatch.setattr(materializer, "_git", real_git)
+    stale_population = copy.deepcopy(population)
+    stale_population["source_binding"]["head"] = "0" * 40
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="source binding changed",
+    ):
+        materializer._assert_source_binding_matches(
+            REPO_ROOT,
+            stale_population,
+        )
+
 
 def test_materialization_refuses_preexisting_successor_sidecars(
     tmp_path: Path,
@@ -830,6 +842,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m8_live_comparator_test",
     )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m8_dispatch_fail_closed_test",
+    )
     config = json.loads(
         (
             REPO_ROOT
@@ -869,6 +885,19 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
         migration,
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
+
+    malformed_successor = copy.deepcopy(config)
+    malformed_successor["source_repair_successor_materialization"] = []
+    with pytest.raises(
+        operator.OperatorError,
+        match="active source-only successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed_successor)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M8 source-only successor authority is invalid",
+    ):
+        materializer._m8_successor_configured(malformed_successor)
 
     changed_authority = copy.deepcopy(config)
     changed_authority["source_repair_successor_materialization"][
@@ -971,6 +1000,11 @@ def test_m8_materializer_control_rehearsal_and_tamper_gate() -> None:
 
     prior_path = REPO_ROOT / authority["prior_store_id"]
     prior_hash = materializer._store_sha256(prior_path)
+    materializer._assert_m8_prior_publication_anchor(
+        REPO_ROOT,
+        authority,
+        prior_path.resolve(),
+    )
     with tempfile.TemporaryDirectory(
         prefix="sawm-r2-m8-test-",
         dir="/tmp",
@@ -1062,6 +1096,93 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["authority"] is False
     assert ducklake["scheduling_prerequisite"] is False
     assert ducklake["completion_prerequisite"] is False
+
+
+def test_m8_nofollow_receipts_and_ducklake_retry_are_idempotent(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m8_advisory_retry_test",
+    )
+    target = tmp_path / "target.json"
+    target.write_text("{}\n", encoding="utf-8")
+    link = tmp_path / "receipt.json"
+    link.symlink_to(target.name)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="no-follow regular file",
+    ):
+        materializer._load_nofollow_json(
+            link,
+            root=tmp_path,
+            noun="test receipt",
+        )
+
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    config["ducklake_history_projection"].update(
+        {
+            "catalog_path": "ducklake/history.ducklake",
+            "data_path": "ducklake/data",
+            "receipt_path": "ducklake-history-receipt.json",
+        }
+    )
+    record = {
+        "program_definition_cid": "sha256:" + "1" * 64,
+        "projection_cid": "baguqeera" + "a" * 52,
+    }
+    first = materializer._ducklake_projection(tmp_path, config, record)
+    second = materializer._ducklake_projection(tmp_path, config, record)
+    assert second == first
+    assert first["authority"] is False
+    assert first["scheduling_prerequisite"] is False
+    assert first["completion_prerequisite"] is False
+    unhashed = dict(first)
+    claimed = unhashed.pop("receipt_cid")
+    assert claimed == materializer._identity(unhashed)
+
+    receipt_path = tmp_path / "ducklake-history-receipt.json"
+    receipt_path.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="DuckLake history receipt differs",
+    ):
+        materializer._ducklake_projection(tmp_path, config, record)
+
+    if first["status"] == "available":
+        import duckdb
+
+        connection = duckdb.connect(":memory:")
+        try:
+            connection.execute("SET autoinstall_known_extensions = false")
+            connection.execute("SET autoload_known_extensions = false")
+            connection.execute("LOAD ducklake")
+            catalog = tmp_path / "ducklake/history.ducklake"
+            data = tmp_path / "ducklake/data"
+
+            def literal(value: Path) -> str:
+                return "'" + str(value).replace("'", "''") + "'"
+
+            connection.execute(
+                "ATTACH "
+                + literal(Path("ducklake:" + str(catalog)))
+                + " AS sawm_history_check (DATA_PATH "
+                + literal(data)
+                + ")"
+            )
+            count = connection.execute(
+                "SELECT COUNT(*) FROM sawm_history_check.control_history "
+                "WHERE program_definition_cid = ? AND projection_cid = ?",
+                [record["program_definition_cid"], record["projection_cid"]],
+            ).fetchone()[0]
+            assert int(count) == 1
+        finally:
+            connection.close()
 
 
 def test_m6_migration_preserves_m1_through_m5_and_preprovider_evidence() -> None:

@@ -453,6 +453,137 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _stable_regular_sha256(
+    path: Path,
+    *,
+    root: Path,
+    noun: str,
+) -> tuple[str, int]:
+    """Hash one confined no-follow regular file without identity drift."""
+
+    resolved_root = root.resolve()
+    if not path.parent.resolve().is_relative_to(resolved_root):
+        raise MigrationRequired(f"{noun} escapes the repository root")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os,
+        "O_NOFOLLOW",
+        0,
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise MigrationRequired(f"{noun} is not a no-follow regular file") from exc
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise MigrationRequired(f"{noun} is not a regular file")
+        digest = hashlib.sha256()
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+        after = os.fstat(descriptor)
+        identity_before = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        identity_after = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if identity_before != identity_after:
+            raise MigrationRequired(f"{noun} changed while it was read")
+        return digest.hexdigest(), int(before.st_size)
+    finally:
+        os.close(descriptor)
+
+
+def _load_nofollow_json(
+    path: Path,
+    *,
+    root: Path,
+    noun: str,
+    maximum_bytes: int = 1024 * 1024,
+) -> tuple[dict[str, Any], str]:
+    """Load one confined, single-link JSON object through a pinned descriptor."""
+
+    resolved_root = root.resolve()
+    if not path.parent.resolve().is_relative_to(resolved_root):
+        raise MigrationRequired(f"{noun} escapes the repository root")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os,
+        "O_NOFOLLOW",
+        0,
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise MigrationRequired(f"{noun} is not a no-follow regular file") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > maximum_bytes
+        ):
+            raise MigrationRequired(f"{noun} is not a bounded single-link file")
+        payload = bytearray()
+        while True:
+            block = os.read(descriptor, 64 * 1024)
+            if not block:
+                break
+            payload.extend(block)
+            if len(payload) > maximum_bytes:
+                raise MigrationRequired(f"{noun} exceeds its size bound")
+        after = os.fstat(descriptor)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise MigrationRequired(f"{noun} changed while it was read")
+    finally:
+        os.close(descriptor)
+
+    def closed(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise MigrationRequired(f"duplicate JSON key {key!r} in {noun}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise MigrationRequired(f"non-finite JSON constant {value!r} in {noun}")
+
+    try:
+        value = json.loads(
+            bytes(payload).decode("utf-8"),
+            object_pairs_hook=closed,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MigrationRequired(f"{noun} is not canonical UTF-8 JSON") from exc
+    if not isinstance(value, dict):
+        raise MigrationRequired(f"{noun} must contain an object")
+    return value, hashlib.sha256(payload).hexdigest()
+
+
 def _board_module(root: Path):
     import importlib.util
     name = "_sawm_board_validator_for_materializer"
@@ -1518,6 +1649,38 @@ def _verify_migration_history(
     return tuple(history)
 
 
+def _assert_source_binding_matches(
+    root: Path,
+    population: Mapping[str, Any],
+) -> None:
+    """Rebind the cached population to the exact current source identity."""
+
+    expected_binding = population.get("source_binding")
+    if not isinstance(expected_binding, Mapping):
+        raise MaterializationError("cached source binding is unavailable")
+    observed_binding = _source_binding(root)
+    if dict(observed_binding) != dict(expected_binding):
+        raise MaterializationError(
+            "source binding changed after the program population was built: "
+            + json.dumps(
+                {
+                    "expected_head": str(expected_binding.get("head") or ""),
+                    "expected_tree": str(expected_binding.get("tree") or ""),
+                    "expected_source_binding_cid": str(
+                        expected_binding.get("source_binding_cid") or ""
+                    ),
+                    "observed_head": str(observed_binding.get("head") or ""),
+                    "observed_tree": str(observed_binding.get("tree") or ""),
+                    "observed_source_binding_cid": str(
+                        observed_binding.get("source_binding_cid") or ""
+                    ),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
+
 def _assert_committed_clean_source(
     root: Path,
     population: Mapping[str, Any],
@@ -1556,6 +1719,18 @@ def _assert_committed_clean_source(
                 separators=(",", ":"),
             )
         )
+    _assert_source_binding_matches(root, population)
+
+
+def _m8_successor_configured(config: Mapping[str, Any]) -> bool:
+    """Select M8 by key presence and reject malformed successor authority."""
+
+    key = "source_repair_successor_materialization"
+    if key not in config:
+        return False
+    if not isinstance(config.get(key), Mapping):
+        raise MaterializationError("M8 source-only successor authority is invalid")
+    return True
 
 
 def _verify_sealed_file(
@@ -3525,8 +3700,12 @@ def _ensure_m8_migration_receipt(
         validation_digest,
     )
     receipt_path = target.parent / "migration-receipt.json"
-    if receipt_path.exists():
-        observed = _load_json(receipt_path)
+    if os.path.lexists(receipt_path):
+        observed, _ = _load_nofollow_json(
+            receipt_path,
+            root=root,
+            noun="external M8 migration receipt",
+        )
         if observed != expected:
             raise MigrationRequired("external M8 migration receipt differs")
         unhashed = dict(observed)
@@ -3555,8 +3734,12 @@ def _ensure_m8_migration_receipt(
                         "timed out acquiring the M8 receipt publication lock"
                     ) from exc
                 time.sleep(0.02)
-        if receipt_path.exists():
-            observed = _load_json(receipt_path)
+        if os.path.lexists(receipt_path):
+            observed, _ = _load_nofollow_json(
+                receipt_path,
+                root=root,
+                noun="concurrent M8 migration receipt",
+            )
             if observed != expected:
                 raise MigrationRequired("concurrent M8 migration receipt differs")
             return observed
@@ -3594,53 +3777,185 @@ def _ensure_m8_migration_receipt(
         os.close(fd)
 
 
-def _ducklake_projection(root: Path, config: Mapping[str, Any], record: Mapping[str, Any]) -> dict[str, Any]:
+def _ducklake_projection(
+    root: Path,
+    config: Mapping[str, Any],
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project advisory history idempotently and publish a durable side receipt."""
+
     policy = config.get("ducklake_history_projection") or {}
-    receipt_path = root / str(policy.get("receipt_path"))
+    receipt_relative = Path(str(policy.get("receipt_path")))
+    if receipt_relative.is_absolute() or ".." in receipt_relative.parts:
+        raise MaterializationError("DuckLake receipt path escapes the repository root")
+    receipt_path = root / receipt_relative
+    if not receipt_path.parent.resolve().is_relative_to(root.resolve()):
+        raise MaterializationError("DuckLake receipt parent escapes the repository root")
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt: dict[str, Any] = {
-        "schema": "sawm/ducklake-history-projection-receipt@1", "authority": False,
-        "scheduling_prerequisite": False, "completion_prerequisite": False,
-        "install_attempted": False, "network_used": False,
-    }
-    connection = None
+    lock = receipt_path.with_name(f".{receipt_path.name}.publish.lock")
+    descriptor = os.open(
+        lock,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
     try:
-        import duckdb
-        from ipfs_accelerate_py.agent_supervisor.integrations.ducklake_history_projection import (
-            project_history,
+        lock_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise MaterializationError(
+                "DuckLake receipt lock is not a regular single-link file"
+            )
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the DuckLake receipt lock"
+                    ) from exc
+                time.sleep(0.02)
+
+        receipt: dict[str, Any] = {
+            "schema": "sawm/ducklake-history-projection-receipt@1",
+            "authority": False,
+            "scheduling_prerequisite": False,
+            "completion_prerequisite": False,
+            "install_attempted": False,
+            "network_used": False,
+        }
+        connection = None
+        try:
+            import duckdb
+            from ipfs_accelerate_py.agent_supervisor.integrations.ducklake_history_projection import (
+                project_history,
+            )
+
+            connection = duckdb.connect(":memory:")
+            connection.execute("SET autoinstall_known_extensions = false")
+            connection.execute("SET autoload_known_extensions = false")
+            row = connection.execute(
+                "SELECT installed, install_path FROM duckdb_extensions() "
+                "WHERE extension_name = 'ducklake'"
+            ).fetchone()
+            if not row or not bool(row[0]) or not str(row[1] or ""):
+                raise RuntimeError("ducklake_extension_not_locally_installed")
+            connection.execute("LOAD ducklake")  # local LOAD only; INSTALL is forbidden
+            catalog = (root / str(policy["catalog_path"])).resolve()
+            data = (root / str(policy["data_path"])).resolve()
+            if not catalog.is_relative_to(root) or not data.is_relative_to(root):
+                raise RuntimeError("ducklake_projection_path_escapes_repository")
+            catalog.parent.mkdir(parents=True, exist_ok=True)
+            data.mkdir(parents=True, exist_ok=True)
+
+            def literal(value: Path) -> str:
+                return "'" + str(value).replace("'", "''") + "'"
+
+            connection.execute(
+                "ATTACH "
+                + literal(Path("ducklake:" + str(catalog)))
+                + " AS sawm_history (DATA_PATH "
+                + literal(data)
+                + ")"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS sawm_history.control_history "
+                "(program_definition_cid VARCHAR, projection_cid VARCHAR, "
+                "authoritative BOOLEAN)"
+            )
+            existing = connection.execute(
+                "SELECT authoritative FROM sawm_history.control_history "
+                "WHERE program_definition_cid = ? AND projection_cid = ?",
+                [record["program_definition_cid"], record["projection_cid"]],
+            ).fetchall()
+            if not existing:
+                connection.execute(
+                    "INSERT INTO sawm_history.control_history VALUES (?, ?, false)",
+                    [record["program_definition_cid"], record["projection_cid"]],
+                )
+            elif len(existing) != 1 or bool(existing[0][0]):
+                raise RuntimeError("ducklake_history_identity_is_not_unique_advisory")
+            projection = dict(project_history({"receipt": record}))
+            receipt.update(
+                {
+                    "status": "available",
+                    "typed_unavailability": None,
+                    "projection": projection,
+                    "catalog_path": str(catalog),
+                    "data_path": str(data),
+                }
+            )
+        except Exception as exc:
+            receipt.update(
+                {
+                    "status": "typed_unavailability",
+                    "typed_unavailability": type(exc).__name__ + ": " + str(exc),
+                    "projection": None,
+                }
+            )
+        finally:
+            if connection is not None:
+                connection.close()
+        receipt["receipt_cid"] = _identity(receipt)
+        payload = _canonical(receipt) + b"\n"
+        payload_sha256 = hashlib.sha256(payload).hexdigest()
+        if os.path.lexists(receipt_path):
+            observed, observed_sha256 = _load_nofollow_json(
+                receipt_path,
+                root=root,
+                noun="DuckLake history receipt",
+            )
+            if observed == receipt and observed_sha256 == payload_sha256:
+                return observed
+            raise MigrationRequired("DuckLake history receipt differs")
+
+        temporary = receipt_path.with_name(f".{receipt_path.name}.pending")
+        if os.path.lexists(temporary):
+            staged, staged_sha256 = _load_nofollow_json(
+                temporary,
+                root=root,
+                noun="pending DuckLake history receipt",
+            )
+            if staged != receipt or staged_sha256 != payload_sha256:
+                raise MigrationRequired("pending DuckLake history receipt differs")
+            os.replace(temporary, receipt_path)
+            directory = os.open(
+                receipt_path.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            return receipt
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
         )
-        connection = duckdb.connect(":memory:")
-        connection.execute("SET autoinstall_known_extensions = false")
-        connection.execute("SET autoload_known_extensions = false")
-        row = connection.execute("SELECT installed, install_path FROM duckdb_extensions() WHERE extension_name = 'ducklake'").fetchone()
-        if not row or not bool(row[0]) or not str(row[1] or ""):
-            raise RuntimeError("ducklake_extension_not_locally_installed")
-        connection.execute("LOAD ducklake")  # local LOAD only; INSTALL is forbidden
-        catalog = (root / str(policy["catalog_path"])).resolve()
-        data = (root / str(policy["data_path"])).resolve()
-        catalog.parent.mkdir(parents=True, exist_ok=True)
-        data.mkdir(parents=True, exist_ok=True)
-        def literal(value: Path) -> str:
-            return "'" + str(value).replace("'", "''") + "'"
-        connection.execute(
-            "ATTACH " + literal(Path("ducklake:" + str(catalog)))
-            + " AS sawm_history (DATA_PATH " + literal(data) + ")"
+        try:
+            view = memoryview(payload)
+            while view:
+                view = view[os.write(out, view) :]
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, receipt_path)
+        directory = os.open(
+            receipt_path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
         )
-        connection.execute("CREATE TABLE IF NOT EXISTS sawm_history.control_history (program_definition_cid VARCHAR, projection_cid VARCHAR, authoritative BOOLEAN)")
-        connection.execute("INSERT INTO sawm_history.control_history VALUES (?, ?, false)", [record["program_definition_cid"], record["projection_cid"]])
-        projection = dict(project_history({"receipt": record}))
-        receipt.update({"status": "available", "typed_unavailability": None,
-                        "projection": projection, "catalog_path": str(catalog), "data_path": str(data)})
-    except Exception as exc:
-        receipt.update({"status": "typed_unavailability", "typed_unavailability": type(exc).__name__ + ": " + str(exc), "projection": None})
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return receipt
     finally:
-        if connection is not None:
-            connection.close()
-    receipt["receipt_cid"] = _identity(receipt)
-    temporary = receipt_path.with_name(receipt_path.name + f".tmp.{os.getpid()}")
-    temporary.write_bytes(_canonical(receipt) + b"\n")
-    os.replace(temporary, receipt_path)
-    return receipt
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
 
 
 def _assert_fresh_successor_operational_state(target: Path) -> None:
@@ -4228,6 +4543,61 @@ def _verify_frozen_m7_authority(
         "frozen_base_authority_digest": frozen_base_authority_digest,
         "append_surface_digest": append_surface_digest,
     }
+
+
+def _assert_m8_prior_publication_anchor(
+    root: Path,
+    authority: Mapping[str, Any],
+    prior: Path,
+) -> None:
+    """Recheck stopped M7 immediately around M8 publication."""
+
+    if not prior.is_relative_to(root) or not prior.is_file():
+        raise MigrationRequired("M8 prior authority path is not confined")
+    _assert_offline(prior)
+    prior_sha256, prior_size = _stable_regular_sha256(
+        prior,
+        root=root,
+        noun="frozen M7 control store",
+    )
+    if (
+        prior_sha256 != authority["prior_control_store_sha256"]
+        or prior_size != int(authority["prior_control_store_size"])
+    ):
+        raise MigrationRequired("frozen M7 bytes changed before M8 publication")
+
+    marker = prior.with_name(f".{prior.name}.state-owner.json")
+    if os.path.lexists(marker):
+        raise MigrationRequired("frozen M7 regained a live owner marker")
+
+    receipt_path = root / str(authority["prior_materialization_receipt_path"])
+    _, receipt_sha256 = _load_nofollow_json(
+        receipt_path,
+        root=root,
+        noun="frozen M7 migration receipt",
+    )
+    if receipt_sha256 != authority["prior_materialization_receipt_file_sha256"]:
+        raise MigrationRequired("frozen M7 migration receipt bytes changed")
+
+    status_path = root / str(authority["prior_owner_status_path"])
+    owner_status, status_sha256 = _load_nofollow_json(
+        status_path,
+        root=root,
+        noun="frozen M7 owner status",
+    )
+    identity = owner_status.get("identity") or {}
+    if (
+        status_sha256 != authority["prior_owner_status_sha256"]
+        or owner_status.get("lifecycle") != "stopped"
+        or identity.get("status") != "stopped"
+        or identity.get("server_id") != authority["prior_server_id"]
+        or identity.get("process_birth_id")
+        != authority["prior_process_birth_id"]
+        or int(identity.get("generation") or 0)
+        != int(authority["prior_generation"])
+        or identity.get("database_uuid") != authority["prior_database_uuid"]
+    ):
+        raise MigrationRequired("frozen M7 owner status changed before publication")
 
 
 def _m7_migration_body(
@@ -5592,10 +5962,7 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
-    if isinstance(
-        config.get("source_repair_successor_materialization"),
-        Mapping,
-    ):
+    if _m8_successor_configured(config):
         return _check_m8_materialized(root, config_file)
     return _check_m7_materialized(root, config_file)
 
@@ -5860,6 +6227,14 @@ def _materialize_m8(
             verified,
             validation_digest,
         )
+        history = _ducklake_projection(
+            root,
+            config,
+            {
+                "program_definition_cid": population["program_definition_cid"],
+                "projection_cid": verified["projection_cid"],
+            },
+        )
         return {
             "schema": SCHEMA,
             "valid": True,
@@ -5872,6 +6247,7 @@ def _materialize_m8(
             "m6_authority": m6,
             "prior_authority": m7,
             "receipt": receipt,
+            "ducklake_history": history,
             **verified,
         }
 
@@ -5991,7 +6367,33 @@ def _materialize_m8(
             raise MigrationRequired(
                 "another writer published M8; inspect it append-only"
             )
+        # The staged events bind the source snapshot captured in `population`.
+        # Recompute that binding while holding the publication lock so a clean
+        # checkout to another commit cannot publish stale source evidence.
+        _assert_committed_clean_source(root, population)
+        _assert_m8_source_delta(root, population, authority)
+        _assert_m8_prior_publication_anchor(root, authority, prior_path)
         os.link(stage, target)
+        try:
+            # Keep the staging link until the same binding has been observed
+            # after publication. On drift, remove only the hard link created
+            # above and retain the staged bytes for inspection.
+            _assert_committed_clean_source(root, population)
+            _assert_m8_source_delta(root, population, authority)
+            _assert_m8_prior_publication_anchor(root, authority, prior_path)
+        except Exception:
+            stage_stat = stage.stat(follow_symlinks=False)
+            target_stat = target.stat(follow_symlinks=False)
+            if (
+                stage_stat.st_dev != target_stat.st_dev
+                or stage_stat.st_ino != target_stat.st_ino
+            ):
+                raise MaterializationError(
+                    "M8 publication target changed during source revalidation"
+                )
+            os.unlink(target)
+            os.fsync(directory_fd)
+            raise
         os.fsync(directory_fd)
         os.unlink(stage)
         os.fsync(directory_fd)
@@ -6048,10 +6450,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
-    if isinstance(
-        config.get("source_repair_successor_materialization"),
-        Mapping,
-    ):
+    if _m8_successor_configured(config):
         return _materialize_m8(root, config_file, config)
     if isinstance(config.get("source_repair_materialization"), Mapping):
         return _materialize_m7(root, config_file, config)
@@ -6317,7 +6716,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.action == "check":
             root = Path(args.repo_root).resolve()
             config = _load_json(args.config if args.config.is_absolute() else root / args.config)
-            if isinstance(config.get("source_repair_materialization"), Mapping):
+            if (
+                "source_repair_successor_materialization" in config
+                or isinstance(config.get("source_repair_materialization"), Mapping)
+            ):
                 report = check_materialized(root, args.config)
                 print(json.dumps(report, indent=2, sort_keys=True))
                 return 0
