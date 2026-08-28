@@ -24,6 +24,7 @@ import re
 import secrets
 import signal
 import socket
+import stat as stat_module
 import struct
 import subprocess
 import sys
@@ -657,6 +658,77 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
     }
 
 
+def _harden_runtime_directories(
+    board: Any,
+    paths: Mapping[str, Path],
+) -> None:
+    """Create exact SPAR runtime directories as private same-UID boundaries."""
+
+    runtime = paths["runtime"].resolve(strict=False)
+    raw_runtime = board.payload.get("runtime_paths")
+    raw_runtime = raw_runtime if isinstance(raw_runtime, Mapping) else {}
+    program = board.resolved_database_program()
+    candidates = {
+        runtime,
+        paths["database"].parent,
+        paths["owner"],
+        paths["bootstrap_receipt"].parent,
+        paths["ducklake_catalog"].parent,
+        paths["ducklake_data"],
+    }
+    for key, value in raw_runtime.items():
+        candidates.add(_safe_path(ROOT, value, field=f"runtime_paths.{key}"))
+    for field, value in (
+        ("event_store_path", program.event_store_path),
+        ("runtime_registry_path", program.runtime_registry_path),
+    ):
+        if value:
+            candidates.add(_safe_path(ROOT, value, field=field))
+    state_root = _safe_path(
+        ROOT,
+        raw_runtime.get("state") or runtime.relative_to(ROOT) / "state",
+        field="runtime_paths.state",
+    )
+    for index in range(board.max_lanes):
+        candidates.add(state_root / f"lane-{index}")
+    merge_root = _safe_path(
+        ROOT,
+        raw_runtime.get("merge_queue") or runtime.relative_to(ROOT) / "merge-queue",
+        field="runtime_paths.merge_queue",
+    )
+    for name in ("pending", "processing", "completed", "failed", "cancelled", "quarantine"):
+        candidates.add(merge_root / name)
+
+    for path in sorted(candidates, key=lambda item: (len(item.parts), str(item))):
+        resolved = path.resolve(strict=False)
+        try:
+            resolved.relative_to(runtime)
+        except ValueError as exc:
+            raise OperatorError("SPAR private runtime directory escapes its root") from exc
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            metadata = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+            ):
+                raise OperatorError("SPAR runtime directory is not privately owned")
+            os.fchmod(descriptor, 0o700)
+            if stat_module.S_IMODE(os.fstat(descriptor).st_mode) != 0o700:
+                raise OperatorError("SPAR runtime directory did not become private")
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+
 def _ducklake_projection(
     *,
     paths: Mapping[str, Path],
@@ -776,6 +848,7 @@ def materialize(config_path: Path) -> dict[str, Any]:
 
     board, config = _load_config(config_path)
     paths = _runtime_paths(board)
+    _harden_runtime_directories(board, paths)
     population = _population(board, config)
     receipt_path = paths["bootstrap_receipt"]
     if paths["database"].exists() or receipt_path.exists():
@@ -1054,6 +1127,7 @@ def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
 
     board, _config = _load_config(config_path)
     paths = _runtime_paths(board)
+    _harden_runtime_directories(board, paths)
     if not paths["database"].is_file() or not paths["bootstrap_receipt"].is_file():
         raise OperatorError("materialize the sealed SPAR board before starting Quack")
     program = board.resolved_database_program()

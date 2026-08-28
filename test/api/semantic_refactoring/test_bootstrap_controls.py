@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import socket
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -116,6 +117,59 @@ def test_quack_workers_use_birth_bound_bootstrap_not_persisted_tokens() -> None:
     assert not hasattr(materializer, "_publish_handle_token")
     assert not hasattr(materializer, "_LiveQuackTransport")
     assert materializer._SparStateOwnerBootstrapBroker.__doc__
+
+
+def test_quack_lane_runtime_directories_are_private(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+    runtime = tmp_path / "runtime"
+    lane = runtime / "state" / "lane-0"
+    lane.mkdir(parents=True, mode=0o775)
+    lane.chmod(0o775)
+    board = SimpleNamespace(
+        payload={
+            "runtime_paths": {
+                "root": "runtime",
+                "state": "runtime/state",
+                "merge_queue": "runtime/merge-queue",
+                "logs": "runtime/logs",
+                "worktrees": "runtime/worktrees",
+            }
+        },
+        max_lanes=2,
+        resolved_database_program=lambda: SimpleNamespace(
+            event_store_path="runtime/events",
+            runtime_registry_path="runtime/registry",
+        ),
+    )
+    paths = {
+        "runtime": runtime,
+        "database": runtime / "control.duckdb",
+        "owner": runtime / "quack-owner",
+        "bootstrap_receipt": runtime / "evidence/bootstrap/receipt.json",
+        "ducklake_catalog": runtime / "ducklake/catalog.duckdb",
+        "ducklake_data": runtime / "ducklake/data",
+    }
+
+    materializer._harden_runtime_directories(board, paths)
+
+    expected = (
+        runtime,
+        runtime / "state/lane-0",
+        runtime / "state/lane-1",
+        runtime / "events",
+        runtime / "registry",
+        runtime / "merge-queue/pending",
+        runtime / "evidence/bootstrap",
+        runtime / "ducklake/data",
+    )
+    for directory in expected:
+        metadata = directory.stat()
+        assert metadata.st_uid == os.geteuid()
+        assert stat.S_IMODE(metadata.st_mode) == 0o700
 
 
 def test_generic_bootstrap_survives_compact_track_projection(
