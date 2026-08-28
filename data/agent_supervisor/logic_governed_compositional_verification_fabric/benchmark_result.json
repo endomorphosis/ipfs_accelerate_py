@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeeraixbgfp4wdv57yj2b5tytbbdnnsgqkc5i4fjlrvpxe3i32w4b7jxq",
-    "artifact_verification_receipt_cid": "baguqeeradiiezbfcixvef6c5m7tbv6hergktmph3h4limqfaeppcwgo3hm3a",
+    "artifact_cid": "baguqeera7oyce446oui6a6fpifeuw4k5ilwj2rdogkig4dp75gjhutqirzbq",
+    "artifact_verification_receipt_cid": "baguqeerarm5tqesof35g7gvzewlavji3tlevqezijjs73d4wqvfedz3onj5q",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeera5f3pqfeqcvz7grpszaebuafdw42ibpedck6ghwmuq2phgtanmxba"
+    "vertical_result_cid": "baguqeerambkzf72zj7qb2t5q3mq4isk66aw3a6vpzbv6rc3ndgcx7s4kxxwa"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -30,7 +30,7 @@
     "challenger": {
       "abstract_state_reused": 1,
       "capsule_reuse_count": 34,
-      "context_tokens": 549,
+      "context_tokens": 548,
       "deterministic_closures": 1,
       "model_calls": 0,
       "proof_test_reuse_bps": 10000,
@@ -41,7 +41,7 @@
     "cohort": "hermetic_local_execution",
     "comparison": {
       "accepted_patch_quality_equal": true,
-      "context_reduction_bps": 6100,
+      "context_reduction_bps": 6107,
       "critical_omissions_accepted": 0,
       "model_call_reduction_bps": 0,
       "safety_floor_violations": 0
@@ -66,8 +66,8 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeera7b4dlpxlij5naillkvirupx5horml7bfqjvobyq6zrn6zomrekeq",
-  "reproducible_projection_cid": "baguqeeravl7vjs4wl77t2ytmml4nfq2iwudp5z6oi64newxmtv2exr7aiipa",
+  "report_cid": "baguqeerapekydhacxv32fnhwch2mjyusgwhcaqve7eni5vqlf3axxe2owvra",
+  "reproducible_projection_cid": "baguqeerau7ahxaoqzf6iibvip65tqaussgrxam2fwvfgnghdtb5utt3nxx2a",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
     "missing": [],
@@ -120,7 +120,7 @@
     {
       "comparison": "at_least",
       "disposition": "met",
-      "observed": 6100,
+      "observed": 6107,
       "reason": "",
       "target": 5000,
       "threshold_id": "median_context_reduction_bps"

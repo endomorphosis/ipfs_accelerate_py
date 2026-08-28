@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeeraixkbfjgamwikif57u44bzzzpj2xkm27boqhfw4lizzc2bywmjmta",
+  "checkout_fingerprint_cid": "baguqeera46krsnwgfbmzkdl4htg4g5g4qo6pb5p46oi7zyls4gqpi2qfkpxq",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeerarlrvf6r7gp46xccxtrz3nkyn4ieoiybu7or4qzve4ycpkv7um7iq",
+  "result_cid": "baguqeerarqh7cids47wvtpm3uswuhkhggmy4cavdsq6sm7d4eihtcqebbpna",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
       "collected": 37,
-      "duration_ms": 3880,
+      "duration_ms": 4338,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -63,19 +63,19 @@
         "suite_id": "candidate_focused"
       },
       "nodeids_cid": "baguqeeraw3dwne3kik3c2srzyhahzzr33ykdocaca2irjwk7xffryg2ncsfq",
-      "observation_cid": "baguqeerabc4fkxfr5mkc5kvckdp5eyketp4dyayzc7m7gohsbahz2733vmma",
+      "observation_cid": "baguqeera3cpcf5b5x7klfur5jsx3cu2n2ql5alj3cyuopruugputnrzaycna",
       "passed": true,
       "passed_count": 37,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:9c8eae71e790a3823b6e4178f7bc861b10d310e00b5aaea7c17392a0405b5ac1",
+      "transcript_sha256": "sha256:232d1ac3ce3eb907701667c035e45eee3502b6da5fea1f1f4db7e75235fdf02e",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 13,
-      "duration_ms": 2861,
+      "duration_ms": 2851,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -115,19 +115,19 @@
         "suite_id": "candidate_adversarial"
       },
       "nodeids_cid": "baguqeeraptlkhqpswpfets5ppwk35h4vbtfc5sdx4dv7gymk5ddwscmecblq",
-      "observation_cid": "baguqeerao7fdlvi3onc3eg673fds3o3svdnlhkyjtznhrn7f5p4ex2mishpq",
+      "observation_cid": "baguqeeranm6smz76xbb5mjqkpqhxsop7zlpedtow5fqqbctptry3btzgw4nq",
       "passed": true,
       "passed_count": 13,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:2a600fc107b815d1161fef163fcb3ed0919bd8b1d5c09c631083d649982ff32b",
+      "transcript_sha256": "sha256:4f7fe57dc8967173b333e2e52616167b057f46b9bdbb6afe399a4984385e2fbd",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 169,
-      "duration_ms": 3035,
+      "duration_ms": 2926,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -215,19 +215,19 @@
         "suite_id": "fixed_datasets_semantics"
       },
       "nodeids_cid": "baguqeeratilbv3y6fej6xzcawcurytsk4btgjldzgpz2ovm4nv3c6yu2vkra",
-      "observation_cid": "baguqeeraica73xfdsxeidxguhsp2372pqn2eaw33yhrhkktsanaou6eughmq",
+      "observation_cid": "baguqeerahivzts6olod3vqz2i4apqd4qxh5v4qy3ruocmbfyqa7nk5fvvv4a",
       "passed": true,
       "passed_count": 169,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:69e3b7f89096bbbf98db5e782ecae5c889358163e5ae87ca42d03d7af7131ecd",
+      "transcript_sha256": "sha256:2ba2ce72d8bc2e58947584f346312258ac1f5f2c42e219e9476e681b6d3d08e3",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 631,
-      "duration_ms": 1303925,
+      "collected": 667,
+      "duration_ms": 1312492,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -252,7 +252,7 @@
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeeraaxz572exd4agikissu4n3q2gyztucotuefeioyttj4ejvugmtsna",
+        "manifest_cid": "baguqeeral4z52kfvrurosjq3yrjx2cn5eefx2eyz3tujzdmfjwttqphddtoq",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_compositional_verification_vertical.py",
@@ -272,13 +272,13 @@
           },
           {
             "path": "test/api/test_agent_supervisor_database_implementation_daemon.py",
-            "sha256": "sha256:3efc9dbf2a0983234774beae3382d992b76967cd3f9a84d345220e44b569cf42",
-            "size_bytes": 652101
+            "sha256": "sha256:7f92643c9496ebfa55020169393417752a1b3657cf0d8b11bb2597006fdea8c1",
+            "size_bytes": 652332
           },
           {
             "path": "test/api/test_agent_supervisor_database_portal_bridge.py",
-            "sha256": "sha256:7f84d2e45b3618743e3ede20f318f077d2555033f3606be9b786855eba43cdd0",
-            "size_bytes": 445252
+            "sha256": "sha256:ec12d15dce50cf2bc6fabaca67453fc1e334acd83195cdffe316429933708ba5",
+            "size_bytes": 478443
           },
           {
             "path": "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
@@ -308,14 +308,14 @@
         ],
         "suite_id": "fixed_accelerator_authority"
       },
-      "nodeids_cid": "baguqeeragqwx6lqesjki3ptgx4umy34a5mklbwbro5q3istubyelb5vinwbq",
-      "observation_cid": "baguqeerarbfcooffb6cxnuxtuncdundulp4vfiliccbpx6tni3svpxgulebq",
+      "nodeids_cid": "baguqeeraupxhrisggtdhbn6o6qvv5kvn3y6bjwuzsavduykv2t45dbl5hf3a",
+      "observation_cid": "baguqeeraoklbzgyyirdltmrrvc7xipmvt3oazyciqnzuqht25e7eotrttncq",
       "passed": true,
-      "passed_count": 631,
+      "passed_count": 667,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:f62eaeb8f9b6189bfb2aaece11b032f3fba946a41a049c15234fe1a89b46a195",
+      "transcript_sha256": "sha256:fc077b900e51cf0e55cdcd66a8316970b26b6b2aae18cd306b96b56f2bd01c46",
       "xfailed_count": 0,
       "xpassed_count": 0
     }
@@ -323,10 +323,10 @@
   "task_implementation_complete": false,
   "test_qualification_complete": true,
   "totals": {
-    "collected": 850,
+    "collected": 886,
     "error_count": 0,
     "failed_count": 0,
-    "passed_count": 850,
+    "passed_count": 886,
     "skipped_count": 0,
     "xfailed_count": 0,
     "xpassed_count": 0
