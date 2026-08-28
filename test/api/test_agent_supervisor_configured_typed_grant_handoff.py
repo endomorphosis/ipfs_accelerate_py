@@ -27954,7 +27954,7 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
     source = inspect.getsource(
         aseh_operator._run_r19_historical_live_validation
     )
-    assert "if revision in {30, 31, 32, 33, 34, 35, 36, 37}:" in source
+    assert "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38}:" in source
     assert "if revision in {29, 30}:\n        evidence[" not in source
     assert "if revision in {29, 30, 31}:\n        evidence[" not in source
     assert "if revision in {30, 31, 32}:\n        evidence[" not in source
@@ -29168,6 +29168,95 @@ def test_aseh_r27_delegates_r37_before_r36(
     assert result == sentinel
 
 
+def test_aseh_r27_delegates_r38_before_r37(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r38"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_historical_live_policy_revision_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_r36_launch_continuity_admission_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R37 ran before R38"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_foreign_grok_terminal_scope_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R36 ran before R38"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "older suffix admission ran before R38"
+        ),
+    )
+
+    result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+        board=object(),
+        config={},
+        paths={
+            "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+        },
+        bootstrap={},
+        bootstrap_id="bootstrap",
+        head="9" * 40,
+        previous_receipt=r26_chain[-1],
+        previous_transition=r26_chain[-1],
+        prior_receipt_chain=r26_chain,
+        authorization_directory_fd=90,
+    )
+    assert result == sentinel
+
+
 def test_aseh_r32_admits_observed_grok_detached_container_names() -> None:
     grok = "ipfs-accelerate-grok-841578-" + ("a" * 32)
     codex = "ipfs-accelerate-codex-1737559-" + ("b" * 32)
@@ -29357,6 +29446,635 @@ def test_aseh_r37_promotes_published_r36_in_launch_admission() -> None:
     )
     assert evidence["r36_receipt_published"] is True
     assert evidence["r36_retry_authorized"] is False
+
+
+def test_aseh_r38_preserves_r36_and_failed_r37_evidence() -> None:
+    fields = (
+        aseh_operator
+        .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_RECEIPT_FIELDS
+    )
+    for name in (
+        "r36_launch_failure_evidence",
+        "failed_unpublished_r37_head",
+        "failed_unpublished_r37_tree",
+        "r37_authorization_attempt",
+        "r37_authorization_failure_evidence",
+    ):
+        assert name in fields
+
+    authorizer = inspect.getsource(
+        aseh_operator._authorize_repair_historical_live_policy_revision_transition_if_applicable
+    )
+    assert '"r36_launch_failure_evidence": r36_failure_evidence' in authorizer
+    assert '"r37_authorization_attempt": failed_r37_attempt' in authorizer
+    receipt_validator = inspect.getsource(
+        aseh_operator._repair_historical_live_policy_revision_transition_receipt_id
+    )
+    assert "_validate_r37_r36_launch_failure_evidence" in receipt_validator
+    assert "_validate_r38_failed_r37_authorization_attempt" in receipt_validator
+    evidence = aseh_operator._r38_expected_r37_authorization_failure_evidence()
+    assert evidence["error_message"] == "historical live policy revision is invalid"
+    assert evidence["r37_receipt_published"] is False
+    assert evidence["r37_retry_authorized"] is False
+
+
+def test_aseh_r38_promotes_revision_in_materialized_launch() -> None:
+    source = inspect.getsource(aseh_operator._admit_materialized_launch)
+    assert source.index("r38_prequalification") < source.index(
+        "r37_prequalification = ("
+    )
+    for token in (
+        "_complete_r38_historical_live_prequalification",
+        "historical_live_policy_revision_transition",
+        "r30_descendant_is_active",
+        "launch_bundle = r38_prequalification",
+        "_admit_exact_r38_transition_chain",
+        "_recheck_r38_owner_start_authority",
+        "published_r36_to_historical_live_policy_revision",
+    ):
+        assert token in source
+
+    launch_assertion = inspect.getsource(
+        aseh_operator._assert_exact_run_launch_admission
+    )
+    assert "current R38 candidate lacks its exact admitted validation seal" in (
+        launch_assertion
+    )
+    assert "current descendant lacks its retained R38 validation seal" in (
+        launch_assertion
+    )
+    active_recheck = inspect.getsource(
+        aseh_operator._recheck_active_owner_start_authority
+    )
+    assert "_recheck_r38_owner_start_authority" in active_recheck
+
+    contract = aseh_operator._r38_sealed_receipt_validation_executor_contract()
+    assert contract["policy_revision"] == 38
+    admitted = aseh_operator._admit_sealed_receipt_validation_executor_contract(
+        contract,
+        declared=tuple(
+            aseh_operator
+            .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_VALIDATIONS[0]
+        ),
+    )
+    assert admitted == contract
+
+
+def test_aseh_r38_attempt_record_rejects_rehashed_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = {"head": head, "tree": tree}
+    guard = {"guard_cid": "sha256:" + ("c" * 64)}
+    durable = {
+        "authorization_v1_witness_cid": aseh_operator._identity(witness),
+        "authorization_guard_cid": guard["guard_cid"],
+        "witness_cid": "sha256:" + ("d" * 64),
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_durable_candidate_witness",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_candidate_git_guard_record",
+        lambda value, **_kwargs: dict(value),
+    )
+    attempt = aseh_operator._r38_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        started_at=1.0,
+    )
+    assert (
+        aseh_operator._validate_r38_authorization_attempt_record(
+            attempt,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=guard,
+        )
+        == attempt
+    )
+    for field, forged_value in (
+        ("program_id", "forged"),
+        ("published_r30_receipt_cid", "sha256:" + ("e" * 64)),
+        ("candidate_authorization_witness_cid", "sha256:" + ("f" * 64)),
+        ("validator_effect", "forged"),
+        ("started_at", -1.0),
+    ):
+        forged = json.loads(json.dumps(attempt))
+        forged[field] = forged_value
+        unsigned = dict(forged)
+        unsigned.pop("attempt_cid")
+        forged["attempt_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(aseh_operator.OperatorError, match="R38"):
+            aseh_operator._validate_r38_authorization_attempt_record(
+                forged,
+                candidate_head=head,
+                candidate_tree=tree,
+                candidate_authorization_witness=witness,
+                durable_candidate_witness=durable,
+                candidate_git_guard=guard,
+            )
+
+
+def test_aseh_r38_validator_returns_inherited_failure_cids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    digest = lambda character: "sha256:" + (character * 64)
+    bootstrap = {
+        "bootstrap_receipt_id": digest("1"),
+        "plan_root_cid": digest("2"),
+        "repository_tree_id": "3" * 40,
+        "source_forest": {
+            "by_owner": {
+                "ipfs_datasets_py": {"commit": "4" * 40},
+                "ipfs_kit_py": {"commit": "5" * 40},
+            }
+        },
+    }
+    witness = {
+        "head": head,
+        "tree": tree,
+        "branch_ref": "refs/heads/r38-fixture",
+        "index_entries_digest": digest("6"),
+        "index_flags_digest": digest("7"),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": digest("8"),
+        "branch_reflog_digest": digest("9"),
+    }
+    durable = {"witness_cid": digest("a")}
+    guard = {"guard_cid": digest("b")}
+    policy = {
+        "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"],
+        "candidate_head": head,
+        "candidate_tree": tree,
+        "candidate_authorization_witness_cid": aseh_operator._identity(witness),
+        "durable_candidate_witness_cid": durable["witness_cid"],
+        "policy_admission_cid": digest("c"),
+    }
+    evidence = {"fixture": True}
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    inherited_failure = {"evidence_cid": digest("d")}
+    inherited_preflight = {"evidence_cid": digest("e")}
+    inherited_recovery = {"semantic_admission_cid": digest("f")}
+    inherited_terminal = {"evidence_cid": digest("0")}
+    inherited_r27_health = {"evidence_cid": digest("6")}
+    r36_failure = aseh_operator._r37_expected_r36_launch_failure_evidence()
+    r37_attempt = aseh_operator._r38_expected_r37_authorization_attempt()
+    r37_failure = aseh_operator._r38_expected_r37_authorization_failure_evidence()
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_VALIDATIONS",
+        (),
+    )
+    contract = aseh_operator._r38_sealed_receipt_validation_executor_contract()
+    receipt = {
+        name: {"inherited": name}
+        for name in (
+            aseh_operator
+            .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_RECEIPT_FIELDS
+        )
+    }
+    receipt.update(
+        {
+            "schema": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_SCHEMA
+            ),
+            "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+            "stable_identity": (
+                f"{aseh_operator.PROGRAM}/"
+                f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R38"
+            ),
+            "program_id": aseh_operator.PROGRAM,
+            "transition_revision": 38,
+            "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"],
+            "previous_receipt_cid": (
+                aseh_operator.ASEH_R37_PUBLISHED_R36_RECEIPT_CID
+            ),
+            "plan_root_cid": bootstrap["plan_root_cid"],
+            "repository_tree_id": bootstrap["repository_tree_id"],
+            "base_head": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_BASE_HEAD
+            ),
+            "base_tree": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_BASE_TREE
+            ),
+            "published_r36_base_head": (
+                aseh_operator
+                .REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "published_r36_base_tree": (
+                aseh_operator
+                .REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_TREE
+            ),
+            "published_r27_base_head": (
+                aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_HEAD
+            ),
+            "published_r27_base_tree": (
+                aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_TREE
+            ),
+            "failed_unpublished_r37_head": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_BASE_HEAD
+            ),
+            "failed_unpublished_r37_tree": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_BASE_TREE
+            ),
+            "repair_head": head,
+            "repair_tree": tree,
+            "changed_paths": list(
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_CHANGED_PATHS
+            ),
+            "patch_digest": digest("1"),
+            "unreceipted_effective_changed_paths": list(
+                aseh_operator.ASEH_R38_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+            ),
+            "unreceipted_effective_patch_digest": digest("2"),
+            "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R36"],
+            "owning_repository": "ipfs_accelerate_py",
+            "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+            "authority_requirement": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_AUTHORITY
+            ),
+            "validation_results": [],
+            "candidate_authorization_witness": witness,
+            "durable_candidate_witness": durable,
+            "candidate_git_guard": guard,
+            "sealed_validation_executor_contract": contract,
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": evidence,
+            "projection_recovery_failure_evidence": inherited_failure,
+            "r25_preflight_failure_evidence": inherited_preflight,
+            "projection_recovery_prestart_admission": inherited_recovery,
+            "r26_terminal_failure_evidence": inherited_terminal,
+            "r27_initial_health_failure_evidence": inherited_r27_health,
+            "r36_launch_failure_evidence": r36_failure,
+            "r37_authorization_attempt": r37_attempt,
+            "r37_authorization_failure_evidence": r37_failure,
+            "authorization_attempt": {
+                "fixture": True,
+                "started_at": 0.5,
+            },
+            "terminal_success_criteria": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_SUCCESS
+            ),
+            "terminal_non_success_criteria": (
+                aseh_operator
+                .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_NON_SUCCESS
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+            "authorized_at": 1.0,
+        }
+    )
+    previous = {
+        name: receipt[name]
+        for name in (
+            aseh_operator
+            .REPAIR_FOREIGN_GROK_TERMINAL_SCOPE_TRANSITION_RECEIPT_FIELDS
+        )
+    }
+    previous["receipt_cid"] = (
+        aseh_operator.ASEH_R37_PUBLISHED_R36_RECEIPT_CID
+    )
+    receipt.pop("receipt_cid")
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_foreign_grok_terminal_scope_transition_receipt_id",
+        lambda _value: aseh_operator.ASEH_R37_PUBLISHED_R36_RECEIPT_CID,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_durable_candidate_witness",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r38_authorization_attempt_record",
+        lambda value, **_kwargs: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r38_historical_live_policy_admission_record",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r38_receipt_historical_live_execution_evidence",
+        lambda value, **_kwargs: dict(value),
+    )
+    for name in (
+        "_validate_r25_projection_recovery_failure_evidence",
+        "_validate_r26_r25_preflight_failure_evidence",
+        "_validate_r27_r26_terminal_failure_evidence",
+        "_validate_r28_r27_initial_health_failure_evidence",
+    ):
+        monkeypatch.setattr(aseh_operator, name, lambda value: dict(value))
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_projection_recovery_prestart_admission",
+        lambda value, **_kwargs: dict(value),
+    )
+
+    def fake_git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", head):
+            return str(receipt["base_head"])
+        if args == ("show", "-s", "--format=%P", receipt["base_head"]):
+            return (
+                aseh_operator
+                .REPAIR_R36_LAUNCH_CONTINUITY_ADMISSION_TRANSITION_BASE_HEAD
+            )
+        if args == ("rev-parse", f"{receipt['base_head']}^{{tree}}"):
+            return str(receipt["base_tree"])
+        if args == ("rev-parse", f"{head}^{{tree}}"):
+            return tree
+        if args == (
+            "rev-parse",
+            f"{aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_HEAD}^{{tree}}",
+        ):
+            return aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_TREE
+        if args == ("rev-parse", f"{head}:ipfs_datasets_py"):
+            return "4" * 40
+        if args == ("rev-parse", f"{head}:ipfs_kit_py"):
+            return "5" * 40
+        raise AssertionError(args)
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda base, _head: (
+            aseh_operator
+            .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_CHANGED_PATHS
+            if base == receipt["base_head"]
+            else aseh_operator.ASEH_R38_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda base, _head: (
+            receipt["patch_digest"]
+            if base == receipt["base_head"]
+            else receipt["unreceipted_effective_patch_digest"]
+        ),
+    )
+
+    admitted = aseh_operator._validate_repair_historical_live_policy_revision_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous,
+        rerun_validations=False,
+    )
+    assert admitted["r36_launch_failure_evidence_cid"] == (
+        r36_failure["evidence_cid"]
+    )
+    assert admitted["r37_authorization_attempt_cid"] == r37_attempt["attempt_cid"]
+    assert admitted["r37_authorization_failure_evidence_cid"] == (
+        r37_failure["evidence_cid"]
+    )
+    for invalid_authorized_at in (0.25, float("nan"), float("inf")):
+        forged = dict(receipt)
+        forged["authorized_at"] = invalid_authorized_at
+        if invalid_authorized_at == 0.25:
+            forged.pop("receipt_cid")
+            forged["receipt_cid"] = aseh_operator._identity(forged)
+        with pytest.raises(aseh_operator.OperatorError, match="R38"):
+            aseh_operator._repair_historical_live_policy_revision_transition_receipt_id(
+                forged
+            )
+
+
+def test_aseh_r38_materialized_chain_retains_r36_transition() -> None:
+    r30 = {"receipt_cid": aseh_operator.ASEH_R31_PUBLISHED_R30_RECEIPT_CID}
+    r36 = {"receipt_cid": aseh_operator.ASEH_R37_PUBLISHED_R36_RECEIPT_CID}
+    chain = [r30]
+
+    aseh_operator._append_exact_r36_transition_if_missing(chain, r36)
+    assert chain == [r30, r36]
+
+    aseh_operator._append_exact_r36_transition_if_missing(chain, r36)
+    assert chain == [r30, r36]
+
+
+def test_aseh_r38_idempotent_replay_checks_one_shot_before_rerun(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r38_path = tmp_path / "repair-r38.json"
+    attempt_path = tmp_path / "repair-r38-attempt.json"
+    r30_path = tmp_path / "repair-r30.json"
+    head = "a" * 40
+    receipt = {
+        "repair_head": head,
+        "authorization_attempt": {"attempt": True},
+        "receipt_cid": "sha256:" + ("1" * 64),
+    }
+    waiter_chain = [
+        {"receipt_cid": receipt_cid}
+        for receipt_cid in aseh_operator.ASEH_R30_EXACT_R1_R27_RECEIPT_CIDS
+    ]
+    r36_chain = [
+        {"receipt_cid": aseh_operator.ASEH_R37_PUBLISHED_R36_RECEIPT_CID}
+    ]
+    validation_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_receipt_name_is_absent",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_exact_r27_transition_chain",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r36_receipt_chain",
+        lambda _paths: r36_chain,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: receipt,
+    )
+
+    def validate(
+        _receipt: object,
+        *,
+        rerun_validations: bool,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        validation_calls.append(rerun_validations)
+        if rerun_validations:
+            pytest.fail("R38 validations reran before one-shot admission")
+        return receipt
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_historical_live_policy_revision_transition",
+        validate,
+    )
+
+    def reject_changed_state(**_kwargs: object) -> None:
+        raise aseh_operator.OperatorError("R38 persisted one-shot state changed")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r38_failed_r37_one_shot_state",
+        reject_changed_state,
+    )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="one-shot"):
+            aseh_operator._authorize_repair_historical_live_policy_revision_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_historical_live_policy_revision_transition_receipt": r38_path,
+                    "repair_historical_live_policy_revision_authorization_attempt": attempt_path,
+                    "repair_candidate_git_epoch_guard_transition_receipt": r30_path,
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head=head,
+                previous_receipt={
+                    "receipt_cid": (
+                        aseh_operator.ASEH_R30_EXACT_R27_REPAIR_RECEIPT_CID
+                    )
+                },
+                previous_transition={},
+                prior_receipt_chain=waiter_chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+    assert validation_calls == [False]
+
+
+def test_aseh_r38_rejects_minimal_live_execution_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = {
+        "schema": aseh_operator.ASEH_R38_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "prior_receipt_cids": list(
+            aseh_operator.ASEH_R38_EXACT_R1_R36_RECEIPT_CIDS
+        ),
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r38_historical_live_policy_admission_record",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r38_historical_live_policy_admission",
+        lambda value, **_kwargs: dict(value),
+    )
+    evidence = {
+        "schema": aseh_operator.ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "returncode": 0,
+        "environment_identity": "sha256:" + ("2" * 64),
+        "stdout_digest": "sha256:" + ("3" * 64),
+        "stderr_digest": "sha256:" + ("4" * 64),
+    }
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    with pytest.raises(aseh_operator.OperatorError, match="execution evidence"):
+        aseh_operator._validate_r38_receipt_historical_live_execution_evidence(
+            evidence,
+            policy_admission=policy,
+            candidate_authorization_witness={},
+            durable_candidate_witness={},
+        )
+
+
+def test_aseh_r38_lineage_descendant_requires_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    base = (
+        aseh_operator
+        .REPAIR_HISTORICAL_LIVE_POLICY_REVISION_TRANSITION_BASE_HEAD
+    )
+
+    def fake_git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", head):
+            return ("c" * 40) + " " + ("d" * 40)
+        if args == ("rev-parse", f"{head}^{{tree}}"):
+            return tree
+        if args == ("merge-base", base, head):
+            return base
+        raise AssertionError(args)
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    population = {"source_head": head, "repository_tree_id": tree}
+    assert aseh_operator._r38_population_requires_policy(population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r38_failed_r37_one_shot_state",
+        lambda **_kwargs: {},
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="active R38"):
+        aseh_operator._prequalify_r38_historical_live_launch(
+            paths={
+                "repair_historical_live_policy_revision_transition_receipt": (
+                    tmp_path / "absent-r38.json"
+                )
+            },
+            population=population,
+            bootstrap={},
+        )
+
+
+def test_aseh_r38_one_shot_requires_published_r36(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    names = (
+        "repair_foreign_grok_terminal_scope_transition_receipt",
+        "repair_r36_launch_continuity_admission_transition_receipt",
+        "repair_r36_launch_continuity_admission_authorization_attempt",
+        "repair_historical_live_policy_revision_transition_receipt",
+        "repair_historical_live_policy_revision_authorization_attempt",
+    )
+    paths = {name: tmp_path / f"{name}.json" for name in names}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_receipt_name_is_absent",
+        lambda path, **_kwargs: path
+        == paths["repair_foreign_grok_terminal_scope_transition_receipt"],
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="published R36"):
+        aseh_operator._assert_r38_failed_r37_one_shot_state(paths=paths)
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
