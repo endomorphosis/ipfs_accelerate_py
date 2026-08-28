@@ -44,6 +44,13 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ..core.multiformats_identity import cid_for_dag_json
+from ..semantic_state.routing import (
+    DeterministicLadderRequest,
+    DeterministicStageEvidence,
+    RouteReceipt,
+    UnresolvedQuestion,
+    route_decision_ladder,
+)
 from .contracts import (
     MAX_COLLECTION_ITEMS,
     MAX_RESOURCE_QUANTITY,
@@ -1342,6 +1349,47 @@ def decide_model_route(
     return decision
 
 
+def decide_model_route_with_receipt(
+    facts: ModelRouteFacts | Mapping[str, Any],
+    *,
+    deterministic_evidence: Sequence[DeterministicStageEvidence | Mapping[str, Any]],
+    unresolved_question: UnresolvedQuestion | Mapping[str, Any] | None = None,
+    actual_resource_use: Mapping[str, int] | None = None,
+    prior_attempts: Sequence[Any] = (),
+    available_models: Sequence[Any] = (),
+    policy: Any,
+) -> tuple[ModelRouteDecision, RouteReceipt]:
+    """Return a legacy capability score plus the canonical ladder receipt.
+
+    ``semantic_state.routing.route_decision_ladder`` owns stage order and the
+    model-escalation guard.  This module only supplies its existing
+    provider-neutral capability score to that authority; it must not invent a
+    second receipt format or an availability-driven bypass.
+    """
+
+    decision = decide_model_route(
+        facts,
+        prior_attempts=prior_attempts,
+        available_models=available_models,
+        policy=policy,
+    )
+    evidence = tuple(
+        item
+        if isinstance(item, DeterministicStageEvidence)
+        else DeterministicStageEvidence.from_dict(item)
+        for item in deterministic_evidence
+    )
+    receipt = route_decision_ladder(
+        DeterministicLadderRequest(
+            deterministic_evidence=evidence,
+            proposed_route=decision.route.value,
+            unresolved_question=unresolved_question,
+            actual_resource_use=actual_resource_use,
+        )
+    )
+    return decision, receipt
+
+
 def _assert_provider_neutral_decision(decision: ModelRouteDecision) -> None:
     payload = decision.to_record()
     _reject_provider_identity(payload, artifact="ModelRouteDecision")
@@ -1566,6 +1614,7 @@ __all__ = [
     "RiskLevel",
     "apply_availability",
     "choose_model_route",
+    "decide_model_route_with_receipt",
     "decide_model_route",
     "default_inventory",
     "derive_model_route_facts",
