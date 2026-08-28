@@ -1815,11 +1815,14 @@ def discover_board_scheduler_config(
     stem = _todo_scheduler_stem(todo_path)
     if not stem:
         return None
+    scheduler_stem = (
+        stem if stem.startswith("agent_supervisor_") else f"agent_supervisor_{stem}"
+    )
     candidates = (
-        Path(repo_root) / "config" / f"agent_supervisor_{stem}_scheduler.json",
+        Path(repo_root) / "config" / f"{scheduler_stem}_scheduler.json",
         Path(todo_path).resolve().parent.parent
         / "config"
-        / f"agent_supervisor_{stem}_scheduler.json"
+        / f"{scheduler_stem}_scheduler.json"
         if todo_path is not None
         else None,
     )

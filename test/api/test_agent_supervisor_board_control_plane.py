@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     DEFAULT_CHECKOUT_MUTATION_LOCK_NAME,
     PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
@@ -13,13 +12,15 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+    apply_board_validation_runtime,
     board_implementation_branch,
     board_merge_lock_name,
     board_protected_path_lock_name,
+    discover_board_scheduler_config,
     ensure_board_implementation_branch,
     infer_board_namespace,
-    isolate_board_runtime,
     is_shared_implementation_branch,
+    isolate_board_runtime,
     parse_markdown_board_tasks,
     resolve_board_implementation_branch,
 )
@@ -61,6 +62,79 @@ def test_infer_board_namespace_prefers_explicit_then_branch_then_todo() -> None:
     ) == "legal_corpora_reindex"
     assert infer_board_namespace(merge_target_branch="main") == "default"
     assert infer_board_namespace(state_prefix="oul") == "oul"
+
+
+@pytest.mark.parametrize(
+    "todo_name",
+    (
+        "efficiency_state_hardening.todo.md",
+        "agent_supervisor_efficiency_state_hardening.todo.md",
+    ),
+)
+def test_scheduler_discovery_normalizes_agent_supervisor_prefix(
+    tmp_path: Path,
+    todo_name: str,
+) -> None:
+    repo = tmp_path / "repo"
+    todo = repo / "docs" / "architecture" / todo_name
+    config = (
+        repo
+        / "config"
+        / "agent_supervisor_efficiency_state_hardening_scheduler.json"
+    )
+    todo.parent.mkdir(parents=True)
+    config.parent.mkdir(parents=True)
+    todo.write_text("# Board\n", encoding="utf-8")
+    config.write_text("{}\n", encoding="utf-8")
+
+    assert discover_board_scheduler_config(repo, todo) == config.resolve()
+
+
+def test_board_validation_runtime_uses_prefixed_todo_scheduler(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    todo = (
+        repo
+        / "docs"
+        / "architecture"
+        / "agent_supervisor_efficiency_state_hardening.todo.md"
+    )
+    pythonpath = tmp_path / "validation-packages"
+    config = (
+        repo
+        / "config"
+        / "agent_supervisor_efficiency_state_hardening_scheduler.json"
+    )
+    todo.parent.mkdir(parents=True)
+    pythonpath.mkdir()
+    config.parent.mkdir(parents=True)
+    todo.write_text("# Board\n", encoding="utf-8")
+    config.write_text(
+        "{\n"
+        '  "validation_runtime": {\n'
+        '    "python_executable": "/usr/bin/python3.12",\n'
+        f'    "pythonpath_entries": ["{pythonpath}"],\n'
+        '    "required_modules": ["pytest"]\n'
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    environ: dict[str, str] = {}
+
+    receipt = apply_board_validation_runtime(repo, todo, environ=environ)
+
+    assert receipt["applied"] is True
+    assert receipt["config_path"] == str(config.resolve())
+    assert environ["IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"] == (
+        "/usr/bin/python3.12"
+    )
+    assert environ["IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"] == str(
+        pythonpath
+    )
+    assert environ["IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"] == (
+        "pytest"
+    )
 
 
 def test_shared_defaults_are_rewritten_to_implementation_namespace() -> None:

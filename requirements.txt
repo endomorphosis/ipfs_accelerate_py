@@ -33,6 +33,7 @@ PyGithub>=2.3.0
 tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2
+packaging>=23.2
 
 # Proof-reuse/datasets Python surfaces.  These are ordinary Python
 # distributions only: NLTK corpus downloads and the Groth16 Rust backend remain

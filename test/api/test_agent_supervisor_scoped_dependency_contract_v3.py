@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
     SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+    SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
     _command_is_exact_v3_scoped_pytest_target,
     _evaluate_dependency_payload,
     preflight_validation_project_dependencies,
@@ -35,6 +36,7 @@ def _write_mixed_root_project(
     schema: str = SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
     extra: str = "lgcvf-validation",
     setup_source: str = "",
+    selected_baseline_state: str = "present",
 ) -> tuple[Path, str, dict[str, object], list[dict[str, object]]]:
     relative_root = "ipfs_datasets_py"
     project = workspace / relative_root
@@ -61,14 +63,16 @@ def _write_mixed_root_project(
     encoded_entries: list[str] = []
     for index, (target, declared_root) in enumerate(targets):
         command = (
-            f"cd {declared_root} && python -m pytest -q {target}"
+            f"cd {declared_root} && python3 -m pytest -q {target}"
         )
         command_sha256 = hashlib.sha256(command.encode("utf-8")).hexdigest()
         declared_output = f"{declared_root}/{target}"
         target_payload = f"# nested target {index}\n".encode()
         target_path = project / target
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(target_payload)
+        baseline_state = selected_baseline_state if index == 1 else "present"
+        if baseline_state == "present":
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(target_payload)
         requirements = REQUIREMENTS[: index + 1]
         entry = {
             "target": target,
@@ -78,8 +82,15 @@ def _write_mixed_root_project(
             "board_namespace": "mixed-root-board",
             "canonical_task_cid": f"mixed-root-task-{index}",
             "declared_output": declared_output,
+            "baseline_state": baseline_state,
         }
         entries.append(entry)
+        baseline = (
+            'baseline = { state = "present", sha256 = '
+            f'"{hashlib.sha256(target_payload).hexdigest()}" }}'
+            if baseline_state == "present"
+            else 'baseline = { state = "declared-output-absent" }'
+        )
         encoded_entries.append(
             "{ "
             f"target = {json.dumps(target)}, "
@@ -90,8 +101,7 @@ def _write_mixed_root_project(
             f"canonical-task-cid = \"mixed-root-task-{index}\", "
             f"declared-output = {json.dumps(declared_output)}"
             " }, "
-            'baseline = { state = "present", sha256 = '
-            f'"{hashlib.sha256(target_payload).hexdigest()}" }}'
+            f"{baseline}"
             " }"
         )
 
@@ -137,6 +147,38 @@ def _passing_probe(payloads: list[dict[str, object]]):
     return probe
 
 
+def _prior_seed_authority(
+    baseline_receipt: dict[str, object],
+    task_authority: dict[str, object],
+    declared_output: str,
+    payload: bytes,
+) -> dict[str, object]:
+    body: dict[str, object] = {
+        "schema": SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+        "board_namespace": task_authority["board_namespace"],
+        "canonical_task_cid": task_authority["canonical_task_cid"],
+        "baseline_receipt": baseline_receipt,
+        "baseline_commit_id": "b" * 40,
+        "repository_tree_id": "git-tree:" + "c" * 40,
+        "proposal_repository_tree_id": "b" * 40,
+        "source_proposal_id": "source-proposal-v3-seed",
+        "source_proposal_receipt_id": "source-receipt-v3-seed",
+        "proposal_id": "proposal-v3-seed",
+        "proposal_receipt_id": "receipt-v3-seed",
+        "changed_paths": [declared_output],
+        "authorized_paths": [declared_output],
+        "seeded_outputs": [
+            {
+                "path": declared_output,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "git_blob_id": "a" * 40,
+            }
+        ],
+    }
+    body["authority_sha256"] = _content_sha256(body)
+    return body
+
+
 def test_v3_selects_exact_task_from_mixed_nested_repository_roots(
     tmp_path: Path,
 ) -> None:
@@ -171,19 +213,70 @@ def test_v3_selects_exact_task_from_mixed_nested_repository_roots(
     ]
 
 
+def test_v3_authenticated_prior_seed_materializes_absent_target(
+    tmp_path: Path,
+) -> None:
+    project, command, task_authority, entries = _write_mixed_root_project(
+        tmp_path,
+        selected_baseline_state="declared-output-absent",
+    )
+    baseline_receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        probe_runner=_passing_probe([]),
+    )
+    assert baseline_receipt["passed"] is True
+
+    selected = entries[1]
+    target = project / str(selected["target"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = b"# replayed accepted v3 attempt\n"
+    target.write_bytes(payload)
+    authority = _prior_seed_authority(
+        baseline_receipt,
+        task_authority,
+        str(selected["declared_output"]),
+        payload,
+    )
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [command],
+        task_authority=task_authority,
+        prior_seed_authority=authority,
+        probe_runner=_passing_probe([]),
+    )
+
+    assert receipt["passed"] is True
+    project_receipt = receipt["projects"][0]
+    assert project_receipt["dependency_contract_schema"] == (
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
+    )
+    assert project_receipt[
+        "scoped_validation_target_materialization_state"
+    ] == "authenticated-prior-seed"
+    assert project_receipt["selected_validation_extras"] == [
+        "lgcvf-validation"
+    ]
+
+
 def test_v3_board_command_grammar_is_exact() -> None:
     target = "tests/unit/logic/software_verification/test_incremental.py"
-    exact = f"cd ipfs_datasets_py && python -m pytest -q {target}"
-
-    assert _command_is_exact_v3_scoped_pytest_target(
-        exact,
-        relative_root="ipfs_datasets_py",
-        target=target,
-    )
+    for executable in ("python", "python3"):
+        exact = (
+            f"cd ipfs_datasets_py && {executable} -m pytest -q {target}"
+        )
+        assert _command_is_exact_v3_scoped_pytest_target(
+            exact,
+            relative_root="ipfs_datasets_py",
+            target=target,
+        )
     for forged in (
-        f"cd ipfs_datasets_py && python3 -m pytest -q {target}",
         f"cd ipfs_datasets_py && python -m pytest {target} -q",
+        f"cd ipfs_datasets_py && python3.12 -m pytest -q {target}",
         f"cd external/ipfs_datasets && python -m pytest -q {target}",
+        f"cd ipfs_datasets_py && python3 -m pytest -q {target} --maxfail=1",
     ):
         assert not _command_is_exact_v3_scoped_pytest_target(
             forged,

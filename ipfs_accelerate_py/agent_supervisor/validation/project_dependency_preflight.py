@@ -762,6 +762,7 @@ def _scoped_prior_seed_target_sha256(
     project_root: Path,
     relative_root: str,
     selected_target: Mapping[str, Any],
+    contract_schema: str,
 ) -> str:
     """Authenticate one task-bound replay that materialized an absent target.
 
@@ -771,6 +772,13 @@ def _scoped_prior_seed_target_sha256(
     verifier closes and content-binds that compact handoff before trusting it.
     """
 
+    if contract_schema not in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+    }:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_contract_schema_invalid"
+        )
     if not (
         type(authority) is dict
         and set(authority) == _SCOPED_PRIOR_SEED_AUTHORITY_FIELDS
@@ -967,7 +975,7 @@ def _scoped_prior_seed_target_sha256(
     if not (
         baseline_project.get("passed") is True
         and baseline_project.get("dependency_contract_schema")
-        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
+        == contract_schema
         and baseline_project.get("scoped_validation_command_sha256")
         == selected_target["validation_command_sha256"]
         and baseline_project.get("scoped_validation_target_baseline_state")
@@ -1097,10 +1105,16 @@ def _command_is_exact_v3_scoped_pytest_target(
         tokens = shlex.split(str(command), posix=True)
     except ValueError:
         return False
-    expected = ["python", "-m", "pytest", "-q", target]
+    board_commands = (
+        ["python", "-m", "pytest", "-q", target],
+        ["python3", "-m", "pytest", "-q", target],
+    )
     if relative_root:
-        expected = ["cd", relative_root, "&&", *expected]
-    return tokens == expected
+        board_commands = tuple(
+            ["cd", relative_root, "&&", *expected]
+            for expected in board_commands
+        )
+    return tokens in board_commands
 
 def _scoped_v2_selected_target(
     contract: Mapping[str, Any],
@@ -2120,13 +2134,16 @@ def _bounded_static_project(
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
+    scoped_validation_extra = str(
+        scoped_contract_metadata.get("scoped_validation_extra") or "test"
+    )
     requirement_marker_extras = [
-        "test" if scoped_contract_selected else ""
+        scoped_validation_extra if scoped_contract_selected else ""
     ] * len(dependencies)
     if scoped_contract_selected:
         validation_dependencies: list[str] = []
         validation_marker_extras: list[str] = []
-        selected_extras = ["test"]
+        selected_extras = [scoped_validation_extra]
         validation_manifests: list[dict[str, Any]] = []
         validation_dependency_source = "scoped_dependency_contract"
     else:

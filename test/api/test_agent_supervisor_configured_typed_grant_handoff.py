@@ -111,6 +111,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
 )
 
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
+from scripts import (
+    validate_agent_supervisor_efficiency_state_hardening_board as aseh_validator,
+)
 
 
 def _sealed_validation_execution_fixture(
@@ -27955,7 +27958,7 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
         aseh_operator._run_r19_historical_live_validation
     )
     assert (
-        "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39}:"
+        "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}:"
         in source
     )
     assert "if revision in {29, 30}:\n        evidence[" not in source
@@ -30329,7 +30332,7 @@ def test_aseh_r39_generic_revision_gates_contract_and_grok_scope() -> None:
     ) == 39
     assert aseh_operator._r32_admit_grok_for_revision(39)
     assert (
-        aseh_operator._receipt_validation_matrices()[-1]
+        aseh_operator._receipt_validation_matrices()[-2]
         == aseh_operator
         .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_VALIDATIONS
     )
@@ -30469,3 +30472,284 @@ def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:
     assert owner_guard < owner_witness < owner_admission < scheduler_popen
     assert scheduler_popen < scheduler_handoff < owner_retire < initial_health
     assert "retire_owner_launch_git_guard(sys.exc_info())" in owner
+
+
+def test_aseh_r40_candidate_scope_and_validation_matrix_are_exact() -> None:
+    assert (
+        aseh_operator
+        .REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_CHANGED_PATHS
+        == (
+            "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+            "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+            "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+            "ipfs_datasets_py",
+            "requirements.txt",
+            "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+            "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+            "test/api/test_agent_supervisor_board_control_plane.py",
+            "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+            "test/api/test_agent_supervisor_scoped_dependency_contract_v3.py",
+        )
+    )
+    matrix = (
+        aseh_operator
+        .REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_VALIDATIONS
+    )
+    assert aseh_operator._receipt_validation_matrices()[-1] == matrix
+    compile_argv, pytest_argv = matrix[:2]
+    assert "requirements.txt" not in compile_argv
+    assert "-k" not in pytest_argv
+    for path in (
+        "test/api/test_agent_supervisor_board_control_plane.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract_v3.py",
+    ):
+        assert path in pytest_argv
+
+
+def test_aseh_r27_delegates_r40_before_r39() -> None:
+    source = inspect.getsource(
+        aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable
+    )
+    r40_call = source.index(
+        "_authorize_repair_approved_validation_runtime_configuration_"
+        "transition_if_applicable("
+    )
+    r40_return = source.index("return r40_result", r40_call)
+    r39_call = source.index(
+        "_authorize_repair_implementation_supervisor_handoff_bootstrap_"
+        "transition_if_applicable("
+    )
+    assert r40_call < r40_return < r39_call
+
+
+def test_aseh_r40_failure_and_post_promotion_evidence_are_closed() -> None:
+    failure = (
+        aseh_operator._r40_expected_r39_validation_dependency_failure_evidence()
+    )
+    assert failure["prior_repair_receipt_cid"] == (
+        aseh_operator.ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+    )
+    assert failure["prior_authorization_attempt_cid"] == (
+        aseh_operator.ASEH_R40_PUBLISHED_R39_AUTHORIZATION_ATTEMPT_CID
+    )
+    assert failure["terminal_observation"]["receipt_cid"] == (
+        aseh_operator.ASEH_R40_EXACT_R39_TERMINAL_OBSERVATION_CID
+    )
+    assert failure["control_failure_receipt"]["receipt_cid"] == (
+        aseh_operator.ASEH_R40_EXACT_R39_CONTROL_FAILURE_CID
+    )
+    assert failure["r39_retry_authorized"] is False
+    assert failure["direct_cause_terminal_claim"] is None
+    assert failure["direct_cause_inference"]["basis"].endswith(
+        "not_terminal_claim"
+    )
+    assert failure["database_effect"] == "not_measured"
+    assert failure["database_observed_during_evidence_capture"] is False
+    assert failure["database_mutated_during_evidence_capture"] is None
+    assert (
+        aseh_operator._validate_r40_r39_validation_dependency_failure_evidence(
+            failure
+        )
+        == failure
+    )
+
+    preflight = aseh_operator._r40_expected_post_promotion_preflight_evidence()
+    assert preflight["artifact_persisted"] is False
+    assert preflight["execution_transport"] == "sealed_memfd"
+    assert preflight["all_five_tasks_passed"] is True
+    assert set(preflight["task_results"]) == {
+        "ASEH-010", "ASEH-020", "ASEH-030", "ASEH-040", "ASEH-050",
+    }
+    assert preflight["task_results"]["ASEH-030"]["selected_extra"] == (
+        "lgcvf-validation"
+    )
+    assert aseh_operator._validate_r40_post_promotion_preflight_evidence(
+        preflight
+    ) == preflight
+
+
+def test_aseh_r40_approved_runtime_and_board_validator_are_exact() -> None:
+    deployment = aseh_operator._r40_approved_validation_runtime_deployment()
+    assert deployment["pythonpath_entries"] == list(
+        aseh_operator.ASEH_R40_APPROVED_VALIDATION_PYTHONPATH_ENTRIES
+    )
+    assert len(deployment["required_modules"]) == 39
+    assert deployment["deployment_schema"] == (
+        "ipfs-accelerate-aseh-wheel-delta-deployment@1"
+    )
+    assert deployment["post_promotion_exact_preflight_required"] is True
+
+    config = json.loads(aseh_validator.CONFIG.read_text(encoding="utf-8"))
+    assert aseh_validator._approved_validation_runtime_errors(config) == []
+    forged = json.loads(json.dumps(config))
+    forged["validation_runtime"]["pythonpath_entries"] = list(
+        reversed(forged["validation_runtime"]["pythonpath_entries"])
+    )
+    assert any(
+        "validation_runtime differs" in error
+        for error in aseh_validator._approved_validation_runtime_errors(forged)
+    )
+    report = aseh_validator.validate(check_git=False)
+    assert report["valid"] is True, report["errors"]
+    assert aseh_validator.R40_DATASETS_REPAIR == (
+        aseh_operator.ASEH_R40_DATASETS_REPAIR_HEAD,
+        aseh_operator.ASEH_R40_DATASETS_REPAIR_TREE,
+    )
+    for path in (
+        "requirements.txt",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "ipfs_datasets_py/pyproject.toml",
+    ):
+        assert path in aseh_validator.REQUIRED_PROTECTED_PATHS
+
+
+def test_aseh_r40_attempt_record_rejects_rehashed_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = {"head": head, "tree": tree}
+    guard = {"guard_cid": "sha256:" + ("c" * 64)}
+    durable = {
+        "authorization_v1_witness_cid": aseh_operator._identity(witness),
+        "authorization_guard_cid": guard["guard_cid"],
+        "witness_cid": "sha256:" + ("d" * 64),
+    }
+    failure = (
+        aseh_operator._r40_expected_r39_validation_dependency_failure_evidence()
+    )
+    deployment = (
+        aseh_operator._r40_expected_approved_validation_runtime_deployment()
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_durable_candidate_witness",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_candidate_git_guard_record",
+        lambda value, **_kwargs: dict(value),
+    )
+    attempt = aseh_operator._r40_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r39_validation_dependency_failure_evidence=failure,
+        approved_validation_runtime_deployment=deployment,
+        started_at=1.0,
+    )
+    assert aseh_operator._validate_r40_authorization_attempt_record(
+        attempt,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r39_validation_dependency_failure_evidence=failure,
+        approved_validation_runtime_deployment=deployment,
+    ) == attempt
+    for field, forged_value in (
+        ("published_r39_receipt_cid", "sha256:" + ("e" * 64)),
+        ("published_r39_authorization_attempt_cid", "sha256:" + ("f" * 64)),
+        (
+            "approved_validation_runtime_post_promotion_preflight_cid",
+            "sha256:" + ("0" * 64),
+        ),
+        ("retry_authorized", True),
+        ("database_effect", "observed"),
+        ("started_at", -1.0),
+    ):
+        forged = json.loads(json.dumps(attempt))
+        forged[field] = forged_value
+        unsigned = dict(forged)
+        unsigned.pop("attempt_cid")
+        forged["attempt_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(aseh_operator.OperatorError, match="R40"):
+            aseh_operator._validate_r40_authorization_attempt_record(
+                forged,
+                candidate_head=head,
+                candidate_tree=tree,
+                candidate_authorization_witness=witness,
+                durable_candidate_witness=durable,
+                candidate_git_guard=guard,
+                r39_validation_dependency_failure_evidence=failure,
+                approved_validation_runtime_deployment=deployment,
+            )
+
+
+def test_aseh_r40_materialized_launch_and_exact_admission_are_wired() -> None:
+    source = inspect.getsource(aseh_operator._admit_materialized_launch)
+    assert source.index("r40_prequalification") < source.index(
+        "r39_prequalification = ("
+    )
+    for token in (
+        "_prequalify_r40_historical_live_launch",
+        "_complete_r40_historical_live_prequalification",
+        "_admit_exact_r40_transition_chain",
+        "launch_bundle = r40_prequalification",
+        "_recheck_r40_owner_start_authority",
+        "published_r39_to_approved_validation_runtime_configuration",
+        "len(ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS)",
+        "inherited_r27_index = (\n                    -5",
+        "inherited_r26_index = (\n                    -6",
+    ):
+        assert token in source
+    assert source.count("_recheck_r40_owner_start_authority") >= 3
+    r30_descendant_gate = source.index("r30_descendant_is_active = any(")
+    assert source.index("r40_prequalification", r30_descendant_gate) < (
+        source.index("r39_prequalification", r30_descendant_gate)
+    )
+
+    continuity = inspect.getsource(aseh_operator._read_continuity_state)
+    priority = continuity.index("r26_projection_bundle = (")
+    assert continuity.index(
+        "r40_projection_recovery_prequalification", priority
+    ) < continuity.index("r39_projection_recovery_prequalification", priority)
+
+    launch_assertion = inspect.getsource(
+        aseh_operator._assert_exact_run_launch_admission
+    )
+    assert launch_assertion.index(
+        "current R40 candidate lacks its exact admitted validation seal"
+    ) < launch_assertion.index(
+        "current R39 candidate lacks its exact admitted validation seal"
+    )
+    for token in (
+        "current descendant lacks its retained R40 validation seal",
+        "current descendant lacks its explicit R39-to-R40 edge",
+        "published_r39_to_approved_validation_runtime_configuration",
+    ):
+        assert token in launch_assertion
+    assert launch_assertion.count(
+        "approved_validation_runtime_post_promotion_preflight_cid"
+    ) >= 2
+
+    generic_validator = inspect.getsource(
+        aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition
+    )
+    assert "_revision == 40 and owner == \"ipfs_datasets_py\"" in (
+        generic_validator
+    )
+    assert "ASEH_R40_DATASETS_REPAIR_TREE" in generic_validator
+    assert "38, 39, 40" in generic_validator
+
+    active_recheck = inspect.getsource(
+        aseh_operator._recheck_active_owner_start_authority
+    )
+    assert "_recheck_r40_owner_start_authority" in active_recheck
+    paths_source = inspect.getsource(aseh_operator._paths)
+    assert (
+        "repair_approved_validation_runtime_configuration_transition_receipt"
+        in paths_source
+    )
+    assert (
+        "repair_approved_validation_runtime_configuration_authorization_attempt"
+        in paths_source
+    )

@@ -147,6 +147,48 @@ BASES = {
     "ipfs_datasets_py": ("209dbe2765593fbc6efe8e9281c34f2e8f6e37a6", "95f54df34585d0b736706fd90c83f55954489ad9"),
     "ipfs_kit_py": ("ba5508d940fb5b23a6d0d9b2084f5195cd26a671", "7c71efa93c4e4124d12fa05515868df3a5344b2e"),
 }
+R40_DATASETS_REPAIR = (
+    "d93961dda3fffd168f6345d7113e0ddf79d0ed44",
+    "b2e2bc30ead862c56fb2a51d155edbb43e4a47cf",
+)
+VALIDATION_PYTHON = Path("/usr/bin/python3.12")
+VALIDATION_PYTHON_SHA256 = (
+    "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+)
+VALIDATION_PYTHON_VERSION = "3.12.3"
+VALIDATION_OVERLAY = Path(
+    "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf"
+)
+VALIDATION_BASE = Path("/opt/ipfs-accelerate-legal-validation-7ffe92439767")
+VALIDATION_PYTHONPATH_ENTRIES = (
+    str(VALIDATION_OVERLAY / "site-packages-py-multihash"),
+    str(VALIDATION_OVERLAY / "site-packages"),
+    str(VALIDATION_BASE / "site-packages"),
+)
+VALIDATION_PYTHONPATH_SHA256 = (
+    "sha256:b33b316a356490f3f80be252ccc22ae94163c0c398a1f77548c4f0d10c5bc707"
+)
+VALIDATION_REQUIRED_MODULES = (
+    "aiohttp", "anyio", "cpuinfo", "cryptography", "duckdb", "fastapi",
+    "fastmcp", "flask", "flask_cors", "github", "httpx",
+    "ipfshttpclient", "jsonschema", "jwt", "multiformats", "multihash",
+    "networkx", "nltk", "numpy", "packaging", "pandas", "psutil",
+    "pyarrow", "pynvml", "pytest", "pytest_cov", "pytest_env",
+    "pytest_timeout", "requests", "scipy", "sklearn", "toml", "torch",
+    "tqdm", "transformers", "trio", "urllib3", "websockets", "werkzeug",
+)
+VALIDATION_OVERLAY_DEPLOYMENT_SHA256 = (
+    "sha256:0d557e24f3254e958f8d37ec8d10299b9fdd34e7685621b09dddb84245932cf2"
+)
+VALIDATION_OVERLAY_PAYLOAD_SHA256 = (
+    "sha256:9b3ba6caebcff215c3de2ef00d5b588d059aff92ddc15cd4ffde8eb2dcd766b8"
+)
+VALIDATION_BASE_DEPLOYMENT_SHA256 = (
+    "sha256:654d64e130c9b8e748ea76c3947eb47cc52bea64adb40f2592f7204dfe503ad0"
+)
+VALIDATION_BASE_PAYLOAD_SHA256 = (
+    "sha256:7ffe92439767e99c849a4f7aad0ee5d64e19ab9f754b5f0915f00571ac51f85a"
+)
 SELECTED_REFS = {
     "ipfs_accelerate_py": "origin/main",
     "ipfs_datasets_py": "origin/integration/datasets-ui-capability-recovery-20260823",
@@ -207,6 +249,7 @@ BOOTSTRAP_OUTPUTS = {
 }
 REQUIRED_PROTECTED_PATHS = {
     ".gitignore",
+    "requirements.txt",
     "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",
@@ -222,7 +265,10 @@ REQUIRED_PROTECTED_PATHS = {
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+    "ipfs_datasets_py/pyproject.toml",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
@@ -275,6 +321,119 @@ def _git(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
 
 def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _approved_validation_runtime_errors(config: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    expected_runtime = {
+        "python_executable": str(VALIDATION_PYTHON),
+        "pythonpath_entries": list(VALIDATION_PYTHONPATH_ENTRIES),
+        "required_modules": list(VALIDATION_REQUIRED_MODULES),
+    }
+    runtime = config.get("validation_runtime")
+    if not isinstance(runtime, Mapping) or dict(runtime) != expected_runtime:
+        errors.append("scheduler validation_runtime differs from the exact R40 contract")
+
+    overlay_deployment = VALIDATION_OVERLAY / "DEPLOYMENT.json"
+    overlay_manifest = VALIDATION_OVERLAY / "PAYLOAD_MANIFEST.jsonl"
+    base_deployment = VALIDATION_BASE / "DEPLOYMENT.json"
+    base_manifest = VALIDATION_BASE / "PAYLOAD_MANIFEST.jsonl"
+    objects = (
+        (VALIDATION_OVERLAY, "directory", 0o555, None),
+        (VALIDATION_BASE, "directory", 0o555, None),
+        *(
+            (Path(item), "directory", 0o555, None)
+            for item in VALIDATION_PYTHONPATH_ENTRIES
+        ),
+        (
+            overlay_deployment,
+            "file",
+            0o444,
+            VALIDATION_OVERLAY_DEPLOYMENT_SHA256,
+        ),
+        (overlay_manifest, "file", 0o444, VALIDATION_OVERLAY_PAYLOAD_SHA256),
+        (base_deployment, "file", 0o444, VALIDATION_BASE_DEPLOYMENT_SHA256),
+        (base_manifest, "file", 0o444, VALIDATION_BASE_PAYLOAD_SHA256),
+        (VALIDATION_PYTHON, "file", 0o755, VALIDATION_PYTHON_SHA256),
+    )
+    for path, kind, mode, digest in objects:
+        try:
+            stat_result = path.lstat()
+        except OSError:
+            errors.append(f"approved validation runtime path is absent: {path}")
+            continue
+        if (
+            path.is_symlink()
+            or stat_result.st_uid != 0
+            or stat_result.st_gid != 0
+        ):
+            errors.append(f"approved validation runtime ownership differs: {path}")
+        if (stat_result.st_mode & 0o7777) != mode:
+            errors.append(f"approved validation runtime mode differs: {path}")
+        if kind == "directory" and not path.is_dir():
+            errors.append(f"approved validation runtime directory differs: {path}")
+        if kind == "file" and not path.is_file():
+            errors.append(f"approved validation runtime file differs: {path}")
+        if digest is not None and path.is_file() and _digest(path) != digest:
+            errors.append(f"approved validation runtime digest differs: {path}")
+
+    try:
+        overlay_record = _json(overlay_deployment)
+        base_record = _json(base_deployment)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"approved validation deployment receipt is unreadable: {exc}")
+        return errors
+    overlay_payload = overlay_record.get("payload")
+    overlay_base = overlay_record.get("base")
+    overlay_python = overlay_record.get("python")
+    overlay_verification = overlay_record.get("verification")
+    if (
+        overlay_record.get("schema")
+        != "ipfs-accelerate-aseh-wheel-delta-deployment@1"
+        or overlay_record.get("final_path") != str(VALIDATION_OVERLAY)
+        or overlay_record.get("ordered_pythonpath")
+        != list(VALIDATION_PYTHONPATH_ENTRIES)
+        or overlay_record.get("ordered_pythonpath_sha256")
+        != VALIDATION_PYTHONPATH_SHA256.removeprefix("sha256:")
+        or not isinstance(overlay_payload, Mapping)
+        or overlay_payload.get("manifest_sha256")
+        != VALIDATION_OVERLAY_PAYLOAD_SHA256.removeprefix("sha256:")
+        or not isinstance(overlay_base, Mapping)
+        or overlay_base.get("deployment") != str(VALIDATION_BASE)
+        or overlay_base.get("deployment_receipt_sha256")
+        != VALIDATION_BASE_DEPLOYMENT_SHA256.removeprefix("sha256:")
+        or overlay_base.get("payload_manifest_sha256")
+        != VALIDATION_BASE_PAYLOAD_SHA256.removeprefix("sha256:")
+        or not isinstance(overlay_python, Mapping)
+        or overlay_python.get("path") != str(VALIDATION_PYTHON)
+        or overlay_python.get("version") != VALIDATION_PYTHON_VERSION
+        or overlay_python.get("executable_sha256")
+        != VALIDATION_PYTHON_SHA256.removeprefix("sha256:")
+        or not isinstance(overlay_verification, Mapping)
+        or overlay_verification.get("import_smoke_passed") is not True
+        or overlay_verification.get("post_promotion_exact_preflight_required")
+        is not True
+    ):
+        errors.append("approved R40 overlay deployment receipt differs")
+    base_payload = base_record.get("payload")
+    base_python = base_record.get("python")
+    base_verification = base_record.get("verification")
+    if (
+        base_record.get("schema")
+        != "ipfs-accelerate-legal-validation-deployment@1"
+        or not isinstance(base_payload, Mapping)
+        or base_payload.get("manifest_sha256")
+        != VALIDATION_BASE_PAYLOAD_SHA256.removeprefix("sha256:")
+        or not isinstance(base_python, Mapping)
+        or base_python.get("path") != str(VALIDATION_PYTHON)
+        or base_python.get("version") != VALIDATION_PYTHON_VERSION
+        or base_python.get("executable_sha256")
+        != VALIDATION_PYTHON_SHA256.removeprefix("sha256:")
+        or not isinstance(base_verification, Mapping)
+        or base_verification.get("passed") is not True
+    ):
+        errors.append("approved R40 base deployment receipt differs")
+    return errors
 
 
 def validate(*, check_git: bool) -> dict[str, Any]:
@@ -515,6 +674,7 @@ def validate(*, check_git: bool) -> dict[str, Any]:
 
     if config.get("program_identifier") != PROGRAM or config.get("board_namespace") != PROGRAM:
         errors.append("scheduler program/namespace differs")
+    errors.extend(_approved_validation_runtime_errors(config))
     if config.get("task_prefix") != "ASEH-" or config.get("goal_prefix") != "ASEH-G":
         errors.append("scheduler prefixes differ")
     if config.get("merge_target_branch") != BRANCH:
@@ -780,6 +940,11 @@ def validate(*, check_git: bool) -> dict[str, Any]:
             if commit_tree.returncode != 0 or commit_tree.stdout.strip() != tree:
                 errors.append(f"{repo}: sealed commit/tree identity is invalid")
             if repo != "ipfs_accelerate_py":
+                live_commit, live_tree = (
+                    R40_DATASETS_REPAIR
+                    if repo == "ipfs_datasets_py"
+                    else (commit, tree)
+                )
                 status = _git("status", "--porcelain=v1", "--untracked-files=all", cwd=cwd)
                 if status.returncode != 0 or status.stdout.strip():
                     errors.append(f"{repo}: nested worktree is dirty")
@@ -787,11 +952,11 @@ def validate(*, check_git: bool) -> dict[str, Any]:
                 head_tree = _git("rev-parse", "HEAD^{tree}", cwd=cwd)
                 if (
                     head.returncode != 0
-                    or head.stdout.strip() != commit
+                    or head.stdout.strip() != live_commit
                     or head_tree.returncode != 0
-                    or head_tree.stdout.strip() != tree
+                    or head_tree.stdout.strip() != live_tree
                 ):
-                    errors.append(f"{repo}: nested HEAD differs from selected exact snapshot")
+                    errors.append(f"{repo}: nested HEAD differs from exact R40 repair snapshot")
                 gitlink = _git("ls-tree", "HEAD", repo)
                 if gitlink.returncode != 0 or head.returncode != 0:
                     errors.append(f"{repo}: gitlink/head unavailable")
@@ -810,6 +975,22 @@ def validate(*, check_git: bool) -> dict[str, Any]:
         "dependency_count": sum(len(value) for value in EXPECTED_DEPENDENCIES.values()),
         "initial_ready_task_ids": ["ASEH-000", "ASEH-001"],
         "owners": sorted(BASES),
+        "datasets_r40_repair": {
+            "commit": R40_DATASETS_REPAIR[0],
+            "tree": R40_DATASETS_REPAIR[1],
+            "planning_ancestor": BASES["ipfs_datasets_py"][0],
+        },
+        "validation_runtime": {
+            "python_executable": str(VALIDATION_PYTHON),
+            "python_sha256": VALIDATION_PYTHON_SHA256,
+            "pythonpath_entries": list(VALIDATION_PYTHONPATH_ENTRIES),
+            "overlay_deployment_sha256": (
+                VALIDATION_OVERLAY_DEPLOYMENT_SHA256
+            ),
+            "overlay_payload_manifest_sha256": (
+                VALIDATION_OVERLAY_PAYLOAD_SHA256
+            ),
+        },
         "bootstrap_repair_task_id": "ASEH-BOOTSTRAP-001",
         "control_digests": {
             path.relative_to(ROOT).as_posix(): _digest(path)
