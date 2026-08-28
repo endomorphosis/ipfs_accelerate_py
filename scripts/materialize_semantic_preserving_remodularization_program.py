@@ -1110,6 +1110,43 @@ def _process_mutations(server: Any, mutation_dir: Path) -> None:
             pass
 
 
+def _publish_handle_token(owner_dir: Path, secret_handle: str) -> Path:
+    """Bind the live typed-owner credential to the configured handle path.
+
+    The current Quack client resolves a handle-specific private regular file,
+    while ``TypedStateOwner`` creates the credential under its canonical
+    filename.  A same-inode hard link bridges those existing interfaces without
+    reading, logging, copying, or translating the secret bytes.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_TOKEN_FILENAME,
+    )
+
+    source = owner_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
+    target = _token_path(owner_dir, secret_handle)
+    if target.exists() or target.is_symlink():
+        raise OperatorError("Quack handle token path already exists")
+    source_metadata = os.stat(source, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(source_metadata.st_mode)
+        or source_metadata.st_uid != os.getuid()
+        or source_metadata.st_mode & 0o077
+        or not 8 <= source_metadata.st_size <= 512
+    ):
+        raise OperatorError("typed-owner token is not a private bounded file")
+    os.link(source, target, follow_symlinks=False)
+    target_metadata = os.stat(target, follow_symlinks=False)
+    if (
+        target_metadata.st_dev != source_metadata.st_dev
+        or target_metadata.st_ino != source_metadata.st_ino
+        or target_metadata.st_mode & 0o077
+    ):
+        target.unlink(missing_ok=True)
+        raise OperatorError("Quack handle token binding is not exact")
+    return target
+
+
 def state_owner(config_path: Path) -> int:
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         ServerLifecycle,
@@ -1142,7 +1179,15 @@ def state_owner(config_path: Path) -> int:
         transport=_LiveQuackTransport(),
     )
     identity = server.start()
-    ready = server.ready()
+    handle_token_path = _publish_handle_token(
+        paths["owner"], program.endpoint_secret_handle
+    )
+    try:
+        ready = server.ready()
+    except BaseException:
+        handle_token_path.unlink(missing_ok=True)
+        server.stop()
+        raise
     print(
         json.dumps(
             {
@@ -1166,12 +1211,15 @@ def state_owner(config_path: Path) -> int:
     signal.signal(signal.SIGTERM, request_stop)
     mutation_dir = paths["owner"] / "mutations"
     control_path = server.stop_control_path()
-    while server.lifecycle is ServerLifecycle.READY and not stopped["value"]:
-        if control_path.is_file():
-            break
-        _process_mutations(server, mutation_dir)
-        time.sleep(0.05)
-    result = server.stop()
+    try:
+        while server.lifecycle is ServerLifecycle.READY and not stopped["value"]:
+            if control_path.is_file():
+                break
+            _process_mutations(server, mutation_dir)
+            time.sleep(0.05)
+    finally:
+        result = server.stop()
+        handle_token_path.unlink(missing_ok=True)
     print(json.dumps(result, sort_keys=True), flush=True)
     return 0
 

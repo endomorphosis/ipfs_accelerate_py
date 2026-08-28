@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +15,16 @@ SPEC_PATH = ROOT / "scripts/ops/agent_supervisor/semantic_preserving_remodulariz
 
 def _spec():
     definition = importlib.util.spec_from_file_location("spar_control_spec_test", SPEC_PATH)
+    assert definition is not None and definition.loader is not None
+    module = importlib.util.module_from_spec(definition)
+    sys.modules[definition.name] = module
+    definition.loader.exec_module(module)
+    return module
+
+
+def _materializer():
+    path = ROOT / "scripts/materialize_semantic_preserving_remodularization_program.py"
+    definition = importlib.util.spec_from_file_location("spar_materializer_test", path)
     assert definition is not None and definition.loader is not None
     module = importlib.util.module_from_spec(definition)
     sys.modules[definition.name] = module
@@ -88,3 +99,19 @@ def test_import_does_not_create_runtime_state() -> None:
     before = runtime.exists()
     _spec()
     assert runtime.exists() is before
+
+
+def test_quack_handle_token_binding_is_private_and_same_inode(tmp_path: Path) -> None:
+    materializer = _materializer()
+    source = tmp_path / "typed-state-owner.token"
+    source.write_text("a_private_test_token_1234567890", encoding="utf-8")
+    source.chmod(0o600)
+    target = materializer._publish_handle_token(tmp_path, "handle:spar-test")
+    source_stat = os.stat(source, follow_symlinks=False)
+    target_stat = os.stat(target, follow_symlinks=False)
+    assert (source_stat.st_dev, source_stat.st_ino) == (
+        target_stat.st_dev,
+        target_stat.st_ino,
+    )
+    assert target_stat.st_mode & 0o077 == 0
+    target.unlink()
