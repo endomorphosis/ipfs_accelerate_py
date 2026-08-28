@@ -1,0 +1,176 @@
+{
+  "schema": "semantic-addressed-world-model/rollout-baseline@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "current_mode": "bootstrap",
+  "current_mode_authoritatively_activated": false,
+  "sawm_operational_influence_enabled": false,
+  "baseline_authority": "existing supervisor behavior and current DuckDB/Quack task authority",
+  "world_state": {
+    "preexisting_sawm_world_root_cid": null,
+    "preexisting_sawm_world_root_generation": null,
+    "preexisting_sawm_context_receipt_cid": null,
+    "preexisting_sawm_transition_cid": null,
+    "preexisting_sawm_required_mode_task_count": 0,
+    "claim": "No SAWM-specific world root or rollout receipt was found or fabricated at bootstrap."
+  },
+  "related_landed_rollout_surfaces": [
+    {
+      "surface": "semantic governor shadow execution",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/shadow.py",
+      "classification": "available_with_caveats",
+      "may_be_treated_as_sawm_shadow_write": false
+    },
+    {
+      "surface": "DecisionRuntime rollout controls",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_rollout.py",
+      "classification": "available_with_caveats",
+      "may_be_treated_as_sawm_guarded_or_required": false
+    },
+    {
+      "surface": "semantic-state harness session/root handling",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state",
+      "classification": "available_with_caveats",
+      "may_be_treated_as_sawm_world_root": false
+    }
+  ],
+  "closed_modes": [
+    {
+      "mode": "bootstrap",
+      "task": "SAWM-000 through prerequisite implementation waves",
+      "authority_behavior": "existing production behavior remains authoritative",
+      "allowed": [
+        "contracts",
+        "storage",
+        "adapters",
+        "controls",
+        "minimal wiring",
+        "isolated tests"
+      ],
+      "forbidden": [
+        "semantic-world reuse influencing planning",
+        "prediction influencing execution",
+        "SAWM completion claims"
+      ],
+      "exit_gate": "all prerequisites for SAWM-034 independently accepted"
+    },
+    {
+      "mode": "shadow_write",
+      "task": "SAWM-034",
+      "authority_behavior": "emit candidate states, projections, contexts, predictions, transitions and roots without influence",
+      "allowed": [
+        "candidate artifact emission",
+        "parity and corruption measurement"
+      ],
+      "forbidden": [
+        "planning influence",
+        "routing influence",
+        "completion influence"
+      ],
+      "exit_gate": "parity, complete bindings, corruption and no-influence evidence independently accepted"
+    },
+    {
+      "mode": "shadow_read",
+      "task": "SAWM-035",
+      "authority_behavior": "query exact, proof, procedure, graph, trace and neural memory hypothetically",
+      "allowed": [
+        "hypothetical reuse/prediction decision",
+        "false/missed/stale candidate measurement"
+      ],
+      "forbidden": [
+        "execution or context suppression",
+        "task acceptance influence"
+      ],
+      "exit_gate": "false/missed candidate and typed fallback floors independently accepted"
+    },
+    {
+      "mode": "guarded",
+      "task": "SAWM-036",
+      "authority_behavior": "only exact current, verified procedure and proof-backed scoped results may influence planning",
+      "allowed": [
+        "exact admitted reuse",
+        "verified procedure reuse",
+        "authoritative symbolic pruning",
+        "neural ranking or context addition"
+      ],
+      "forbidden": [
+        "neural suppression of static candidates",
+        "neural suppression of required source or validation",
+        "similarity-only reuse"
+      ],
+      "exit_gate": "guarded acceptance matrix and all safety floors independently accepted"
+    },
+    {
+      "mode": "required",
+      "task": "SAWM-037",
+      "authority_behavior": "dispatch and completion fail closed without independently verified semantic-world bindings",
+      "required_per_task": [
+        "pre_world_root_cid",
+        "pre_world_root_generation",
+        "current semantic/program state CIDs",
+        "goal and task revision",
+        "context_receipt_cid",
+        "reuse_decision_cid",
+        "prediction receipts considered",
+        "proof/test/validation receipts",
+        "execution_transition_cid",
+        "post_world_root_cid",
+        "post_world_root_generation",
+        "expected root generation",
+        "dogfood_mode=required"
+      ],
+      "forbidden": [
+        "worker self-approval",
+        "dispatch from unverifiable pre-world",
+        "completion from unverifiable transition/post-root"
+      ],
+      "exit_gate": "required mode remains active through capstone and release"
+    }
+  ],
+  "monotonic_order": [
+    "bootstrap",
+    "shadow_write",
+    "shadow_read",
+    "guarded",
+    "required"
+  ],
+  "transition_policy": {
+    "skip_allowed": false,
+    "task_dependency_enforced": true,
+    "independent_evidence_required": true,
+    "rollback_on_safety_floor_violation": true,
+    "rollback_target_at_bootstrap": "existing supervisor behavior at sealed source revision",
+    "typed_unavailability_fallback_visible": true,
+    "worker_may_change_rollout_policy": false
+  },
+  "baseline_safety_floors": {
+    "false_completions": 0,
+    "unauthorized_mutations": 0,
+    "similarity_only_exact_reuse": 0,
+    "stale_authoritative_reuse": 0,
+    "simulated_as_live_admissions": 0,
+    "model_created_proof_acceptance": 0,
+    "model_created_authority": 0,
+    "model_created_completion": 0,
+    "hidden_validation_reductions": 0,
+    "escaped_critical_seeded_defects": 0,
+    "unsafe_abstraction_reuse": 0,
+    "root_overwrite_conflicts": 0
+  },
+  "baseline_measurements": {
+    "shadow_parity": null,
+    "retrieval_precision": null,
+    "prediction_metrics": null,
+    "llm_call_reduction": null,
+    "token_reduction": null,
+    "proof_or_test_coverage_change": null,
+    "reason": "No SAWM rollout or frozen benchmark has executed."
+  },
+  "limitations": [
+    "This file defines the closed rollout baseline; it is not an activation receipt.",
+    "Related landed shadow/rollout code does not establish SAWM mode.",
+    "All post-bootstrap values require current-tree independently admitted evidence."
+  ]
+}

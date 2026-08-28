@@ -1,0 +1,222 @@
+{
+  "schema": "semantic-addressed-world-model/dependency-seal@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "root_goal_id": "SAWM-G000",
+  "status": "sealed",
+  "sealed_on_utc_date": "2026-08-28",
+  "seal_scope": "SAWM R2 bootstrap source, dependency identity and control-plane prerequisites",
+  "source_authorities": [
+    {
+      "role": "accelerator_operational_intelligence_and_supervisor",
+      "repository": "endomorphosis/ipfs_accelerate_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2",
+      "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
+      "checkout_state": "branch",
+      "branch": "agent/semantic-addressed-world-model-v1",
+      "head": "54bc66e9512079ef9ddc04152bc5517cc03292d6",
+      "tree": "81680791ef2df9ad7cfb01dea428ed691134d5e0",
+      "gitlink_path": null,
+      "gitlink_commit": null,
+      "package": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "public_package_path": "ipfs_accelerate_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "operator_protected_sawm_control_paths_only"
+    },
+    {
+      "role": "datasets_semantic_and_formal_authority",
+      "repository": "endomorphosis/ipfs_datasets_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_datasets_py",
+      "origin": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "declared_gitlink_origin": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "branch": null,
+      "head": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "tree": "964b3e949b80191fe1b8e59af62df08f38857102",
+      "gitlink_path": "ipfs_datasets_py",
+      "gitlink_commit": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "package": "ipfs_datasets_py",
+      "package_version": "0.2.0",
+      "public_package_path": "ipfs_datasets_py/ipfs_datasets_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "accepted_supervisor_task_worktrees_and_operator_gitlink_integration_only"
+    },
+    {
+      "role": "kit_storage_retrieval_and_durable_graph_authority",
+      "repository": "endomorphosis/ipfs_kit_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-addressed-world-model-r2/ipfs_kit_py",
+      "origin": "/home/barberb/lift_coding/external/ipfs_kit",
+      "declared_gitlink_origin": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "checkout_state": "detached_exact_gitlink",
+      "branch": null,
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "gitlink_path": "ipfs_kit_py",
+      "gitlink_commit": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "package": "ipfs_kit_py",
+      "package_version": "0.3.0",
+      "public_package_path": "ipfs_kit_py/ipfs_kit_py",
+      "clean_at_baseline_capture": true,
+      "permitted_post_baseline_changes": "accepted_supervisor_task_worktrees_and_operator_gitlink_integration_only"
+    }
+  ],
+  "preserved_dirty_origins": [
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "head": "5d79bbf8bb61e027fbda76920580cb9d4fd919c1",
+      "tree": "c5ddd043de58349aafac0f9af03c1b018313623d",
+      "clean": false,
+      "admitted_into_sealed_snapshot": false
+    },
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47",
+      "clean": false,
+      "admitted_into_sealed_snapshot": false
+    },
+    {
+      "root": "/home/barberb/lift_coding/external/ipfs_kit",
+      "head": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+      "tree": "93070c709af29095fdff11f3e2698543449c08ef",
+      "clean": true,
+      "admitted_into_sealed_snapshot": true
+    }
+  ],
+  "dependency_files": [
+    {
+      "path": ".gitignore",
+      "sha256": "5529a74c4b8a1fee1ffc9764a99beb9f158f46ed61e3f26fe31d7eee31072b5f",
+      "git_blob_oid": "a1cc0989eb8e339a9a9f19fe3884a187a9955bb1",
+      "role": "exact SAWM control and evidence tracking exceptions"
+    },
+    {
+      "path": ".gitmodules",
+      "sha256": "9b5856970fc61b9c18f7d272c1ed5b9322e5e7df08a8f74a100da2e33852bf90",
+      "git_blob_oid": "44e852ac06856fca74caf0ac4215406040f45897",
+      "role": "gitlink path and declared origin identity"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "97d579283d42b5a0877821f6c6cab2cd1985e11579ffc8854685bef8b05b6bf9",
+      "git_blob_oid": "179882cc1254039920c5a1ab755f383dcb70842d",
+      "role": "accelerator package and dependency declaration"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "6f761f7b6275bd85d46f1253a7b177f9fa264351750ad6f836c5d6e4dbaefa44",
+      "git_blob_oid": "98588e8fb2d660f6611b856b617b0f0955038580",
+      "role": "accelerator runtime requirements"
+    },
+    {
+      "path": "requirements-proof-reuse.txt",
+      "sha256": "4809b7012f515cfaea30140a117c86e47ada29f96fff9045eff57e390cf2fc8b",
+      "git_blob_oid": "ee526dc4cbed6119be1c36a50efcf6c14dcd61c2",
+      "role": "proof reuse optional dependency declaration"
+    },
+    {
+      "path": "ipfs_datasets_py/pyproject.toml",
+      "sha256": "e0cd336e89c9a1727c782244b8ea23a401a90a11a22fc85a8c3d20f7cadf2e07",
+      "git_blob_oid": "ec58bcda1a8658fc1c73c0742ef89e2d5f722f7b",
+      "role": "datasets package and dependency declaration"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements.txt",
+      "sha256": "c440bb51092a82bb19e2641e680dbc63d427029c7561e66999843418c4eb11db",
+      "git_blob_oid": "46259a2e149ece83e4be4dd9564481fb59941192",
+      "role": "datasets runtime requirements"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements-theorem-provers.txt",
+      "sha256": "cb22dd5328bca48746c0747e2580a19b1a8602ed008875ad11c0eb650df825b9",
+      "git_blob_oid": "8c95a95a921bddb5bcb34dfaea9023adf9179b5b",
+      "role": "optional theorem-prover declarations; never implicitly installed"
+    },
+    {
+      "path": "ipfs_kit_py/pyproject.toml",
+      "sha256": "0d81184d586607a604a393a4f53fc452a73dc5094f1eaa725b628e727641fe0c",
+      "git_blob_oid": "e2ef88fa956d8056f8dee96668c8890b7354cfe8",
+      "role": "kit package and dependency declaration"
+    },
+    {
+      "path": "ipfs_kit_py/requirements.txt",
+      "sha256": "4083586f56960826ed8944c82b61ffa7e6e94e31b3a7174b3633f34d0c5bca88",
+      "git_blob_oid": "7f9b9c511607293d5ecc3902389c1060118496f9",
+      "role": "kit runtime requirements"
+    }
+  ],
+  "toolchain": {
+    "python_executable": "/home/barberb/.local/bin/python",
+    "python_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "pytest_distribution_version": "9.1.1",
+    "duckdb_distribution_version": "1.5.5",
+    "operating_system": "Linux",
+    "machine": "aarch64",
+    "implicit_install_allowed": false,
+    "implicit_model_download_allowed": false
+  },
+  "environment_policy": {
+    "fixed": {
+      "IPFS_DATASETS_AUTO_INSTALL": "0",
+      "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+      "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+      "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "PYTHONHASHSEED": "0",
+      "PYTHONNOUSERSITE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "secrets_source": "environment_only",
+    "secrets_in_prompt_argv_log_receipt_board_corpus_model": false,
+    "ordinary_test_network": false,
+    "cold_import_side_effects_allowed": false,
+    "arbitrary_code_deserialization_allowed": false
+  },
+  "package_dependency_direction": {
+    "accelerate_consumes_datasets_semantics": true,
+    "accelerate_consumes_kit_storage": true,
+    "datasets_may_depend_on_accelerate_operations": false,
+    "kit_may_decide_datasets_semantics": false,
+    "kit_may_decide_accelerate_admission": false,
+    "parallel_authority_implementation_allowed": false
+  },
+  "control_plane": {
+    "authoritative_store": "DuckDB",
+    "multi_writer_transport_and_exclusive_owner": "Quack",
+    "duckdb_source": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "quack_server_source": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "quack_client_source": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+    "quack_live_at_seal": false,
+    "quack_preflight_required": true,
+    "ducklake_role": "optional_non_authoritative_history_projection",
+    "ducklake_authoritative": false,
+    "markdown_authoritative": false,
+    "worker_self_completion_allowed": false
+  },
+  "optional_capability_policy": {
+    "external_provers": "probe_then_typed_unavailable",
+    "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",
+    "model_checkpoint": "require_admitted_lineage_or_training_unavailable",
+    "hardware": "probe_then_typed_unavailable",
+    "provider": "current_capability_probe_only",
+    "codex_provider": "implementation_only_when_current_provider_probe_admits",
+    "simulation_admitted_as_live": false
+  },
+  "validation": {
+    "validator": "scripts/validate_semantic_addressed_world_model_dependencies.py",
+    "expected_result": "all exact paths, hashes, blobs, commits, trees, gitlinks, versions and policy invariants verify",
+    "current_tree_revalidation_required_before_launch": true,
+    "network_required": false,
+    "database_open_required_for_static_seal_validation": false,
+    "seal_mismatch_disposition": "fail_closed"
+  },
+  "limitations": [
+    "The seal binds source and declared dependency identity; it is not proof that optional packages, services, provers, models or hardware are available.",
+    "Protected SAWM control files are expected working-tree additions above the sealed base until the operator-owned bootstrap commit is created.",
+    "Dirty origin checkouts remain preserved and are not clean evidence."
+  ]
+}

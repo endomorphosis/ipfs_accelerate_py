@@ -1,0 +1,365 @@
+{
+  "schema": "semantic-addressed-world-model/identity-inventory@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "canonical_authority": "ipfs_datasets_py",
+  "storage_verifier": "ipfs_kit_py",
+  "operational_consumer": "ipfs_accelerate_py",
+  "global_rules": {
+    "cid_identifies": "exact_canonical_bytes_under_declared_codec_and_profile",
+    "cid_does_not_establish": [
+      "semantic uniqueness",
+      "truth",
+      "equivalence",
+      "proof",
+      "authorization",
+      "freshness",
+      "safe reuse",
+      "completion"
+    ],
+    "semantic_object_identity_may_derive_from_embedding_score": false,
+    "model_dependent_projection_in_semantic_declaration_identity": false,
+    "irrelevant_wall_clock_observation_in_semantic_identity": false,
+    "existing_v1_payload_may_change": false,
+    "prediction_gets_cid": "only_after_closed_schema_validation_and_deterministic_canonicalization",
+    "claimed_cid_must_rehash": true,
+    "unknown_fields": "reject",
+    "duplicate_json_keys": "reject",
+    "nonfinite_numbers": "reject",
+    "arbitrary_code_deserialization": "forbidden"
+  },
+  "landed_identity_primitives": [
+    {
+      "surface": "ir_core deterministic canonical JSON",
+      "status": "available",
+      "evidence_path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/canonical.py",
+      "extension_rule": "reuse or add an adjacent explicit profile"
+    },
+    {
+      "surface": "software-contract content CID",
+      "status": "available_with_caveats",
+      "evidence_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+      "extension_rule": "do not silently alter existing payloads or CID profile"
+    },
+    {
+      "surface": "semantic-index stable symbol and version identity",
+      "status": "available",
+      "evidence_path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+      "extension_rule": "adapt existing symbol identity rather than create a parallel symbol authority"
+    },
+    {
+      "surface": "GraphRAG content/embedding/index identities",
+      "status": "available_with_caveats",
+      "evidence_path": "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py",
+      "extension_rule": "kit verifies/persists caller-authoritative identities; SAWM adds missing immutable model/profile bindings"
+    },
+    {
+      "surface": "accelerator multiformats identity bridge",
+      "status": "available_with_caveats",
+      "evidence_path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+      "extension_rule": "consumer bridge only; must not redefine datasets semantic identity"
+    }
+  ],
+  "identities": [
+    {
+      "name": "source_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/source.py"
+      ],
+      "required_distinction": "exact source bytes and codec/profile"
+    },
+    {
+      "name": "domain_state_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/models.py"
+      ],
+      "required_distinction": "domain-specific state, separate from projection and operational root"
+    },
+    {
+      "name": "semantic_object_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py"
+      ],
+      "required_distinction": "canonical declaration without model-dependent vector material"
+    },
+    {
+      "name": "canonical_program_graph_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "canonical logical program meaning, not an ANN graph"
+    },
+    {
+      "name": "program_graph_snapshot_cid",
+      "owner": "ipfs_datasets_py_semantics_ipfs_kit_py_storage",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py"
+      ],
+      "required_distinction": "canonical ordered node/edge set at sealed bindings"
+    },
+    {
+      "name": "program_graph_delta_cid",
+      "owner": "ipfs_datasets_py_semantics_ipfs_kit_py_storage",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index/delta.py"
+      ],
+      "required_distinction": "pure change record retaining unchanged subroots"
+    },
+    {
+      "name": "raw_execution_state_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "bounded redacted observed state under exact capture profile"
+    },
+    {
+      "name": "abstract_execution_state_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "semantic abstraction including abstraction_profile_cid and unavailable dimensions"
+    },
+    {
+      "name": "stack_frame_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "one ordered frame with exact code/environment and bounded state summary"
+    },
+    {
+      "name": "program_event_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "closed event grammar record, observation status explicit"
+    },
+    {
+      "name": "execution_trace_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "ordered event/segment identity; repeated states do not erase history"
+    },
+    {
+      "name": "projection_cid",
+      "owner": "ipfs_datasets_py_schema_ipfs_kit_py_persistence",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/graphrag/projections.py"
+      ],
+      "required_distinction": "model/tokenizer/preprocessor/normalizer/metric/dimension/dtype/byte-order/quantization/vector bindings"
+    },
+    {
+      "name": "projection_index_manifest_cid",
+      "owner": "ipfs_kit_py",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
+      ],
+      "required_distinction": "immutable description of rebuildable non-authoritative index generation"
+    },
+    {
+      "name": "relation_claim_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/refinement.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py"
+      ],
+      "required_distinction": "typed scope/assumption/policy/environment/evidence/invalidator/authority claim; not similarity"
+    },
+    {
+      "name": "proof_obligation_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py"
+      ],
+      "required_distinction": "solver-neutral finite obligation and exact premise/environment bindings"
+    },
+    {
+      "name": "proof_or_countermodel_cid",
+      "owner": "ipfs_datasets_py_semantics_ipfs_kit_py_storage",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/models.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus",
+        "ipfs_kit_py/ipfs_kit_py/proof_certificate_store.py"
+      ],
+      "required_distinction": "candidate versus natively reconstructed/replayed admitted evidence"
+    },
+    {
+      "name": "procedure_cid",
+      "owner": "ipfs_accelerate_py_consuming_datasets_identity",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "versioned preconditions/effects/validation/rollback/holes and current authority"
+    },
+    {
+      "name": "procedure_certificate_cid",
+      "owner": "ipfs_accelerate_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "independent held-out/adversarial promotion evidence; never self-certified"
+    },
+    {
+      "name": "transition_query_cid",
+      "owner": "ipfs_datasets_py_semantics_ipfs_accelerate_py_request",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "named unresolved decision and exact evidence/current bindings"
+    },
+    {
+      "name": "transition_prediction_cid",
+      "owner": "ipfs_datasets_py_schema_ipfs_accelerate_py_producer",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "proposal-only closed structured output plus model/calibration/evidence"
+    },
+    {
+      "name": "transition_observation_cid",
+      "owner": "ipfs_datasets_py_schema_ipfs_accelerate_py_observer",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/core/vfs/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/formal_transition_monitor.py"
+      ],
+      "required_distinction": "observed execution truth, never simulation or prediction"
+    },
+    {
+      "name": "transition_admission_cid",
+      "owner": "ipfs_accelerate_py",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "independent policy/proof/test/freshness/environment admission decision"
+    },
+    {
+      "name": "transition_cid",
+      "owner": "ipfs_accelerate_py_admission_ipfs_kit_py_persistence",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/core/operation_contracts.py"
+      ],
+      "required_distinction": "accepted immutable operational transition, separate from proposal and observation"
+    },
+    {
+      "name": "world_snapshot_cid",
+      "owner": "ipfs_accelerate_py_manifest_ipfs_kit_py_persistence",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "immutable transitive manifest of admitted program-world state"
+    },
+    {
+      "name": "world_root_cid",
+      "owner": "ipfs_kit_py_storage_ipfs_accelerate_py_operational_publication",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py"
+      ],
+      "required_distinction": "generation-bearing CAS pointer to transitively verified immutable snapshot"
+    },
+    {
+      "name": "model_cid",
+      "owner": "ipfs_datasets_py_lineage_ipfs_kit_py_storage",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/formalization/proposal_advisors.py",
+        "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
+      ],
+      "required_distinction": "exact admitted model artifact; model name is insufficient"
+    },
+    {
+      "name": "tokenizer_cid",
+      "owner": "ipfs_datasets_py_lineage_ipfs_kit_py_storage",
+      "bootstrap_status": "missing",
+      "current_evidence": [],
+      "required_distinction": "exact tokenizer artifact/config identity"
+    },
+    {
+      "name": "preprocessing_profile_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_kit_py/ipfs_kit_py/graphrag/contracts.py"
+      ],
+      "required_distinction": "versioned deterministic preprocessing, separate from semantic object"
+    },
+    {
+      "name": "environment_binding_cid",
+      "owner": "ipfs_datasets_py",
+      "bootstrap_status": "available_with_caveats",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state/bindings.py"
+      ],
+      "required_distinction": "dependency/toolchain/capability state relevant to validity and reuse"
+    },
+    {
+      "name": "policy_cid",
+      "owner": "respective_policy_authority_with_datasets_semantic_binding",
+      "bootstrap_status": "partial",
+      "current_evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_governor/policy_contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/semantic_governor_store/policy.py"
+      ],
+      "required_distinction": "exact policy revision and authority, separate from model recommendation"
+    }
+  ],
+  "projection_identity_requirements": [
+    "semantic_object_cid_or_execution_state_cid",
+    "projection_kind",
+    "model_cid",
+    "tokenizer_cid",
+    "preprocessing_profile_cid",
+    "normalization_profile_cid",
+    "dimension",
+    "metric",
+    "dtype",
+    "byte_order",
+    "quantization_profile_cid_or_explicit_null",
+    "vector_cid",
+    "privacy_class",
+    "availability_policy",
+    "projection_cid"
+  ],
+  "projection_rejections": [
+    "NaN",
+    "infinity",
+    "dimension mismatch",
+    "unspecified byte order",
+    "unpinned model or preprocessor",
+    "score-derived identity",
+    "mutable unresolved document identity"
+  ],
+  "compatibility_requirements": [
+    "deterministic canonical byte round trip",
+    "claimed CID rehash",
+    "strict unknown-field rejection",
+    "duplicate-key rejection",
+    "nonfinite-number rejection",
+    "versioned decode",
+    "model/profile changes affect projection identity only",
+    "observation timestamp does not affect semantic identity",
+    "raw and abstract identities are distinct",
+    "abstraction profile change affects abstract identity",
+    "existing @1 identities remain byte-identical"
+  ],
+  "limitations": [
+    "bootstrap_status is an inventory classification, not an acceptance result",
+    "no concrete SAWM CID is asserted by this inventory",
+    "missing identities must be implemented as versioned contracts under the named owner"
+  ]
+}

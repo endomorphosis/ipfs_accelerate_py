@@ -1,0 +1,323 @@
+{
+  "schema": "semantic-addressed-world-model/interface-inventory@1",
+  "board_namespace": "semantic-addressed-world-model-v1",
+  "plan_revision": "SAWM-PLAN-R2",
+  "observed_on_utc_date": "2026-08-28",
+  "evidence_class": "operator_planning_observation",
+  "inspection_rule": "Source-path and exported-symbol observations identify extension points; runtime capability still requires current-environment probes and tests.",
+  "interfaces": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "ContextCompiler",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "reuse": "extend current compiler and receipt contracts; do not create a second compiler"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "DecisionRuntime",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+      "reuse": "add SAWM decisions through current runtime and rollout controls"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "SemanticCompressionHarness",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+      "reuse": "consume SAWM adapters and context receipts"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "SemanticCompressionGovernor",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
+      "reuse": "extend current governance and shadow/promotion paths"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "IncrementalVerificationPlanner",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+      "reuse": "bind program-world impact/obligation facts to current selection authority"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "IncrementalProofSealer",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py",
+      "reuse": "seal admitted current-tree proof transitions without self-approval"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "GoalDirectedProofTactician and CounterexampleGuidedTactician",
+      "status": "available_with_caveats",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof",
+      "reuse": "compile finite SAWM uncertainties into current plans; backend results require reconstruction/replay"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "MultiProverRouter and live logic repair",
+      "status": "available_with_caveats",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/live_logic_repair_controller.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_tactician_provider.py"
+      ],
+      "reuse": "route only capability-admitted backends and replay proof/countermodel candidates"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "AdaptivePlanner and formal replanner",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py"
+      ],
+      "reuse": "expose the ordered exact/symbolic/procedural/residual action set here"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "deterministic and CEGIS repair",
+      "status": "partial",
+      "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py",
+        "ipfs_accelerate_py/agent_supervisor/proof/logic_prediction_cegis.py"
+      ],
+      "reuse": "add closed SAWM repair operators and patch-sketch constraints"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "datasets semantic-state/program-analysis adapters",
+      "status": "available_with_caveats",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_program_graph_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_program_analysis_provider.py"
+      ],
+      "reuse": "narrowly adapt new datasets identities; do not fork semantics"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "ResourceScheduler, provider execution and batching",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_execution.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py"
+      ],
+      "reuse": "route qualified specialists and preserve validation/proof reserves"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "worktree, lease, fence, merge queue and merge train",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge",
+      "reuse": "all implementation attempts use current isolated fenced lifecycle and independent merge acceptance"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "DuckDB task authority and Quack transport/state owner",
+      "status": "available_with_caveats",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "related_paths": [
+        "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py"
+      ],
+      "reuse": "authoritative current task/event/control records; liveness and exclusive ownership must be probed"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "configured-board scheduler",
+      "status": "available",
+      "path": "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+      "reuse": "use current schema and launch implementation; no new scheduler"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "Adversarial Assurance",
+      "status": "available",
+      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+      "reuse": "extend with SAWM-specific authority, corruption, privacy and prediction cases"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "RepositoryWorldModel",
+      "status": "missing",
+      "path": null,
+      "reuse": "add a versioned narrow consumer over landed repository/semantic-state and transition primitives"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "ProofCarryingProcedureCompiler",
+      "status": "historical_only",
+      "path": "/home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1",
+      "reuse": "non-authoritative worktree; reconcile current landed procedure surfaces before any extension"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "VerifiedResidualIntelligenceFoundry",
+      "status": "historical_only",
+      "path": "/home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1",
+      "reuse": "non-authoritative worktree; use current corpus/provider/checkpoint/promotion authorities"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "AutonomousMetaController",
+      "status": "historical_only",
+      "path": "/home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1",
+      "reuse": "non-authoritative worktree; integrate with current planner/resource/budget services"
+    },
+    {
+      "repository": "ipfs_accelerate_py",
+      "interface": "CausalAbstractionSupervisorFederation",
+      "status": "missing",
+      "path": null,
+      "reuse": "extend current event/outbox/causal-frontier owners, not a second federation"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "ir_core",
+      "status": "available",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core",
+      "reuse": "canonicalization, provenance and evidence base for versioned contracts"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "software-contract content and semantic index",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_index",
+      "related_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/content.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
+      ],
+      "reuse": "extend symbol/state identity and invalidation without altering existing @1 payloads"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "software verification transitions, refinement and proof obligations",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification",
+      "reuse": "add domain-specific program execution contracts only when generic contracts cannot express them"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "Tactician contracts/planner and Hammer backend/results",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician",
+      "related_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/tactician",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers"
+      ],
+      "reuse": "retain formalization, logic-family, provider, result and receipt boundaries"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "proof corpus",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/proof_corpus",
+      "reuse": "reuse admission, manifest, storage, query, revocation and DuckDB projection contracts"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "formalization, logic-family and domain IR",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/logic/formalization",
+      "related_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/families",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/intent_ir",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/ui_ux_ir"
+      ],
+      "reuse": "domain adapters return typed unavailability for unsupported dimensions"
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "interface": "DuckLake",
+      "status": "available_with_caveats",
+      "path": "ipfs_datasets_py/ipfs_datasets_py/ducklake",
+      "reuse": "optional non-authoritative history/query projection only; never task authority"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "CID/IPLD/CAR",
+      "status": "available_with_caveats",
+      "path": "ipfs_kit_py/ipfs_kit_py/ipfs_multiformats.py",
+      "related_paths": [
+        "ipfs_kit_py/ipfs_kit_py/ipld"
+      ],
+      "reuse": "compose verified exact-byte storage and codec handling"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "DurableCoordinationStore and DurableStateRoots",
+      "status": "available",
+      "path": "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py",
+      "related_paths": [
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_contracts.py",
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/state_root_adapter.py"
+      ],
+      "reuse": "add SAWM root manifest/store adapter; do not add another CAS"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "SemanticGovernorStore",
+      "status": "available_with_caveats",
+      "path": "ipfs_kit_py/ipfs_kit_py/semantic_governor_store",
+      "reuse": "use durable domain-store conventions for SAWM immutable artifacts"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "GraphRAG projections, vector index and hybrid retrieval",
+      "status": "available_with_caveats",
+      "path": "ipfs_kit_py/ipfs_kit_py/graphrag",
+      "reuse": "return advisory candidates with exact immutable resolution and limitations"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "VFS, WAL and recovery",
+      "status": "available_with_caveats",
+      "path": "ipfs_kit_py/ipfs_kit_py/core/vfs",
+      "related_paths": [
+        "ipfs_kit_py/ipfs_kit_py/core/wal",
+        "ipfs_kit_py/ipfs_kit_py/kernel_vfs/durable_mutation.py"
+      ],
+      "reuse": "qualify post-commit semantic outbox, replay, corruption and concurrency"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "interface": "proof certificate store and replication",
+      "status": "available_with_caveats",
+      "path": "ipfs_kit_py/ipfs_kit_py/proof_certificate_store.py",
+      "related_paths": [
+        "ipfs_kit_py/ipfs_kit_py/core/replication"
+      ],
+      "reuse": "storage never decides proof or semantic validity"
+    }
+  ],
+  "missing_program_world_interfaces": [
+    "closed static ProgramGraph contract family",
+    "closed runtime state/event/trace contract family",
+    "versioned state abstraction profiles and receipts",
+    "proposal-only ProgramTransition contract family",
+    "RepairOperator, PatchSketchIR and graph-delta proposal family",
+    "SAWM verified store/resolver/root adapter",
+    "calibrated call/event/inverse/repair specialists",
+    "required-mode pre/post world enforcement"
+  ],
+  "cold_import_requirement": {
+    "network": false,
+    "installer": false,
+    "subprocess": false,
+    "socket": false,
+    "database_open": false,
+    "repository_scan": false,
+    "model_load": false,
+    "watcher": false,
+    "environment_mutation": false,
+    "qualification_status": "must_be_retested_for_every_new_public_import_or_cli_registration"
+  }
+}
