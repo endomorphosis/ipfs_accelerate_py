@@ -10,8 +10,11 @@ DuckDB store reached through the current Quack owner.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
+import stat
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -45,6 +48,9 @@ INVENTORY_ROOT = REPO_ROOT / "docs/architecture/semantic_addressed_world_model_i
 SEAL_PATH = REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json"
 SCHEDULER_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
 BENCHMARK_PATH = REPO_ROOT / "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json"
+NATIVE_AUTHORIZATION_PATH = (
+    "config/semantic_addressed_world_model_native_dependency.authorization.json"
+)
 
 INVENTORY_PATHS = tuple(
     INVENTORY_ROOT / name
@@ -68,21 +74,34 @@ CONTROL_RELATIVE_PATHS = (
     "docs/architecture/semantic_addressed_world_model.todo.md",
     *(path.relative_to(REPO_ROOT).as_posix() for path in INVENTORY_PATHS),
     "config/semantic_addressed_world_model_dependencies.seal.json",
+    "config/semantic_addressed_world_model_native_dependency.authorization.json",
     "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
     "scripts/validate_semantic_addressed_world_model_dependencies.py",
     "scripts/validate_semantic_addressed_world_model_board.py",
     "scripts/materialize_semantic_addressed_world_model_program.py",
     "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+    "ipfs_accelerate_py/agent_implementation_route.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
+    "test/api/test_agent_supervisor_configured_board_extension_projection.py",
+    "test/api/test_agent_supervisor_configured_board_live_capsule.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_native_dependency_pin.py",
     "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
 )
 
@@ -303,6 +322,437 @@ def _repository_for_path(path: str) -> str:
     if path.startswith("ipfs_kit_py/"):
         return "ipfs_kit_py"
     return "ipfs_accelerate_py"
+
+
+def _canonical_identity(value: Mapping[str, Any], *, identity_field: str) -> str:
+    body = dict(value)
+    body.pop(identity_field, None)
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _stable_regular_bytes(path: Path, *, maximum: int) -> bytes:
+    if not path.is_absolute():
+        raise ValueError("path is not absolute")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("source is unavailable") from exc
+    if resolved != path:
+        raise ValueError("source path is noncanonical or contains a symlink")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ValueError("source is unavailable") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or not 0 < before.st_size <= maximum
+        ):
+            raise ValueError("source is not stable owner-held regular-file evidence")
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not block:
+                break
+            chunks.append(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        current = os.stat(path, follow_symlinks=False)
+    except OSError as exc:
+        raise ValueError("source changed after read") from exc
+
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
+
+    raw = b"".join(chunks)
+    if (
+        len(raw) != before.st_size
+        or identity(before) != identity(after)
+        or identity(after) != identity(current)
+    ):
+        raise ValueError("source changed while read")
+    return raw
+
+
+def _extension_pin_errors(
+    name: str,
+    configured: object,
+    sealed: object,
+) -> list[str]:
+    errors: list[str] = []
+    extra = {"service_external_access_limitation"} if name == "quack" else set()
+    fields = {
+        "path",
+        "info_path",
+        "version",
+        "sha256",
+        "size",
+        "info_sha256",
+        "info_size",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
+        *extra,
+    }
+    if type(configured) is not dict or type(sealed) is not dict:
+        return [f"{name} extension pin must be an exact object"]
+    if configured != sealed:
+        errors.append(f"scheduler {name} pin differs from the dependency seal")
+    pin = sealed
+    if set(pin) != fields:
+        errors.append(f"sealed {name} extension pin fields are noncanonical")
+        return errors
+    path_value = pin.get("path")
+    info_path_value = pin.get("info_path")
+    version = pin.get("version")
+    payload_digest = pin.get("sha256")
+    info_digest = pin.get("info_sha256")
+    payload_size = pin.get("size")
+    info_size = pin.get("info_size")
+    if (
+        type(path_value) is not str
+        or type(info_path_value) is not str
+        or type(version) is not str
+        or re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}", version) is None
+        or type(payload_digest) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", payload_digest) is None
+        or type(info_digest) is not str
+        or re.fullmatch(r"[0-9a-f]{64}", info_digest) is None
+        or type(payload_size) is not int
+        or not 0 < payload_size <= 64 * 1024 * 1024
+        or type(info_size) is not int
+        or not 0 < info_size <= 64 * 1024
+        or pin.get("network_install_allowed") is not False
+        or pin.get("unsigned_extension_allowed") is not False
+        or (
+            name == "quack"
+            and pin.get("service_external_access_limitation")
+            != "canonical_writer_sealed; "
+            "pinned_extension_preloaded_only_in_locked_read_only_loopback_replica"
+        )
+    ):
+        errors.append(f"sealed {name} extension pin values are noncanonical")
+        return errors
+    payload_path = Path(path_value)
+    info_path = Path(info_path_value)
+    if (
+        payload_path.name != f"{name}.duckdb_extension"
+        or info_path != payload_path.with_name(f"{payload_path.name}.info")
+    ):
+        errors.append(f"sealed {name} extension paths are not exact")
+        return errors
+    try:
+        payload = _stable_regular_bytes(payload_path, maximum=64 * 1024 * 1024)
+        info = _stable_regular_bytes(info_path, maximum=64 * 1024)
+    except ValueError as exc:
+        errors.append(f"sealed {name} extension source is invalid: {exc}")
+        return errors
+    if len(payload) != payload_size or hashlib.sha256(payload).hexdigest() != payload_digest:
+        errors.append(f"sealed {name} extension payload differs from its pin")
+    if len(info) != info_size or hashlib.sha256(info).hexdigest() != info_digest:
+        errors.append(f"sealed {name} extension metadata differs from its pin")
+    return errors
+
+
+def _configured_board_dependency_errors(
+    root: Path,
+    config: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> list[str]:
+    """Validate exact configured-board dependency and local extension custody."""
+
+    errors: list[str] = []
+    expected_paths = {
+        "validator_path": "scripts/validate_semantic_addressed_world_model_board.py",
+        "dependency_validator_path": (
+            "scripts/validate_semantic_addressed_world_model_dependencies.py"
+        ),
+        "dependency_seal_path": (
+            "config/semantic_addressed_world_model_dependencies.seal.json"
+        ),
+    }
+    for field, expected in expected_paths.items():
+        if config.get(field) != expected:
+            errors.append(f"scheduler {field} does not bind {expected}")
+    environment_policy = seal.get("environment_policy")
+    fixed_environment = (
+        environment_policy.get("fixed")
+        if isinstance(environment_policy, Mapping)
+        and isinstance(environment_policy.get("fixed"), Mapping)
+        else {}
+    )
+    if (
+        not isinstance(environment_policy, Mapping)
+        or environment_policy.get("duckdb_extension_home")
+        != "exact_private_read_only_projection"
+        or fixed_environment.get(
+            "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
+        )
+        != "disabled"
+    ):
+        errors.append(
+            "configured-board extension projection/install environment is not sealed"
+        )
+    validation = seal.get("validation")
+    if (
+        type(validation) is not dict
+        or set(validation)
+        != {
+            "validator",
+            "expected_result",
+            "current_tree_revalidation_required_before_launch",
+            "network_required",
+            "database_open_required_for_static_seal_validation",
+            "seal_mismatch_disposition",
+        }
+        or validation.get("validator") != expected_paths["dependency_validator_path"]
+        or validation.get("current_tree_revalidation_required_before_launch") is not True
+        or validation.get("network_required") is not False
+        or validation.get("database_open_required_for_static_seal_validation") is not False
+        or validation.get("seal_mismatch_disposition") != "fail_closed"
+    ):
+        errors.append("dependency seal validation policy is not exact and fail-closed")
+    if any(
+        expected not in tuple(config.get("protected_paths") or ())
+        for expected in expected_paths.values()
+    ):
+        errors.append("scheduler validator/seal bindings are not protected paths")
+
+    quack_owner = config.get("quack_owner")
+    if not isinstance(quack_owner, Mapping):
+        errors.append("scheduler Quack owner is absent")
+        quack_owner = {}
+    quack_pin = seal.get("quack_extension_pin")
+    httpfs_pin = seal.get("httpfs_extension_pin")
+    errors.extend(
+        _extension_pin_errors("quack", quack_owner.get("pinned_extension"), quack_pin)
+    )
+    errors.extend(
+        _extension_pin_errors(
+            "httpfs",
+            quack_owner.get("pinned_httpfs_extension"),
+            httpfs_pin,
+        )
+    )
+    if type(quack_pin) is dict and type(httpfs_pin) is dict:
+        quack_path = Path(str(quack_pin.get("path") or ""))
+        httpfs_path = Path(str(httpfs_pin.get("path") or ""))
+        if quack_path.parent != httpfs_path.parent:
+            errors.append("Quack and httpfs pins do not share one exact engine/platform root")
+
+    projection = seal.get("configured_board_quack_projection")
+    expected_projection_fields = {
+        "schema",
+        "source_path",
+        "info_path",
+        "pin",
+        "load_policy",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
+    }
+    if type(projection) is not dict or set(projection) != expected_projection_fields:
+        errors.append("configured-board Quack projection fields are noncanonical")
+    else:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+                inspect_configured_board_extension_sources,
+                parse_configured_board_extension_pin,
+            )
+
+            projection_pin = parse_configured_board_extension_pin(projection.get("pin"))
+            observed_projection = inspect_configured_board_extension_sources(
+                projection.get("source_path"),
+                projection.get("info_path"),
+                name=projection_pin.name,
+                engine_version=projection_pin.engine_version,
+                platform=projection_pin.platform,
+            )
+        except (ImportError, OSError, TypeError, ValueError) as exc:
+            errors.append(
+                "configured-board Quack projection is invalid: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        else:
+            if (
+                observed_projection != projection_pin
+                or projection.get("schema")
+                != "semantic-addressed-world-model/configured-board-quack-projection@1"
+                or projection.get("load_policy") != "local_load_only"
+                or projection.get("network_install_allowed") is not False
+                or projection.get("unsigned_extension_allowed") is not False
+                or type(quack_pin) is not dict
+                or projection.get("source_path") != quack_pin.get("path")
+                or projection.get("info_path") != quack_pin.get("info_path")
+                or projection_pin.payload_sha256
+                != "sha256:" + str(quack_pin.get("sha256") or "")
+                or projection_pin.payload_size != quack_pin.get("size")
+                or projection_pin.info_sha256
+                != "sha256:" + str(quack_pin.get("info_sha256") or "")
+                or projection_pin.info_size != quack_pin.get("info_size")
+            ):
+                errors.append("configured-board Quack projection differs from its sealed source")
+            projection_source = Path(str(projection.get("source_path") or ""))
+            if (
+                projection_source.parent.name != projection_pin.platform
+                or projection_source.parent.parent.name
+                != projection_pin.engine_version
+            ):
+                errors.append("configured-board Quack projection engine/platform path mismatches")
+
+    native = seal.get("configured_board_native_dependency")
+    native_fields = {
+        "schema",
+        "source_path",
+        "acceptance",
+        "pin",
+        "sealed_memfd_required",
+        "ambient_site_import_allowed",
+        "ambient_loader_environment_allowed",
+    }
+    if type(native) is not dict or set(native) != native_fields:
+        errors.append("configured-board native dependency fields are noncanonical")
+        return errors
+    acceptance = native.get("acceptance")
+    if type(acceptance) is not dict or set(acceptance) != {
+        "schema",
+        "path",
+        "sha256",
+        "size",
+        "authorization_id",
+    }:
+        errors.append("native dependency authorization reference is noncanonical")
+        return errors
+    if (
+        native.get("schema")
+        != "semantic-addressed-world-model/configured-board-native-dependency@1"
+        or type(native.get("source_path")) is not str
+        or not Path(native["source_path"]).is_absolute()
+        or native.get("sealed_memfd_required") is not True
+        or native.get("ambient_site_import_allowed") is not False
+        or native.get("ambient_loader_environment_allowed") is not False
+        or acceptance.get("schema")
+        != "semantic-addressed-world-model/native-dependency-authorization-reference@1"
+        or acceptance.get("path") != NATIVE_AUTHORIZATION_PATH
+    ):
+        errors.append("configured-board native dependency policy is not exact")
+        return errors
+    try:
+        authorization_path = (root / NATIVE_AUTHORIZATION_PATH).resolve(strict=True)
+        if authorization_path != root / NATIVE_AUTHORIZATION_PATH:
+            raise ValueError("authorization path is noncanonical")
+        authorization_raw = _stable_regular_bytes(
+            authorization_path,
+            maximum=32 * 1024,
+        )
+        authorization = json.loads(
+            authorization_raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicates,
+        )
+        from ipfs_accelerate_py.agent_implementation_route import (
+            inspect_agent_supervisor_native_dependency_source,
+            parse_agent_supervisor_native_dependency_pin,
+        )
+
+        native_pin = parse_agent_supervisor_native_dependency_pin(native.get("pin"))
+        observed_native_pin = inspect_agent_supervisor_native_dependency_source(
+            native.get("source_path"),
+            distribution_version=native_pin.distribution_version,
+            engine_version=native_pin.engine_version,
+        )
+    except (
+        ImportError,
+        OSError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        errors.append(
+            "configured-board native dependency is invalid: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return errors
+    authorization_fields = {
+        "schema",
+        "board_namespace",
+        "plan_revision",
+        "status",
+        "scope",
+        "dependency_id",
+        "payload_sha256",
+        "python_executable_sha256",
+        "authority_basis",
+        "inspection_is_authority",
+        "authorization_may_claim_task_completion",
+        "authorization_id",
+    }
+    if type(authorization) is not dict or set(authorization) != authorization_fields:
+        errors.append("native dependency authorization fields are noncanonical")
+        return errors
+    authorization_id = _canonical_identity(
+        authorization,
+        identity_field="authorization_id",
+    )
+    if (
+        observed_native_pin != native_pin
+        or native.get("source_path") != str(Path(native.get("source_path")))
+        or Path(native.get("source_path")).name != native_pin.extension_filename
+        or acceptance.get("size") != len(authorization_raw)
+        or acceptance.get("sha256")
+        != "sha256:" + hashlib.sha256(authorization_raw).hexdigest()
+        or acceptance.get("authorization_id") != authorization_id
+        or authorization.get("authorization_id") != authorization_id
+        or authorization.get("schema")
+        != "semantic-addressed-world-model/native-dependency-launch-authorization@1"
+        or authorization.get("board_namespace") != BOARD_NAMESPACE
+        or authorization.get("plan_revision") != PLAN_REVISION
+        or authorization.get("status") != "accepted"
+        or authorization.get("scope") != "configured-board-live-control-plane"
+        or authorization.get("authority_basis")
+        != "operator-owned protected control inside the accepted immutable source capsule"
+        or authorization.get("dependency_id") != native_pin.dependency_id
+        or authorization.get("payload_sha256") != native_pin.payload_sha256
+        or authorization.get("python_executable_sha256")
+        != native_pin.python_executable_sha256
+        or authorization.get("inspection_is_authority") is not False
+        or authorization.get("authorization_may_claim_task_completion") is not False
+    ):
+        errors.append("native dependency authorization does not bind the exact sealed pin")
+    toolchain = seal.get("toolchain") if isinstance(seal.get("toolchain"), Mapping) else {}
+    if (
+        native_pin.distribution_version != toolchain.get("duckdb_distribution_version")
+        or native_pin.engine_version
+        != f"v{toolchain.get('duckdb_distribution_version', '')}"
+    ):
+        errors.append("native dependency version differs from the sealed DuckDB toolchain")
+    return errors
 
 
 def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
@@ -637,14 +1087,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "2"
+        or program.get("store_generation") != "3"
         or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
     if (
-        migration.get("schema") != "sawm/prior-materialization-migration-inventory@1"
-        or migration.get("migration_revision") != "SAWM-R2-M1"
+        migration.get("schema") != "sawm/prior-materialization-migration-inventory@2"
+        or migration.get("migration_revision") != "SAWM-R2-M2"
         or migration.get("prior_authority_preserved") is not True
         or prior.get("preserve_append_only") is not True
         or prior.get("store_id") != migration.get("prior_store_id")
@@ -656,9 +1106,35 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or set(migration.get("prior_goal_cids") or {}) != set(GOAL_IDS)
         or migration.get("prior_task_count") != len(TASK_IDS)
         or migration.get("prior_goal_count") != len(GOAL_IDS)
-        or migration.get("prior_event_watermark") != 107
+        or migration.get("definition_source_binding_cid")
+        != "sha256:cf4d9fa1ba595286866f5406e61b2ac71e4ed3730af70a2b07f88d0c16905e5e"
+        or migration.get("prior_event_watermark") != 109
+        or migration.get("prior_plan_revision") != 2
+        or migration.get("target_plan_revision") != 3
     ):
         config_errors.append("append-only prior-SAWM migration binding mismatch")
+    history = migration.get("migration_history")
+    if (
+        not isinstance(history, list)
+        or len(history) != 1
+        or not isinstance(history[0], Mapping)
+        or history[0].get("schema") != "sawm/source-migration-history-entry@1"
+        or history[0].get("migration_revision") != "SAWM-R2-M1"
+        or history[0].get("target_store_id") != migration.get("prior_store_id")
+        or history[0].get("target_control_store_sha256")
+        != migration.get("prior_control_store_sha256")
+        or history[0].get("target_event_watermark")
+        != migration.get("prior_event_watermark")
+        or history[0].get("target_event_prefix_sha256")
+        != migration.get("prior_event_prefix_sha256")
+        or history[0].get("current_source_binding_cid")
+        != migration.get("prior_source_binding_cid")
+        or history[0].get("migration_receipt_cid")
+        != migration.get("prior_materialization_receipt_cid")
+        or history[0].get("migration_receipt_path")
+        != migration.get("prior_materialization_receipt_path")
+    ):
+        config_errors.append("M0-to-M1 migration history binding mismatch")
     repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())
     if (
         not repair_paths
@@ -666,14 +1142,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or any(path not in CONTROL_RELATIVE_PATHS for path in repair_paths)
     ):
         config_errors.append("bounded launch-repair paths are not exact protected controls")
-    configured_pin = config.get("quack_owner", {}).get("pinned_extension", {})
-    sealed_pin = seal.get("quack_extension_pin", {})
-    if (
-        configured_pin != sealed_pin
-        or configured_pin.get("network_install_allowed") is not False
-        or configured_pin.get("unsigned_extension_allowed") is not False
-    ):
-        config_errors.append("Quack extension pin differs from the sealed local-only capability")
+    config_errors.extend(_configured_board_dependency_errors(root, config, seal))
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (
         ducklake.get("authority") is False
@@ -685,6 +1154,26 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("DuckLake must be local-only and non-authoritative")
     if tuple(config.get("protected_paths") or ()) != CONTROL_RELATIVE_PATHS:
         config_errors.append("scheduler protected paths differ from the exact operator controls")
+    live_policy = config.get("configured_board_live_capsule")
+    if not isinstance(live_policy, Mapping):
+        config_errors.append("configured-board live capsule policy is absent")
+    else:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_live_capsule import (
+                parse_configured_board_live_capsule_policy,
+            )
+
+            live_paths = parse_configured_board_live_capsule_policy(live_policy)
+        except (ImportError, ValueError) as exc:
+            config_errors.append(
+                "configured-board live capsule policy is invalid: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        else:
+            if frozenset(live_paths) != frozenset(CONTROL_RELATIVE_PATHS):
+                config_errors.append(
+                    "configured-board live capsule paths differ from operator controls"
+                )
     expected_direction = {
         "ipfs_datasets_py": [], "ipfs_kit_py": [],
         "ipfs_accelerate_py": ["ipfs_datasets_py", "ipfs_kit_py"],

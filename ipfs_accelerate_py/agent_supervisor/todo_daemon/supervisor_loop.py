@@ -178,6 +178,7 @@ class SupervisorLoop:
             child_pid_path=self.config.spec.child_pid_path,
             latest_log_path=self.config.latest_log_path or self.config.spec.latest_log_path,
             env=self.config.child_env,
+            pass_fds=self.config.spec.pass_fds,
         )
 
     def _write_status(

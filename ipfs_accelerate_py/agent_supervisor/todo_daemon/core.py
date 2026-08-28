@@ -74,6 +74,7 @@ class ManagedDaemonSpec:
     llm_process_match_any: Tuple[str, ...] = field(default_factory=tuple)
     protected_ancestor_patterns: Tuple[str, ...] = field(default_factory=tuple)
     launch_env: Mapping[str, str] = field(default_factory=dict)
+    pass_fds: Tuple[int, ...] = field(default_factory=tuple)
 
     def resolve(self, path: Optional[Path]) -> Optional[Path]:
         if path is None:
@@ -1419,4 +1420,3 @@ def _expand_snapshot_by_owned_sessions(
             if process_id == session and session not in {0, 1, caller_session}:
                 owned_sessions.add(session)
     return expanded
-

@@ -87,8 +87,8 @@
   "dependency_files": [
     {
       "path": ".gitignore",
-      "sha256": "f81893b948d355a876d2314bf7cfde58fc5a3d93cab7f104ffc0dd5f9cc7dbe0",
-      "git_blob_oid": "fe7e8929702704b0a2d14f33b580d3fde7177657",
+      "sha256": "cd50f2925789f726a01af0c1a27356695b9c2f86ac9755ccfaa9ceaff7ae9606",
+      "git_blob_oid": "3b7c8308efcd8583abe28ef384fa6f799ba52fb6",
       "role": "exact SAWM control and evidence tracking exceptions"
     },
     {
@@ -149,6 +149,8 @@
   "toolchain": {
     "python_executable": "/home/barberb/.local/bin/python",
     "python_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "launch_python_executable": "/usr/bin/python3.12",
+    "launch_python_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
     "python_implementation": "CPython",
     "python_version": "3.12.3",
     "pytest_distribution_version": "9.1.1",
@@ -162,6 +164,7 @@
     "fixed": {
       "IPFS_DATASETS_AUTO_INSTALL": "0",
       "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+      "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY": "disabled",
       "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
       "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
       "LANG": "C.UTF-8",
@@ -170,6 +173,12 @@
       "PYTHONNOUSERSITE": "1",
       "PYTHONDONTWRITEBYTECODE": "1"
     },
+    "python_invocation_flags": [
+      "-I",
+      "-S",
+      "-B"
+    ],
+    "duckdb_extension_home": "exact_private_read_only_projection",
     "secrets_source": "environment_only",
     "secrets_in_prompt_argv_log_receipt_board_corpus_model": false,
     "ordinary_test_network": false,
@@ -204,20 +213,105 @@
   },
   "quack_extension_pin": {
     "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension.info",
     "version": "c154811",
     "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+    "size": 29708110,
+    "info_sha256": "14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89",
+    "info_size": 161,
     "network_install_allowed": false,
     "unsigned_extension_allowed": false,
     "service_external_access_limitation": "canonical_writer_sealed; pinned_extension_preloaded_only_in_locked_read_only_loopback_replica"
   },
+  "httpfs_extension_pin": {
+    "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension.info",
+    "version": "827222f",
+    "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+    "size": 19861758,
+    "info_sha256": "69f35648f184abd1ffe5a455e1b378eaa287dfe24f0fa04deb475826128c93bd",
+    "info_size": 160,
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false
+  },
+  "configured_board_native_dependency": {
+    "schema": "semantic-addressed-world-model/configured-board-native-dependency@1",
+    "source_path": "/home/barberb/.local/lib/python3.12/site-packages/_duckdb.cpython-312-aarch64-linux-gnu.so",
+    "acceptance": {
+      "schema": "semantic-addressed-world-model/native-dependency-authorization-reference@1",
+      "path": "config/semantic_addressed_world_model_native_dependency.authorization.json",
+      "sha256": "sha256:a01d5330c0fa450bf937fe5b1e91c7629f14d52b8e07a681b767ce1a34b99613",
+      "size": 838,
+      "authorization_id": "sha256:a8d030a674cf084ac672a1860498b6ae68e7162bc2267ae7b6746102c56941a8"
+    },
+    "pin": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",
+      "dependency_id": "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",
+      "module_name": "_duckdb",
+      "public_alias": "duckdb",
+      "distribution_name": "duckdb",
+      "distribution_version": "1.5.5",
+      "engine_version": "v1.5.5",
+      "extension_filename": "_duckdb.cpython-312-aarch64-linux-gnu.so",
+      "python_cache_tag": "cpython-312",
+      "python_soabi": "cpython-312-aarch64-linux-gnu",
+      "platform_name": "linux",
+      "platform_machine": "aarch64",
+      "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+      "payload_sha256": "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",
+      "size_bytes": 54541064,
+      "elf_class_bits": 64,
+      "elf_endianness": "little",
+      "elf_ident_version": 1,
+      "elf_osabi": 3,
+      "elf_abi_version": 0,
+      "elf_object_type": 3,
+      "elf_machine": 183,
+      "elf_object_version": 1,
+      "elf_flags": 0,
+      "elf_dt_needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6"
+      ]
+    },
+    "sealed_memfd_required": true,
+    "ambient_site_import_allowed": false,
+    "ambient_loader_environment_allowed": false
+  },
+  "configured_board_quack_projection": {
+    "schema": "semantic-addressed-world-model/configured-board-quack-projection@1",
+    "source_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+    "info_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension.info",
+    "pin": {
+      "schema": "ipfs_accelerate_py.agent_supervisor.configured-board-duckdb-extension-pin@1",
+      "name": "quack",
+      "engine_version": "v1.5.5",
+      "platform": "linux_arm64",
+      "payload_sha256": "sha256:41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+      "payload_size": 29708110,
+      "info_sha256": "sha256:14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89",
+      "info_size": 161,
+      "projection_id": "sha256:e511ada315cc77080aed2a46fa18dcf71a84a69736831fddbffc342ef086bea3"
+    },
+    "load_policy": "local_load_only",
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false
+  },
   "source_migration": {
-    "migration_revision": "SAWM-R2-M1",
+    "migration_revision": "SAWM-R2-M2",
     "mode": "append_only_source_authority_revision",
-    "prior_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2/control.duckdb",
-    "target_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m1/control.duckdb",
-    "prior_event_watermark": 107,
-    "prior_event_prefix_sha256": "c1f9ad28eff2417ec457757fa54ceee75c73f9c45ac3bbdb5964c9063df63a0e",
-    "prior_control_store_sha256": "376133c45344228b0bc653c2bcf019f33eaf540c8bffea1582170d2b97e6f54f",
+    "prior_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m1/control.duckdb",
+    "target_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m2/control.duckdb",
+    "prior_event_watermark": 109,
+    "prior_event_prefix_sha256": "04be997c9497cc832c6f3cc7690d23e2f2ad02a89f1f800905ea1648c37f0984",
+    "prior_control_store_sha256": "3d6838d30f6c9681cc188f2ee183d636f16acc34b4d9e2dc376312573244a241",
+    "prior_migration_receipt_cid": "sha256:ef291871a8880ef6fa585decc96ae1f6a2cfb778a10c5e640a945aa6a5baca5b",
+    "prior_migration_count": 1,
+    "target_plan_revision": 3,
     "accepted_definition_rewrite_allowed": false,
     "accepted_completion_replay_allowed": false,
     "prior_authority_preserved": true

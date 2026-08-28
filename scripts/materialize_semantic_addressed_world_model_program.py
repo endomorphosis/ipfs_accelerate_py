@@ -104,21 +104,34 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json",
         "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json",
         "config/semantic_addressed_world_model_dependencies.seal.json",
+        "config/semantic_addressed_world_model_native_dependency.authorization.json",
         "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
         "scripts/validate_semantic_addressed_world_model_board.py",
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "ipfs_accelerate_py/agent_implementation_route.py",
         "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
+        "test/api/test_agent_supervisor_configured_board_extension_projection.py",
+        "test/api/test_agent_supervisor_configured_board_live_capsule.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_native_dependency_pin.py",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
     )
     missing = [path for path in controls if not (root / path).is_file()]
@@ -159,7 +172,11 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         root
         / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json"
     )
-    if migration.get("migration_revision") != "SAWM-R2-M1":
+    if (
+        migration.get("schema")
+        != "sawm/prior-materialization-migration-inventory@2"
+        or migration.get("migration_revision") != "SAWM-R2-M2"
+    ):
         raise MaterializationError("the sealed append-only migration revision is missing")
     prior_goal_cids = migration.get("prior_goal_cids")
     prior_task_cids = migration.get("prior_task_cids")
@@ -174,7 +191,7 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             "plan_revision": REVISION, "goal_id": card.identifier,
             "title": card.title, "ordinal": ordinal,
             "metadata": _metadata_payload(card),
-            "source_binding_cid": migration["prior_source_binding_cid"],
+            "source_binding_cid": migration["definition_source_binding_cid"],
         }
         goal_definitions[card.identifier] = definition
         goal_cids[card.identifier] = str(prior_goal_cids[card.identifier])
@@ -210,7 +227,7 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         "schema": "sawm/plan-definition@1", "board_namespace": NAMESPACE,
         "plan_revision": REVISION, "root_goal_cid": goal_cids[ROOT_GOAL],
         "goal_definition_cids": [goal_cids[item.identifier] for item in goals],
-        "source_binding_cid": migration["prior_source_binding_cid"],
+        "source_binding_cid": migration["definition_source_binding_cid"],
     }
     plan_cid = str(migration["prior_plan_root_cid"])
     if _identity(plan_definition) != plan_cid:
@@ -224,7 +241,7 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             "plan_revision": REVISION, "task_id": card.identifier,
             "title": card.title, "ordinal": ordinal,
             "metadata": _metadata_payload(card),
-            "source_binding_cid": migration["prior_source_binding_cid"],
+            "source_binding_cid": migration["definition_source_binding_cid"],
         }
         task_definitions[card.identifier] = definition
         task_cids[card.identifier] = str(prior_task_cids[card.identifier])
@@ -278,7 +295,7 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     program_definition = {
         "schema": "sawm/program-definition@1", "board_namespace": NAMESPACE,
         "plan_revision": REVISION,
-        "source_binding_cid": migration["prior_source_binding_cid"],
+        "source_binding_cid": migration["definition_source_binding_cid"],
         "plan_cid": plan_cid, "goal_cids": [goal_cids[item.identifier] for item in goals],
         "task_cids": [task_cids[item.identifier] for item in tasks],
     }
@@ -355,6 +372,102 @@ def _verify_receipt_anchor(path: Path, expected_cid: str) -> None:
     claimed = str(receipt.pop("receipt_cid", ""))
     if claimed != expected_cid or _identity(receipt) != expected_cid:
         raise MigrationRequired(f"sealed receipt identity differs: {path}")
+
+
+def _verify_migration_history(
+    root: Path,
+    connection: Any,
+    migration: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    """Verify the complete immutable predecessor chain before adding a suffix."""
+
+    raw_history = migration.get("migration_history")
+    if not isinstance(raw_history, list) or not raw_history:
+        raise MigrationRequired("sealed migration history is missing")
+    history: list[Mapping[str, Any]] = []
+    previous: Mapping[str, Any] | None = None
+    for ordinal, raw in enumerate(raw_history, 1):
+        if not isinstance(raw, Mapping):
+            raise MigrationRequired("sealed migration history entry is not an object")
+        entry = dict(raw)
+        expected_revision = f"SAWM-R2-M{ordinal}"
+        if (
+            entry.get("schema") != "sawm/source-migration-history-entry@1"
+            or entry.get("migration_revision") != expected_revision
+            or int(entry.get("target_event_watermark") or 0)
+            != int(entry.get("prior_event_watermark") or 0) + 2
+        ):
+            raise MigrationRequired("sealed migration history sequence differs")
+        if previous is not None and (
+            entry.get("prior_store_id") != previous.get("target_store_id")
+            or entry.get("prior_control_store_sha256")
+            != previous.get("target_control_store_sha256")
+            or entry.get("prior_event_watermark")
+            != previous.get("target_event_watermark")
+            or entry.get("prior_event_prefix_sha256")
+            != previous.get("target_event_prefix_sha256")
+            or entry.get("prior_source_binding_cid")
+            != previous.get("current_source_binding_cid")
+        ):
+            raise MigrationRequired("sealed migration history continuity differs")
+        for path_key, digest_key in (
+            ("prior_store_id", "prior_control_store_sha256"),
+            ("target_store_id", "target_control_store_sha256"),
+        ):
+            store_path = (root / str(entry.get(path_key) or "")).resolve()
+            if not store_path.is_relative_to(root) or not store_path.is_file():
+                raise MigrationRequired("sealed migration-history store is missing")
+            if _store_sha256(store_path) != entry.get(digest_key):
+                raise MigrationRequired("sealed migration-history store bytes differ")
+        receipt_path = (root / str(entry.get("migration_receipt_path") or "")).resolve()
+        if not receipt_path.is_relative_to(root):
+            raise MigrationRequired("sealed migration-history receipt escapes the source root")
+        _verify_receipt_anchor(
+            receipt_path,
+            str(entry.get("migration_receipt_cid") or ""),
+        )
+        evidence = connection.execute(
+            "SELECT digest FROM evidence_nodes WHERE evidence_id = ? "
+            "AND evidence_kind = 'operator_control_plane_source_migration'",
+            [entry.get("migration_evidence_id")],
+        ).fetchall()
+        if len(evidence) != 1 or str(evidence[0][0]) != entry.get("migration_digest"):
+            raise MigrationRequired("sealed migration-history evidence differs")
+        event_ids = connection.execute(
+            "SELECT global_sequence, event_id FROM domain_events "
+            "WHERE global_sequence IN (?, ?) ORDER BY global_sequence",
+            [
+                int(entry["target_event_watermark"]) - 1,
+                int(entry["target_event_watermark"]),
+            ],
+        ).fetchall()
+        if [str(row[1]) for row in event_ids] != [
+            entry.get("plan_migration_event_id"),
+            entry.get("migration_evidence_event_id"),
+        ]:
+            raise MigrationRequired("sealed migration-history event identities differ")
+        history.append(entry)
+        previous = entry
+
+    latest = history[-1]
+    if (
+        latest.get("target_store_id") != migration.get("prior_store_id")
+        or latest.get("target_control_store_sha256")
+        != migration.get("prior_control_store_sha256")
+        or latest.get("target_event_watermark")
+        != migration.get("prior_event_watermark")
+        or latest.get("target_event_prefix_sha256")
+        != migration.get("prior_event_prefix_sha256")
+        or latest.get("current_source_binding_cid")
+        != migration.get("prior_source_binding_cid")
+        or latest.get("projection_cid") != migration.get("prior_projection_cid")
+        or latest.get("migration_receipt_cid")
+        != migration.get("prior_materialization_receipt_cid")
+        or latest.get("migration_receipt_path")
+        != migration.get("prior_materialization_receipt_path")
+    ):
+        raise MigrationRequired("latest migration-history entry does not bind the predecessor")
+    return tuple(history)
 
 
 def _assert_committed_clean_source(
@@ -489,10 +602,21 @@ def _verify_prior_store(
             "SELECT revision, body_json FROM plans WHERE plan_cid = ?",
             [migration["prior_plan_root_cid"]],
         ).fetchone()
-        if plan is None or int(plan[0]) != 1:
+        if plan is None or int(plan[0]) != int(migration["prior_plan_revision"]):
             raise MigrationRequired("sealed prior plan revision differs")
         plan_body = json.loads(str(plan[1]))
-        if plan_body.get("source_binding_cid") != migration["prior_source_binding_cid"]:
+        history = migration["migration_history"]
+        latest_history = history[-1]
+        if (
+            plan_body.get("source_binding_cid")
+            != migration["definition_source_binding_cid"]
+            or plan_body.get("current_source_binding_cid")
+            != migration["prior_source_binding_cid"]
+            or plan_body.get("source_migration_revision")
+            != latest_history["migration_revision"]
+            or plan_body.get("source_migration_digest")
+            != latest_history["migration_digest"]
+        ):
             raise MigrationRequired("sealed prior plan source binding differs")
         metadata = dict(
             connection.execute(
@@ -542,11 +666,12 @@ def _verify_prior_store(
             raise MigrationRequired("sealed prior event sequence is not contiguous")
         if digest != migration["prior_event_prefix_sha256"]:
             raise MigrationRequired("sealed prior event prefix differs")
+        _verify_migration_history(root, connection, migration)
     finally:
         connection.close()
 
     _verify_receipt_anchor(
-        prior.parent / "materialization-receipt.json",
+        root / str(migration["prior_materialization_receipt_path"]),
         str(migration["prior_materialization_receipt_cid"]),
     )
     # Landed schema and replay verification may obtain a read/write adapter;
@@ -634,7 +759,11 @@ def _verify_store(
                     "migration verification requires exact config and validator binding"
                 )
             plan = source.plans.get(str(population["plan_root_cid"]))
-            if plan is None or int(plan.get("revision") or 0) < 2:
+            if (
+                plan is None
+                or int(plan.get("revision") or 0)
+                != int(migration["target_plan_revision"])
+            ):
                 raise MigrationRequired("append-only source migration plan revision is missing")
             evidence = source.intent._connection(write=False)
             with evidence as connection:
@@ -644,12 +773,42 @@ def _verify_store(
                     [migration["prior_task_cids"]["SAWM-000"],
                      "operator_control_plane_source_migration"],
                 ).fetchall()
-                if len(migration_rows) != 1:
-                    raise MigrationRequired("exactly one source migration receipt is required")
-                migration_evidence_id = str(migration_rows[0][0])
-                migration_digest = str(migration_rows[0][1])
-                migration_body = json.loads(str(migration_rows[0][2]))
-                migration_created_at = str(migration_rows[0][3])
+                history = tuple(migration["migration_history"])
+                if len(migration_rows) != len(history) + 1:
+                    raise MigrationRequired("source migration receipt chain length differs")
+                parsed_rows = [
+                    {
+                        "evidence_id": str(row[0]),
+                        "digest": str(row[1]),
+                        "body": json.loads(str(row[2])),
+                        "created_at": str(row[3]),
+                    }
+                    for row in migration_rows
+                ]
+                for entry in history:
+                    matched = [
+                        row for row in parsed_rows
+                        if row["evidence_id"] == entry["migration_evidence_id"]
+                    ]
+                    if (
+                        len(matched) != 1
+                        or matched[0]["digest"] != entry["migration_digest"]
+                        or matched[0]["body"].get("migration_revision")
+                        != entry["migration_revision"]
+                    ):
+                        raise MigrationRequired("prior source migration evidence differs")
+                current_rows = [
+                    row for row in parsed_rows
+                    if row["body"].get("migration_revision")
+                    == migration["migration_revision"]
+                ]
+                if len(current_rows) != 1:
+                    raise MigrationRequired("current source migration receipt is ambiguous")
+                current_row = current_rows[0]
+                migration_evidence_id = current_row["evidence_id"]
+                migration_digest = current_row["digest"]
+                migration_body = current_row["body"]
+                migration_created_at = current_row["created_at"]
                 expected_migration_body = _migration_body(
                     population, migration_config, expected_validation_digest
                 )
@@ -673,12 +832,17 @@ def _verify_store(
 
                 revision_rows = connection.execute(
                     "SELECT revision, body_json, recorded_at FROM plan_revisions "
-                    "WHERE plan_cid = ? AND revision IN (1, 2) ORDER BY revision",
-                    [population["plan_root_cid"]],
+                    "WHERE plan_cid = ? AND revision <= ? ORDER BY revision",
+                    [population["plan_root_cid"], migration["target_plan_revision"]],
                 ).fetchall()
-                if len(revision_rows) != 2 or [int(row[0]) for row in revision_rows] != [1, 2]:
+                expected_revisions = list(
+                    range(1, int(migration["target_plan_revision"]) + 1)
+                )
+                if [int(row[0]) for row in revision_rows] != expected_revisions:
                     raise MigrationRequired("exact source migration plan revisions are missing")
-                prior_plan_body = json.loads(str(revision_rows[0][1]))
+                prior_plan_body = json.loads(
+                    str(revision_rows[int(migration["prior_plan_revision"]) - 1][1])
+                )
                 plan_delta = _migration_plan_delta(population)
                 expected_plan_body = {
                     **prior_plan_body,
@@ -688,8 +852,8 @@ def _verify_store(
                     "supersession_mode": "source_authority_revision_only",
                     "last_delta": plan_delta,
                 }
-                observed_plan_body = json.loads(str(revision_rows[1][1]))
-                plan_recorded_at = str(revision_rows[1][2])
+                observed_plan_body = json.loads(str(revision_rows[-1][1]))
+                plan_recorded_at = str(revision_rows[-1][2])
                 if observed_plan_body != expected_plan_body:
                     raise MigrationRequired("source migration plan revision body differs")
 
@@ -757,7 +921,7 @@ def _verify_store(
                     "goal_cid": migration["prior_goal_cids"][ROOT_GOAL],
                     "plan_alias": REVISION,
                     "status": "active",
-                    "revision": 2,
+                    "revision": int(migration["target_plan_revision"]),
                     "body": expected_plan_body,
                     "delta": plan_delta,
                     "recorded_at": plan_recorded_at,
@@ -852,6 +1016,12 @@ def _migration_body(
         "prior_event_prefix_sha256": migration["prior_event_prefix_sha256"],
         "prior_event_watermark": migration["prior_event_watermark"],
         "prior_source_binding_cid": migration["prior_source_binding_cid"],
+        "prior_plan_revision": migration["prior_plan_revision"],
+        "target_plan_revision": migration["target_plan_revision"],
+        "migration_history_receipt_cids": [
+            entry["migration_receipt_cid"]
+            for entry in migration["migration_history"]
+        ],
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
         "prior_head": migration["prior_source_head"],
         "prior_tree": migration["prior_source_tree"],
@@ -877,8 +1047,12 @@ def _migration_body(
 def _migration_plan_delta(population: Mapping[str, Any]) -> dict[str, Any]:
     migration = population["migration_inventory"]
     return {
-        "kind": "bounded_control_plane_launch_repair",
+        "kind": "bounded_control_plane_capsule_launch_repair",
         "prior_source_binding_cid": migration["prior_source_binding_cid"],
+        "prior_migration_receipt_cids": [
+            entry["migration_receipt_cid"]
+            for entry in migration["migration_history"]
+        ],
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
         "accepted_definition_changes": 0,
         "accepted_completion_changes": 0,
@@ -949,6 +1123,10 @@ def _expected_migration_receipt(
         "prior_control_store_sha256": migration["prior_control_store_sha256"],
         "prior_event_prefix_sha256": migration["prior_event_prefix_sha256"],
         "prior_source_binding_cid": migration["prior_source_binding_cid"],
+        "prior_migration_receipt_cids": [
+            entry["migration_receipt_cid"]
+            for entry in migration["migration_history"]
+        ],
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
         "prior_database_path": migration["prior_store_id"],
         "database_path": str(target.relative_to(root)),
@@ -1158,7 +1336,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
         plan_delta = _migration_plan_delta(population)
         plan_receipt = source.plans.append_revision(
             plan_cid=str(population["plan_root_cid"]),
-            expected_revision=1,
+            expected_revision=int(migration["prior_plan_revision"]),
             body={
                 "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
                 "source_migration_revision": migration["migration_revision"],

@@ -222,6 +222,7 @@ state/**/*.out
 !config/agent_supervisor_duckdb_quack_control_plane_scheduler.json
 !config/agent_supervisor_semantic_addressed_world_model_scheduler.json
 !config/semantic_addressed_world_model_dependencies.seal.json
+!config/semantic_addressed_world_model_native_dependency.authorization.json
 /data/agent_supervisor/semantic_addressed_world_model/
 !docs/architecture/semantic_addressed_world_model_inventory/repository_baseline.json
 !docs/architecture/semantic_addressed_world_model_inventory/authority_matrix.json

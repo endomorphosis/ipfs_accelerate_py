@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -25,11 +26,15 @@ from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, S
 # capsule.  Reject direct script/FD births before package-path restoration or
 # any repository import.  Programmatic entry points repeat this decision.
 _CONFIGURED_BOARD_LIVE_LAUNCH_FLAG = "--require-configured-board-live-seal"
+_CONFIGURED_BOARD_LIVE_CAPSULE_FLAG = (
+    "--require-configured-board-live-capsule"
+)
 _CONFIGURED_BOARD_LIVE_BIRTH_MARKER = (
     "--run-configured-board-live-seal-launch-gate"
 )
 if __package__ in {None, ""} and (
     _CONFIGURED_BOARD_LIVE_LAUNCH_FLAG in sys.argv[1:]
+    or _CONFIGURED_BOARD_LIVE_CAPSULE_FLAG in sys.argv[1:]
     or _CONFIGURED_BOARD_LIVE_BIRTH_MARKER in sys.argv[1:]
 ):
     raise SystemExit(78)
@@ -42,6 +47,11 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(_ACCEPTED_PACKAGE_ROOT))
     __package__ = "ipfs_accelerate_py.agent_supervisor.runtime"
 
+from ...agent_implementation_route import (
+    AgentSupervisorNativeDependencyLaunch,
+    parse_agent_supervisor_native_dependency_launch,
+    verify_agent_supervisor_native_dependency_sealed_fd,
+)
 from ...llm_router import (
     AgentImplementationControlPlanePin,
     build_agent_implementation_control_plane_pin,
@@ -71,6 +81,15 @@ from ..core.wrapper_utils import (
 from ..merge.checkout_lock import serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
+from .configured_board_extension_projection import (
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+)
+from .configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+    ConfiguredBoardLiveCapsuleError,
+    parse_configured_board_live_capsule_admission,
+    verify_configured_board_live_capsule,
+)
 
 OutputFn = Callable[[str], None]
 PLAN_BOUND_LAUNCH_GATE_MARKER = "--run-plan-bound-launch-gate"
@@ -133,11 +152,14 @@ def _pairs(items):
 try:
     fd=int(sys.argv.pop(1)); pin=json.loads(sys.argv.pop(1),object_pairs_hook=_pairs)
     module=sys.argv.pop(1); expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
+    native_fd_text=sys.argv.pop(1); native_launch_json=sys.argv.pop(1)
     if fd<3 or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
     if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
     if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
     if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
     command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
+    if command_line[1:5]!=[b'-I',b'-S',b'-B',b'-c']: raise SystemExit(78)
+    if any(name.startswith('LD_') or name=='GLIBC_TUNABLES' for name in os.environ): raise SystemExit(78)
     code_index=command_line.index(b'-c')+1
     if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
     executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
@@ -167,6 +189,14 @@ try:
     prefix=archive+'/'
     root_origin=getattr(accepted_root,'__file__',None)
     if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
+    if (native_fd_text=='0')!=(native_launch_json=='-'): raise SystemExit(78)
+    if native_fd_text!='0':
+        native_fd=int(native_fd_text)
+        if native_fd<3 or native_fd==fd or str(native_fd)!=native_fd_text: raise SystemExit(78)
+        native_route=importlib.import_module('ipfs_accelerate_py.agent_implementation_route')
+        native_origin=getattr(native_route,'__file__',None)
+        if type(native_origin) is not str or not native_origin.startswith(prefix): raise SystemExit(78)
+        native_route.preload_agent_supervisor_native_dependency_from_bootstrap(native_fd_text,native_launch_json)
     package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
     if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
     package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
@@ -183,7 +213,7 @@ try:
     target_origin=namespace.get('__file__')
     if type(target_origin) is not str or not target_origin.startswith(prefix): raise SystemExit(78)
     for name,loaded in tuple(sys.modules.items()):
-        if name=='ipfs_accelerate_py' or name=='ipfs_accelerate_py.llm_router' or name.startswith('ipfs_accelerate_py.agent_supervisor'):
+        if name in {'ipfs_accelerate_py','ipfs_accelerate_py.llm_router','ipfs_accelerate_py.agent_implementation_route'} or name.startswith('ipfs_accelerate_py.agent_supervisor'):
             origin=getattr(loaded,'__file__',None)
             if type(origin) is not str or not origin.startswith(prefix): raise SystemExit(78)
     main=namespace.get('main')
@@ -285,6 +315,23 @@ def accepted_control_plane_pin_json(
     )
 
 
+def parse_native_dependency_launch_json(
+    value: str,
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Strictly decode one canonical native launch without minting authority."""
+
+    if not isinstance(value, str) or not value:
+        raise ValueError("native dependency launch JSON is empty")
+    try:
+        payload = json.loads(value, object_pairs_hook=_reject_duplicate_json_keys)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("native dependency launch is invalid JSON") from exc
+    launch = parse_agent_supervisor_native_dependency_launch(payload)
+    if launch.to_json() != value:
+        raise ValueError("native dependency launch JSON is noncanonical")
+    return launch
+
+
 def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
     executable = Path(python_executable).resolve(strict=True)
     metadata = os.stat(executable, follow_symlinks=False)
@@ -305,16 +352,17 @@ def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_mode,
-        item.st_uid,
-        item.st_nlink,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
     if identity(before) != identity(after) or identity(before) != identity(metadata):
         raise ValueError("sealed control-plane Python executable changed")
     return str(executable), "sha256:" + digest.hexdigest()
@@ -325,6 +373,7 @@ def build_sealed_control_plane_module_command(
     python_executable: str,
     pin: AgentImplementationControlPlanePin,
     descriptor: int,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
     module_name: str,
     argv: Sequence[str],
 ) -> list[str]:
@@ -339,9 +388,27 @@ def build_sealed_control_plane_module_command(
     if verified_path != f"/proc/self/fd/{descriptor}":
         raise ValueError("sealed control-plane descriptor path drifted")
     executable, executable_sha256 = _python_executable_sha256(python_executable)
+    native_fd_text = "0"
+    native_launch_json = "-"
+    if native_dependency_launch is not None:
+        native_executable = verify_agent_supervisor_native_dependency_sealed_fd(
+            native_dependency_launch
+        )
+        native_descriptor = native_dependency_launch.descriptor.descriptor
+        if (
+            native_descriptor == descriptor
+            or native_executable != f"/proc/self/fd/{native_descriptor}"
+            or native_dependency_launch.pin.python_executable_sha256
+            != executable_sha256
+        ):
+            raise ValueError("sealed native dependency launch binding drifted")
+        native_fd_text = str(native_descriptor)
+        native_launch_json = native_dependency_launch.to_json()
     return [
         executable,
         "-I",
+        "-S",
+        "-B",
         "-c",
         SEALED_CONTROL_PLANE_BOOTSTRAP,
         str(descriptor),
@@ -349,6 +416,8 @@ def build_sealed_control_plane_module_command(
         module_name,
         SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256,
         executable_sha256,
+        native_fd_text,
+        native_launch_json,
         *[str(item) for item in argv],
     ]
 
@@ -491,6 +560,7 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     EXPORT_PROFILE_ENV,
     STATE_FAILOVER_POLICY_ENV,
     DATABASE_PROGRAM_JSON_ENV,
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
 )
 
 # Raw state credentials that must never reach implementation-provider children.
@@ -1967,7 +2037,7 @@ def configured_board_live_seal_launch_profile(
         "python_executable": requested_python,
         "python_executable_path": executable,
         "python_executable_sha256": executable_sha256,
-        "python_flags_required": ["-I", "-S"],
+        "python_flags_required": ["-I", "-S", "-B"],
         "common_args": list(common),
         "database_profile": _configured_board_database_profile(common),
         "source_evidence": source_evidence,
@@ -4485,6 +4555,10 @@ def start_track(
     python_executable: str = "python3",
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
     """Start one marker-bound supervisor tree and write its PID projection.
@@ -4494,8 +4568,37 @@ def start_track(
     returned process, never the PID projection.
     """
 
-    if _configured_board_live_seal_required(common_args, (track,)):
+    live_seal_required = _configured_board_live_seal_required(
+        common_args,
+        (track,),
+    )
+    plan_bound_dispatch = "--plan-bound-dispatch" in track.extra_args
+    if live_seal_required and accepted_control_plane_pin is None:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    if (
+        live_seal_required
+        and not plan_bound_dispatch
+        and (
+            configured_board_live_admission is None
+            or native_dependency_launch is None
+        )
+    ):
+        raise ValueError(
+            "configured-board operational track requires a live admission "
+            "and native dependency launch"
+        )
+    if configured_board_live_admission is not None:
+        if not live_seal_required or accepted_control_plane_pin is None:
+            raise ValueError(
+                "configured-board live admission is foreign to this track"
+            )
+        verify_configured_board_live_capsule(
+            configured_board_live_admission,
+            control_plane_pin=accepted_control_plane_pin,
+            control_plane_descriptor=accepted_control_plane_descriptor,
+            native_dependency_launch=native_dependency_launch,
+            repo_root=repo_root,
+        )
 
     resolved = track.resolve(repo_root)
     child_command = (
@@ -4509,6 +4612,70 @@ def start_track(
     recovery_authorization_cid = ""
     accepted_tree_root = _canonical_accepted_tree_root(Path(repo_root))
     command = child_command
+    if live_seal_required and not plan_bound_dispatch:
+        assert accepted_control_plane_pin is not None
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
+        repository_head, repository_tree = _plan_bound_repository_identity(
+            accepted_tree_root
+        )
+        if (
+            accepted_control_plane_pin.source_head,
+            accepted_control_plane_pin.source_tree,
+        ) != (repository_head, repository_tree):
+            raise ValueError(
+                "configured-board control-plane generation differs from the "
+                "accepted repository"
+            )
+        if (
+            resolved.module_name
+            or resolved.script_path
+            != accepted_tree_root / PLAN_BOUND_ACCEPTED_ENTRY_PATH
+            or Path(python_executable).resolve(strict=False)
+            != Path(sys.executable).resolve(strict=False)
+        ):
+            raise ValueError(
+                "configured-board sealed launch is not pinned to the accepted entry"
+            )
+        _validate_plan_bound_accepted_tree(
+            accepted_tree_root=accepted_tree_root,
+            source_head=repository_head,
+            source_tree=repository_tree,
+            control_plane_pin=accepted_control_plane_pin,
+        )
+        supervisor_argv = [
+            *common_args,
+            *resolved.extra_args,
+            *(
+                (
+                    "--configured-board-live-admission-json",
+                    configured_board_live_admission.to_json(),
+                )
+                if configured_board_live_admission is not None
+                else ()
+            ),
+            "--accepted-control-plane-pin-json",
+            accepted_control_plane_pin_json(accepted_control_plane_pin),
+            "--accepted-control-plane-fd",
+            str(accepted_control_plane_descriptor),
+            "--configured-board-live-native-launch-json",
+            native_dependency_launch.to_json(),
+            "--configured-board-live-native-fd",
+            str(native_dependency_launch.descriptor.descriptor),
+        ]
+        command = build_sealed_control_plane_module_command(
+            python_executable=python_executable,
+            pin=accepted_control_plane_pin,
+            descriptor=accepted_control_plane_descriptor,
+            native_dependency_launch=native_dependency_launch,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=supervisor_argv,
+        )
     if plan_bound_dispatch:
         accepted_roots = _profile_option_values(
             resolved.extra_args,
@@ -4887,9 +5054,28 @@ def start_track(
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 pass_fds=(
-                    (gate_read_fd, accepted_control_plane_descriptor)
+                    (
+                        gate_read_fd,
+                        accepted_control_plane_descriptor,
+                        *(
+                            native_dependency_launch.pass_fds
+                            if native_dependency_launch is not None
+                            else ()
+                        ),
+                    )
                     if plan_bound_dispatch and gate_read_fd is not None
-                    else ()
+                    else (
+                        (
+                            accepted_control_plane_descriptor,
+                            *(
+                                native_dependency_launch.pass_fds
+                                if native_dependency_launch is not None
+                                else ()
+                            ),
+                        )
+                        if live_seal_required
+                        else ()
+                    )
                 ),
             )
         except BaseException:
@@ -6807,7 +6993,12 @@ def run_supervisor_tracks(
     plan_bound_children: Sequence[PlanBoundSupervisorChild] = (),
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
     require_configured_board_live_seal: str = "",
+    require_configured_board_live_capsule: bool = False,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
@@ -6833,6 +7024,61 @@ def run_supervisor_tracks(
                 "configured-board live seal requires the canonical scheduler config"
             )
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    if live_profile_required and not plan_bound_children and (
+        not require_configured_board_live_capsule
+        or configured_board_live_admission is None
+        or accepted_control_plane_pin is None
+        or native_dependency_launch is None
+    ):
+        raise ValueError(
+            "configured-board operational launch requires its live capsule"
+        )
+    if require_configured_board_live_capsule and (
+        configured_board_live_admission is None
+        or accepted_control_plane_pin is None
+        or native_dependency_launch is None
+    ):
+        raise ValueError(
+            "configured-board live capsule requires a complete admission"
+        )
+    if configured_board_live_admission is not None:
+        if not live_profile_required or accepted_control_plane_pin is None:
+            raise ValueError(
+                "configured-board live admission is foreign to this runner profile"
+            )
+        verified_admission = verify_configured_board_live_capsule(
+            configured_board_live_admission,
+            control_plane_pin=accepted_control_plane_pin,
+            control_plane_descriptor=accepted_control_plane_descriptor,
+            native_dependency_launch=native_dependency_launch,
+            repo_root=repo_root,
+            expected_board_namespace=label,
+        )
+        if (
+            verified_admission.max_lanes != len(managed_tracks)
+            or verified_admission.strict_task_sharding
+            is not (
+                "--strict-task-sharding" in common_args
+                or any(
+                    "--strict-task-sharding" in track.extra_args
+                    for track in managed_tracks
+                )
+            )
+        ):
+            raise ValueError(
+                "configured-board live admission differs from runner lanes"
+            )
+    if live_profile_required:
+        if accepted_control_plane_pin is None:
+            raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
+    elif accepted_control_plane_pin is not None and not plan_bound_children:
+        raise ValueError(
+            "sealed accepted control plane is foreign to this runner profile"
+        )
     resolved_repo_root = repo_root.resolve()
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
@@ -6970,6 +7216,10 @@ def run_supervisor_tracks(
                     accepted_control_plane_descriptor=(
                         accepted_control_plane_descriptor
                     ),
+                    native_dependency_launch=native_dependency_launch,
+                    configured_board_live_admission=(
+                        configured_board_live_admission
+                    ),
                     output=output,
                 )
                 reassignment_count += 1
@@ -7033,6 +7283,10 @@ def run_supervisor_tracks(
                 accepted_control_plane_pin=accepted_control_plane_pin,
                 accepted_control_plane_descriptor=(
                     accepted_control_plane_descriptor
+                ),
+                native_dependency_launch=native_dependency_launch,
+                configured_board_live_admission=(
+                    configured_board_live_admission
                 ),
                 output=output,
             )
@@ -7102,6 +7356,10 @@ def run_supervisor_tracks(
                             accepted_control_plane_pin=accepted_control_plane_pin,
                             accepted_control_plane_descriptor=(
                                 accepted_control_plane_descriptor
+                            ),
+                            native_dependency_launch=native_dependency_launch,
+                            configured_board_live_admission=(
+                                configured_board_live_admission
                             ),
                             output=output,
                         )
@@ -7311,6 +7569,12 @@ def run_supervisor_tracks(
                                 accepted_control_plane_descriptor=(
                                     accepted_control_plane_descriptor
                                 ),
+                                native_dependency_launch=(
+                                    native_dependency_launch
+                                ),
+                                configured_board_live_admission=(
+                                    configured_board_live_admission
+                                ),
                                 output=output,
                             )
                         except Exception as exc:  # noqa: BLE001
@@ -7361,6 +7625,10 @@ def run_supervisor_tracks(
                     accepted_control_plane_pin=accepted_control_plane_pin,
                     accepted_control_plane_descriptor=(
                         accepted_control_plane_descriptor
+                    ),
+                    native_dependency_launch=native_dependency_launch,
+                    configured_board_live_admission=(
+                        configured_board_live_admission
                     ),
                     output=output,
                 )
@@ -7515,6 +7783,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--require-configured-board-live-capsule",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--common-arg", action="append", default=[])
     parser.add_argument(
         "--implementation-supervisor-defaults",
@@ -7638,12 +7927,65 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     master_log, master_pid = _master_paths(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     master_pid.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        sys.executable,
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
-        *_without_detach(argv),
-    ]
+    pass_fds: tuple[int, ...] = ()
+    if args.require_configured_board_live_capsule:
+        if (
+            not args.configured_board_live_admission_json
+            or not args.accepted_control_plane_pin_json
+            or args.accepted_control_plane_fd < 3
+            or not args.configured_board_live_native_launch_json
+            or args.configured_board_live_native_fd < 3
+        ):
+            raise ValueError(
+                "configured-board detached launch lacks its live capsule"
+            )
+        pin = parse_accepted_control_plane_pin(
+            args.accepted_control_plane_pin_json
+        )
+        admission = parse_configured_board_live_capsule_admission(
+            args.configured_board_live_admission_json
+        )
+        native_launch = parse_native_dependency_launch_json(
+            args.configured_board_live_native_launch_json
+        )
+        if (
+            native_launch.descriptor.descriptor
+            != args.configured_board_live_native_fd
+        ):
+            raise ValueError(
+                "configured-board detached native descriptor was substituted"
+            )
+        verify_agent_supervisor_native_dependency_sealed_fd(native_launch)
+        verify_configured_board_live_capsule(
+            admission,
+            control_plane_pin=pin,
+            control_plane_descriptor=args.accepted_control_plane_fd,
+            native_dependency_launch=native_launch,
+            repo_root=args.repo_root,
+            expected_board_namespace=args.label,
+        )
+        command = build_sealed_control_plane_module_command(
+            python_executable=sys.executable,
+            pin=pin,
+            descriptor=args.accepted_control_plane_fd,
+            native_dependency_launch=native_launch,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.runtime."
+                "multi_supervisor_runner"
+            ),
+            argv=_without_detach(argv),
+        )
+        pass_fds = (
+            args.accepted_control_plane_fd,
+            args.configured_board_live_native_fd,
+        )
+    else:
+        command = [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+            *_without_detach(argv),
+        ]
     out_handle = master_log.open("ab")
     try:
         process = subprocess.Popen(
@@ -7653,6 +7995,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            pass_fds=pass_fds,
         )
     finally:
         out_handle.close()
@@ -8045,7 +8388,11 @@ def main(argv: list[str] | None = None) -> int:
         for record in getattr(args, "implementation_plan_bound_track", ())
     )
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
-    if plan_bound_children:
+    has_control_plane_pin = bool(args.accepted_control_plane_pin_json)
+    has_control_plane_descriptor = args.accepted_control_plane_fd >= 3
+    if has_control_plane_pin != has_control_plane_descriptor:
+        parser.error("sealed accepted control-plane launch fields are incomplete")
+    if has_control_plane_pin:
         try:
             accepted_control_plane_pin = parse_accepted_control_plane_pin(
                 args.accepted_control_plane_pin_json
@@ -8056,6 +8403,58 @@ def main(argv: list[str] | None = None) -> int:
             )
         except (OSError, ValueError) as exc:
             parser.error(f"sealed accepted control plane is invalid: {exc}")
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None
+    has_native_launch = bool(args.configured_board_live_native_launch_json)
+    has_native_descriptor = args.configured_board_live_native_fd >= 3
+    if has_native_launch != has_native_descriptor:
+        parser.error("configured-board native launch fields are incomplete")
+    if has_native_launch:
+        try:
+            native_dependency_launch = parse_native_dependency_launch_json(
+                args.configured_board_live_native_launch_json
+            )
+            if (
+                native_dependency_launch.descriptor.descriptor
+                != args.configured_board_live_native_fd
+            ):
+                raise ValueError("native dependency descriptor was substituted")
+            verify_agent_supervisor_native_dependency_sealed_fd(
+                native_dependency_launch
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"configured-board native launch is invalid: {exc}")
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None
+    has_live_admission = bool(args.configured_board_live_admission_json)
+    if args.require_configured_board_live_capsule != has_live_admission:
+        parser.error(
+            "configured-board live capsule flag/admission fields are incomplete"
+        )
+    if has_live_admission:
+        if accepted_control_plane_pin is None:
+            parser.error(
+                "configured-board live admission lacks its accepted control plane"
+            )
+        try:
+            configured_board_live_admission = (
+                parse_configured_board_live_capsule_admission(
+                    args.configured_board_live_admission_json
+                )
+            )
+            verify_configured_board_live_capsule(
+                configured_board_live_admission,
+                control_plane_pin=accepted_control_plane_pin,
+                control_plane_descriptor=args.accepted_control_plane_fd,
+                native_dependency_launch=native_dependency_launch,
+                repo_root=args.repo_root,
+                expected_board_namespace=args.label,
+            )
+        except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
+            parser.error(f"configured-board live admission is invalid: {exc}")
+    if plan_bound_children:
+        if accepted_control_plane_pin is None:
+            parser.error("plan-bound wave requires a sealed accepted control plane")
         generations = {
             (child.source_head, child.source_tree)
             for child in plan_bound_children
@@ -8097,6 +8496,13 @@ def main(argv: list[str] | None = None) -> int:
             plan_bound_children=plan_bound_children,
             accepted_control_plane_pin=accepted_control_plane_pin,
             accepted_control_plane_descriptor=args.accepted_control_plane_fd,
+            native_dependency_launch=native_dependency_launch,
+            require_configured_board_live_capsule=(
+                args.require_configured_board_live_capsule
+            ),
+            configured_board_live_admission=(
+                configured_board_live_admission
+            ),
             output=output,
         )
     if (

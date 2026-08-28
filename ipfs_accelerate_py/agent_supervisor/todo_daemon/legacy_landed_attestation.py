@@ -26,13 +26,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey,
-    Ed25519PublicKey,
-)
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
 from ..proof.formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
@@ -332,7 +325,11 @@ class LegacyLandedReviewAttestation:
 class LegacyLandedReviewAuthority:
     """Operator-owned Ed25519 signer; private material is never serialized."""
 
-    def __init__(self, private_key: Ed25519PrivateKey) -> None:
+    def __init__(self, private_key: Any) -> None:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey,
+        )
+
         if not isinstance(private_key, Ed25519PrivateKey):
             raise TypeError("private_key must be an Ed25519PrivateKey")
         self._private_key = private_key
@@ -341,10 +338,19 @@ class LegacyLandedReviewAuthority:
     def from_private_key_path(
         cls, path: str | Path
     ) -> LegacyLandedReviewAuthority:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey,
+        )
+
         return cls(Ed25519PrivateKey.from_private_bytes(_read_private_key(path)))
 
     @property
     def public_key_bytes(self) -> bytes:
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            PublicFormat,
+        )
+
         return self._private_key.public_key().public_bytes(
             Encoding.Raw, PublicFormat.Raw
         )
@@ -493,13 +499,21 @@ def verify_legacy_landed_review_attestation(
         ):
             failures.append("legacy_landed_review_trusted_key_invalid")
     try:
-        signature = _unb64(parsed.signature)
-        if public:
-            Ed25519PublicKey.from_public_bytes(public).verify(
-                signature, canonical_json_bytes(parsed.unsigned_dict())
-            )
-    except (InvalidSignature, TypeError, ValueError):
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PublicKey,
+        )
+    except ImportError:
         failures.append("legacy_landed_review_signature_invalid")
+    else:
+        try:
+            signature = _unb64(parsed.signature)
+            if public:
+                Ed25519PublicKey.from_public_bytes(public).verify(
+                    signature, canonical_json_bytes(parsed.unsigned_dict())
+                )
+        except (InvalidSignature, TypeError, ValueError):
+            failures.append("legacy_landed_review_signature_invalid")
     if parsed.attestation_id != content_identity(
         {**parsed.unsigned_dict(), "signature": parsed.signature}
     ):

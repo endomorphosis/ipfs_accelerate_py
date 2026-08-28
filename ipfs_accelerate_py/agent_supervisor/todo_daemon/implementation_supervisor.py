@@ -22,6 +22,10 @@ from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ...agent_implementation_route import (
+    AgentSupervisorNativeDependencyLaunch,
+    verify_agent_supervisor_native_dependency_sealed_fd,
+)
 from ...llm_router import (
     AgentImplementationControlPlanePin,
     AgentImplementationSealedControlPlane,
@@ -73,6 +77,12 @@ from ..control.plan_execution_store import (
     _secure_store_cas,
     _secure_store_continuation,
 )
+from ..runtime.configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+    ConfiguredBoardLiveCapsuleError,
+    parse_configured_board_live_capsule_admission,
+    verify_configured_board_live_capsule,
+)
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..proof.formal_verification_contracts import content_identity
@@ -88,6 +98,8 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    parse_accepted_control_plane_pin,
+    parse_native_dependency_launch_json,
     provider_subprocess_environment,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
@@ -503,6 +515,7 @@ def _validated_plan_bound_authority_paths(
 # --- restored PLAN_BOUND_DAEMON_CHILD_MARKER ---
 
 PLAN_BOUND_DAEMON_CHILD_MARKER = "--run-plan-bound-daemon-child"
+SEALED_DAEMON_CHILD_MARKER = "--run-sealed-daemon-child"
 
 
 # --- restored PLAN_BOUND_DAEMON_ENTRYPOINT ---
@@ -1870,6 +1883,92 @@ def _projection_is_quiescent_for_heartbeat_fallback(
             if status[field_name] != 0:
                 return False
     return True
+
+
+# --- accepted-control-plane daemon children ---
+
+
+def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
+    """Run the ordinary daemon from the inherited immutable source capsule."""
+
+    try:
+        separator = tuple(argv).index("--")
+    except ValueError as exc:
+        raise PlanBoundDispatchError(
+            "sealed daemon child is missing its argument boundary"
+        ) from exc
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--accepted-control-plane-pin-json", required=True)
+    parser.add_argument("--accepted-control-plane-fd", type=int, required=True)
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        required=True,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        required=True,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        required=True,
+    )
+    pinned = parser.parse_args(list(argv[:separator]))
+    daemon_argv = list(argv[separator + 1 :])
+    try:
+        pin = parse_accepted_control_plane_pin(
+            pinned.accepted_control_plane_pin_json
+        )
+        executable = verify_agent_implementation_sealed_control_plane(
+            pin,
+            pinned.accepted_control_plane_fd,
+        )
+        launch = AgentImplementationSealedControlPlane(
+            descriptor=pinned.accepted_control_plane_fd,
+            executable_path=executable,
+            archive_sha256=pin.archive_sha256,
+            seals=int(
+                fcntl.fcntl(
+                    pinned.accepted_control_plane_fd,
+                    fcntl.F_GET_SEALS,
+                )
+            ),
+            capsule_id=pin.capsule_id,
+        )
+        native_launch = parse_native_dependency_launch_json(
+            pinned.configured_board_live_native_launch_json
+        )
+        if (
+            native_launch.descriptor.descriptor
+            != pinned.configured_board_live_native_fd
+            or native_launch.descriptor.descriptor
+            == pinned.accepted_control_plane_fd
+        ):
+            raise ValueError("sealed daemon native descriptor was substituted")
+        verify_agent_supervisor_native_dependency_sealed_fd(native_launch)
+        verify_configured_board_live_capsule(
+            pinned.configured_board_live_admission_json,
+            control_plane_pin=pin,
+            control_plane_descriptor=pinned.accepted_control_plane_fd,
+            native_dependency_launch=native_launch,
+            repo_root=REPO_ROOT,
+        )
+    except (OSError, ValueError) as exc:
+        raise PlanBoundDispatchError(
+            "sealed daemon accepted control plane is invalid"
+        ) from exc
+
+    from . import implementation_daemon as daemon_module
+
+    original_capsule = daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE
+    original_launch = daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH
+    daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = pin
+    daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = launch
+    try:
+        return int(daemon_module.main(daemon_argv) or 0)
+    finally:
+        daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = original_capsule
+        daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = original_launch
 
 
 # --- restored _run_plan_bound_daemon_child ---
@@ -6378,6 +6477,10 @@ class PortalSupervisorConfig:
     plan_bound_accepted_tree_root: Path | None = None
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
     accepted_control_plane_descriptor: int = -1
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -6445,6 +6548,70 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if (self.accepted_control_plane_pin is None) != (
+            self.accepted_control_plane_descriptor < 3
+        ):
+            raise PlanBoundDispatchError(
+                "accepted control-plane supervisor binding is incomplete"
+            )
+        if self.configured_board_live_admission is not None:
+            if (
+                self.accepted_control_plane_pin is None
+                or self.native_dependency_launch is None
+            ):
+                raise PlanBoundDispatchError(
+                    "configured-board live supervisor lacks its control plane"
+                )
+            try:
+                verify_configured_board_live_capsule(
+                    self.configured_board_live_admission,
+                    control_plane_pin=self.accepted_control_plane_pin,
+                    control_plane_descriptor=(
+                        self.accepted_control_plane_descriptor
+                    ),
+                    native_dependency_launch=self.native_dependency_launch,
+                    repo_root=self.repo_root,
+                )
+            except (
+                OSError,
+                ConfiguredBoardLiveCapsuleError,
+                ValueError,
+            ) as exc:
+                raise PlanBoundDispatchError(
+                    "configured-board live supervisor admission is invalid"
+                ) from exc
+        if (
+            self.accepted_control_plane_pin is not None
+            and not self.plan_bound_dispatch
+            and (
+                self.configured_board_live_admission is None
+                or self.native_dependency_launch is None
+            )
+        ):
+            raise PlanBoundDispatchError(
+                "sealed configured-board supervisor requires a live admission"
+            )
+        if self.native_dependency_launch is not None:
+            if self.accepted_control_plane_pin is None:
+                raise PlanBoundDispatchError(
+                    "native dependency launch lacks its accepted control plane"
+                )
+            try:
+                native_path = verify_agent_supervisor_native_dependency_sealed_fd(
+                    self.native_dependency_launch
+                )
+            except (OSError, ValueError) as exc:
+                raise PlanBoundDispatchError(
+                    "supervisor native dependency binding is invalid"
+                ) from exc
+            native_descriptor = self.native_dependency_launch.descriptor.descriptor
+            if (
+                native_descriptor == self.accepted_control_plane_descriptor
+                or native_path != f"/proc/self/fd/{native_descriptor}"
+            ):
+                raise PlanBoundDispatchError(
+                    "supervisor native dependency descriptor drifted"
+                )
         if self.plan_bound_dispatch:
             if (
                 self.plan_bound_accepted_tree_root is None
@@ -6511,6 +6678,22 @@ class PortalSupervisorConfig:
             ):
                 raise PlanBoundDispatchError(
                     "plan-bound accepted control-plane generation drifted"
+                )
+        elif self.accepted_control_plane_pin is not None:
+            try:
+                verified_path = verify_agent_implementation_sealed_control_plane(
+                    self.accepted_control_plane_pin,
+                    self.accepted_control_plane_descriptor,
+                )
+            except (OSError, ValueError) as exc:
+                raise PlanBoundDispatchError(
+                    "accepted control-plane supervisor binding is invalid"
+                ) from exc
+            if verified_path != (
+                f"/proc/self/fd/{self.accepted_control_plane_descriptor}"
+            ):
+                raise PlanBoundDispatchError(
+                    "accepted control-plane supervisor descriptor drifted"
                 )
         if (
             self.manual_completion_authority_revalidation_only
@@ -8378,6 +8561,18 @@ class PortalImplementationSupervisor:
             worktree_root=self.config.worktree_root,
             launch_env=_managed_daemon_child_environment(
                 database_program=self.config.database_program,
+            ),
+            pass_fds=(
+                (
+                    self.config.accepted_control_plane_descriptor,
+                    *(
+                        self.config.native_dependency_launch.pass_fds
+                        if self.config.native_dependency_launch is not None
+                        else ()
+                    ),
+                )
+                if self.config.accepted_control_plane_pin is not None
+                else ()
             ),
         )
         return SupervisorLoopConfig(
@@ -17483,6 +17678,18 @@ class PortalImplementationSupervisor:
             cwd=self.config.repo_root,
             text=True,
             env=env,
+            pass_fds=(
+                (
+                    self.config.accepted_control_plane_descriptor,
+                    *(
+                        self.config.native_dependency_launch.pass_fds
+                        if self.config.native_dependency_launch is not None
+                        else ()
+                    ),
+                )
+                if self.config.accepted_control_plane_pin is not None
+                else ()
+            ),
         )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
@@ -18237,6 +18444,38 @@ class PortalImplementationSupervisor:
                 for task_cid in self.config.execution_slice_task_cids:
                     command.extend(["--plan-bound-task-cid", str(task_cid)])
                 command.append("--")
+            elif self.config.accepted_control_plane_pin is not None:
+                if daemon_script_path is not None:
+                    raise PlanBoundDispatchError(
+                        "sealed dispatch forbids an uninspectable daemon script"
+                    )
+                command = [
+                    SEALED_DAEMON_CHILD_MARKER,
+                    "--accepted-control-plane-pin-json",
+                    json.dumps(
+                        self.config.accepted_control_plane_pin.as_dict(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "--accepted-control-plane-fd",
+                    str(self.config.accepted_control_plane_descriptor),
+                    "--configured-board-live-native-launch-json",
+                    self.config.native_dependency_launch.to_json(),
+                    "--configured-board-live-native-fd",
+                    str(
+                        self.config.native_dependency_launch.descriptor.descriptor
+                    ),
+                    *(
+                        (
+                            "--configured-board-live-admission-json",
+                            self.config.configured_board_live_admission.to_json(),
+                        )
+                        if self.config.configured_board_live_admission
+                        is not None
+                        else ()
+                    ),
+                    "--",
+                ]
             elif daemon_script_path is None:
                 # Safe-path mode prevents a stale nested checkout in the working
                 # directory from shadowing the supervisor's configured package.
@@ -18393,18 +18632,18 @@ class PortalImplementationSupervisor:
                 command.extend(["--execution-slice-task-cid", str(task_cid)])
             if self.config.plan_bound_dispatch:
                 command.append("--once")
+            if self.config.accepted_control_plane_pin is not None:
                 from ..runtime.multi_supervisor_runner import (
                     build_sealed_control_plane_module_command,
                 )
 
-                if self.config.accepted_control_plane_pin is None:
-                    raise PlanBoundDispatchError(
-                        "plan-bound daemon launch lacks its sealed control plane"
-                    )
                 command = build_sealed_control_plane_module_command(
                     python_executable=sys.executable,
                     pin=self.config.accepted_control_plane_pin,
                     descriptor=self.config.accepted_control_plane_descriptor,
+                    native_dependency_launch=(
+                        self.config.native_dependency_launch
+                    ),
                     module_name=(
                         "ipfs_accelerate_py.agent_supervisor.todo_daemon."
                         "implementation_supervisor"
@@ -18788,6 +19027,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--explicit-legacy-task-source",
         action="store_true",
         help="Acknowledge explicit legacy-Markdown authority.",
+    )
+    parser.add_argument(
+        "--accepted-control-plane-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--accepted-control-plane-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
     )
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument(
@@ -19467,6 +19733,94 @@ def supervisor_config_from_args(
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
     database_program = database_program_from_cli_namespace(args)
+    raw_control_plane_pin = str(
+        getattr(args, "accepted_control_plane_pin_json", "") or ""
+    ).strip()
+    control_plane_descriptor = int(
+        getattr(args, "accepted_control_plane_fd", -1)
+    )
+    if bool(raw_control_plane_pin) != (control_plane_descriptor >= 3):
+        raise PlanBoundDispatchError(
+            "accepted control-plane supervisor fields are incomplete"
+        )
+    accepted_control_plane_pin = (
+        parse_accepted_control_plane_pin(raw_control_plane_pin)
+        if raw_control_plane_pin
+        else None
+    )
+    if accepted_control_plane_pin is not None:
+        try:
+            verify_agent_implementation_sealed_control_plane(
+                accepted_control_plane_pin,
+                control_plane_descriptor,
+            )
+        except (OSError, ValueError) as exc:
+            raise PlanBoundDispatchError(
+                "accepted control-plane supervisor binding is invalid"
+            ) from exc
+    raw_native_launch = str(
+        getattr(args, "configured_board_live_native_launch_json", "") or ""
+    ).strip()
+    native_descriptor = int(
+        getattr(args, "configured_board_live_native_fd", -1)
+    )
+    if bool(raw_native_launch) != (native_descriptor >= 3):
+        raise PlanBoundDispatchError(
+            "configured-board native supervisor fields are incomplete"
+        )
+    native_dependency_launch = None
+    if raw_native_launch:
+        if accepted_control_plane_pin is None:
+            raise PlanBoundDispatchError(
+                "configured-board native supervisor lacks its control plane"
+            )
+        try:
+            native_dependency_launch = parse_native_dependency_launch_json(
+                raw_native_launch
+            )
+            if (
+                native_dependency_launch.descriptor.descriptor
+                != native_descriptor
+                or native_descriptor == control_plane_descriptor
+            ):
+                raise ValueError("native dependency descriptor was substituted")
+            verify_agent_supervisor_native_dependency_sealed_fd(
+                native_dependency_launch
+            )
+        except (OSError, ValueError) as exc:
+            raise PlanBoundDispatchError(
+                "configured-board native supervisor binding is invalid"
+            ) from exc
+    raw_live_admission = str(
+        getattr(args, "configured_board_live_admission_json", "") or ""
+    ).strip()
+    if raw_live_admission and accepted_control_plane_pin is None:
+        raise PlanBoundDispatchError(
+            "configured-board live supervisor lacks its accepted control plane"
+        )
+    configured_board_live_admission = None
+    if raw_live_admission:
+        try:
+            configured_board_live_admission = (
+                parse_configured_board_live_capsule_admission(
+                    raw_live_admission
+                )
+            )
+            verify_configured_board_live_capsule(
+                configured_board_live_admission,
+                control_plane_pin=accepted_control_plane_pin,
+                control_plane_descriptor=control_plane_descriptor,
+                native_dependency_launch=native_dependency_launch,
+                repo_root=effective_repo_root,
+            )
+        except (
+            OSError,
+            ConfiguredBoardLiveCapsuleError,
+            ValueError,
+        ) as exc:
+            raise PlanBoundDispatchError(
+                "configured-board live supervisor admission is invalid"
+            ) from exc
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -19482,6 +19836,10 @@ def supervisor_config_from_args(
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
         database_program=database_program,
+        accepted_control_plane_pin=accepted_control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_descriptor,
+        native_dependency_launch=native_dependency_launch,
+        configured_board_live_admission=configured_board_live_admission,
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
@@ -19696,7 +20054,12 @@ def _reconciliation_preflight_failure_reason(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv[:1] == [SEALED_DAEMON_CHILD_MARKER]:
+        return _run_sealed_daemon_child(raw_argv[1:])
+    if raw_argv[:1] == [PLAN_BOUND_DAEMON_CHILD_MARKER]:
+        return _run_plan_bound_daemon_child(raw_argv[1:])
+    args = parse_args(raw_argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

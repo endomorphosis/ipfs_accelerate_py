@@ -17,27 +17,27 @@ from typing import Any, ClassVar
 
 import pytest
 
-from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py import agent_implementation_route, llm_router
 
 AUTHORIZATION_ID = (
     "sha256:039bdbbff886311847200cfdb4d99a498b8836f11e49b139f3dce5d1f398c4ff"
 )
 REAL_DUCKDB_PAYLOAD_SHA256 = (
-    "sha256:c378b8f61040764fdc904cf7c0643a005d547f491ab9303e6bd13c33aa353f2a"
+    "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef"
 )
 REAL_DUCKDB_DEPENDENCY_ID = (
-    "sha256:bf982f675cc4c4fa212066d706cd387c9821b3b69f5f8cc7c07169bc347b88b5"
+    "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9"
 )
 REAL_PYTHON_EXECUTABLE_SHA256 = (
     "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
 )
-REAL_DUCKDB_SIZE = 54_278_072
+REAL_DUCKDB_SIZE = 54_541_064
 REAL_DUCKDB_NEEDED = (
     "libdl.so.2",
+    "libpthread.so.0",
     "libstdc++.so.6",
     "libm.so.6",
     "libgcc_s.so.1",
-    "libpthread.so.0",
     "libc.so.6",
 )
 
@@ -282,7 +282,7 @@ def _install_fake_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     # no native initialization occurred in a prior test.  Reset only the
     # private test-process sentinel; production exposes no reset path.
     monkeypatch.setattr(
-        llm_router,
+        agent_implementation_route,
         "_AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED",
         False,
     )
@@ -603,7 +603,7 @@ def test_preload_denies_ambient_loader_environment_before_loader_creation(
         with pytest.raises(ValueError, match="ambient loader environment"):
             llm_router.preload_agent_supervisor_native_dependency(launch)
         assert _FakeExtensionLoader.calls == []
-        assert not llm_router._AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
+        assert not agent_implementation_route._AGENT_NATIVE_DEPENDENCY_PRELOAD_STARTED
     finally:
         os.close(launch.descriptor.descriptor)
 
@@ -703,8 +703,8 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
 
     pin = llm_router.inspect_agent_supervisor_native_dependency_source(
         source,
-        distribution_version="1.5.2",
-        engine_version="v1.5.2",
+        distribution_version="1.5.5",
+        engine_version="v1.5.5",
     )
     assert stat.S_IMODE(source.stat().st_mode) == 0o775
     assert pin.dependency_id == REAL_DUCKDB_DEPENDENCY_ID
@@ -749,6 +749,8 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
             [
                 "/usr/bin/python3.12",
                 "-I",
+                "-S",
+                "-B",
                 "-c",
                 _ISOLATED_PRELOAD,
                 *launch.bootstrap_arguments,
@@ -773,6 +775,8 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
             [
                 "/usr/bin/python3.12",
                 "-I",
+                "-S",
+                "-B",
                 "-c",
                 _ISOLATED_PRELOAD,
                 *launch.bootstrap_arguments,
@@ -795,6 +799,6 @@ def test_real_aarch64_duckdb_loads_from_sealed_fd_under_isolated_python(
         "module": "_duckdb",
         "origin": f"/proc/self/fd/{launch.descriptor.descriptor}",
         "query": 42,
-        "version": "1.5.2",
+        "version": "1.5.5",
     }
     assert not marker.exists()

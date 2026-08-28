@@ -16,6 +16,7 @@
   "environment_observations": {
     "python": {
       "executable": "/home/barberb/.local/bin/python",
+      "launch_executable": "/usr/bin/python3.12",
       "version": "3.12.3",
       "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
     },
@@ -27,9 +28,20 @@
       "quack": null,
       "ducklake": null
     },
-    "distribution_metadata_note": "Quack and DuckLake are repository/control capabilities rather than assumed PyPI distribution requirements. No database was opened and no service was started by this inventory probe.",
+    "distribution_metadata_note": "Quack and DuckLake are repository/control capabilities rather than assumed PyPI distribution requirements. The later bounded launch qualification opened only an isolated in-memory native DuckDB and private Quack-extension projection; no authoritative database was mutated and no service was started by the capability probe.",
+    "grok_executable_observed": "/home/barberb/.local/bin/grok",
+    "grok_resolved_executable": "/home/barberb/.grok/downloads/grok-1.0.5-linux-aarch64",
+    "grok_executable_sha256": "1c1fe67d7c35497fb09f44a451f57acc3787add4c9aea2c56f5c7c75dc5ffcf1",
+    "grok_version": "1.0.5",
+    "grok_provider_authenticated": true,
     "codex_executable_observed": "/usr/local/bin/codex",
-    "codex_provider_admitted": false
+    "codex_resolved_executable": "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+    "codex_executable_sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477",
+    "codex_version": "0.150.1",
+    "codex_authentication_check": "codex_login_status_ok",
+    "codex_provider_admitted": true,
+    "provider_policy_id": "sha256:3de134194a1ccd6739eaeb77d63a0cd1be4de46eda4cff0433e7c34082ac9564",
+    "provider_probe_is_completion_authority": false
   },
   "capabilities": [
     {
@@ -42,8 +54,8 @@
     {
       "capability": "DuckDB embedded engine",
       "source_status": "available",
-      "runtime_status": "distribution_metadata_observed_not_opened",
-      "evidence": "duckdb 1.5.5 distribution metadata",
+      "runtime_status": "isolated_native_sealed_fd_probe_passed_control_schema_not_yet_preflighted",
+      "evidence": "duckdb 1.5.5/v1.5.5 loaded from exact sealed native bytes under /usr/bin/python3.12 -I -S -B; SELECT 42 passed",
       "required_gate": "read/write/control schema probe through current state authority"
     },
     {
@@ -211,16 +223,16 @@
     {
       "capability": "Codex implementation provider",
       "source_status": "executable_observed",
-      "runtime_status": "not_admitted_by_current_provider_probe",
-      "evidence": "/usr/local/bin/codex",
-      "required_gate": "current supervisor provider capability and secrets/environment policy"
+      "runtime_status": "current_provider_probe_admitted_for_independent_review_and_bounded_fallback",
+      "evidence": "/usr/local/bin/codex 0.150.1; root-owned executable chain; login status passed; current ProductionCLIProviderPolicy readiness passed",
+      "required_gate": "per-attempt current supervisor route, budget, privacy, command-binding and secrets/environment policy"
     },
     {
       "capability": "remote model provider",
       "source_status": "provider_integration_present",
-      "runtime_status": "not_probed",
-      "evidence": "current provider execution gateway",
-      "required_gate": "privacy, credentials-from-environment, budget and provider capability"
+      "runtime_status": "current_grok_cli_probe_admitted",
+      "evidence": "/home/barberb/.local/bin/grok -> account-standard grok 1.0.5 download; authenticated; current ProductionCLIProviderPolicy readiness passed",
+      "required_gate": "per-attempt privacy, credentials policy, cognitive budget, quota and provider command binding"
     }
   ],
   "fallback_invariants": [

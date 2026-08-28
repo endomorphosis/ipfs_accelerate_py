@@ -39,6 +39,9 @@ QUACK_PREFER_ENV = "IPFS_ACCELERATE_AGENT_QUACK_PREFER"
 QUACK_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
 QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 QUACK_MUTATION_BINDING_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING"
+CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV = (
+    "IPFS_ACCELERATE_AGENT_DUCKDB_EXTENSION_DIRECTORY"
+)
 QUACK_LIVE_OWNER_FILE_FALLBACK_TIMEOUT_SECONDS = 1.0
 _LOGGER = logging.getLogger(__name__)
 SQLITE_MAGIC = b"SQLite format 3\0"
@@ -1008,13 +1011,34 @@ def open_quack_transport_connection(
     # Quack must already be present in the reviewed local extension cache.
     # Disable DuckDB's implicit installer and autoloader before ``LOAD`` so a
     # missing client extension is a typed launch failure, never a download.
+    extension_directory = str(
+        os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or ""
+    ).strip()
+    connection_config = {
+        "autoinstall_known_extensions": "false",
+        "autoload_known_extensions": "false",
+        "allow_unsigned_extensions": "false",
+    }
+    if extension_directory:
+        extension_path = Path(extension_directory)
+        try:
+            extension_path = extension_path.resolve(strict=True)
+        except OSError as exc:
+            raise DuckDBConnectionPolicyError(
+                "configured-board extension projection is unavailable"
+            ) from exc
+        if (
+            not extension_path.is_dir()
+            or extension_path.name != "extensions"
+            or extension_path.parent.name != ".duckdb"
+        ):
+            raise DuckDBConnectionPolicyError(
+                "configured-board extension projection is invalid"
+            )
+        connection_config["extension_directory"] = str(extension_path)
     connection = duckdb.connect(
         ":memory:",
-        config={
-            "autoinstall_known_extensions": "false",
-            "autoload_known_extensions": "false",
-            "allow_unsigned_extensions": "false",
-        },
+        config=connection_config,
     )
     try:
         connection.execute("LOAD quack")

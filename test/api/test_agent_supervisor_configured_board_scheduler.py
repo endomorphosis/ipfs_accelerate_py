@@ -1193,7 +1193,11 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('bad')\n",
         encoding="utf-8",
     )
-    hostile_environment = dict(os.environ)
+    hostile_environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("LD_") and name != "GLIBC_TUNABLES"
+    }
     hostile_environment.update(
         {
             "PYTHONPATH": str(shadow_root),
@@ -2705,18 +2709,20 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         command = supervisor._build_daemon_command()
     marker = supervisor_module.PLAN_BOUND_DAEMON_CHILD_MARKER
     assert Path(command[0]).samefile(sys.executable)
-    assert command[1:4] == [
+    assert command[1:6] == [
         "-I",
+        "-S",
+        "-B",
         "-c",
         multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP,
     ]
-    assert command[4] == str(control_plane_launch.descriptor)
-    assert json.loads(command[5]) == control_plane_pin.as_dict()
-    assert command[6] == (
+    assert command[6] == str(control_plane_launch.descriptor)
+    assert json.loads(command[7]) == control_plane_pin.as_dict()
+    assert command[8] == (
         "ipfs_accelerate_py.agent_supervisor.todo_daemon."
         "implementation_supervisor"
     )
-    assert command[7] == (
+    assert command[9] == (
         multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256
     )
     assert marker in command
@@ -7610,7 +7616,7 @@ def test_configured_board_live_seal_dry_profile_binds_target_and_no_go(
     assert profile["schema"] == (
         multi_runner_module.CONFIGURED_BOARD_LIVE_SEAL_PROFILE_SCHEMA
     )
-    assert profile["python_flags_required"] == ["-I", "-S"]
+    assert profile["python_flags_required"] == ["-I", "-S", "-B"]
     assert profile["launch_policy"]["status"] == "no-go"
     assert "immutable accepted control-plane capsule" in profile[
         "launch_policy"

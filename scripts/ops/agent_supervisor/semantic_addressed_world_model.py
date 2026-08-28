@@ -15,7 +15,9 @@ import importlib.util
 import json
 import math
 import os
+import re
 import signal
+import stat
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -270,6 +272,187 @@ class _SawmQuackTransport:
         self._replica_path: Path | None = None
         self._refresh_sequence = 0
 
+    @staticmethod
+    def _verify_extension_source(name: str, pin: Mapping[str, Any]) -> Path:
+        """Verify accepted extension and metadata bytes before native LOAD."""
+
+        if name not in {"httpfs", "quack"}:
+            raise OperatorError("extension name is outside the reviewed set")
+        expected_fields = {
+            "path",
+            "info_path",
+            "version",
+            "sha256",
+            "size",
+            "info_sha256",
+            "info_size",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+            *(
+                {"service_external_access_limitation"}
+                if name == "quack"
+                else set()
+            ),
+        }
+        if (
+            type(pin) is not dict
+            or set(pin) != expected_fields
+            or pin.get("network_install_allowed") is not False
+            or pin.get("unsigned_extension_allowed") is not False
+            or type(pin.get("version")) is not str
+            or re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}", pin["version"])
+            is None
+            or type(pin.get("sha256")) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]) is None
+            or type(pin.get("info_sha256")) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", pin["info_sha256"]) is None
+            or (
+                name == "quack"
+                and pin.get("service_external_access_limitation")
+                != "canonical_writer_sealed; "
+                "pinned_extension_preloaded_only_in_locked_read_only_loopback_replica"
+            )
+        ):
+            raise OperatorError(f"{name} extension pin is noncanonical")
+
+        def evidence(
+            path_value: object,
+            expected_size: object,
+            *,
+            maximum_size: int,
+        ) -> tuple[Path, str]:
+            if type(path_value) is not str or type(expected_size) is not int:
+                raise OperatorError(f"{name} extension path or size is invalid")
+            path = Path(path_value)
+            size = expected_size
+            if not path.is_absolute() or size <= 0 or size > maximum_size:
+                raise OperatorError(f"{name} extension size is outside policy")
+            try:
+                resolved = path.resolve(strict=True)
+            except OSError as exc:
+                raise OperatorError(f"{name} extension source is unavailable") from exc
+            if resolved != path:
+                raise OperatorError(f"{name} extension source path is noncanonical")
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                descriptor = os.open(path, flags)
+            except OSError as exc:
+                raise OperatorError(f"{name} extension source is unavailable") from exc
+            try:
+                before = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != os.geteuid()
+                    or before.st_nlink != 1
+                    or before.st_size != size
+                ):
+                    raise OperatorError(f"{name} extension source is not stable evidence")
+                digest = hashlib.sha256()
+                offset = 0
+                while offset < size:
+                    block = os.pread(descriptor, min(1024 * 1024, size - offset), offset)
+                    if not block:
+                        break
+                    digest.update(block)
+                    offset += len(block)
+                after = os.fstat(descriptor)
+            finally:
+                os.close(descriptor)
+            try:
+                current = os.stat(path, follow_symlinks=False)
+            except OSError as exc:
+                raise OperatorError(f"{name} extension source changed after read") from exc
+
+            def identity(item: os.stat_result) -> tuple[int, ...]:
+                return (
+                    item.st_dev,
+                    item.st_ino,
+                    item.st_mode,
+                    item.st_uid,
+                    item.st_nlink,
+                    item.st_size,
+                    item.st_mtime_ns,
+                    item.st_ctime_ns,
+                )
+
+            if (
+                offset != size
+                or identity(before) != identity(after)
+                or identity(after) != identity(current)
+            ):
+                raise OperatorError(f"{name} extension source changed while read")
+            return resolved, digest.hexdigest()
+
+        payload_path, payload_sha = evidence(
+            pin.get("path"), pin.get("size"), maximum_size=64 * 1024 * 1024
+        )
+        info_path, info_sha = evidence(
+            pin.get("info_path"),
+            pin.get("info_size"),
+            maximum_size=64 * 1024,
+        )
+        if (
+            payload_path.name != f"{name}.duckdb_extension"
+            or info_path != payload_path.with_name(f"{payload_path.name}.info")
+            or payload_sha != pin["sha256"]
+            or info_sha != pin["info_sha256"]
+        ):
+            raise OperatorError(f"{name} extension bytes differ from the reviewed pin")
+        return payload_path
+
+    def _load_reviewed_extensions(self, connection: Any) -> None:
+        """Load only the two reviewed extensions and verify DuckDB's mapping."""
+
+        extension_pins = {
+            "httpfs": self._owner.get("pinned_httpfs_extension") or {},
+            "quack": self._owner.get("pinned_extension") or {},
+        }
+        accepted_paths = {
+            name: self._verify_extension_source(name, pin)
+            for name, pin in extension_pins.items()
+        }
+        connection.execute("LOAD httpfs")
+        connection.execute("LOAD quack")
+        observed_rows = connection.execute(
+            "SELECT extension_name, install_path, extension_version "
+            "FROM duckdb_extensions() "
+            "WHERE extension_name IN ('httpfs', 'quack') "
+            "AND installed AND loaded ORDER BY extension_name"
+        ).fetchall()
+        observed: dict[str, tuple[Path, str]] = {}
+        if len(observed_rows) != len(extension_pins):
+            raise OperatorError("loaded extension set is missing or ambiguous")
+        for row in observed_rows:
+            if not isinstance(row, (tuple, list)) or len(row) != 3:
+                raise OperatorError("loaded extension observation is malformed")
+            extension_name = str(row[0] or "")
+            if extension_name not in extension_pins or extension_name in observed:
+                raise OperatorError("loaded extension set is missing or ambiguous")
+            try:
+                install_path = Path(str(row[1] or "")).resolve(strict=True)
+            except OSError as exc:
+                raise OperatorError(
+                    f"loaded {extension_name} extension path is unavailable"
+                ) from exc
+            observed[extension_name] = (install_path, str(row[2] or ""))
+        if set(observed) != set(extension_pins):
+            raise OperatorError("loaded extension set is missing or ambiguous")
+        for name, pin in extension_pins.items():
+            # Re-read the accepted bytes after LOAD so a path replacement
+            # between verification and DuckDB's loader cannot be admitted.
+            post_load_path = self._verify_extension_source(name, pin)
+            if (
+                post_load_path != accepted_paths[name]
+                or observed[name] != (post_load_path, pin["version"])
+            ):
+                raise OperatorError(
+                    f"loaded {name} extension differs from the reviewed pin"
+                )
+
     def _open_replica_connection(self, path: Path):
         import duckdb
 
@@ -278,7 +461,7 @@ class _SawmQuackTransport:
             read_only=True,
             config={
                 "autoinstall_known_extensions": "false",
-                "autoload_known_extensions": "true",
+                "autoload_known_extensions": "false",
                 "enable_external_access": "true",
                 "allow_unsigned_extensions": "false",
                 "threads": "1",
@@ -286,20 +469,7 @@ class _SawmQuackTransport:
             },
         )
         try:
-            connection.execute("LOAD httpfs")
-            connection.execute("LOAD quack")
-            pin = self._owner.get("pinned_extension") or {}
-            expected_path = Path(str(pin.get("path") or "")).resolve()
-            observed = connection.execute(
-                "SELECT install_path, extension_version FROM duckdb_extensions() "
-                "WHERE extension_name = 'quack' AND installed AND loaded"
-            ).fetchone()
-            if observed is None or Path(str(observed[0])).resolve() != expected_path:
-                raise OperatorError("loaded Quack extension path differs from the reviewed pin")
-            if str(observed[1] or "") != str(pin.get("version") or ""):
-                raise OperatorError("loaded Quack extension version differs from the reviewed pin")
-            if hashlib.sha256(expected_path.read_bytes()).hexdigest() != str(pin.get("sha256") or ""):
-                raise OperatorError("loaded Quack extension bytes differ from the reviewed pin")
+            self._load_reviewed_extensions(connection)
             connection.execute("SET autoload_known_extensions = false")
             connection.execute("SET enable_external_access = false")
             connection.execute("SET lock_configuration = true")
@@ -451,7 +621,7 @@ class _SawmQuackTransport:
                 },
             )
             try:
-                client.execute("LOAD quack")
+                self._load_reviewed_extensions(client)
                 try:
                     rows = client.execute(
                         "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := true)",

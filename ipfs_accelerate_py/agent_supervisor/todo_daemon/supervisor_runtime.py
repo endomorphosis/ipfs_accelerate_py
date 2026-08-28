@@ -94,6 +94,7 @@ class SupervisedChildSpec:
     child_pid_path: Path
     latest_log_path: Optional[Path] = None
     env: Mapping[str, str] = field(default_factory=dict)
+    pass_fds: tuple[int, ...] = field(default_factory=tuple)
     stdin_devnull: bool = True
     start_new_session: bool = True
 
@@ -1821,6 +1822,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=spec.start_new_session,
+            pass_fds=spec.pass_fds,
         )
     finally:
         out_handle.close()

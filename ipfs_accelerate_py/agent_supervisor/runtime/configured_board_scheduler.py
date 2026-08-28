@@ -30,6 +30,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ...agent_implementation_route import (
+    AgentSupervisorNativeDependencyLaunch,
+    parse_agent_supervisor_native_dependency_pin,
+    seal_agent_supervisor_native_dependency,
+    verify_agent_supervisor_native_dependency_sealed_fd,
+)
 from ...llm_router import (
     AgentImplementationControlPlanePin,
     AgentImplementationRoutePlan,
@@ -83,9 +89,26 @@ from ..task_sources.task_identity import canonical_task_identity
 from ..task_sources.task_source import recompute_readiness_statuses
 from ..task_sources.todo_vector_index import parse_todo_blocks, split_csv
 from ..validation.validation_commands import split_validation_commands
+from .configured_board_extension_projection import (
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    ConfiguredBoardExtensionPin,
+    inspect_configured_board_extension_sources,
+    parse_configured_board_extension_pin,
+    project_configured_board_extension_home,
+)
+from .configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+    ConfiguredBoardLiveCapsuleError,
+    build_configured_board_live_capsule_admission,
+    parse_configured_board_live_capsule_policy,
+    verify_configured_board_live_capsule,
+)
 from .multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
+    AUTHORITY_MODE_QUACK,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
+    DATABASE_PROGRAM_ENV_NAMES,
+    DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
@@ -98,6 +121,7 @@ from .multi_supervisor_runner import (
     build_sealed_control_plane_module_command,
     parse_accepted_control_plane_pin,
     parse_database_program_config,
+    parse_native_dependency_launch_json,
     utc_run_stamp,
 )
 from .provider_capacity_monitor import (
@@ -217,6 +241,26 @@ def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
     return board.board_namespace == "agent-supervisor-prompt-only-self-improvement-v3"
 
 
+def _sealed_configured_control_plane_required(board: "ConfiguredBoard") -> bool:
+    """Whether live launch must re-enter through the accepted source capsule.
+
+    The plan-bound v3 profile already has this property.  Quack-backed boards
+    using the datasets-authoritative operational schema need the same source
+    closure without changing their task authority to ``PlanRevisionStore``.
+    """
+
+    program = board.database_program
+    return bool(
+        _plan_bound_profile(board)
+        or (
+            program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.schema_revision
+            == DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+        )
+    )
+
+
 def _sanitized_git_environment() -> dict[str, str]:
     """Return a Git environment without ambient repository/config authority."""
 
@@ -232,6 +276,87 @@ def _sanitized_git_environment() -> dict[str, str]:
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
+def _sealed_coordinator_environment(
+    board: "ConfiguredBoard",
+    *,
+    extension_directory: Path | None = None,
+) -> dict[str, str]:
+    """Build the positive environment for an accepted scheduler capsule.
+
+    Provider routing is reconstructed from the sealed scheduler config inside
+    the capsule.  A Quack coordinator additionally needs its already-resolved
+    state credential and closed mutation binding; those values remain in the
+    trusted process environment and never enter argv, the capsule, or receipts.
+    """
+
+    provider = board.payload.get("provider")
+    provider = provider if isinstance(provider, Mapping) else {}
+    primary_executable = str(
+        provider.get(ORDERED_PRIMARY_EXECUTABLE_FIELD) or ""
+    ).strip()
+    provider_path_entries: list[str] = []
+    if primary_executable:
+        primary_path = Path(primary_executable)
+        if (
+            not primary_path.is_absolute()
+            or not primary_path.is_file()
+            or not os.access(primary_path, os.X_OK)
+        ):
+            raise ConfiguredBoardError(
+                "configured-board primary provider executable is unavailable"
+            )
+        provider_path_entries.append(str(primary_path.parent))
+    for system_entry in ("/usr/local/bin", "/usr/bin", "/bin"):
+        if system_entry not in provider_path_entries:
+            provider_path_entries.append(system_entry)
+    environment = {
+        "IPFS_DATASETS_AUTO_INSTALL": "0",
+        "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+        "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY": "disabled",
+        "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+        "IPFS_KIT_AUTO_INSTALL_DEPS": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": os.pathsep.join(provider_path_entries),
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if os.environ.get("TZ"):
+        environment["TZ"] = os.environ["TZ"]
+    if extension_directory is not None:
+        resolved_extension_directory = extension_directory.resolve(strict=True)
+        if (
+            not resolved_extension_directory.is_dir()
+            or resolved_extension_directory.name != "extensions"
+            or resolved_extension_directory.parent.name != ".duckdb"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board extension projection directory is invalid"
+            )
+        environment[CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV] = str(
+            resolved_extension_directory
+        )
+    program = board.database_program
+    if program is None or program.authority_mode != AUTHORITY_MODE_QUACK:
+        return environment
+    permitted = set(DATABASE_PROGRAM_ENV_NAMES)
+    permitted.add("IPFS_ACCELERATE_AGENT_QUACK_TOKEN")
+    handle = str(program.endpoint_secret_handle or "").strip()
+    if handle.startswith("env://"):
+        target = handle.removeprefix("env://").strip()
+        if target:
+            permitted.add(target)
+    environment.update(
+        {
+            name: value
+            for name, value in os.environ.items()
+            if name in permitted
         }
     )
     return environment
@@ -1627,6 +1752,8 @@ class ConfiguredBoard:
     objectives_path: str
     plan_path: str
     validator_path: str
+    dependency_validator_path: str
+    dependency_seal_path: str
     task_prefix: str
     board_namespace: str
     merge_target_branch: str
@@ -1635,6 +1762,7 @@ class ConfiguredBoard:
     idle_lane_work_stealing: str
     worktree_submodule_paths: tuple[str, ...]
     protected_paths: tuple[str, ...]
+    live_capsule_control_paths: tuple[str, ...]
     runtime_paths: Mapping[str, str]
     database_program: DatabaseProgramConfig | None = None
 
@@ -1747,6 +1875,17 @@ def load_configured_board(
         _required_string(payload, "validator_path"),
         field="validator_path",
     )
+    dependency_validator_path = ""
+    dependency_seal_path = ""
+    if "dependency_validator_path" in payload or "dependency_seal_path" in payload:
+        dependency_validator_path = _safe_relative(
+            _required_string(payload, "dependency_validator_path"),
+            field="dependency_validator_path",
+        )
+        dependency_seal_path = _safe_relative(
+            _required_string(payload, "dependency_seal_path"),
+            field="dependency_seal_path",
+        )
     task_prefix = _required_string(payload, "task_prefix")
     if re.fullmatch(r"(?:## )?[A-Z][A-Z0-9_-]*-", task_prefix) is None:
         raise ConfiguredBoardError("task_prefix is not a supported task prefix")
@@ -1824,6 +1963,20 @@ def load_configured_board(
         raise ConfiguredBoardError(
             "scheduler config must protect its own source path"
         )
+    live_capsule_control_paths: tuple[str, ...] = ()
+    if "configured_board_live_capsule" in payload:
+        try:
+            live_capsule_control_paths = (
+                parse_configured_board_live_capsule_policy(
+                    payload.get("configured_board_live_capsule")
+                )
+            )
+        except ConfiguredBoardLiveCapsuleError as exc:
+            raise ConfiguredBoardError(str(exc)) from exc
+        if set(live_capsule_control_paths) != set(protected):
+            raise ConfiguredBoardError(
+                "configured-board live capsule must bind every protected path"
+            )
 
     runtime_raw = payload.get("runtime_paths")
     if not isinstance(runtime_raw, dict):
@@ -2032,6 +2185,8 @@ def load_configured_board(
         objectives_path=objectives_path,
         plan_path=plan_path,
         validator_path=validator_path,
+        dependency_validator_path=dependency_validator_path,
+        dependency_seal_path=dependency_seal_path,
         task_prefix=task_prefix,
         board_namespace=board_namespace,
         merge_target_branch=merge_target_branch,
@@ -2040,6 +2195,7 @@ def load_configured_board(
         idle_lane_work_stealing=idle_lane_work_stealing,
         worktree_submodule_paths=submodules,
         protected_paths=protected,
+        live_capsule_control_paths=live_capsule_control_paths,
         runtime_paths=runtime_paths,
         database_program=database_program,
     )
@@ -2251,6 +2407,10 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         board.validator_path,
         *board.protected_paths,
     }
+    if board.dependency_validator_path:
+        required_files.update(
+            {board.dependency_validator_path, board.dependency_seal_path}
+        )
     missing_files = sorted(
         relative
         for relative in required_files
@@ -2319,6 +2479,41 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 "returncode": validator.returncode,
                 "stderr": validator.stderr[-2000:],
                 "errors": validator_report.get("errors"),
+            },
+        )
+
+    if (
+        board.dependency_validator_path
+        and board.path(board.dependency_validator_path).is_file()
+    ):
+        dependency_validator = _run(
+            (
+                sys.executable,
+                str(board.path(board.dependency_validator_path)),
+                "--check-all",
+            ),
+            cwd=board.repo_root,
+        )
+        dependency_report: dict[str, Any] = {}
+        try:
+            parsed_dependency = json.loads(dependency_validator.stdout)
+            if isinstance(parsed_dependency, dict):
+                dependency_report = parsed_dependency
+        except json.JSONDecodeError:
+            dependency_report = {}
+        _append_check(
+            checks,
+            errors,
+            name="dependency_seal_validator",
+            passed=(
+                dependency_validator.returncode == 0
+                and dependency_report.get("valid") is True
+            ),
+            detail={
+                "returncode": dependency_validator.returncode,
+                "stderr": dependency_validator.stderr[-2000:],
+                "errors": dependency_report.get("errors"),
+                "seal_path": board.dependency_seal_path,
             },
         )
 
@@ -2575,6 +2770,10 @@ def configured_board_launch_plan(
     parallelism_receipt: ParallelismDecisionReceipt | None = None,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
@@ -2586,6 +2785,64 @@ def configured_board_launch_plan(
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
     program = board.resolved_database_program()
     plan_bound = _plan_bound_profile(board)
+    live_admission = configured_board_live_admission
+    if live_admission is not None:
+        if not board.live_capsule_control_paths:
+            raise ConfiguredBoardError(
+                "configured-board live admission lacks a required board policy"
+            )
+        if accepted_control_plane_pin is None:
+            raise ConfiguredBoardError(
+                "configured-board live admission lacks its control-plane capsule"
+            )
+        if native_dependency_launch is None:
+            raise ConfiguredBoardError(
+                "configured-board live admission lacks its native dependency"
+            )
+        try:
+            live_admission = verify_configured_board_live_capsule(
+                live_admission,
+                control_plane_pin=accepted_control_plane_pin,
+                control_plane_descriptor=accepted_control_plane_descriptor,
+                native_dependency_launch=native_dependency_launch,
+                repo_root=board.repo_root,
+                expected_board_namespace=board.board_namespace,
+                expected_config_path=(
+                    board.config_path.relative_to(board.repo_root).as_posix()
+                ),
+            )
+        except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                "configured-board live admission is invalid"
+            ) from exc
+        expected_database_authority = {
+            "authority_mode": program.authority_mode,
+            "task_source_kind": program.task_source_kind,
+            "schema_revision": program.schema_revision,
+            "failover_policy": program.failover_policy,
+            "store_id": program.store_id,
+            "store_generation": int(program.store_generation),
+            "endpoint_secret_handle": program.endpoint_secret_handle,
+        }
+        if (
+            live_admission.configuration_root != board.configuration_root
+            or live_admission.plan_revision
+            != str(board.payload.get("plan_revision") or "")
+            or live_admission.task_prefix != board.task_prefix
+            or live_admission.max_lanes != board.max_lanes
+            or live_admission.strict_task_sharding
+            is not board.strict_task_sharding
+            or dict(live_admission.database_authority)
+            != expected_database_authority
+            or tuple(
+                str(item["path"])
+                for item in live_admission.control_artifacts
+            )
+            != board.live_capsule_control_paths
+        ):
+            raise ConfiguredBoardError(
+                "configured-board live admission differs from board authority"
+            )
     plan_bound_children: tuple[PlanBoundSupervisorChild, ...] = ()
     implementation_tracks: tuple[ImplementationSupervisorTrackConfig, ...] = ()
     if plan_bound and parallelism_receipt is not None:
@@ -2668,41 +2925,51 @@ def configured_board_launch_plan(
         # runner accepts this marker without constructing or starting a child.
         if "--plan-bound-wave" not in runner_args:
             runner_args.append("--plan-bound-wave")
-        if accepted_control_plane_pin is not None:
-            verify_agent_implementation_sealed_control_plane(
-                accepted_control_plane_pin,
-                accepted_control_plane_descriptor,
-            )
-            expected_generation = (
-                (
-                    parallelism_receipt.slice_manifest.source_head,
-                    parallelism_receipt.slice_manifest.repository_tree_id,
-                )
-                if parallelism_receipt is not None
-                else _git_identity(board.repo_root)
-            )
-            if (
-                accepted_control_plane_pin.source_head,
-                accepted_control_plane_pin.source_tree,
-            ) != expected_generation:
-                raise ConfiguredBoardError(
-                    "accepted control-plane generation differs from the wave"
-                )
-            runner_args.extend(
-                [
-                    "--accepted-control-plane-pin-json",
-                    accepted_control_plane_pin_json(
-                        accepted_control_plane_pin
-                    ),
-                    "--accepted-control-plane-fd",
-                    str(accepted_control_plane_descriptor),
-                ]
-            )
     else:
         runner_args.extend(
             [
                 "--implementation-supervisor-lanes-per-track",
                 str(board.max_lanes),
+            ]
+        )
+        if live_admission is not None:
+            runner_args.extend(
+                [
+                    "--require-configured-board-live-capsule",
+                    "--configured-board-live-admission-json",
+                    live_admission.to_json(),
+                    "--configured-board-live-native-launch-json",
+                    native_dependency_launch.to_json(),
+                    "--configured-board-live-native-fd",
+                    str(native_dependency_launch.descriptor.descriptor),
+                ]
+            )
+    if accepted_control_plane_pin is not None:
+        verify_agent_implementation_sealed_control_plane(
+            accepted_control_plane_pin,
+            accepted_control_plane_descriptor,
+        )
+        expected_generation = (
+            (
+                parallelism_receipt.slice_manifest.source_head,
+                parallelism_receipt.slice_manifest.repository_tree_id,
+            )
+            if parallelism_receipt is not None
+            else _git_identity(board.repo_root)
+        )
+        if (
+            accepted_control_plane_pin.source_head,
+            accepted_control_plane_pin.source_tree,
+        ) != expected_generation:
+            raise ConfiguredBoardError(
+                "accepted control-plane generation differs from the launch"
+            )
+        runner_args.extend(
+            [
+                "--accepted-control-plane-pin-json",
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                "--accepted-control-plane-fd",
+                str(accepted_control_plane_descriptor),
             ]
         )
     if board.strict_task_sharding and not plan_bound:
@@ -2768,6 +3035,24 @@ def configured_board_launch_plan(
             board.idle_lane_work_stealing if not plan_bound else ""
         ),
         "plan_bound_dispatch": plan_bound,
+        "configured_board_live_capsule": {
+            "required": bool(board.live_capsule_control_paths),
+            "admitted": live_admission is not None,
+            "admission_cid": (
+                live_admission.admission_cid
+                if live_admission is not None
+                else ""
+            ),
+            "control_plane_capsule_id": (
+                live_admission.control_plane_capsule_id
+                if live_admission is not None
+                else ""
+            ),
+        },
+        "accepted_control_plane_required": (
+            _sealed_configured_control_plane_required(board)
+        ),
+        "accepted_control_plane_bound": accepted_control_plane_pin is not None,
         "active_plan_revision_cid": (
             parallelism_receipt.binding.revision_cid
             if parallelism_receipt is not None
@@ -2814,6 +3099,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--accepted-control-plane-capsule-parent",
         type=Path,
         default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
         help=argparse.SUPPRESS,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -3095,6 +3391,319 @@ def _materialize_plan_bound_control_plane(
         raise
 
 
+def _build_live_capsule_admission(
+    board: ConfiguredBoard,
+    *,
+    pin: AgentImplementationControlPlanePin,
+    descriptor: int,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch,
+) -> ConfiguredBoardLiveCapsuleAdmission:
+    """Bind the existing accepted source capsule to this configured board."""
+
+    if not board.live_capsule_control_paths:
+        raise ConfiguredBoardError(
+            "configured-board live control capsule policy is absent"
+        )
+    try:
+        verify_agent_implementation_sealed_control_plane(pin, descriptor)
+        native_executable = verify_agent_supervisor_native_dependency_sealed_fd(
+            native_dependency_launch
+        )
+        native_descriptor = native_dependency_launch.descriptor.descriptor
+        if (
+            native_descriptor == descriptor
+            or native_executable != f"/proc/self/fd/{native_descriptor}"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native dependency descriptor drifted"
+            )
+        program = board.resolved_database_program()
+        extension_pin, _extension_source, _extension_info = (
+            _configured_board_quack_projection(board)
+        )
+        admission = build_configured_board_live_capsule_admission(
+            repo_root=board.repo_root,
+            board_namespace=board.board_namespace,
+            plan_revision=str(board.payload.get("plan_revision") or ""),
+            task_prefix=board.task_prefix,
+            config_path=board.config_path.relative_to(
+                board.repo_root
+            ).as_posix(),
+            configuration_root=board.configuration_root,
+            control_paths=board.live_capsule_control_paths,
+            control_plane_pin=pin,
+            native_authorization_id=(
+                native_dependency_launch.accepted_authorization_id
+            ),
+            native_dependency_id=native_dependency_launch.pin.dependency_id,
+            native_python_executable_sha256=(
+                native_dependency_launch.pin.python_executable_sha256
+            ),
+            quack_extension_projection=extension_pin,
+            database_authority={
+                "authority_mode": program.authority_mode,
+                "task_source_kind": program.task_source_kind,
+                "schema_revision": program.schema_revision,
+                "failover_policy": program.failover_policy,
+                "store_id": program.store_id,
+                "store_generation": int(program.store_generation),
+                "endpoint_secret_handle": program.endpoint_secret_handle,
+            },
+            max_lanes=board.max_lanes,
+            strict_task_sharding=board.strict_task_sharding,
+        )
+    except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board live control capsule admission failed"
+        ) from exc
+    return admission
+
+
+def _configured_board_quack_projection(
+    board: ConfiguredBoard,
+) -> tuple[ConfiguredBoardExtensionPin, Path, Path]:
+    """Resolve and rehash the exact load-only Quack projection from the seal."""
+
+    if not board.dependency_seal_path:
+        raise ConfiguredBoardError(
+            "configured-board Quack projection lacks a dependency seal"
+        )
+    try:
+        seal, _evidence = _read_stable_regular_json(
+            board.path(board.dependency_seal_path),
+            max_bytes=4_194_304,
+        )
+        projection = (
+            seal.get("configured_board_quack_projection")
+            if type(seal) is dict
+            else None
+        )
+        if type(projection) is not dict or set(projection) != {
+            "schema",
+            "source_path",
+            "info_path",
+            "pin",
+            "load_policy",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board Quack projection seal is noncanonical"
+            )
+        if (
+            projection.get("schema")
+            != "semantic-addressed-world-model/configured-board-quack-projection@1"
+            or projection.get("load_policy") != "local_load_only"
+            or projection.get("network_install_allowed") is not False
+            or projection.get("unsigned_extension_allowed") is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board Quack projection policy is invalid"
+            )
+        pin = parse_configured_board_extension_pin(projection.get("pin"))
+        source = Path(str(projection.get("source_path") or ""))
+        info = Path(str(projection.get("info_path") or ""))
+        if not source.is_absolute() or not info.is_absolute():
+            raise ConfiguredBoardError(
+                "configured-board Quack projection sources are not absolute"
+            )
+        observed = inspect_configured_board_extension_sources(
+            source,
+            info,
+            name=pin.name,
+            engine_version=pin.engine_version,
+            platform=pin.platform,
+        )
+        if observed != pin:
+            raise ConfiguredBoardError(
+                "configured-board Quack projection sources differ"
+            )
+        return pin, source, info
+    except ConfiguredBoardError:
+        raise
+    except (OSError, TypeError, ValueError, _StableArtifactReadError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board Quack projection admission failed"
+        ) from exc
+
+
+def _seal_configured_board_native_dependency(
+    board: ConfiguredBoard,
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Authenticate the protected authorization, then seal exact DuckDB bytes."""
+
+    if (
+        not board.dependency_seal_path
+        or board.dependency_seal_path not in board.protected_paths
+        or board.dependency_seal_path not in board.live_capsule_control_paths
+    ):
+        raise ConfiguredBoardError(
+            "configured-board native dependency lacks a protected seal"
+        )
+    try:
+        seal, _seal_evidence = _read_stable_regular_json(
+            board.path(board.dependency_seal_path),
+            max_bytes=4_194_304,
+        )
+        if (
+            type(seal) is not dict
+            or seal.get("schema")
+            != "semantic-addressed-world-model/dependency-seal@1"
+            or seal.get("board_namespace") != board.board_namespace
+            or seal.get("plan_revision")
+            != str(board.payload.get("plan_revision") or "")
+            or seal.get("status") != "sealed"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board dependency seal identity is invalid"
+            )
+        native = seal.get("configured_board_native_dependency")
+        if type(native) is not dict or set(native) != {
+            "schema",
+            "source_path",
+            "acceptance",
+            "pin",
+            "sealed_memfd_required",
+            "ambient_site_import_allowed",
+            "ambient_loader_environment_allowed",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board native dependency seal is noncanonical"
+            )
+        if (
+            native.get("schema")
+            != "semantic-addressed-world-model/configured-board-native-dependency@1"
+            or native.get("sealed_memfd_required") is not True
+            or native.get("ambient_site_import_allowed") is not False
+            or native.get("ambient_loader_environment_allowed") is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native dependency policy is invalid"
+            )
+        pin = parse_agent_supervisor_native_dependency_pin(native.get("pin"))
+        reference = native.get("acceptance")
+        if type(reference) is not dict or set(reference) != {
+            "schema",
+            "path",
+            "sha256",
+            "size",
+            "authorization_id",
+        }:
+            raise ConfiguredBoardError(
+                "configured-board native authorization reference is noncanonical"
+            )
+        if reference.get("schema") != (
+            "semantic-addressed-world-model/"
+            "native-dependency-authorization-reference@1"
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization reference is invalid"
+            )
+        authorization_relative = _safe_relative(
+            str(reference.get("path") or ""),
+            field="native authorization path",
+        )
+        if (
+            authorization_relative not in board.protected_paths
+            or authorization_relative not in board.live_capsule_control_paths
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization is not protected"
+            )
+        authorization, authorization_evidence = _read_stable_regular_json(
+            board.path(authorization_relative),
+            max_bytes=65_536,
+        )
+        if (
+            type(authorization) is not dict
+            or set(authorization) != {
+                "schema",
+                "board_namespace",
+                "plan_revision",
+                "status",
+                "scope",
+                "dependency_id",
+                "payload_sha256",
+                "python_executable_sha256",
+                "authority_basis",
+                "inspection_is_authority",
+                "authorization_may_claim_task_completion",
+                "authorization_id",
+            }
+            or authorization_evidence.get("content_sha256")
+            != reference.get("sha256")
+            or authorization_evidence.get("size") != reference.get("size")
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization artifact differs"
+            )
+        unsigned_authorization = dict(authorization)
+        authorization_id = str(
+            unsigned_authorization.pop("authorization_id", "") or ""
+        )
+        expected_authorization_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned_authorization,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            authorization_id != expected_authorization_id
+            or authorization_id != reference.get("authorization_id")
+            or authorization.get("schema") != (
+                "semantic-addressed-world-model/"
+                "native-dependency-launch-authorization@1"
+            )
+            or authorization.get("board_namespace") != board.board_namespace
+            or authorization.get("plan_revision")
+            != str(board.payload.get("plan_revision") or "")
+            or authorization.get("status") != "accepted"
+            or authorization.get("scope")
+            != "configured-board-live-control-plane"
+            or authorization.get("dependency_id") != pin.dependency_id
+            or authorization.get("payload_sha256") != pin.payload_sha256
+            or authorization.get("python_executable_sha256")
+            != pin.python_executable_sha256
+            or authorization.get("authority_basis")
+            != (
+                "operator-owned protected control inside the accepted "
+                "immutable source capsule"
+            )
+            or authorization.get("inspection_is_authority") is not False
+            or authorization.get("authorization_may_claim_task_completion")
+            is not False
+        ):
+            raise ConfiguredBoardError(
+                "configured-board native authorization was not admitted"
+            )
+        source = Path(str(native.get("source_path") or ""))
+        if not source.is_absolute():
+            raise ConfiguredBoardError(
+                "configured-board native dependency source is not absolute"
+            )
+        launch = seal_agent_supervisor_native_dependency(
+            source,
+            expected_pin=pin,
+            accepted_authorization_id=authorization_id,
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        return launch
+    except ConfiguredBoardError:
+        raise
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        _StableArtifactReadError,
+    ) as exc:
+        raise ConfiguredBoardError(
+            "configured-board native dependency admission failed"
+        ) from exc
+
+
 def _plan_bound_coordinator_module_argv(
     board: ConfiguredBoard,
     *,
@@ -3103,6 +3712,7 @@ def _plan_bound_coordinator_module_argv(
     pin: AgentImplementationControlPlanePin,
     sealed: AgentImplementationSealedControlPlane,
     capsule_parent: Path,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
 ) -> list[str]:
     argv = [
         "--repo-root",
@@ -3122,6 +3732,13 @@ def _plan_bound_coordinator_module_argv(
         "--duration-seconds",
         str(duration_seconds),
     ]
+    if native_dependency_launch is not None:
+        argv[argv.index("launch"):argv.index("launch")] = [
+            "--configured-board-live-native-launch-json",
+            native_dependency_launch.to_json(),
+            "--configured-board-live-native-fd",
+            str(native_dependency_launch.descriptor.descriptor),
+        ]
     if implement:
         argv.append("--implement")
     return argv
@@ -3165,13 +3782,25 @@ def _launch_foreground_plan_bound_coordinator(
     *,
     implement: bool,
     duration_seconds: float,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
 ) -> int:
     pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
     try:
+        extension_pin, extension_source, extension_info = (
+            _configured_board_quack_projection(board)
+        )
+        extension_home = project_configured_board_extension_home(
+            extension_pin,
+            extension_path=extension_source,
+            info_path=extension_info,
+            parent=capsule_parent,
+        )
+        extension_directory = extension_home / ".duckdb/extensions"
         command = build_sealed_control_plane_module_command(
             python_executable=sys.executable,
             pin=pin,
             descriptor=sealed.descriptor,
+            native_dependency_launch=native_dependency_launch,
             module_name=(
                 "ipfs_accelerate_py.agent_supervisor.runtime."
                 "configured_board_scheduler"
@@ -3183,21 +3812,26 @@ def _launch_foreground_plan_bound_coordinator(
                 pin=pin,
                 sealed=sealed,
                 capsule_parent=capsule_parent,
+                native_dependency_launch=native_dependency_launch,
             ),
         )
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
-            env=environment,
+            env=_sealed_coordinator_environment(
+                board,
+                extension_directory=extension_directory,
+            ),
             stdin=subprocess.DEVNULL,
             start_new_session=False,
-            pass_fds=(sealed.descriptor,),
+            pass_fds=(
+                sealed.descriptor,
+                *(
+                    native_dependency_launch.pass_fds
+                    if native_dependency_launch is not None
+                    else ()
+                ),
+            ),
         )
         return int(process.wait())
     finally:
@@ -3210,6 +3844,7 @@ def _launch_detached_plan_bound_coordinator(
     *,
     implement: bool,
     duration_seconds: float,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
 ) -> dict[str, Any]:
     """Detach the outer coordinator, never an individual finite wave."""
 
@@ -3252,10 +3887,21 @@ def _launch_detached_plan_bound_coordinator(
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
             board
         )
+        extension_pin, extension_source, extension_info = (
+            _configured_board_quack_projection(board)
+        )
+        extension_home = project_configured_board_extension_home(
+            extension_pin,
+            extension_path=extension_source,
+            info_path=extension_info,
+            parent=capsule_parent,
+        )
+        extension_directory = extension_home / ".duckdb/extensions"
         command = build_sealed_control_plane_module_command(
             python_executable=sys.executable,
             pin=pin,
             descriptor=sealed.descriptor,
+            native_dependency_launch=native_dependency_launch,
             module_name=(
                 "ipfs_accelerate_py.agent_supervisor.runtime."
                 "configured_board_scheduler"
@@ -3267,24 +3913,29 @@ def _launch_detached_plan_bound_coordinator(
                 pin=pin,
                 sealed=sealed,
                 capsule_parent=capsule_parent,
+                native_dependency_launch=native_dependency_launch,
             ),
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
-            launch_environment = {
-                name: value
-                for name, value in os.environ.items()
-                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-            }
-            launch_environment["PATH"] = "/usr/bin:/bin"
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
-                env=launch_environment,
+                env=_sealed_coordinator_environment(
+                    board,
+                    extension_directory=extension_directory,
+                ),
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(sealed.descriptor,),
+                pass_fds=(
+                    sealed.descriptor,
+                    *(
+                        native_dependency_launch.pass_fds
+                        if native_dependency_launch is not None
+                        else ()
+                    ),
+                ),
             )
         _publish_reserved_coordinator_pid(
             pid_path,
@@ -3332,6 +3983,7 @@ def _run_plan_bound_coordinator(
     duration_seconds: float,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
 ) -> int:
     """Publish and execute fresh exact waves until drain or the run bound."""
 
@@ -3396,6 +4048,7 @@ def _run_plan_bound_coordinator(
             accepted_control_plane_descriptor=(
                 accepted_control_plane_descriptor
             ),
+            native_dependency_launch=native_dependency_launch,
         )
         print(json.dumps(plan, indent=2, sort_keys=True))
         _apply_configured_board_environment(plan)
@@ -3466,10 +4119,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     control_plane_pin: AgentImplementationControlPlanePin | None = None
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None
+    native_dependency_owned = False
     try:
         board = load_configured_board(
             args.config,
             repo_root=args.repo_root,
+        )
+        sealed_control_plane_required = (
+            _sealed_configured_control_plane_required(board)
         )
         preflight = preflight_configured_board(board)
         has_control_plane = bool(args.accepted_control_plane_pin_json)
@@ -3479,6 +4137,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ConfiguredBoardError(
                 "accepted control-plane launch fields are incomplete"
             )
+        if has_control_plane and not sealed_control_plane_required:
+            raise ConfiguredBoardError(
+                "accepted control-plane launch is not declared by this profile"
+            )
+        has_native_launch = bool(args.configured_board_live_native_launch_json)
+        has_native_descriptor = args.configured_board_live_native_fd >= 3
+        if has_native_launch != has_native_descriptor:
+            raise ConfiguredBoardError(
+                "configured-board native launch fields are incomplete"
+            )
+        if has_native_launch and not sealed_control_plane_required:
+            raise ConfiguredBoardError(
+                "configured-board native launch is foreign to this profile"
+            )
+        if has_native_launch:
+            try:
+                native_dependency_launch = parse_native_dependency_launch_json(
+                    args.configured_board_live_native_launch_json
+                )
+                if (
+                    native_dependency_launch.descriptor.descriptor
+                    != args.configured_board_live_native_fd
+                ):
+                    raise ValueError(
+                        "native dependency descriptor was substituted"
+                    )
+                verify_agent_supervisor_native_dependency_sealed_fd(
+                    native_dependency_launch
+                )
+            except (OSError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "configured-board native launch binding is invalid"
+                ) from exc
         if has_control_plane:
             try:
                 control_plane_pin = parse_accepted_control_plane_pin(
@@ -3530,6 +4221,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ConfiguredBoardError(
                     "configured scheduler accepted-tree root is foreign"
                 )
+        if (
+            args.command == "launch"
+            and not args.dry_run
+            and preflight.get("valid") is True
+            and sealed_control_plane_required
+            and not _plan_bound_profile(board)
+            and control_plane_pin is None
+        ):
+            native_dependency_launch = _seal_configured_board_native_dependency(
+                board
+            )
+            native_dependency_owned = True
     except ConfiguredBoardError as exc:
         print(
             json.dumps(
@@ -3555,7 +4258,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     detach = not bool(args.foreground)
-    if _plan_bound_profile(board):
+    if (
+        sealed_control_plane_required
+        and not _plan_bound_profile(board)
+        and (
+            not board.live_capsule_control_paths
+            or native_dependency_launch is None
+        )
+        and not args.dry_run
+    ):
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [
+                        "operational live launch requires the closed "
+                        "configured_board_live_capsule policy and native "
+                        "dependency launch"
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
+    if sealed_control_plane_required:
         if args.dry_run:
             plan = configured_board_launch_plan(
                 board,
@@ -3565,7 +4296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
-        if detach:
+        if detach and control_plane_pin is None:
             plan = configured_board_launch_plan(
                 board,
                 implement=bool(args.implement),
@@ -3578,6 +4309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         board,
                         implement=bool(args.implement),
                         duration_seconds=float(args.duration_seconds),
+                        native_dependency_launch=native_dependency_launch,
                     )
                 )
             except (ConfiguredBoardError, OSError) as exc:
@@ -3589,6 +4321,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
                 return 2
+            finally:
+                if native_dependency_owned and native_dependency_launch is not None:
+                    os.close(native_dependency_launch.descriptor.descriptor)
+                    native_dependency_owned = False
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
         if control_plane_pin is None:
@@ -3597,6 +4333,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     board,
                     implement=bool(args.implement),
                     duration_seconds=float(args.duration_seconds),
+                    native_dependency_launch=native_dependency_launch,
                 )
             except (ConfiguredBoardError, OSError, ValueError) as exc:
                 print(
@@ -3610,27 +4347,48 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
                 return 2
-        try:
-            return _run_plan_bound_coordinator(
-                board,
-                implement=bool(args.implement),
-                duration_seconds=float(args.duration_seconds),
-                accepted_control_plane_pin=control_plane_pin,
-                accepted_control_plane_descriptor=control_plane_descriptor,
-            )
-        finally:
-            _remove_owned_coordinator_pid(board)
-            if control_plane_parent is not None:
-                _cleanup_plan_bound_control_plane(
-                    control_plane_pin,
-                    control_plane_parent,
+            finally:
+                if native_dependency_owned and native_dependency_launch is not None:
+                    os.close(native_dependency_launch.descriptor.descriptor)
+                    native_dependency_owned = False
+        if _plan_bound_profile(board):
+            try:
+                return _run_plan_bound_coordinator(
+                    board,
+                    implement=bool(args.implement),
+                    duration_seconds=float(args.duration_seconds),
+                    accepted_control_plane_pin=control_plane_pin,
+                    accepted_control_plane_descriptor=control_plane_descriptor,
+                    native_dependency_launch=native_dependency_launch,
                 )
+            finally:
+                _remove_owned_coordinator_pid(board)
+                if control_plane_parent is not None:
+                    _cleanup_plan_bound_control_plane(
+                        control_plane_pin,
+                        control_plane_parent,
+                    )
 
+    live_admission = (
+        _build_live_capsule_admission(
+            board,
+            pin=control_plane_pin,
+            descriptor=control_plane_descriptor,
+            native_dependency_launch=native_dependency_launch,
+        )
+        if control_plane_pin is not None
+        and board.live_capsule_control_paths
+        else None
+    )
     plan = configured_board_launch_plan(
         board,
         implement=bool(args.implement),
         detach=detach,
         duration_seconds=float(args.duration_seconds),
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_descriptor,
+        native_dependency_launch=native_dependency_launch,
+        configured_board_live_admission=live_admission,
     )
     print(json.dumps(plan, indent=2, sort_keys=True))
     if args.dry_run:
@@ -3638,7 +4396,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     _apply_configured_board_environment(plan)
     from .multi_supervisor_runner import main as multi_supervisor_main
 
-    return int(multi_supervisor_main(plan["argv"]))
+    try:
+        return int(multi_supervisor_main(plan["argv"]))
+    finally:
+        if control_plane_pin is not None and control_plane_parent is not None:
+            _remove_owned_coordinator_pid(board)
+            _cleanup_plan_bound_control_plane(
+                control_plane_pin,
+                control_plane_parent,
+            )
 
 
 __all__ = (
