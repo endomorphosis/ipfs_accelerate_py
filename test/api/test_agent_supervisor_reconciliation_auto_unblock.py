@@ -118,6 +118,9 @@ def _seed_completed_database_portal_attempt(
     *,
     task_alias: str,
     task_cid: str,
+    task_revision: int = 1,
+    attempt_number: int = 4,
+    completion_receipt_extension: dict[str, object] | None = None,
 ) -> tuple[object, object, object, object]:
     """Persist the same immutable attempt evidence Portal execution uses."""
 
@@ -126,7 +129,7 @@ def _seed_completed_database_portal_attempt(
         claim_id=f"claim:{task_alias.lower()}",
         task_cid=task_cid,
         task_alias=task_alias,
-        attempt_number=4,
+        attempt_number=attempt_number,
         owner_session_id=f"owner:{task_alias.lower()}",
         fencing_token=4,
         fence_epoch=1,
@@ -140,7 +143,7 @@ def _seed_completed_database_portal_attempt(
         task_cid=task_cid,
         goal_cid="goal:completion-proof",
         plan_cid="plan:completion-proof",
-        revision=1,
+        revision=task_revision,
         priority="P1",
         dependencies=(),
         outputs=({"path": "src/app.py"},),
@@ -196,28 +199,30 @@ def _seed_completed_database_portal_attempt(
     )
     preparation["status"] = PREPARED_COMPLETION_STATUS
     preparation["replayed"] = False
+    completion_receipt: dict[str, object] = {
+        "operation": "database_complete",
+        "attempt_id": binding["attempt_id"],
+        "claim_id": binding["claim_id"],
+        "lease_id": binding["lease_id"],
+        "owner_session_id": binding["owner_session_id"],
+        "fencing_token": binding["fencing_token"],
+        "fence_epoch": binding["fence_epoch"],
+        "evidence_digest": "sha256:passed",
+        "coordination_preparation": preparation,
+        "validation": {
+            "outcome": "passed",
+            "evidence_digest": "sha256:passed",
+        },
+    }
+    if completion_receipt_extension:
+        assert not set(completion_receipt) & set(completion_receipt_extension)
+        completion_receipt.update(completion_receipt_extension)
     canonical_task = SimpleNamespace(
         task_alias=task_alias,
         task_cid=task_cid,
         status="completed",
         revision=record.revision + 1,
-        body={
-            "completion_receipt": {
-                "operation": "database_complete",
-                "attempt_id": binding["attempt_id"],
-                "claim_id": binding["claim_id"],
-                "lease_id": binding["lease_id"],
-                "owner_session_id": binding["owner_session_id"],
-                "fencing_token": binding["fencing_token"],
-                "fence_epoch": binding["fence_epoch"],
-                "evidence_digest": "sha256:passed",
-                "coordination_preparation": preparation,
-                "validation": {
-                    "outcome": "passed",
-                    "evidence_digest": "sha256:passed",
-                },
-            },
-        },
+        body={"completion_receipt": completion_receipt},
     )
     return paths, projected_task, portal_identity, canonical_task
 
@@ -250,6 +255,10 @@ def _completed_rescue_proof_fixture(
     tmp_path: Path,
     *,
     task_alias: str,
+    task_cid: str = "",
+    task_revision: int = 1,
+    attempt_number: int = 4,
+    completion_receipt_extension: dict[str, object] | None = None,
 ) -> tuple[Path, object, Path, object, object, object, object]:
     repo = _init_repo(tmp_path / "repo")
     marker = repo / "src" / "app.py"
@@ -272,12 +281,15 @@ def _completed_rescue_proof_fixture(
         ),
         database_program=_database_program(),
     )
-    task_cid = f"task-cid:{task_alias.lower()}"
+    task_cid = task_cid or f"task-cid:{task_alias.lower()}"
     paths, projected_task, portal_identity, canonical_task = (
         _seed_completed_database_portal_attempt(
             supervisor,
             task_alias=task_alias,
             task_cid=task_cid,
+            task_revision=task_revision,
+            attempt_number=attempt_number,
+            completion_receipt_extension=completion_receipt_extension,
         )
     )
     return (
@@ -289,6 +301,56 @@ def _completed_rescue_proof_fixture(
         portal_identity,
         canonical_task,
     )
+
+
+_PCSM_HISTORICAL_COMPLETION_CASES = (
+    (
+        "PCSM-023",
+        "baguqeeraupubf5hqv7sg3de6ylhu4lfbhmdh6stvwow5lzli7h37fux435ia",
+        7,
+        2,
+        "baguqeeraks4c4cc2gody65itaawqajdt3b5bcaotitrs6v4kexxqvpuau2xq",
+    ),
+    (
+        "PCSM-040",
+        "baguqeeracpy55nht3icjbnyopccuv7iqojmedl3y2bchtxmusowfpzjwnaea",
+        15,
+        4,
+        "baguqeerasfnaw2h6jgj2au27ohgs2x2gecg3qwhs5vi7yoygfnare277dscq",
+    ),
+)
+
+
+def _pcsm_historical_execution_route_receipt_fields(
+    *,
+    task_alias: str,
+    task_cid: str,
+    task_contract_cid: str,
+) -> dict[str, object]:
+    route = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "task-execution-route-binding@1"
+        ),
+        "policy_id": (
+            "baguqeerahvwjwfbexnsqdflng54qvtuqoiwf4junsjaafyuhvl2fmjkeettq"
+        ),
+        "plan_root_cid": (
+            "baguqeerax2gqeo7n5uy3uw3q7h5zn7ruicibrzfy65yv2vachdvbfnnvyfla"
+        ),
+        "repository_tree_id": "cd81f5731ee64c29161830c9933d6739e0dd3eb3",
+        "source_revision": 1,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "task_revision": 1,
+        "task_contract_cid": task_contract_cid,
+        "execution_mode": "grok-codex",
+    }
+    return {
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -570,6 +632,185 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
         cleanup_result={"skipped": []},
     )
     assert not any(item["kind"] == "preflight_merge_conflict" for item in records)
+
+
+@pytest.mark.parametrize(
+    (
+        "task_alias",
+        "task_cid",
+        "task_revision",
+        "attempt_number",
+        "task_contract_cid",
+    ),
+    _PCSM_HISTORICAL_COMPLETION_CASES,
+)
+def test_completed_rescue_accepts_exact_pcsm_historical_route_receipt_shapes(
+    tmp_path: Path,
+    task_alias: str,
+    task_cid: str,
+    task_revision: int,
+    attempt_number: int,
+    task_contract_cid: str,
+) -> None:
+    route_fields = _pcsm_historical_execution_route_receipt_fields(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_contract_cid=task_contract_cid,
+    )
+    (
+        repo,
+        supervisor,
+        worktree_root,
+        _paths,
+        _projected_task,
+        portal_identity,
+        canonical_task,
+    ) = _completed_rescue_proof_fixture(
+        tmp_path,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        attempt_number=attempt_number,
+        completion_receipt_extension=route_fields,
+    )
+    branch_name, _worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
+        task_alias=task_alias,
+        fingerprint=portal_identity.semantic_fingerprint,
+    )
+
+    receipt = canonical_task.body["completion_receipt"]
+    assert set(receipt) == {
+        "operation",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "evidence_digest",
+        "coordination_preparation",
+        "validation",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+    assert {
+        key: receipt[key]
+        for key in (
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        )
+    } == route_fields
+
+    proof = supervisor._database_completion_receipt_proof(
+        canonical_task,
+        expected_alias=task_alias,
+        branch=branch_name,
+    )
+
+    assert proof["verified"] is True
+    assert proof["revision"] == task_revision + 1
+    assert proof["completion_attempt_number"] == attempt_number
+    assert proof["branch_attempt_number"] == 1
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_reason"),
+    (
+        (
+            "partial_route_receipt",
+            "database_completion_receipt_shape_invalid",
+        ),
+        (
+            "route_lineage_tampered",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "route_origin_after_attempt",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "route_origin_boolean",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "duplicate_attempt_projection",
+            "database_portal_attempt_projection_ambiguous",
+        ),
+    ),
+)
+def test_pcsm_historical_route_receipt_tamper_or_ambiguity_is_rejected(
+    tmp_path: Path,
+    fault: str,
+    expected_reason: str,
+) -> None:
+    task_alias, task_cid, task_revision, attempt_number, task_contract_cid = (
+        _PCSM_HISTORICAL_COMPLETION_CASES[0]
+    )
+    route_fields = _pcsm_historical_execution_route_receipt_fields(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_contract_cid=task_contract_cid,
+    )
+    (
+        repo,
+        supervisor,
+        worktree_root,
+        paths,
+        _projected_task,
+        portal_identity,
+        canonical_task,
+    ) = _completed_rescue_proof_fixture(
+        tmp_path,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        attempt_number=attempt_number,
+        completion_receipt_extension=route_fields,
+    )
+    branch_name, worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
+        task_alias=task_alias,
+        fingerprint=portal_identity.semantic_fingerprint,
+    )
+    receipt = canonical_task.body["completion_receipt"]
+    if fault == "partial_route_receipt":
+        receipt.pop("execution_route_policy_id")
+    elif fault == "route_lineage_tampered":
+        receipt["execution_route_policy_id"] = (
+            "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+    elif fault == "route_origin_after_attempt":
+        route = receipt["execution_route_binding"]
+        assert isinstance(route, dict)
+        route["task_revision"] = task_revision + 1
+        receipt["execution_route_origin_revision"] = task_revision + 1
+    elif fault == "route_origin_boolean":
+        receipt["execution_route_origin_revision"] = True
+    elif fault == "duplicate_attempt_projection":
+        duplicate = (
+            repo
+            / "sibling-state"
+            / "sibling_database_portal_attempts"
+            / paths.root.name
+        )
+        shutil.copytree(paths.root, duplicate)
+    else:  # pragma: no cover - the parameter table is intentionally closed.
+        raise AssertionError(f"unknown fault: {fault}")
+
+    proof = supervisor._database_completion_receipt_proof(
+        canonical_task,
+        expected_alias=task_alias,
+        branch=branch_name,
+    )
+
+    assert proof["verified"] is False
+    assert proof["reason"] == expected_reason
+    assert worktree_path.is_dir()
 
 
 @pytest.mark.parametrize(

@@ -17536,9 +17536,23 @@ class PortalImplementationSupervisor:
             "coordination_preparation",
             "validation",
         }
+        execution_route_receipt_fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        receipt_fields = (
+            frozenset(receipt) if isinstance(receipt, Mapping) else frozenset()
+        )
         if (
             not isinstance(receipt, Mapping)
-            or set(receipt) != required_receipt_fields
+            or receipt_fields
+            not in {
+                frozenset(required_receipt_fields),
+                frozenset(
+                    required_receipt_fields | execution_route_receipt_fields
+                ),
+            }
         ):
             return {
                 "verified": False,
@@ -17548,6 +17562,59 @@ class PortalImplementationSupervisor:
                 "status": status,
                 "revision": revision,
             }
+
+        execution_route_task_revision: int | None = None
+        if execution_route_receipt_fields <= receipt_fields:
+            from ..task_sources.database_task_source import (
+                TaskSourceIntegrityError,
+            )
+            from ..task_sources.task_execution_route_policy import (
+                TaskExecutionRouteBinding,
+            )
+
+            route_value = receipt.get("execution_route_binding")
+            try:
+                if not isinstance(route_value, Mapping):
+                    raise TaskSourceIntegrityError(
+                        "completion execution route is not an object"
+                    )
+                normalized_route = TaskExecutionRouteBinding.from_dict(
+                    route_value
+                ).to_dict()
+                exact_route = dict(route_value)
+            except (TaskSourceIntegrityError, TypeError, ValueError):
+                return {
+                    "verified": False,
+                    "reason": "database_completion_execution_route_unverified",
+                    "task_id": expected_alias,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": revision,
+                }
+            route_policy_id = receipt.get("execution_route_policy_id")
+            route_origin_revision = receipt.get(
+                "execution_route_origin_revision"
+            )
+            if (
+                exact_route != normalized_route
+                or normalized_route["task_alias"] != expected_alias
+                or normalized_route["task_cid"] != task_cid
+                or type(route_policy_id) is not str
+                or route_policy_id != normalized_route["policy_id"]
+                or type(route_origin_revision) is not int
+                or route_origin_revision != normalized_route["task_revision"]
+            ):
+                return {
+                    "verified": False,
+                    "reason": "database_completion_execution_route_unverified",
+                    "task_id": expected_alias,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": revision,
+                }
+            execution_route_task_revision = int(
+                normalized_route["task_revision"]
+            )
         validation = receipt.get("validation")
         evidence_digest = str(receipt.get("evidence_digest") or "").strip()
         validation_digest = (
@@ -17653,6 +17720,19 @@ class PortalImplementationSupervisor:
             return {
                 "verified": False,
                 "reason": "database_completion_preparation_unverified",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "status": status,
+                "revision": revision,
+                "completion_attempt_number": completion_attempt_number,
+            }
+        if (
+            execution_route_task_revision is not None
+            and execution_route_task_revision > control_expected_revision
+        ):
+            return {
+                "verified": False,
+                "reason": "database_completion_execution_route_unverified",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
                 "status": status,
