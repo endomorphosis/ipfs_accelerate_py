@@ -5,8 +5,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import socket
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -101,17 +105,93 @@ def test_import_does_not_create_runtime_state() -> None:
     assert runtime.exists() is before
 
 
-def test_quack_handle_token_binding_is_private_and_same_inode(tmp_path: Path) -> None:
+def test_quack_workers_use_birth_bound_bootstrap_not_persisted_tokens() -> None:
     materializer = _materializer()
-    source = tmp_path / "typed-state-owner.token"
-    source.write_text("a_private_test_token_1234567890", encoding="utf-8")
-    source.chmod(0o600)
-    target = materializer._publish_handle_token(tmp_path, "handle:spar-test")
-    source_stat = os.stat(source, follow_symlinks=False)
-    target_stat = os.stat(target, follow_symlinks=False)
-    assert (source_stat.st_dev, source_stat.st_ino) == (
-        target_stat.st_dev,
-        target_stat.st_ino,
+    config = json.loads(
+        (ROOT / "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json").read_text()
     )
-    assert target_stat.st_mode & 0o077 == 0
-    target.unlink()
+    assert config["database_program"]["endpoint_secret_handle"] == (
+        "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    )
+    assert not hasattr(materializer, "_publish_handle_token")
+    assert not hasattr(materializer, "_LiveQuackTransport")
+    assert materializer._SparStateOwnerBootstrapBroker.__doc__
+
+
+def test_generic_bootstrap_survives_compact_track_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        multi_supervisor_runner as runner,
+    )
+
+    script = tmp_path / "implementation-supervisor.py"
+    script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    compact = runner.implementation_supervisor_compact_track_spec(
+        name="semantic-preserving-autonomous-remodularization-v1",
+        script_path=script,
+        state_dir=state_dir,
+        state_prefix="spar",
+    )
+    track = runner.expand_implementation_track_lanes(
+        compact,
+        stamp="test",
+        lanes_per_track=3,
+    )[0]
+    assert track.database_program is None
+
+    captured: dict[str, object] = {}
+
+    def capture_popen(command: list[str], **kwargs: object) -> SimpleNamespace:
+        captured["command"] = command
+        captured.update(kwargs)
+        return SimpleNamespace(pid=os.getpid())
+
+    monkeypatch.setattr(runner.subprocess, "Popen", capture_popen)
+    monkeypatch.setattr(
+        runner,
+        "_capture_owned_popen_birth",
+        lambda _process, _profile: object(),
+    )
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind("\0spar-bootstrap-test-" + str(os.getpid()))
+    listener.listen(4)
+    listener_fd = listener.fileno()
+    store_id = "data/agent_supervisor/spar-test/control.duckdb"
+    common_args = (
+        "--task-source-kind",
+        "duckdb",
+        "--authority-mode",
+        "quack",
+        "--state-failover-policy",
+        "fail_closed",
+        "--endpoint-secret-handle",
+        "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "--quack-endpoint",
+        "quack:127.0.0.1:46731",
+        "--state-store-id",
+        store_id,
+        "--state-owner-bootstrap-fd",
+        str(listener_fd),
+        "--state-owner-bootstrap-store-id",
+        store_id,
+    )
+    try:
+        process = runner.start_track(
+            track,
+            repo_root=tmp_path,
+            common_args=common_args,
+            python_executable=sys.executable,
+            output=lambda _message: None,
+        )
+    finally:
+        listener.close()
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert process.pid == os.getpid()
+    assert captured["pass_fds"] == (listener_fd,)
+    assert command[-2:] == ["--database-owner-session-id", track.name]
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN=" not in " ".join(command)

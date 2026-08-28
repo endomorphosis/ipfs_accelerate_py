@@ -7490,6 +7490,65 @@ def _reap_uncaptured_owned_popen(
     return process.poll() is not None
 
 
+def _generic_state_owner_bootstrap_binding(
+    launch_args: Sequence[str],
+) -> int:
+    """Validate and return one generic configured-board bootstrap listener."""
+
+    bootstrap_descriptors = _profile_option_values(
+        launch_args,
+        "--state-owner-bootstrap-fd",
+    )
+    bootstrap_stores = _profile_option_values(
+        launch_args,
+        "--state-owner-bootstrap-store-id",
+    )
+    if not bootstrap_descriptors and not bootstrap_stores:
+        return -1
+    quack_endpoints = _profile_option_values(launch_args, "--quack-endpoint")
+    from ..task_sources.duckdb_state import is_quack_transport_target
+
+    if (
+        len(bootstrap_descriptors) != 1
+        or len(bootstrap_stores) != 1
+        or _profile_option_values(launch_args, "--database-owner-session-id")
+        or _profile_option_values(launch_args, "--task-source-kind")
+        != (TASK_SOURCE_DUCKDB,)
+        or _profile_option_values(launch_args, "--authority-mode")
+        != (AUTHORITY_MODE_QUACK,)
+        or _profile_option_values(launch_args, "--state-failover-policy")
+        != (FAILOVER_FAIL_CLOSED,)
+        or _profile_option_values(launch_args, "--endpoint-secret-handle")
+        != ("env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",)
+        or _profile_option_values(launch_args, "--state-store-id")
+        != (bootstrap_stores[0],)
+        or len(quack_endpoints) != 1
+        or not is_quack_transport_target(quack_endpoints[0])
+        or "--explicit-legacy-task-source" in launch_args
+    ):
+        raise ValueError(
+            "generic configured-board state-owner bootstrap is incomplete"
+        )
+    try:
+        descriptor = int(bootstrap_descriptors[0])
+    except ValueError as exc:
+        raise ValueError(
+            "generic configured-board state-owner bootstrap descriptor is invalid"
+        ) from exc
+    from ..task_sources.state_owner_bootstrap import (
+        StateOwnerBootstrapError,
+        validate_state_owner_bootstrap_listener,
+    )
+
+    try:
+        validate_state_owner_bootstrap_listener(descriptor)
+    except StateOwnerBootstrapError as exc:
+        raise ValueError(
+            "generic configured-board state-owner bootstrap listener is invalid"
+        ) from exc
+    return descriptor
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -7581,11 +7640,28 @@ def start_track(
         )
 
     resolved = track.resolve(repo_root)
+    generic_bootstrap_descriptor = -1
+    if not eaaef_live_dispatch and not lgcvf_live_dispatch:
+        generic_bootstrap_descriptor = _generic_state_owner_bootstrap_binding(
+            (*common_args, *resolved.extra_args)
+        )
+        if generic_bootstrap_descriptor >= 3 and (
+            resolved.module_name
+            or "--plan-bound-dispatch" in resolved.extra_args
+        ):
+            raise ValueError(
+                "generic configured-board state-owner bootstrap requires an "
+                "ordinary script-backed implementation track"
+            )
     child_command = (
         [python_executable, "-m", resolved.module_name, *resolved.extra_args]
         if resolved.module_name
         else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
     )
+    if generic_bootstrap_descriptor >= 3:
+        child_command.extend(
+            ["--database-owner-session-id", resolved.name]
+        )
     plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     if plan_bound_dispatch and lgcvf_live_dispatch:
         raise ValueError("plan-bound and LGCVF live dispatch cannot be combined")
@@ -8230,30 +8306,40 @@ def start_track(
                 stdout=out_handle,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(
-                    tuple(
-                        sorted(
-                            {
-                                gate_read_fd,
-                                *(
-                                    (lgcvf_bootstrap_descriptor,)
-                                    if lgcvf_live_dispatch
-                                    else ()
-                                ),
-                                *(
-                                    configured_board_live_context.pass_fds
-                                    if lgcvf_live_dispatch
-                                    and configured_board_live_context is not None
-                                    else (accepted_control_plane_descriptor,)
-                                ),
-                            }
-                        )
+                pass_fds=tuple(
+                    sorted(
+                        descriptor
+                        for descriptor in {
+                            *(
+                                (gate_read_fd,)
+                                if gate_read_fd is not None
+                                else ()
+                            ),
+                            *(
+                                (lgcvf_bootstrap_descriptor,)
+                                if lgcvf_bootstrap_descriptor >= 3
+                                else ()
+                            ),
+                            *(
+                                configured_board_live_context.pass_fds
+                                if lgcvf_live_dispatch
+                                and configured_board_live_context is not None
+                                else ()
+                            ),
+                            *(
+                                (accepted_control_plane_descriptor,)
+                                if plan_bound_dispatch
+                                and accepted_control_plane_descriptor >= 3
+                                else ()
+                            ),
+                            *(
+                                (generic_bootstrap_descriptor,)
+                                if generic_bootstrap_descriptor >= 3
+                                else ()
+                            ),
+                        }
+                        if descriptor >= 3
                     )
-                    if (
-                        (plan_bound_dispatch or lgcvf_live_dispatch)
-                        and gate_read_fd is not None
-                    )
-                    else ()
                 ),
             )
         except BaseException:

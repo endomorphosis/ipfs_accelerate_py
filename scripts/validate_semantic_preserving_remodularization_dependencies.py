@@ -119,6 +119,21 @@ def validate() -> dict[str, Any]:
                 mismatches.append(relative)
         check("control_hash_manifest", not mismatches, mismatches)
 
+    runtime_hashes = seal.get("bootstrap_runtime_file_sha256")
+    if not isinstance(runtime_hashes, dict) or not runtime_hashes:
+        check("bootstrap_runtime_hash_manifest", False, "absent")
+    else:
+        mismatches = []
+        for relative, claimed in sorted(runtime_hashes.items()):
+            path = ROOT / relative
+            if (
+                not path.is_file()
+                or path.is_symlink()
+                or hashlib.sha256(path.read_bytes()).hexdigest() != claimed
+            ):
+                mismatches.append(relative)
+        check("bootstrap_runtime_hash_manifest", not mismatches, mismatches)
+
     bindings = seal.get("source_binding") if isinstance(seal.get("source_binding"), dict) else {}
     outer = bindings.get("accelerator") if isinstance(bindings.get("accelerator"), dict) else {}
     check("accelerator_base_object", _git(ROOT, "cat-file", "-t", str(outer.get("commit") or "")) == "commit" and _git(ROOT, "rev-parse", f"{outer.get('commit')}^{{tree}}") == outer.get("tree"), outer)

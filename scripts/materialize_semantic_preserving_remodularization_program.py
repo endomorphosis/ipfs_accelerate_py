@@ -21,14 +21,16 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import signal
-import stat
+import socket
+import struct
 import subprocess
 import sys
+import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any, Final
 
 ROOT: Final = Path(__file__).resolve().parents[1]
@@ -89,6 +91,10 @@ OWNER_DML_PREFIXES: Final = (
     "INSERT OR REPLACE",
     "INSERT OR IGNORE",
 )
+INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
+INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS: Final = 43_200.0
+BOOTSTRAP_READY_TIMEOUT_SECONDS: Final = 10.0
+BOOTSTRAP_PROCESS_STOP_GRACE_SECONDS: Final = 35.0
 
 
 class OperatorError(RuntimeError):
@@ -934,78 +940,6 @@ def materialize(config_path: Path) -> dict[str, Any]:
     }
 
 
-class _LiveQuackTransport:
-    """Real loopback Quack transport with an identity-complete live probe."""
-
-    def __init__(self) -> None:
-        self._listen_uri = ""
-
-    def start(
-        self,
-        connection: Any,
-        *,
-        host: str,
-        port: int,
-        token: str,
-        identity: Any,
-    ) -> Mapping[str, Any]:
-        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-            listen_uri,
-        )
-
-        uri = listen_uri(host, port)
-        connection.execute(
-            "SELECT * FROM quack_serve(?, token := ?, "
-            "allow_other_hostname := false, disable_ssl := true)",
-            [uri, token],
-        )
-        self._listen_uri = uri
-        return MappingProxyType(
-            {
-                "server_id": identity.server_id,
-                "store_id": identity.store_id,
-                "database_uuid": identity.database_uuid,
-                "schema_revision": identity.schema_revision,
-                "schema_fingerprint": identity.schema_fingerprint,
-                "generation": identity.generation,
-                "process_birth_id": identity.process_birth_id,
-                "listen_uri": uri,
-            }
-        )
-
-    def live_query(
-        self,
-        connection: Any,
-        *,
-        identity: Any,
-        token: str,
-    ) -> Mapping[str, Any]:
-        del token
-        row = connection.execute("SELECT 1").fetchone()
-        if row is None:
-            raise OperatorError("Quack owner connection failed its live query")
-        return MappingProxyType(
-            {
-                "server_id": identity.server_id,
-                "store_id": identity.store_id,
-                "database_uuid": identity.database_uuid,
-                "schema_revision": identity.schema_revision,
-                "schema_fingerprint": identity.schema_fingerprint,
-                "generation": identity.generation,
-                "process_birth_id": identity.process_birth_id,
-                "listen_uri": self._listen_uri,
-            }
-        )
-
-    def stop(self, connection: Any | None = None) -> None:
-        if connection is None:
-            return
-        try:
-            connection.execute("SELECT quack_stop()")
-        except Exception:
-            pass
-
-
 def _verify_control_plane(path: Path) -> Any:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
         MigrationRunReport,
@@ -1110,46 +1044,11 @@ def _process_mutations(server: Any, mutation_dir: Path) -> None:
             pass
 
 
-def _publish_handle_token(owner_dir: Path, secret_handle: str) -> Path:
-    """Bind the live typed-owner credential to the configured handle path.
-
-    The current Quack client resolves a handle-specific private regular file,
-    while ``TypedStateOwner`` creates the credential under its canonical
-    filename.  A same-inode hard link bridges those existing interfaces without
-    reading, logging, copying, or translating the secret bytes.
-    """
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
-        TYPED_STATE_OWNER_TOKEN_FILENAME,
+def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        establish_state_authority_process_boundary,
     )
-
-    source = owner_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
-    target = _token_path(owner_dir, secret_handle)
-    if target.exists() or target.is_symlink():
-        raise OperatorError("Quack handle token path already exists")
-    source_metadata = os.stat(source, follow_symlinks=False)
-    if (
-        not stat.S_ISREG(source_metadata.st_mode)
-        or source_metadata.st_uid != os.getuid()
-        or source_metadata.st_mode & 0o077
-        or not 8 <= source_metadata.st_size <= 512
-    ):
-        raise OperatorError("typed-owner token is not a private bounded file")
-    os.link(source, target, follow_symlinks=False)
-    target_metadata = os.stat(target, follow_symlinks=False)
-    if (
-        target_metadata.st_dev != source_metadata.st_dev
-        or target_metadata.st_ino != source_metadata.st_ino
-        or target_metadata.st_mode & 0o077
-    ):
-        target.unlink(missing_ok=True)
-        raise OperatorError("Quack handle token binding is not exact")
-    return target
-
-
-def state_owner(config_path: Path) -> int:
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-        ServerLifecycle,
         build_server,
     )
 
@@ -1165,6 +1064,10 @@ def state_owner(config_path: Path) -> int:
     port = int(endpoint.group(2))
     if not 1 <= port <= 65535:
         raise OperatorError("configured Quack port is out of range")
+    # The owner mints raw credentials into its in-memory grant vault. Harden
+    # this controller before constructing that vault so same-UID worker or
+    # provider descendants cannot inspect it through procfs.
+    establish_state_authority_process_boundary()
     server = build_server(
         database_path=paths["database"],
         state_dir=paths["owner"],
@@ -1176,18 +1079,113 @@ def state_owner(config_path: Path) -> int:
         allow_experimental=False,
         migrate=_verify_control_plane,
         connection_factory=_owner_connection,
-        transport=_LiveQuackTransport(),
     )
-    identity = server.start()
-    handle_token_path = _publish_handle_token(
-        paths["owner"], program.endpoint_secret_handle
-    )
+    return server, paths, program
+
+
+def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, Any, dict[str, Any]]:
+    server, paths, program = _build_state_owner(config_path)
     try:
+        identity = server.start()
         ready = server.ready()
+        # The generic SPAR controller issues exact birth-bound grants through
+        # its inherited bootstrap listener. The server's reusable status
+        # bootstrap credential is therefore unnecessary and must not remain
+        # at rest.
+        server.typed_command_token_path().unlink(missing_ok=True)
     except BaseException:
-        handle_token_path.unlink(missing_ok=True)
         server.stop()
         raise
+    return server, paths, program, identity, ready
+
+
+def _owner_task_projection(server: Any) -> dict[str, Any]:
+    connection = getattr(server, "_connection", None)
+    transaction_lock = getattr(server, "_owner_transaction_lock", None)
+    if connection is None or transaction_lock is None:
+        raise OperatorError("state-owner task projection connection is unavailable")
+    with transaction_lock:
+        return _task_status(connection)
+
+
+def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
+    ready = server.ready()
+    task_projection = _owner_task_projection(server)
+    unsigned = {
+        "schema": "spar/live-owner-projection@1",
+        "observed_at_unix_ns": time.time_ns(),
+        "owner_process_birth_id": str(ready["process_birth_id"]),
+        "server_id": str(ready["server_id"]),
+        "store_id": str(ready["store_id"]),
+        "generation": int(ready["generation"]),
+        "schema_revision": int(ready["schema_revision"]),
+        "quack_authenticated_live_query": bool(ready.get("live") is True),
+        "task_projection": task_projection,
+    }
+    payload = {**unsigned, "projection_cid": _identity(unsigned)}
+    _atomic_json(paths["owner"] / "spar-live-projection.json", payload)
+    return payload
+
+
+def _serve_state_owner(
+    server: Any,
+    paths: Mapping[str, Path],
+    *,
+    child: subprocess.Popen[Any] | None = None,
+) -> tuple[dict[str, Any], int | None]:
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        ServerLifecycle,
+    )
+
+    stopped = {"value": False}
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        stopped["value"] = True
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    mutation_dir = paths["owner"] / "mutations"
+    control_path = server.stop_control_path()
+    next_projection = 0.0
+    child_returncode: int | None = None
+    try:
+        while server.lifecycle is ServerLifecycle.READY and not stopped["value"]:
+            if control_path.is_file():
+                break
+            if child is not None:
+                child_returncode = child.poll()
+                if child_returncode is not None:
+                    break
+            _process_mutations(server, mutation_dir)
+            now = time.monotonic()
+            if now >= next_projection:
+                _publish_live_projection(server, paths)
+                next_projection = now + 1.0
+            time.sleep(0.05)
+    finally:
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + 30.0
+            while child.poll() is None and time.monotonic() < deadline:
+                _process_mutations(server, mutation_dir)
+                time.sleep(0.05)
+            if child.poll() is None:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.wait(timeout=5.0)
+        if child is not None:
+            child_returncode = child.poll()
+        result = server.stop()
+    return result, child_returncode
+
+
+def state_owner(config_path: Path) -> int:
+    server, paths, _program, identity, ready = _start_state_owner(config_path)
     print(
         json.dumps(
             {
@@ -1202,26 +1200,812 @@ def state_owner(config_path: Path) -> int:
         ),
         flush=True,
     )
-    stopped = {"value": False}
-
-    def request_stop(_signum: int, _frame: Any) -> None:
-        stopped["value"] = True
-
-    signal.signal(signal.SIGINT, request_stop)
-    signal.signal(signal.SIGTERM, request_stop)
-    mutation_dir = paths["owner"] / "mutations"
-    control_path = server.stop_control_path()
-    try:
-        while server.lifecycle is ServerLifecycle.READY and not stopped["value"]:
-            if control_path.is_file():
-                break
-            _process_mutations(server, mutation_dir)
-            time.sleep(0.05)
-    finally:
-        result = server.stop()
-        handle_token_path.unlink(missing_ok=True)
+    result, _child_returncode = _serve_state_owner(server, paths)
     print(json.dumps(result, sort_keys=True), flush=True)
     return 0
+
+
+def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
+    """Seal one exact all-task route before the owner takes the DuckDB lease."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRoutePolicy,
+    )
+
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    with DatabaseTaskSource(
+        paths["database"],
+        owner_id="spar-route-policy:single-writer",
+        repository_tree_id=str(bootstrap["repository_tree_id"]),
+        plan_root_cid=str(bootstrap["plan_root_cid"]),
+    ) as source:
+        snapshot = source.snapshot()
+        tasks: list[Any] = []
+        cursor = ""
+        while True:
+            page = source.list_tasks(cursor=cursor, limit=500)
+            tasks.extend(page.tasks)
+            cursor = page.next_cursor
+            if not cursor:
+                break
+    if len(tasks) != int(snapshot.task_count):
+        raise OperatorError("execution-route task population is incomplete")
+    return TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=tasks,
+        execution_modes={
+            task.task_alias: GROK_CODEX_EXECUTION_MODE for task in tasks
+        },
+    )
+
+
+def _exact_argv_option(argv: Sequence[str], name: str) -> str:
+    indexes = [index for index, value in enumerate(argv) if value == name]
+    if len(indexes) != 1 or indexes[0] + 1 >= len(argv):
+        raise OperatorError(f"supervisor argv does not bind exactly one {name}")
+    return str(argv[indexes[0] + 1])
+
+
+class _SparStateOwnerBootstrapBroker:
+    """Issue a distinct PID/birth-fenced typed grant for each lane daemon."""
+
+    def __init__(
+        self,
+        *,
+        channel: socket.socket,
+        server: Any,
+        board: Any,
+        paths: Mapping[str, Path],
+        execution_route_policy: Any,
+    ) -> None:
+        self.channel = channel
+        self.server = server
+        self.board = board
+        self.paths = paths
+        self.execution_route_policy = execution_route_policy
+        self.allowed_sessions = tuple(
+            f"{board.board_namespace}-{index}" for index in range(board.max_lanes)
+        )
+        self.stopping = threading.Event()
+        self.ready = threading.Event()
+        self.fail_fast_enabled = threading.Event()
+        self.failure = ""
+        self.last_rejection = ""
+        self.rejection_count = 0
+        self.current_by_session: dict[str, dict[str, Any]] = {}
+        self.active_grants: dict[str, str] = {}
+        self._accepted: socket.socket | None = None
+        self._lock = threading.RLock()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="spar-state-owner-bootstrap",
+            daemon=True,
+        )
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            raise OperatorError("SPAR state-owner bootstrap broker was already started")
+        self._started = True
+        self._thread.start()
+        if not self.ready.wait(BOOTSTRAP_READY_TIMEOUT_SECONDS):
+            raise OperatorError("SPAR state-owner bootstrap broker did not become ready")
+        if self.failure:
+            raise OperatorError("SPAR state-owner bootstrap broker failed during startup")
+
+    def enable_fail_fast(self) -> None:
+        self.fail_fast_enabled.set()
+
+    def _terminal_failure(self, exc: BaseException) -> None:
+        with self._lock:
+            self.failure = self.failure or type(exc).__name__
+        self.ready.set()
+        if self.fail_fast_enabled.is_set() and not self.stopping.is_set():
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    def stop(self) -> None:
+        self.stopping.set()
+        with self._lock:
+            accepted = self._accepted
+        if accepted is not None:
+            try:
+                accepted.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            accepted.close()
+        try:
+            self.channel.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.channel.close()
+        if self._started:
+            self._thread.join(timeout=5.0)
+        if self._started and self._thread.is_alive():
+            raise OperatorError("SPAR state-owner bootstrap broker did not stop")
+        self._fence_admitted_births()
+        failures: list[str] = []
+        with self._lock:
+            grant_ids = tuple(self.active_grants.values())
+        for grant_id in grant_ids:
+            try:
+                self.server.revoke_typed_client_grant(grant_id)
+            except Exception as exc:
+                failures.append(type(exc).__name__)
+        with self._lock:
+            self.active_grants.clear()
+        if failures:
+            raise OperatorError("SPAR bootstrap grant revocation failed")
+
+    def _persist(self) -> None:
+        with self._lock:
+            unsigned = {
+                "schema": "spar/state-owner-bootstrap-broker@1",
+                "controller_pid": os.getpid(),
+                "allowed_sessions": list(self.allowed_sessions),
+                "active_sessions": sorted(self.active_grants),
+                "current_births": {
+                    key: dict(value)
+                    for key, value in sorted(self.current_by_session.items())
+                },
+                "rejection_count": self.rejection_count,
+                "last_rejection": self.last_rejection,
+                "failure": self.failure,
+                "credential_transport": "private_inherited_socket",
+                "credential_persisted": False,
+            }
+        _atomic_json(
+            self.paths["owner"] / "spar-bootstrap-broker.json",
+            {**unsigned, "projection_cid": _identity(unsigned)},
+        )
+
+    @staticmethod
+    def _require_dead(birth_payload: Mapping[str, Any], *, noun: str) -> None:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            ProcessBirthIdentity,
+            owner_liveness,
+        )
+
+        birth = ProcessBirthIdentity.from_dict(birth_payload)
+        if owner_liveness(birth) is not OwnerLiveness.DEAD:
+            raise OperatorError(f"prior {noun} birth remains live")
+
+    def _admitted_births(self) -> tuple[Any, ...]:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            ProcessBirthIdentity,
+        )
+
+        with self._lock:
+            records = tuple(dict(record) for record in self.current_by_session.values())
+        births: list[Any] = []
+        seen: set[tuple[int, int, str]] = set()
+        for field in ("supervisor_process_birth", "daemon_process_birth"):
+            for record in records:
+                raw = record.get(field)
+                if not isinstance(raw, Mapping):
+                    raise OperatorError("SPAR admitted process birth is unavailable")
+                try:
+                    birth = ProcessBirthIdentity.from_dict(raw)
+                except (KeyError, OverflowError, TypeError, ValueError) as exc:
+                    raise OperatorError("SPAR admitted process birth is malformed") from exc
+                if birth.pid <= 1 or birth.start_time_ticks <= 0:
+                    raise OperatorError("SPAR admitted process birth is unsafe")
+                key = (birth.pid, birth.start_time_ticks, birth.boot_id)
+                if key not in seen:
+                    seen.add(key)
+                    births.append(birth)
+        return tuple(births)
+
+    @staticmethod
+    def _signal_admitted_birth(birth: Any, signum: int) -> None:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            owner_liveness,
+        )
+
+        if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+            raise OperatorError("SPAR admitted-process fencing requires Linux pidfds")
+        descriptor = -1
+        try:
+            descriptor = os.pidfd_open(birth.pid, 0)
+        except ProcessLookupError:
+            return
+        except OSError as exc:
+            raise OperatorError("SPAR admitted-process pidfd is unavailable") from exc
+        try:
+            state = owner_liveness(birth)
+            if state is OwnerLiveness.DEAD:
+                return
+            if state is not OwnerLiveness.ALIVE:
+                raise OperatorError("SPAR admitted process is uninspectable")
+            try:
+                signal.pidfd_send_signal(descriptor, signum)
+            except ProcessLookupError:
+                return
+            except OSError as exc:
+                raise OperatorError("SPAR admitted process could not be signalled") from exc
+        finally:
+            os.close(descriptor)
+
+    @staticmethod
+    def _live_admitted_births(births: Sequence[Any]) -> tuple[Any, ...]:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            owner_liveness,
+        )
+
+        live: list[Any] = []
+        for birth in births:
+            state = owner_liveness(birth)
+            if state is OwnerLiveness.UNKNOWN:
+                raise OperatorError("SPAR admitted process became uninspectable")
+            if state is OwnerLiveness.ALIVE:
+                live.append(birth)
+        return tuple(live)
+
+    def _fence_admitted_births(self) -> None:
+        births = self._admitted_births()
+        live = self._live_admitted_births(births)
+        for birth in live:
+            self._signal_admitted_birth(birth, signal.SIGTERM)
+        deadline = time.monotonic() + BOOTSTRAP_PROCESS_STOP_GRACE_SECONDS
+        while live and time.monotonic() < deadline:
+            time.sleep(0.02)
+            live = self._live_admitted_births(live)
+        for birth in live:
+            self._signal_admitted_birth(birth, signal.SIGKILL)
+        deadline = time.monotonic() + 5.0
+        while live and time.monotonic() < deadline:
+            time.sleep(0.02)
+            live = self._live_admitted_births(live)
+        if live:
+            raise OperatorError("SPAR admitted process births survived bounded stop")
+
+    def _validate_supervisor_parent(self, daemon_birth: Any, session: str) -> Any:
+        from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+            process_birth_id,
+        )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            read_process_birth,
+        )
+
+        supervisor = read_process_birth(int(daemon_birth.parent_pid))
+        if supervisor is None or int(supervisor.parent_pid) != os.getpid():
+            raise OperatorError("daemon is not a child of this controller's supervisor")
+        before = supervisor
+        try:
+            argv = [
+                item.decode("utf-8")
+                for item in Path(f"/proc/{supervisor.pid}/cmdline")
+                .read_bytes()
+                .split(b"\0")
+                if item
+            ]
+        except (OSError, UnicodeDecodeError) as exc:
+            raise OperatorError("cannot attest supervisor argv") from exc
+        after = read_process_birth(supervisor.pid)
+        if before != after:
+            raise OperatorError("supervisor birth changed during argv attestation")
+        lane_index = self.allowed_sessions.index(session)
+        state_slug = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            self.board.task_prefix.strip().lower(),
+        ).strip("-") or "configured-board"
+        exact = {
+            "--board-namespace": self.board.board_namespace,
+            "--task-shard-count": str(self.board.max_lanes),
+            "--task-shard-index": str(lane_index),
+            "--state-prefix": f"{state_slug}_lane_{lane_index}",
+            "--database-owner-session-id": session,
+            "--state-owner-bootstrap-store-id": (
+                self.board.resolved_database_program().store_id
+            ),
+            "--state-owner-bootstrap-fd": str(self.channel.fileno()),
+        }
+        if any(_exact_argv_option(argv, name) != value for name, value in exact.items()):
+            raise OperatorError("supervisor birth differs from the sealed lane profile")
+        supervisor_id = process_birth_id(supervisor)
+        for other_session, record in self.current_by_session.items():
+            if (
+                other_session != session
+                and record.get("supervisor_process_birth_id") == supervisor_id
+            ):
+                raise OperatorError("one supervisor requested multiple owner sessions")
+        return supervisor
+
+    def _admit(
+        self,
+        request: Mapping[str, Any],
+        *,
+        peer_pid: int,
+        peer_uid: int,
+    ) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+            process_birth_id,
+        )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            ProcessBirthIdentity,
+            read_process_birth,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
+            STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+            daemon_required_owner_command_operations,
+            daemon_required_owner_operations,
+        )
+
+        if set(request) != {
+            "schema",
+            "pid",
+            "process_birth",
+            "process_birth_id",
+            "client_id",
+            "store_id",
+        } or request.get("schema") != STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA:
+            raise OperatorError("bootstrap request differs from its closed schema")
+        if self.stopping.is_set() or peer_uid != os.geteuid():
+            raise OperatorError("bootstrap admission is closed or foreign")
+        try:
+            pid = int(request.get("pid") or 0)
+            supplied = ProcessBirthIdentity.from_dict(
+                dict(request.get("process_birth") or {})
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise OperatorError("bootstrap process birth is malformed") from exc
+        observed = read_process_birth(pid)
+        supplied_birth_id = str(request.get("process_birth_id") or "")
+        if (
+            pid <= 1
+            or pid != peer_pid
+            or observed is None
+            or observed != supplied
+            or process_birth_id(observed) != supplied_birth_id
+        ):
+            raise OperatorError("bootstrap process birth is stale or substituted")
+        client_id = str(request.get("client_id") or "")
+        prefix = "database-implementation-daemon:"
+        session = client_id.removeprefix(prefix)
+        program = self.board.resolved_database_program()
+        if (
+            not client_id.startswith(prefix)
+            or session not in self.allowed_sessions
+            or request.get("store_id") != program.store_id
+        ):
+            raise OperatorError("bootstrap request scope differs from the sealed board")
+        with self._lock:
+            supervisor = self._validate_supervisor_parent(supplied, session)
+            prior = self.current_by_session.get(session)
+            if prior is not None:
+                prior_daemon = prior.get("daemon_process_birth")
+                if not isinstance(prior_daemon, Mapping):
+                    raise OperatorError("prior lane daemon birth is malformed")
+                self._require_dead(prior_daemon, noun="lane daemon")
+                prior_supervisor = prior.get("supervisor_process_birth")
+                if (
+                    isinstance(prior_supervisor, Mapping)
+                    and dict(prior_supervisor) != supervisor.to_dict()
+                ):
+                    self._require_dead(prior_supervisor, noun="lane supervisor")
+                grant_id = self.active_grants.pop(session, "")
+                if grant_id:
+                    self.server.revoke_typed_client_grant(grant_id)
+            token, grant = self.server.issue_typed_client_grant_record(
+                client_id=client_id,
+                process_birth_id=supplied_birth_id,
+                allowed_operations=daemon_required_owner_operations(),
+                allowed_command_operations=daemon_required_owner_command_operations(),
+                peer_pid=pid,
+                ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
+            )
+            if self.stopping.is_set():
+                self.server.revoke_typed_client_grant(grant.grant_id)
+                raise OperatorError("bootstrap admission closed during grant issue")
+            identity = self.server.identity
+            if identity is None:
+                self.server.revoke_typed_client_grant(grant.grant_id)
+                raise OperatorError("state owner lost identity during grant issue")
+            self.current_by_session[session] = {
+                "session": session,
+                "client_id": client_id,
+                "daemon_process_birth": supplied.to_dict(),
+                "daemon_process_birth_id": supplied_birth_id,
+                "supervisor_process_birth": supervisor.to_dict(),
+                "supervisor_process_birth_id": process_birth_id(supervisor),
+                "grant_expires_at_ms": int(grant.expires_at),
+                "grant_renew_after": (
+                    time.monotonic() + INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS
+                ),
+            }
+            self.active_grants[session] = grant.grant_id
+            self._persist()
+        return {
+            "schema": STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA,
+            "ok": True,
+            "endpoint": program.quack_endpoint,
+            "socket_path": str(self.server.typed_command_socket_path()),
+            "store_id": program.store_id,
+            "server_id": identity.server_id,
+            "client_id": client_id,
+            "process_birth_id": supplied_birth_id,
+            "token": token,
+            "execution_route_policy": self.execution_route_policy.to_dict(),
+        }
+
+    def _renew_due_grants(self) -> None:
+        """Renew only grants whose exact credential-holding birth is live."""
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            ProcessBirthIdentity,
+            owner_liveness,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+            TypedStateOwnerAuthorizationError,
+        )
+
+        now = time.monotonic()
+        with self._lock:
+            due = tuple(
+                (
+                    session,
+                    grant_id,
+                    float(
+                        (self.current_by_session.get(session) or {}).get(
+                            "grant_renew_after",
+                            0.0,
+                        )
+                    ),
+                    dict(self.current_by_session.get(session) or {}),
+                )
+                for session, grant_id in self.active_grants.items()
+            )
+        changed = False
+        for session, grant_id, renew_after, record in due:
+            if now < renew_after:
+                continue
+            raw_birth = record.get("daemon_process_birth")
+            if not isinstance(raw_birth, Mapping):
+                raise OperatorError("SPAR grant-renewal daemon birth is unavailable")
+            daemon_birth = ProcessBirthIdentity.from_dict(raw_birth)
+            liveness = owner_liveness(daemon_birth)
+            if liveness is OwnerLiveness.DEAD:
+                continue
+            if liveness is not OwnerLiveness.ALIVE:
+                raise OperatorError("SPAR grant-renewal daemon birth is uninspectable")
+            try:
+                renewed = self.server.renew_typed_client_grant(
+                    grant_id,
+                    ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
+                )
+            except TypedStateOwnerAuthorizationError:
+                if owner_liveness(daemon_birth) is OwnerLiveness.DEAD:
+                    continue
+                raise
+            with self._lock:
+                if self.active_grants.get(session) != grant_id:
+                    raise OperatorError("SPAR state-owner grant rotated during renewal")
+                current = self.current_by_session.get(session)
+                if not isinstance(current, dict):
+                    raise OperatorError("SPAR grant-renewal record is unavailable")
+                current["grant_expires_at_ms"] = int(renewed.expires_at)
+                current["grant_renew_after"] = (
+                    time.monotonic() + INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS
+                )
+                changed = True
+        if changed:
+            self._persist()
+
+    def _run(self) -> None:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            StateOwnerBootstrapError,
+            _receive_frame,
+            _send_frame,
+        )
+
+        try:
+            self.channel.settimeout(1.0)
+            self._persist()
+        except BaseException as exc:
+            self._terminal_failure(exc)
+            return
+        self.ready.set()
+        while not self.stopping.is_set():
+            accepted: socket.socket | None = None
+            try:
+                self._renew_due_grants()
+            except BaseException as exc:
+                self._terminal_failure(exc)
+                return
+            try:
+                accepted, _address = self.channel.accept()
+                with self._lock:
+                    if self.stopping.is_set():
+                        accepted.close()
+                        return
+                    self._accepted = accepted
+                accepted.settimeout(1.0)
+                peer = accepted.getsockopt(
+                    socket.SOL_SOCKET,
+                    socket.SO_PEERCRED,
+                    struct.calcsize("3i"),
+                )
+                peer_pid, peer_uid, _peer_gid = struct.unpack("3i", peer)
+                response = self._admit(
+                    _receive_frame(accepted),
+                    peer_pid=int(peer_pid),
+                    peer_uid=int(peer_uid),
+                )
+                _send_frame(accepted, response)
+            except TimeoutError:
+                continue
+            except (EOFError, OperatorError, StateOwnerBootstrapError) as exc:
+                if not self.stopping.is_set():
+                    with self._lock:
+                        self.rejection_count += 1
+                        self.last_rejection = type(exc).__name__
+                    try:
+                        self._persist()
+                    except BaseException as persist_exc:
+                        self._terminal_failure(persist_exc)
+                        return
+                continue
+            except OSError as exc:
+                if not self.stopping.is_set() and accepted is None:
+                    self._terminal_failure(exc)
+                    return
+                continue
+            except BaseException as exc:
+                self._terminal_failure(exc)
+                return
+            finally:
+                if accepted is not None:
+                    with self._lock:
+                        if self._accepted is accepted:
+                            self._accepted = None
+                    try:
+                        accepted.close()
+                    except OSError:
+                        pass
+
+
+class _OwnerProjectionMonitor:
+    def __init__(
+        self,
+        server: Any,
+        paths: Mapping[str, Path],
+        *,
+        on_failure: Callable[[BaseException], None],
+    ) -> None:
+        self.server = server
+        self.paths = paths
+        self.on_failure = on_failure
+        self.stopping = threading.Event()
+        self.ready = threading.Event()
+        self.failure = ""
+        self._thread = threading.Thread(
+            target=self._run,
+            name="spar-owner-projection",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+        if not self.ready.wait(BOOTSTRAP_READY_TIMEOUT_SECONDS):
+            raise OperatorError("SPAR owner projection monitor did not become ready")
+        if self.failure:
+            raise OperatorError("SPAR owner projection monitor failed during startup")
+
+    def stop(self) -> None:
+        self.stopping.set()
+        self._thread.join(timeout=5.0)
+        if self._thread.is_alive():
+            raise OperatorError("SPAR owner projection monitor did not stop")
+
+    def _run(self) -> None:
+        initial = True
+        while not self.stopping.is_set():
+            try:
+                _publish_live_projection(self.server, self.paths)
+            except BaseException as exc:
+                self.failure = type(exc).__name__
+                self.ready.set()
+                self.on_failure(exc)
+                return
+            if initial:
+                initial = False
+                self.ready.set()
+            self.stopping.wait(1.0)
+
+
+def _new_bootstrap_listener(*, lane_count: int) -> socket.socket:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+        validate_state_owner_bootstrap_listener,
+    )
+
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        listener.bind("\0spar-bootstrap-" + secrets.token_hex(16))
+        listener.listen(max(8, int(lane_count) * 2))
+        validate_state_owner_bootstrap_listener(listener.fileno())
+    except BaseException:
+        listener.close()
+        raise
+    return listener
+
+
+def _bind_bootstrap_launch_plan(
+    plan: dict[str, Any],
+    *,
+    listener: socket.socket,
+    store_id: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _generic_state_owner_bootstrap_binding,
+    )
+
+    argv = list(plan.get("argv") or ())
+    for value in (
+        "--state-owner-bootstrap-fd",
+        str(listener.fileno()),
+        "--state-owner-bootstrap-store-id",
+        store_id,
+    ):
+        argv.append(f"--common-arg={value}")
+    common_args = tuple(
+        item.split("=", 1)[1]
+        for item in argv
+        if item.startswith("--common-arg=")
+    )
+    if _generic_state_owner_bootstrap_binding(common_args) != listener.fileno():
+        raise OperatorError("SPAR bootstrap launch-plan descriptor changed")
+    if any("IPFS_ACCELERATE_AGENT_QUACK_TOKEN=" in item for item in argv):
+        raise OperatorError("SPAR bootstrap launch plan contains a raw credential")
+    plan["argv"] = argv
+    plan["state_owner_bootstrap"] = {
+        "transport": "private_inherited_socket",
+        "descriptor": listener.fileno(),
+        "store_id": store_id,
+        "credential_persisted": False,
+    }
+
+
+def supervise(
+    config_path: Path,
+    *,
+    implement: bool,
+    dry_run: bool = False,
+    duration_seconds: float = float("inf"),
+) -> int:
+    """Run the native configured-board fabric with exact daemon-birth grants."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        _apply_configured_board_environment,
+        configured_board_launch_plan,
+        preflight_configured_board,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        main as multi_supervisor_main,
+    )
+    board, _config = _load_config(config_path)
+    preflight = preflight_configured_board(board)
+    if preflight.get("valid") is not True:
+        raise OperatorError("configured-board preflight rejected the sealed SPAR board")
+    plan = configured_board_launch_plan(
+        board,
+        implement=implement,
+        detach=False,
+        duration_seconds=duration_seconds,
+    )
+    program = board.resolved_database_program()
+    if dry_run:
+        listener = _new_bootstrap_listener(lane_count=board.max_lanes)
+        try:
+            _bind_bootstrap_launch_plan(
+                plan,
+                listener=listener,
+                store_id=program.store_id,
+            )
+            print(json.dumps(plan, indent=2, sort_keys=True))
+        finally:
+            listener.close()
+        return 0
+    paths = _runtime_paths(board)
+    route_policy = _execution_route_policy(paths)
+    server, paths, program, identity, ready = _start_state_owner(config_path)
+    listener: socket.socket | None = None
+    broker: _SparStateOwnerBootstrapBroker | None = None
+    monitor: _OwnerProjectionMonitor | None = None
+    prior_sigterm: Any = None
+    try:
+        listener = _new_bootstrap_listener(lane_count=board.max_lanes)
+        broker = _SparStateOwnerBootstrapBroker(
+            channel=listener,
+            server=server,
+            board=board,
+            paths=paths,
+            execution_route_policy=route_policy,
+        )
+        broker.start()
+        monitor = _OwnerProjectionMonitor(
+            server,
+            paths,
+            on_failure=broker._terminal_failure,
+        )
+        monitor.start()
+        _bind_bootstrap_launch_plan(
+            plan,
+            listener=listener,
+            store_id=program.store_id,
+        )
+        argv = list(plan["argv"])
+        _apply_configured_board_environment(plan)
+        for name in (
+            "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+            "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+            "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+            "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE",
+        ):
+            os.environ.pop(name, None)
+        prior_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def fail_before_runner_signal_install(signum: int, _frame: Any) -> None:
+            raise OperatorError(f"SPAR controller received fail-fast signal {signum}")
+
+        signal.signal(signal.SIGTERM, fail_before_runner_signal_install)
+        broker.enable_fail_fast()
+        print(
+            json.dumps(
+                {
+                    "schema": OPERATOR_SCHEMA,
+                    "command": "supervise",
+                    "ready": True,
+                    "implement": bool(implement),
+                    "identity": identity.to_dict(),
+                    "live": ready,
+                    "lanes": board.max_lanes,
+                    "execution_route_policy_id": route_policy.policy_id,
+                    "credential_transport": "private_inherited_socket",
+                    "credential_in_environment_argv_or_file": False,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        returncode = int(multi_supervisor_main(argv))
+        signal.signal(signal.SIGTERM, prior_sigterm)
+        prior_sigterm = None
+        if broker.failure or monitor.failure:
+            raise OperatorError("SPAR owner control monitor failed during supervisor execution")
+        return returncode
+    finally:
+        failures: list[str] = []
+        if prior_sigterm is not None:
+            signal.signal(signal.SIGTERM, prior_sigterm)
+        if monitor is not None:
+            try:
+                monitor.stop()
+            except Exception as exc:
+                failures.append(type(exc).__name__)
+        if broker is not None:
+            try:
+                broker.stop()
+            except Exception as exc:
+                failures.append(type(exc).__name__)
+        elif listener is not None:
+            listener.close()
+        try:
+            server.stop()
+        except Exception as exc:
+            failures.append(type(exc).__name__)
+        if failures and sys.exc_info()[0] is None:
+            raise OperatorError("SPAR supervisor cleanup failed: " + ",".join(failures))
 
 
 def _owner_liveness(status_payload: Mapping[str, Any]) -> str:
@@ -1246,21 +2030,6 @@ def _owner_liveness(status_payload: Mapping[str, Any]) -> str:
     if observed is OwnerLiveness.DEAD:
         return "dead"
     return "unknown"
-
-
-def _token_path(owner_dir: Path, secret_handle: str) -> Path:
-    safe = secret_handle.replace(":", "_").replace("/", "_")
-    return owner_dir / f"{safe}.quack-token"
-
-
-def _read_owner_token(path: Path) -> str:
-    metadata = os.stat(path, follow_symlinks=False)
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
-        raise OperatorError("Quack token vault file is not a private regular file")
-    token = path.read_text(encoding="utf-8").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{8,}", token):
-        raise OperatorError("Quack token vault material is malformed")
-    return token
 
 
 def _task_status(connection: Any) -> dict[str, Any]:
@@ -1312,15 +2081,95 @@ def _task_status(connection: Any) -> dict[str, Any]:
     }
 
 
+def _read_live_projection(
+    paths: Mapping[str, Path], owner_status: Mapping[str, Any]
+) -> dict[str, Any]:
+    payload = _json_object(paths["owner"] / "spar-live-projection.json")
+    claimed = str(payload.get("projection_cid") or "")
+    unsigned = dict(payload)
+    unsigned.pop("projection_cid", None)
+    identity = owner_status.get("identity")
+    expected_birth = (
+        str(identity.get("process_birth_id") or "")
+        if isinstance(identity, Mapping)
+        else ""
+    )
+    observed_at = payload.get("observed_at_unix_ns")
+    task_projection = payload.get("task_projection")
+    projection_fields = {
+        "status_counts",
+        "dependency_ready_task_ids",
+        "active_task_ids",
+        "blocked_count",
+        "terminal_count",
+        "task_count",
+    }
+    projection_shape_valid = bool(
+        isinstance(task_projection, Mapping)
+        and set(task_projection) == projection_fields
+        and isinstance(task_projection.get("status_counts"), Mapping)
+        and all(
+            isinstance(key, str)
+            and type(value) is int
+            and value >= 0
+            for key, value in task_projection.get("status_counts", {}).items()
+        )
+        and all(
+            isinstance(task_projection.get(name), list)
+            and all(isinstance(item, str) and item for item in task_projection[name])
+            and len(task_projection[name]) == len(set(task_projection[name]))
+            for name in ("dependency_ready_task_ids", "active_task_ids")
+        )
+        and all(
+            type(task_projection.get(name)) is int
+            and task_projection[name] >= 0
+            for name in ("blocked_count", "terminal_count", "task_count")
+        )
+        and task_projection.get("task_count")
+        == sum(task_projection.get("status_counts", {}).values())
+        and task_projection.get("blocked_count")
+        == task_projection.get("status_counts", {}).get("blocked", 0)
+    )
+    if (
+        set(payload)
+        != {
+            "schema",
+            "observed_at_unix_ns",
+            "owner_process_birth_id",
+            "server_id",
+            "store_id",
+            "generation",
+            "schema_revision",
+            "quack_authenticated_live_query",
+            "task_projection",
+            "projection_cid",
+        }
+        or payload.get("schema") != "spar/live-owner-projection@1"
+        or claimed != _identity(unsigned)
+        or type(observed_at) is not int
+        or observed_at > time.time_ns() + 5_000_000_000
+        or time.time_ns() - observed_at > 10_000_000_000
+        or not expected_birth
+        or payload.get("owner_process_birth_id") != expected_birth
+        or not isinstance(identity, Mapping)
+        or payload.get("server_id") != identity.get("server_id")
+        or payload.get("store_id") != identity.get("store_id")
+        or payload.get("generation") != identity.get("generation")
+        or payload.get("schema_revision") != identity.get("schema_revision")
+        or payload.get("quack_authenticated_live_query") is not True
+        or not projection_shape_valid
+    ):
+        raise OperatorError("live owner task projection is stale or invalid")
+    return dict(task_projection)
+
+
 def status(config_path: Path) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_duckdb_connection,
-        open_quack_transport_connection,
     )
 
     board, _config = _load_config(config_path)
     paths = _runtime_paths(board)
-    program = board.resolved_database_program()
     state_status_path = paths["owner"] / "quack-state-server.status.json"
     owner_status: dict[str, Any] = {}
     if state_status_path.is_file():
@@ -1338,17 +2187,12 @@ def status(config_path: Path) -> dict[str, Any]:
     connection = None
     try:
         if live_ready:
-            token = _read_owner_token(
-                _token_path(paths["owner"], program.endpoint_secret_handle)
-            )
-            connection = open_quack_transport_connection(
-                program.quack_endpoint,
-                token=token,
-            )
             task_projection = {
+                **_read_live_projection(paths, owner_status),
                 "available": True,
-                "transport": "quack",
-                **_task_status(connection),
+                "transport": "exclusive_owner_authenticated_quack_projection",
+                "authoritative": False,
+                "authority_source": "DuckDB/DatabaseTaskSource@1",
             }
         elif paths["database"].is_file() and liveness in {"absent", "dead"}:
             connection = open_duckdb_connection(paths["database"])
@@ -1420,6 +2264,26 @@ def _parser() -> argparse.ArgumentParser:
         "state-owner",
         help="serve the materialized DuckDB authority through fenced loopback Quack",
     )
+    supervise_parser = commands.add_parser(
+        "supervise",
+        help="run the native Quack owner and configured-board scheduler together",
+    )
+    supervise_parser.add_argument(
+        "--implement",
+        action="store_true",
+        help="authorize implementation-provider dispatch",
+    )
+    supervise_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="render the exact native launch without starting owner or workers",
+    )
+    supervise_parser.add_argument(
+        "--duration-seconds",
+        type=float,
+        default=float("inf"),
+        help="bounded supervisor lifetime; defaults to the board terminal",
+    )
     status_parser = commands.add_parser(
         "status",
         help="report owner liveness and durable task readiness without exposing tokens",
@@ -1444,6 +2308,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if arguments.command == "state-owner":
             return state_owner(config_path)
+        if arguments.command == "supervise":
+            return supervise(
+                config_path,
+                implement=bool(arguments.implement),
+                dry_run=bool(arguments.dry_run),
+                duration_seconds=float(arguments.duration_seconds),
+            )
         if arguments.command == "status":
             result = status(config_path)
             print(json.dumps(result, indent=2, sort_keys=True))

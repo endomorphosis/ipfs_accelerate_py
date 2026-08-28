@@ -118956,6 +118956,41 @@ def _lgcvf_daemon_call(phase: str, operation: Callable[[], Any]) -> Any:
         raise
 
 
+def _request_process_bound_state_owner_bootstrap(
+    descriptor: int,
+    *,
+    client_id: str,
+    store_id: str,
+) -> Any:
+    """Harden this daemon before receiving its birth-bound owner credential.
+
+    The normal entrypoint hardening is conditional on a credential already
+    being present.  Inherited-socket bootstrap intentionally starts without
+    one, so the kernel process boundary must be established unconditionally
+    before the owner can send the first credential to this process.
+    """
+
+    from ..runtime.process_security import (
+        establish_state_authority_process_boundary,
+    )
+    from ..task_sources.state_owner_bootstrap import (
+        request_state_owner_bootstrap,
+    )
+
+    _lgcvf_daemon_call(
+        "process_security",
+        establish_state_authority_process_boundary,
+    )
+    return _lgcvf_daemon_call(
+        "owner_bootstrap",
+        lambda: request_state_owner_bootstrap(
+            descriptor,
+            client_id=client_id,
+            store_id=store_id,
+        ),
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
     # the in-memory attach credential, so re-establish the kernel boundary
@@ -119089,25 +119124,18 @@ def main(argv: list[str] | None = None) -> None:
                 raise RuntimeError(
                     "state-owner bootstrap requires an explicit database owner session"
                 )
-            from ..task_sources.state_owner_bootstrap import (
-                request_state_owner_bootstrap,
-            )
-
-            credentials = _lgcvf_daemon_call(
-                "owner_bootstrap",
-                lambda: request_state_owner_bootstrap(
-                    bootstrap_fd,
-                    client_id=(
-                        f"database-implementation-daemon:{owner_session_id}"
-                    ),
-                    store_id=str(
-                        getattr(
-                            args,
-                            "state_owner_bootstrap_store_id",
-                            "",
-                        )
-                        or ""
-                    ),
+            credentials = _request_process_bound_state_owner_bootstrap(
+                bootstrap_fd,
+                client_id=(
+                    f"database-implementation-daemon:{owner_session_id}"
+                ),
+                store_id=str(
+                    getattr(
+                        args,
+                        "state_owner_bootstrap_store_id",
+                        "",
+                    )
+                    or ""
                 ),
             )
             state_owner_bootstrap_credentials = credentials

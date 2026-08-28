@@ -70,7 +70,7 @@
       "task_prefix": "SPAR-",
       "task_shard_count": 3
     },
-    "endpoint_secret_handle": "handle:spar-v1",
+    "endpoint_secret_handle": "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
     "event_store_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/events",
     "explicit_legacy": false,
     "export_profile": "spar-v1",
@@ -84,7 +84,7 @@
     "worktree_root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
   },
   "dependency_guardrail_enabled": true,
-  "dependency_seal_cid": "sha256:6ed166782f29c46361ece526e1adb330c8484032045ffdf5a3a91eb269189cc6",
+  "dependency_seal_cid": "sha256:0b1bf8eb0bc4c30bf1be397d7c21b5d486b6dcf318601b0e17ea278d2dab2d14",
   "dependency_seal_path": "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
   "dependency_validator_path": "scripts/validate_semantic_preserving_remodularization_dependencies.py",
   "ducklake_projection_program": {

@@ -9034,6 +9034,52 @@ class PortalSupervisorConfig:
             raise ValueError(
                 "idle_lane_work_stealing requires strict multi-lane sharding"
             )
+        generic_bootstrap_requested = bool(
+            self.configured_board_live_context is None
+            and (
+                self.state_owner_bootstrap_fd >= 3
+                or self.state_owner_bootstrap_store_id
+                or self.database_owner_session_id
+            )
+        )
+        if generic_bootstrap_requested:
+            program = self.database_program
+            if (
+                self.state_owner_bootstrap_fd < 3
+                or not self.state_owner_bootstrap_store_id
+                or not self.database_owner_session_id
+                or program is None
+                or program.task_source_kind != "duckdb"
+                or program.authority_mode != "quack"
+                or program.failover_policy != FAILOVER_FAIL_CLOSED
+                or program.explicit_legacy
+                or program.endpoint_secret_handle
+                != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+                or self.state_owner_bootstrap_store_id != program.store_id
+            ):
+                raise SupervisorSchedulerConfigError(
+                    "generic configured-board state-owner bootstrap profile is incomplete"
+                )
+            from ..runtime.process_security import (
+                state_authority_credentials_present,
+            )
+            from ..task_sources.state_owner_bootstrap import (
+                StateOwnerBootstrapError,
+                validate_state_owner_bootstrap_listener,
+            )
+
+            if state_authority_credentials_present():
+                raise SupervisorSchedulerConfigError(
+                    "generic state-owner bootstrap supervisor received a raw credential"
+                )
+            try:
+                validate_state_owner_bootstrap_listener(
+                    int(self.state_owner_bootstrap_fd)
+                )
+            except StateOwnerBootstrapError as exc:
+                raise SupervisorSchedulerConfigError(
+                    "generic configured-board state-owner bootstrap listener is invalid"
+                ) from exc
         if self.configured_board_live_context is not None:
             live = self.configured_board_live_context
             try:

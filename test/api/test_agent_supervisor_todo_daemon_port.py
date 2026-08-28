@@ -11575,6 +11575,7 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
         quack_state_client as quack_state_client_module,
         state_owner_bootstrap as state_owner_bootstrap_module,
     )
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
     from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
         TYPED_STATE_OWNER_SOCKET_ENV,
         TYPED_STATE_OWNER_TOKEN_ENV,
@@ -11583,6 +11584,7 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
     sentinel = "must-not-cross-lgcvf-owner-client-construction"
     endpoint = "quack:127.0.0.1:24701"
     store_id = "state/control.duckdb"
+    calls: list[str] = []
 
     class Credentials:
         client_id = "database-implementation-daemon:lane-0"
@@ -11595,6 +11597,7 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
             self.store_id = store_id
 
         def install_environment(self):
+            calls.append("credential_install")
             os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = sentinel
             os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = str(
                 tmp_path / "owner.sock"
@@ -11621,13 +11624,32 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
             "execution_path": tmp_path / "execution.duckdb",
         },
     )
+    def establish_boundary():
+        assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+        assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+        calls.append("process_boundary")
+        return True
+
+    def request_credentials(*_args, **_kwargs):
+        assert calls == ["process_boundary"]
+        assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+        assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+        calls.append("credential_received")
+        return Credentials()
+
+    monkeypatch.setattr(
+        process_security,
+        "establish_state_authority_process_boundary",
+        establish_boundary,
+    )
     monkeypatch.setattr(
         state_owner_bootstrap_module,
         "request_state_owner_bootstrap",
-        lambda *_args, **_kwargs: Credentials(),
+        request_credentials,
     )
 
     def fail_client_construction(**_kwargs):
+        calls.append("client_construct")
         raise TypeError(sentinel)
 
     monkeypatch.setattr(
@@ -11673,6 +11695,12 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
     assert int(line) > 0
     assert len(module_digest) == 12
     assert sentinel not in captured.err
+    assert calls == [
+        "process_boundary",
+        "credential_received",
+        "credential_install",
+        "client_construct",
+    ]
     assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
     assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
 
