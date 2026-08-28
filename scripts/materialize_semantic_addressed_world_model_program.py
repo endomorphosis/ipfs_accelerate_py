@@ -172,12 +172,58 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         root
         / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json"
     )
+    migration_history = migration.get("migration_history")
+    expected_migration_revision = (
+        f"SAWM-R2-M{len(migration_history) + 1}"
+        if isinstance(migration_history, list)
+        else ""
+    )
     if (
         migration.get("schema")
         != "sawm/prior-materialization-migration-inventory@2"
-        or migration.get("migration_revision") != "SAWM-R2-M2"
+        or migration.get("migration_revision") != expected_migration_revision
     ):
         raise MaterializationError("the sealed append-only migration revision is missing")
+    launch_failure = migration.get("preworker_launch_failure")
+    if (
+        not isinstance(launch_failure, dict)
+        or set(launch_failure)
+        != {
+            "schema",
+            "command",
+            "phase",
+            "exit_code",
+            "error_payload",
+            "error_payload_cid",
+            "source_head",
+            "source_tree",
+            "configuration_root",
+            "store_id",
+            "owner_generation",
+            "owner_server_id",
+            "owner_process_birth_id",
+            "credential_handoff_retired",
+            "worker_started",
+            "task_claimed",
+            "task_state_changed",
+            "implementation_provider_invoked",
+            "failure_time_authority",
+        }
+        or launch_failure.get("schema")
+        != "sawm/pre-worker-launch-failure@1"
+        or _identity(launch_failure.get("error_payload"))
+        != launch_failure.get("error_payload_cid")
+        or any(
+            launch_failure.get(field) is not False
+            for field in (
+                "worker_started",
+                "task_claimed",
+                "task_state_changed",
+                "implementation_provider_invoked",
+            )
+        )
+    ):
+        raise MaterializationError("the typed pre-worker launch failure is invalid")
     prior_goal_cids = migration.get("prior_goal_cids")
     prior_task_cids = migration.get("prior_task_cids")
     if not isinstance(prior_goal_cids, dict) or not isinstance(prior_task_cids, dict):
@@ -1033,6 +1079,7 @@ def _migration_body(
             for path in migration["bounded_control_plane_repair_paths"]
         },
         "quack_extension_pin": dict(config["quack_owner"]["pinned_extension"]),
+        "preworker_launch_failure": dict(migration["preworker_launch_failure"]),
         "validator_digest": validation_digest,
         "supersession_reason": migration["supersession_reason"],
         "supersession_mode": "source_authority_revision_only",
@@ -1047,7 +1094,7 @@ def _migration_body(
 def _migration_plan_delta(population: Mapping[str, Any]) -> dict[str, Any]:
     migration = population["migration_inventory"]
     return {
-        "kind": "bounded_control_plane_capsule_launch_repair",
+        "kind": str(migration["migration_kind"]),
         "prior_source_binding_cid": migration["prior_source_binding_cid"],
         "prior_migration_receipt_cids": [
             entry["migration_receipt_cid"]

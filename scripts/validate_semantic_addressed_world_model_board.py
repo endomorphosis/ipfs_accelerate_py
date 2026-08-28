@@ -1167,16 +1167,21 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "3"
+        or program.get("store_generation") != "5"
         or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
     if (
         migration.get("schema") != "sawm/prior-materialization-migration-inventory@2"
-        or migration.get("migration_revision") != "SAWM-R2-M2"
+        or migration.get("migration_revision") != "SAWM-R2-M3"
+        or migration.get("migration_kind")
+        != "bounded_preworker_capsule_mode_and_quack_generation_recovery"
+        or migration.get("supersession_reason") != migration.get("migration_kind")
         or migration.get("prior_authority_preserved") is not True
         or prior.get("preserve_append_only") is not True
+        or prior.get("migration_revision") != migration.get("migration_revision")
+        or prior.get("reason") != migration.get("migration_kind")
         or prior.get("store_id") != migration.get("prior_store_id")
         or prior.get("program_definition_cid") != migration.get("prior_program_definition_cid")
         or prior.get("plan_root_cid") != migration.get("prior_plan_root_cid")
@@ -1188,33 +1193,76 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or migration.get("prior_goal_count") != len(GOAL_IDS)
         or migration.get("definition_source_binding_cid")
         != "sha256:cf4d9fa1ba595286866f5406e61b2ac71e4ed3730af70a2b07f88d0c16905e5e"
-        or migration.get("prior_event_watermark") != 109
-        or migration.get("prior_plan_revision") != 2
-        or migration.get("target_plan_revision") != 3
+        or migration.get("prior_event_watermark") != 111
+        or migration.get("prior_plan_revision") != 3
+        or migration.get("target_plan_revision") != 4
     ):
         config_errors.append("append-only prior-SAWM migration binding mismatch")
     history = migration.get("migration_history")
     if (
         not isinstance(history, list)
-        or len(history) != 1
-        or not isinstance(history[0], Mapping)
-        or history[0].get("schema") != "sawm/source-migration-history-entry@1"
-        or history[0].get("migration_revision") != "SAWM-R2-M1"
-        or history[0].get("target_store_id") != migration.get("prior_store_id")
-        or history[0].get("target_control_store_sha256")
+        or len(history) != 2
+        or any(not isinstance(entry, Mapping) for entry in history)
+        or [entry.get("migration_revision") for entry in history]
+        != ["SAWM-R2-M1", "SAWM-R2-M2"]
+        or any(
+            entry.get("schema") != "sawm/source-migration-history-entry@1"
+            for entry in history
+        )
+        or history[-1].get("target_store_id") != migration.get("prior_store_id")
+        or history[-1].get("target_control_store_sha256")
         != migration.get("prior_control_store_sha256")
-        or history[0].get("target_event_watermark")
+        or history[-1].get("target_event_watermark")
         != migration.get("prior_event_watermark")
-        or history[0].get("target_event_prefix_sha256")
+        or history[-1].get("target_event_prefix_sha256")
         != migration.get("prior_event_prefix_sha256")
-        or history[0].get("current_source_binding_cid")
+        or history[-1].get("current_source_binding_cid")
         != migration.get("prior_source_binding_cid")
-        or history[0].get("migration_receipt_cid")
+        or history[-1].get("migration_receipt_cid")
         != migration.get("prior_materialization_receipt_cid")
-        or history[0].get("migration_receipt_path")
+        or history[-1].get("migration_receipt_path")
         != migration.get("prior_materialization_receipt_path")
     ):
-        config_errors.append("M0-to-M1 migration history binding mismatch")
+        config_errors.append("M0-through-M2 migration history binding mismatch")
+    launch_failure = migration.get("preworker_launch_failure")
+    if isinstance(launch_failure, Mapping):
+        error_payload = launch_failure.get("error_payload")
+        error_payload_cid = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    error_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+    else:
+        error_payload_cid = ""
+    if (
+        not isinstance(launch_failure, Mapping)
+        or launch_failure.get("schema") != "sawm/pre-worker-launch-failure@1"
+        or launch_failure.get("error_payload_cid") != error_payload_cid
+        or launch_failure.get("source_head") != migration.get("prior_source_head")
+        or launch_failure.get("source_tree") != migration.get("prior_source_tree")
+        or launch_failure.get("store_id") != migration.get("prior_store_id")
+        or launch_failure.get("owner_generation") != 3
+        or launch_failure.get("exit_code") != 2
+        or launch_failure.get("credential_handoff_retired") is not True
+        or launch_failure.get("failure_time_authority") != "unavailable"
+        or any(
+            launch_failure.get(field) is not False
+            for field in (
+                "worker_started",
+                "task_claimed",
+                "task_state_changed",
+                "implementation_provider_invoked",
+            )
+        )
+    ):
+        config_errors.append("typed pre-worker launch failure binding mismatch")
     repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())
     if (
         not repair_paths

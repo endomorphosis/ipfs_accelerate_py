@@ -265,6 +265,9 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
             migration_body = materializer._migration_body(
                 population, config, validation_digest
             )
+            assert migration_body["preworker_launch_failure"] == migration[
+                "preworker_launch_failure"
+            ]
             migration_digest = materializer._identity(migration_body)
             source.plans.append_revision(
                 plan_cid=str(population["plan_root_cid"]),
@@ -333,7 +336,7 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["completion_prerequisite"] is False
 
 
-def test_m2_migration_preserves_the_exact_m0_and_m1_authorities() -> None:
+def test_m3_migration_preserves_the_exact_m0_m1_and_m2_authorities() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_chain_test",
@@ -342,29 +345,47 @@ def test_m2_migration_preserves_the_exact_m0_and_m1_authorities() -> None:
     migration = population["migration_inventory"]
     history = migration["migration_history"]
 
-    assert migration["migration_revision"] == "SAWM-R2-M2"
-    assert migration["prior_plan_revision"] == 2
-    assert migration["target_plan_revision"] == 3
-    assert migration["prior_event_watermark"] == 109
-    assert len(history) == 1
+    assert migration["migration_revision"] == "SAWM-R2-M3"
+    assert migration["migration_kind"] == (
+        "bounded_preworker_capsule_mode_and_quack_generation_recovery"
+    )
+    assert migration["supersession_reason"] == migration["migration_kind"]
+    assert migration["prior_plan_revision"] == 3
+    assert migration["target_plan_revision"] == 4
+    assert migration["prior_event_watermark"] == 111
+    assert len(history) == 2
     m1 = history[0]
+    m2 = history[1]
     assert m1["migration_revision"] == "SAWM-R2-M1"
+    assert m2["migration_revision"] == "SAWM-R2-M2"
     assert materializer._store_sha256(REPO_ROOT / m1["prior_store_id"]) == m1[
         "prior_control_store_sha256"
     ]
     assert materializer._store_sha256(REPO_ROOT / m1["target_store_id"]) == m1[
         "target_control_store_sha256"
     ]
-    assert m1["target_control_store_sha256"] == migration[
+    assert materializer._store_sha256(REPO_ROOT / m2["target_store_id"]) == m2[
+        "target_control_store_sha256"
+    ]
+    assert m2["target_control_store_sha256"] == migration[
         "prior_control_store_sha256"
     ]
-    assert m1["target_event_prefix_sha256"] == migration[
+    assert m2["target_event_prefix_sha256"] == migration[
         "prior_event_prefix_sha256"
     ]
-    materializer._verify_receipt_anchor(
-        REPO_ROOT / m1["migration_receipt_path"],
-        m1["migration_receipt_cid"],
-    )
+    for entry in history:
+        materializer._verify_receipt_anchor(
+            REPO_ROOT / entry["migration_receipt_path"],
+            entry["migration_receipt_cid"],
+        )
+    failure = migration["preworker_launch_failure"]
+    assert failure["schema"] == "sawm/pre-worker-launch-failure@1"
+    assert failure["worker_started"] is False
+    assert failure["task_claimed"] is False
+    assert failure["task_state_changed"] is False
+    assert failure["implementation_provider_invoked"] is False
+    assert failure["credential_handoff_retired"] is True
+    assert failure["failure_time_authority"] == "unavailable"
 
 
 def test_live_owner_identity_requires_exact_canonical_replica_rows(

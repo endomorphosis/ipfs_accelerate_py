@@ -1402,8 +1402,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or sealed_migration.get("prior_authority_preserved") is not True
         ):
             protocol_errors.append("append-only source-migration seal differs from its inventory")
-        if scheduler.get("database_program", {}).get("store_generation") != "3":
-            protocol_errors.append("migrated owner must acquire successor store generation 3")
+        if scheduler.get("database_program", {}).get("store_generation") != "5":
+            protocol_errors.append("migrated owner must acquire successor store generation 5")
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"
