@@ -43,6 +43,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     open_database_implementation_daemon,
     parse_args,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
     build_portal_implementation_daemon_from_args,
@@ -768,6 +771,418 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
         assert replacement_claim.fencing_token > old_attempt.fencing_token
     finally:
         replacement.close()
+
+
+def test_claim_persists_exact_post_cas_control_revision_binding(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:claim-control-binding")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
+        binding = attempt.body["control_binding"]
+        assert binding["task_cid"] == attempt.task_cid
+        assert binding["claim_id"] == attempt.claim_id
+        assert binding["attempt_id"] == attempt.attempt_id
+        assert binding["attempt_number"] == attempt.attempt_number
+        assert binding["lease_id"] == attempt.lease_id
+        assert binding["fencing_token"] == attempt.fencing_token
+        assert binding["fence_epoch"] == attempt.fence_epoch
+        assert binding["control_expected_status"] == "in_progress"
+        assert binding["control_expected_revision"] == task.revision == 2
+        assert str(binding["control_task_projection_cid"]).startswith("bagu")
+        assert str(binding["binding_id"]).startswith("bagu")
+    finally:
+        daemon.close()
+
+
+def test_post_claim_blocked_race_withdraws_without_provider_and_reports_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-claim-block-race",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(2))
+        original_claim = daemon.coordinator.claim_ready_task
+        raced: dict[str, object] = {}
+
+        def block_after_coordination_claim(*args: object, **kwargs: object) -> object:
+            claim = original_claim(*args, **kwargs)
+            if claim is not None and not raced:
+                task = daemon.task_source.get(claim.task_cid)
+                assert task is not None and task.status == "ready"
+                daemon.task_source.compare_and_set_status(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    status="blocked",
+                    receipt={"operation": "independent_operator_block"},
+                )
+                raced.update(
+                    {
+                        "task_cid": claim.task_cid,
+                        "claim_id": claim.claim_id,
+                        "attempt_id": claim.attempt_id,
+                    }
+                )
+            return claim
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "claim_ready_task",
+            block_after_coordination_claim,
+        )
+        first = daemon.run_once()
+        assert first["selection_idle_reason"] == (
+            "claim_withdrawn_control_not_dispatchable"
+        )
+        assert first["unchanged"] is False
+        assert first["write_count"] >= 1
+        assert first["implementation_result"] is None
+        assert first["claim_withdrawal"]["task_cid"] == raced["task_cid"]
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.get_attempt(str(raced["attempt_id"])) is None
+        released = daemon.coordinator.get_task_claim(str(raced["claim_id"]))
+        assert released is not None and released.state.value == "released"
+        released_attempt = daemon.coordinator.get_task_attempt(
+            str(raced["attempt_id"])
+        )
+        assert released_attempt is not None
+        assert released_attempt.status.value == "released"
+
+        second = daemon.run_once()
+        assert second["implementation_result"]["status"] == "succeeded"
+        assert second["claimed_task_cid"] != raced["task_cid"]
+        assert provider_calls == [second["claimed_task_cid"]]
+        assert effect_calls == [second["claimed_task_cid"]]
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_failure_blocks_and_releases_exact_claim_for_operator_retry(
+    tmp_path: Path,
+) -> None:
+    fail = {"enabled": True}
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        if fail["enabled"]:
+            raise DatabasePortalBridgeError("terminal pre-provider failure")
+        return {"status": "ok", "task_cid": attempt.task_cid}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-terminal",
+        provider_fn=provider,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_result = first["implementation_result"]
+        assert first_result["portal_terminal_failure"] is True
+        assert first_result["status"] == "blocked"
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        assert first_attempt.status == "failed"
+        assert first_attempt.committed_phase == "failed"
+        assert first_result["settlement"]["provider_invocation_count"] == 0
+        assert first_result["settlement"]["effect_claim_count"] == 0
+
+        task = daemon.task_source.get(first_attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        receipt = task.body["completion_receipt"]
+        assert receipt["attempt_id"] == first_attempt.attempt_id
+        assert receipt["automatic_retry_admitted"] is False
+
+        old_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        assert old_claim is not None
+        assert old_claim.state.value == "released"
+        old_coordination_attempt = daemon.coordinator.get_task_attempt(
+            first_attempt.attempt_id
+        )
+        assert old_coordination_attempt is not None
+        assert old_coordination_attempt.status.value == "failed"
+        assert daemon.run_once()["selection_idle_reason"] == "no_ready_tasks"
+
+        # A distinct trusted recovery receipt is required to requeue.  The
+        # terminal failure path never retries itself.
+        fail["enabled"] = False
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="retrying",
+            receipt={
+                "operation": "operator_control_plane_repair",
+                "settlement_id": receipt["settlement_id"],
+            },
+        )
+        second = daemon.run_once()
+        assert second["implementation_result"]["status"] == "succeeded"
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number == first_attempt.attempt_number + 1
+        assert second_attempt.fencing_token > first_attempt.fencing_token
+        assert provider_calls == [
+            first_attempt.attempt_id,
+            second_attempt.attempt_id,
+        ]
+        assert effect_calls == [first_attempt.task_cid]
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_failure_coordination_response_loss_replays_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-settlement-replay",
+        provider_fn=lambda _attempt: (_ for _ in ()).throw(
+            DatabasePortalBridgeError("terminal bridge failure")
+        ),
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original_settle = daemon.coordinator.fail_task_claim
+        calls = {"count": 0}
+
+        def lose_first_settlement(*args: object, **kwargs: object) -> object:
+            calls["count"] += 1
+            result = original_settle(*args, **kwargs)
+            if calls["count"] == 1:
+                raise RuntimeError("simulated post-commit response loss")
+            return result
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "fail_task_claim",
+            lose_first_settlement,
+        )
+        first = daemon.run_once()
+        assert first["implementation_result"]["status"] == "blocked"
+        assert calls["count"] == 2
+        attempt = daemon.get_attempt(first["attempt_id"])
+        assert attempt is not None and attempt.status == "failed"
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and claim.state.value == "released"
+        coordination_attempt = daemon.coordinator.get_task_attempt(
+            attempt.attempt_id
+        )
+        assert coordination_attempt is not None
+        assert coordination_attempt.status.value == "failed"
+
+        second = daemon.run_once()
+        assert second["selection_idle_reason"] == "no_ready_tasks"
+        assert second["portal_failure_reconciliations"] == []
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_failure_control_cas_response_loss_never_repeats_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("terminal control-CAS failure")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-control-cas-loss",
+        provider_fn=provider,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original_cas = daemon._cas_task_status_database
+        blocked_calls = {"count": 0}
+
+        def lose_block_response(*args: object, **kwargs: object) -> object:
+            result = original_cas(*args, **kwargs)
+            if kwargs.get("new_status") == "blocked":
+                blocked_calls["count"] += 1
+                if blocked_calls["count"] == 1:
+                    raise RuntimeError("simulated control CAS response loss")
+            return result
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lose_block_response,
+        )
+        first = daemon.run_once()
+        assert first["implementation_result"]["status"] == "blocked"
+        assert blocked_calls["count"] == 1
+        assert len(provider_calls) == 1
+        attempt = daemon.get_attempt(first["attempt_id"])
+        assert attempt is not None and attempt.status == "failed"
+
+        second = daemon.run_once()
+        assert second["selection_idle_reason"] == "no_ready_tasks"
+        assert second["portal_failure_reconciliations"] == []
+        assert len(provider_calls) == 1
+    finally:
+        daemon.close()
+
+
+def test_terminal_portal_failure_settles_after_exact_lease_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("terminal expiry-window failure")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-expiry-window",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        provider_fn=provider,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original_settle = daemon.coordinator.fail_task_claim
+
+        def expire_before_settlement(*args: object, **kwargs: object) -> object:
+            now["ms"] = 7_000
+            kwargs["now_ms"] = now["ms"]
+            return original_settle(*args, **kwargs)
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "fail_task_claim",
+            expire_before_settlement,
+        )
+        result = daemon.run_once()
+        assert result["implementation_result"]["status"] == "blocked"
+        assert len(provider_calls) == 1
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None and attempt.status == "failed"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and claim.state.value == "released"
+        coordination_attempt = daemon.coordinator.get_task_attempt(
+            attempt.attempt_id
+        )
+        assert coordination_attempt is not None
+        assert coordination_attempt.status.value == "failed"
+    finally:
+        daemon.close()
+
+
+def test_legacy_attempt_without_control_binding_quarantines_provider_replay(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("legacy binding unavailable")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:legacy-binding-quarantine",
+        provider_fn=provider,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        # Rehearse a pre-repair DatabaseTaskAttempt@1 row.  Its original
+        # control revision cannot be reconstructed after the fact.
+        daemon._require_connection().execute(
+            "UPDATE database_task_attempts SET body_json = '{}' "
+            "WHERE attempt_id = ?",
+            [attempt.attempt_id],
+        )
+
+        first = daemon.run_once()
+        result = first["implementation_result"]
+        assert result["settlement_failed"] is True
+        assert result["provider_replay_quarantined"] is True
+        assert len(provider_calls) == 1
+        stored = daemon.get_attempt(attempt.attempt_id)
+        assert stored is not None and stored.status == "failed"
+        failure_phase = [
+            item
+            for item in daemon.phase_history(attempt.attempt_id)
+            if item["phase"] == "failed"
+        ][-1]
+        assert failure_phase["body"]["operation"] == (
+            "quarantine_unsettled_portal_failure"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None and claim.state.value == "accepted"
+        assert daemon._automatic_claim_exclusions() == {attempt.task_cid}
+
+        second = daemon.run_once()
+        assert second["selection_idle_reason"] == (
+            "unsettled_portal_failure_quarantine"
+        )
+        assert second["unsettled_quarantine_task_cids"] == [attempt.task_cid]
+        assert len(provider_calls) == 1
+
+        # Lease expiry is not new evidence and cannot admit an identical
+        # provider invocation. The quarantined negative-memory barrier remains
+        # explicit until a separate operator control-plane repair supersedes it.
+        now["ms"] = 7_000
+        after_expiry = daemon.run_once()
+        assert after_expiry["selection_idle_reason"] == (
+            "unsettled_portal_failure_quarantine"
+        )
+        assert after_expiry["unsettled_quarantine_task_cids"] == [
+            attempt.task_cid
+        ]
+        assert len(provider_calls) == 1
+
+        daemon.close()
+        replacement = _open_daemon(
+            tmp_path,
+            session="session:legacy-binding-quarantine-restart",
+            provider_fn=provider,
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+        )
+        try:
+            after_restart = replacement.run_once()
+            assert after_restart["selection_idle_reason"] == (
+                "unsettled_portal_failure_quarantine"
+            )
+            assert after_restart["unsettled_quarantine_task_cids"] == [
+                attempt.task_cid
+            ]
+            assert len(provider_calls) == 1
+        finally:
+            replacement.close()
+    finally:
+        daemon.close()
 
 
 def test_completed_control_cas_is_recovered_from_prepared_barrier(

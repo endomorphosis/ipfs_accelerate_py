@@ -49,6 +49,48 @@ def _probe_payload(*requirements: str) -> dict[str, object]:
     }
 
 
+def test_dependency_probe_reads_exact_source_from_capsule_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capsule_path = (
+        "/proc/self/fd/12/"
+        "ipfs_accelerate_py/agent_supervisor/validation/"
+        "project_dependency_preflight.py"
+    )
+    capsule_source = b"# exact accepted capsule source\n"
+    loader_reads: list[str] = []
+
+    class CapsuleLoader:
+        def get_data(self, path: str) -> bytes:
+            loader_reads.append(path)
+            return capsule_source
+
+    monkeypatch.setattr(preflight_module.__spec__, "loader", CapsuleLoader())
+    monkeypatch.setattr(preflight_module, "__file__", capsule_path)
+
+    assert preflight_module._read_dependency_probe_source() == capsule_source
+    assert loader_reads == [capsule_path]
+
+
+def test_dependency_probe_does_not_fallback_after_capsule_loader_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnavailableCapsuleLoader:
+        def get_data(self, _path: str) -> bytes:
+            raise FileNotFoundError("accepted capsule source unavailable")
+
+    # Keep the real, readable __file__. A filesystem fallback would therefore
+    # conceal the loader-authority failure and make this assertion fail.
+    monkeypatch.setattr(
+        preflight_module.__spec__,
+        "loader",
+        UnavailableCapsuleLoader(),
+    )
+
+    with pytest.raises(FileNotFoundError, match="accepted capsule source unavailable"):
+        preflight_module._read_dependency_probe_source()
+
+
 def test_dependency_probe_detects_preprovisioning_hypercorn_drift() -> None:
     def missing_distribution(name: str) -> str:
         raise importlib.metadata.PackageNotFoundError(name)

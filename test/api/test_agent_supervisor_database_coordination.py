@@ -21,6 +21,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
+    TASK_CLAIM_FAILURE_REARM_OPERATION,
+    TASK_CLAIM_FAILURE_REARMED_EVENT,
+    TASK_CLAIM_FAILURE_SETTLED_EVENT,
+    TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION,
+    TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA,
     TASK_CLAIM_INTERFACE,
     AttemptStatus,
     DatabaseCoordinationConflictError,
@@ -37,6 +42,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     exclusive_scope_key,
     open_database_coordinator,
     read_coordination_registry_projection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+    canonical_content_cid,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -106,6 +114,34 @@ def _incomplete_control_task(prepared: dict[str, object]) -> dict[str, object]:
         "revision": prepared["control_expected_revision"],
         "body": {},
     }
+
+
+def _task_claim_failure_receipt(
+    claim: TaskClaim,
+    *,
+    control_expected_revision: int = 2,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema": TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA,
+        "operation": TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION,
+        "failure_kind": "database_portal_bridge_error",
+        "failure_payload_digest": "sha256:"
+        + hashlib.sha256(b"terminal Portal failure").hexdigest(),
+        "task_cid": claim.task_cid,
+        "attempt_id": claim.attempt_id,
+        "attempt_number": claim.attempt_number,
+        "claim_id": claim.claim_id,
+        "lease_id": claim.lease_id,
+        "owner_session_id": claim.owner_session_id,
+        "fencing_token": claim.fencing_token,
+        "fence_epoch": claim.fence_epoch,
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "automatic_retry_admitted": False,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": control_expected_revision,
+    }
+    return {**payload, "settlement_id": canonical_content_cid(payload)}
 
 
 # ---------------------------------------------------------------------------
@@ -1396,6 +1432,219 @@ def test_claim_aware_completion_and_successful_settlement_are_ordered(
                 claim,
                 allow_logically_completed=True,
             )
+    finally:
+        coordinator.close()
+
+
+def test_exact_accepted_task_claim_settles_as_typed_failure(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-live", task_id="FAILED-LIVE")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-live",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+
+        settled = coordinator.fail_task_claim(
+            claim,
+            failure_receipt=receipt,
+        )
+
+        assert settled.state is LeaseState.RELEASED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        readiness = coordinator.claimability(claim.task_cid)
+        assert readiness["claimable"] is False
+        assert readiness["completion_status"] == AttemptStatus.FAILED.value
+        with pytest.raises(DatabaseCoordinationNotReadyError):
+            coordinator.claim_task(
+                task_cid=claim.task_cid,
+                owner_session_id="session:replacement",
+            )
+        failure_events = [
+            event
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
+        ]
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["settlement_id"] == receipt["settlement_id"]
+        assert failure_events[0]["body"]["source_claim_state"] == "accepted"
+    finally:
+        coordinator.close()
+
+
+def test_exact_expired_task_claim_can_settle_as_typed_failure(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(
+            task_cid="task:failed-expired",
+            task_id="FAILED-EXPIRED",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:failed-expired",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+        clock.advance(10_000)
+
+        # No prior expiry sweep is required.  Failure settlement persists the
+        # deadline transition and then closes that same latest exact claim.
+        settled = coordinator.fail_task_claim(
+            claim,
+            failure_receipt=receipt,
+        )
+
+        assert settled.state is LeaseState.RELEASED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        failure_events = [
+            event
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
+        ]
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["source_claim_state"] == "expired"
+        assert failure_events[0]["body"]["source_attempt_status"] == "expired"
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_post_commit_response_loss_replays_once(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-replay", task_id="FAILED-REPLAY")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-replay",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+
+        def settle_then_lose_response() -> None:
+            coordinator.fail_task_claim(claim, failure_receipt=receipt)
+            raise RuntimeError("simulated post-commit response loss")
+
+        with pytest.raises(RuntimeError, match="post-commit response loss"):
+            settle_then_lose_response()
+        replay = coordinator.fail_task_claim(claim, failure_receipt=receipt)
+
+        assert replay.state is LeaseState.RELEASED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.FAILED
+        failure_events = [
+            event
+            for event in coordinator.lease_events(lease_id=claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_SETTLED_EVENT
+        ]
+        assert len(failure_events) == 1
+        assert failure_events[0]["body"]["settlement_id"] == receipt["settlement_id"]
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_rejects_stale_successor_fence(tmp_path: Path) -> None:
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:failed-stale", task_id="FAILED-STALE")
+        stale = coordinator.claim_task(
+            task_cid="task:failed-stale",
+            owner_session_id="session:old",
+        )
+        stale_receipt = _task_claim_failure_receipt(stale)
+        clock.advance(10_000)
+        replacement = coordinator.claim_task(
+            task_cid=stale.task_cid,
+            owner_session_id="session:new",
+        )
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(
+                stale,
+                failure_receipt=stale_receipt,
+            )
+
+        assert coordinator.get_task_claim(replacement.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_task_attempt(replacement.attempt_id).status is AttemptStatus.RUNNING
+    finally:
+        coordinator.close()
+
+
+def test_failed_task_claim_rejects_tampered_or_open_receipt(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-tamper", task_id="FAILED-TAMPER")
+        claim = coordinator.claim_task(
+            task_cid="task:failed-tamper",
+            owner_session_id="session:worker",
+        )
+        receipt = _task_claim_failure_receipt(claim)
+        tampered = {**receipt, "failure_kind": "different_failure"}
+        opened = {**receipt, "untrusted_extra": True}
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(claim, failure_receipt=tampered)
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.fail_task_claim(claim, failure_receipt=opened)
+
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_task_attempt(claim.attempt_id).status is AttemptStatus.RUNNING
+    finally:
+        coordinator.close()
+
+
+def test_exact_operator_rearm_preserves_failed_attempt_and_restores_readiness(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:failed-rearm", task_id="FAILED-REARM")
+        failed_claim = coordinator.claim_task(
+            task_cid="task:failed-rearm",
+            owner_session_id="session:failed",
+        )
+        receipt = _task_claim_failure_receipt(
+            failed_claim,
+            control_expected_revision=2,
+        )
+        coordinator.fail_task_claim(failed_claim, failure_receipt=receipt)
+        control_observation = {
+            "task_cid": failed_claim.task_cid,
+            "status": "retrying",
+            "revision": 4,
+            "body": {
+                "completion_receipt": {
+                    "operation": TASK_CLAIM_FAILURE_REARM_OPERATION,
+                    "settlement_id": receipt["settlement_id"],
+                }
+            },
+        }
+
+        first = coordinator.rearm_failed_task(
+            failure_receipt=receipt,
+            control_task_observation=control_observation,
+        )
+        replay = coordinator.rearm_failed_task(
+            failure_receipt=receipt,
+            control_task_observation=control_observation,
+        )
+
+        assert first["replayed"] is False
+        assert replay["replayed"] is True
+        assert first["rearm_id"] == replay["rearm_id"]
+        assert coordinator.claimability(failed_claim.task_cid)["claimable"] is True
+        replacement = coordinator.claim_ready_task(
+            owner_session_id="session:replacement"
+        )
+        assert replacement is not None
+        assert replacement.task_cid == failed_claim.task_cid
+        assert replacement.attempt_number == failed_claim.attempt_number + 1
+        assert replacement.fencing_token > failed_claim.fencing_token
+        assert coordinator.get_task_attempt(failed_claim.attempt_id).status is AttemptStatus.FAILED
+        rearm_events = [
+            event
+            for event in coordinator.lease_events(lease_id=failed_claim.lease_id)
+            if event["event_type"] == TASK_CLAIM_FAILURE_REARMED_EVENT
+        ]
+        assert len(rearm_events) == 1
     finally:
         coordinator.close()
 

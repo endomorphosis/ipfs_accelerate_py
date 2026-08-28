@@ -46,7 +46,7 @@ from ..task_sources.duckdb_state import (
     is_quack_transport_target,
     open_duckdb_connection,
 )
-from ..task_sources.task_identity import canonical_json_bytes
+from ..task_sources.task_identity import canonical_content_cid, canonical_json_bytes
 from .lease_coordination import (
     MAX_LEASE_MS,
     MIN_LEASE_MS,
@@ -100,6 +100,42 @@ MAX_PREPARED_COMPLETION_QUERY: Final[int] = 1_000
 PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
 TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-preparation@1"
+)
+TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-claim-failure-settlement@1"
+)
+TASK_CLAIM_FAILURE_REARM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-claim-failure-rearm@1"
+)
+TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION: Final[str] = (
+    "database_task_claim_failure"
+)
+TASK_CLAIM_FAILURE_REARM_OPERATION: Final[str] = (
+    "operator_control_plane_repair"
+)
+TASK_CLAIM_FAILURE_SETTLED_EVENT: Final[str] = "task_claim_failure_settled"
+TASK_CLAIM_FAILURE_REARMED_EVENT: Final[str] = "task_claim_failure_rearmed"
+_TASK_CLAIM_FAILURE_RECEIPT_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "operation",
+        "failure_kind",
+        "failure_payload_digest",
+        "task_cid",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "provider_invocation_count",
+        "effect_claim_count",
+        "automatic_retry_admitted",
+        "control_expected_status",
+        "control_expected_revision",
+        "settlement_id",
+    }
 )
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
@@ -2851,6 +2887,210 @@ class DatabaseCoordinator:
         }
 
     @staticmethod
+    def _validate_task_claim_failure_receipt(
+        receipt: Mapping[str, Any],
+        *,
+        identity: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Validate one closed, canonical, task-claim failure receipt."""
+
+        if not isinstance(receipt, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt is not a mapping"
+            )
+        try:
+            raw = _bounded_mapping(
+                receipt,
+                name="task_claim_failure_receipt",
+            )
+        except (DatabaseCoordinationError, TypeError, ValueError) as exc:
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt is not a bounded canonical mapping"
+            ) from exc
+        actual_fields = set(raw)
+        if actual_fields != _TASK_CLAIM_FAILURE_RECEIPT_FIELDS:
+            missing = sorted(_TASK_CLAIM_FAILURE_RECEIPT_FIELDS - actual_fields)
+            unknown = sorted(actual_fields - _TASK_CLAIM_FAILURE_RECEIPT_FIELDS)
+            details: list[str] = []
+            if missing:
+                details.append("missing=" + ",".join(missing))
+            if unknown:
+                details.append("unknown=" + ",".join(unknown))
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt is not closed"
+                + (": " + "; ".join(details) if details else "")
+            )
+        if raw.get("schema") != TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA:
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt schema is not authoritative"
+            )
+        if raw.get("operation") != TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION:
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt operation is not authoritative"
+            )
+
+        text_fields = (
+            "schema",
+            "operation",
+            "failure_kind",
+            "failure_payload_digest",
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "control_expected_status",
+            "settlement_id",
+        )
+        normalized: dict[str, Any] = {}
+        for field_name in text_fields:
+            value = raw.get(field_name)
+            if not isinstance(value, str) or value != value.strip():
+                raise DatabaseCoordinationStaleFenceError(
+                    f"task-claim failure receipt {field_name} is not canonical text"
+                )
+            try:
+                normalized[field_name] = _text(value, field_name)
+            except DatabaseCoordinationError as exc:
+                raise DatabaseCoordinationStaleFenceError(str(exc)) from exc
+
+        integer_fields = (
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "control_expected_revision",
+        )
+        for field_name in integer_fields:
+            try:
+                normalized[field_name] = _positive_int(
+                    raw.get(field_name), field_name
+                )
+            except DatabaseCoordinationError as exc:
+                raise DatabaseCoordinationStaleFenceError(str(exc)) from exc
+        for field_name in ("provider_invocation_count", "effect_claim_count"):
+            try:
+                normalized[field_name] = _nonneg_int(
+                    raw.get(field_name), field_name
+                )
+            except DatabaseCoordinationError as exc:
+                raise DatabaseCoordinationStaleFenceError(str(exc)) from exc
+        if raw.get("automatic_retry_admitted") is not False:
+            raise DatabaseCoordinationStaleFenceError(
+                "terminal task-claim failure cannot admit automatic retry"
+            )
+        normalized["automatic_retry_admitted"] = False
+        if normalized["control_expected_status"] != "in_progress":
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure must bind an in_progress control task"
+            )
+
+        payload_digest = normalized["failure_payload_digest"]
+        if (
+            len(payload_digest) != 71
+            or not payload_digest.startswith("sha256:")
+            or any(character not in "0123456789abcdef" for character in payload_digest[7:])
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure payload digest is not canonical sha256"
+            )
+
+        payload = dict(raw)
+        settlement_id = str(payload.pop("settlement_id"))
+        try:
+            expected_settlement_id = canonical_content_cid(payload)
+        except (TypeError, ValueError) as exc:
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure receipt is not canonically encodable"
+            ) from exc
+        if settlement_id != expected_settlement_id:
+            raise DatabaseCoordinationStaleFenceError(
+                "task-claim failure settlement identity does not match its body"
+            )
+
+        normalized.update(
+            {
+                "schema": TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA,
+                "operation": TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION,
+                "settlement_id": settlement_id,
+            }
+        )
+        if identity is not None:
+            mismatches = [
+                field_name
+                for field_name in (
+                    "task_cid",
+                    "attempt_id",
+                    "attempt_number",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if normalized[field_name] != identity[field_name]
+            ]
+            if mismatches:
+                raise DatabaseCoordinationStaleFenceError(
+                    "task-claim failure receipt belongs to a different authority: "
+                    + ", ".join(mismatches)
+                )
+        return normalized
+
+    @staticmethod
+    def _validate_task_claim_failure_event_unlocked(
+        connection: Any,
+        *,
+        identity: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> None:
+        """Require exactly one immutable event for a settled failure."""
+
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=str(identity["task_cid"]),
+            task_cid=str(identity["task_cid"]),
+        )
+        rows = connection.execute(
+            """
+            SELECT event_id, body_json FROM lease_events
+            WHERE lease_id = ? AND scope_key = ? AND event_type = ?
+              AND fencing_token = ? AND fence_epoch = ?
+            ORDER BY event_id
+            """,
+            [
+                str(identity["lease_id"]),
+                scope_key,
+                TASK_CLAIM_FAILURE_SETTLED_EVENT,
+                int(identity["fencing_token"]),
+                int(identity["fence_epoch"]),
+            ],
+        ).fetchall()
+        if len(rows) != 1:
+            raise DatabaseCoordinationStaleFenceError(
+                "settled task failure must have exactly one authority event"
+            )
+        row = _row_mapping(rows[0])
+        body = _decode_coordination_body(
+            _row_get(row, "body_json", "1", default="{}"),
+            table="lease_events",
+            identity=str(_row_get(row, "event_id", "0", default="")),
+        )
+        source_claim_state = str(body.get("source_claim_state") or "")
+        expected_attempt_status = {
+            LeaseState.ACCEPTED.value: AttemptStatus.RUNNING.value,
+            LeaseState.EXPIRED.value: AttemptStatus.EXPIRED.value,
+        }.get(source_claim_state)
+        if (
+            body.get("settlement_id") != receipt["settlement_id"]
+            or body.get("failure_receipt") != receipt
+            or expected_attempt_status is None
+            or body.get("source_attempt_status") != expected_attempt_status
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "settled task failure event does not match its exact receipt"
+            )
+
+    @staticmethod
     def _resource_claim_identity(
         claim: ResourceClaim | Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -2907,6 +3147,10 @@ class DatabaseCoordinator:
         allow_logically_completed: bool,
         record_event: bool,
         expected_lease_state: LeaseState = LeaseState.ACCEPTED,
+        expected_completion_statuses: Sequence[str] = (
+            PREPARED_COMPLETION_STATUS,
+            AttemptStatus.SUCCEEDED.value,
+        ),
     ) -> FencedLease:
         """Validate one exact task/claim/attempt/fence tuple inside a transaction."""
 
@@ -3096,10 +3340,7 @@ class DatabaseCoordinator:
                 connection,
                 identity=identity,
                 required=True,
-                expected_statuses=(
-                    PREPARED_COMPLETION_STATUS,
-                    AttemptStatus.SUCCEEDED.value,
-                ),
+                expected_statuses=expected_completion_statuses,
             )
 
         if record_event:
@@ -5339,6 +5580,507 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def fail_task_claim(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        *,
+        failure_receipt: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> FencedLease:
+        """Settle one exact task claim as a typed terminal failure.
+
+        Unlike the generic lease release operation, this transition preserves
+        the failure in task-attempt authority.  It accepts either the still-live
+        exact claim or that same latest claim after its deadline was durably
+        expired.  Replaying the exact receipt after response loss is a read-only
+        success and never appends a second settlement event.
+        """
+
+        identity = self._task_claim_identity(claim)
+        receipt = self._validate_task_claim_failure_receipt(
+            failure_receipt,
+            identity=identity,
+        )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        task_cid = str(identity["task_cid"])
+        claim_id = str(identity["claim_id"])
+        attempt_id = str(identity["attempt_id"])
+        lease_id = str(identity["lease_id"])
+        owner_session_id = str(identity["owner_session_id"])
+        attempt_number = int(identity["attempt_number"])
+        token = int(identity["fencing_token"])
+        epoch = int(identity["fence_epoch"])
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=task_cid,
+            task_cid=task_cid,
+        )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                # Persist deadline expiry before selecting the admitted source
+                # state.  This closes the outage-plus-expiry recovery window.
+                self._expire_scope(connection, scope_key, now)
+                state_row = connection.execute(
+                    """
+                    SELECT l.state AS lease_state, c.state AS claim_state,
+                           a.status AS attempt_status
+                    FROM fenced_leases AS l
+                    JOIN task_claims AS c ON c.claim_id = l.claim_id
+                    JOIN task_attempts AS a ON a.attempt_id = l.attempt_id
+                    WHERE l.lease_id = ? AND l.task_cid = ?
+                      AND l.claim_id = ? AND l.attempt_id = ?
+                      AND l.owner_session_id = ? AND l.attempt_number = ?
+                      AND l.fencing_token = ? AND l.fence_epoch = ?
+                      AND c.claim_id = ? AND c.task_cid = ?
+                      AND c.attempt_id = ? AND c.lease_id = ?
+                      AND c.owner_session_id = ? AND c.attempt_number = ?
+                      AND c.fencing_token = ? AND c.fence_epoch = ?
+                      AND a.attempt_id = ? AND a.task_cid = ?
+                      AND a.owner_session_id = ? AND a.attempt_number = ?
+                      AND a.fencing_token = ? AND a.fence_epoch = ?
+                    """,
+                    [
+                        lease_id,
+                        task_cid,
+                        claim_id,
+                        attempt_id,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                        claim_id,
+                        task_cid,
+                        attempt_id,
+                        lease_id,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                        attempt_id,
+                        task_cid,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                    ],
+                ).fetchone()
+                if state_row is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "task-claim failure authority tuple is incomplete or mismatched"
+                    )
+                state = _row_mapping(state_row)
+                lease_state = LeaseState(
+                    str(_row_get(state, "lease_state", "0", default=""))
+                )
+                claim_state = LeaseState(
+                    str(_row_get(state, "claim_state", "1", default=""))
+                )
+                attempt_status = AttemptStatus(
+                    str(_row_get(state, "attempt_status", "2", default=""))
+                )
+
+                already_settled = (
+                    lease_state is LeaseState.RELEASED
+                    and claim_state is LeaseState.RELEASED
+                    and attempt_status is AttemptStatus.FAILED
+                )
+                if already_settled:
+                    lease = self._protect_task_claim_unlocked(
+                        connection,
+                        identity=identity,
+                        now=now,
+                        expected_attempt_status=AttemptStatus.FAILED,
+                        allow_logically_completed=True,
+                        record_event=False,
+                        expected_lease_state=LeaseState.RELEASED,
+                        expected_completion_statuses=(AttemptStatus.FAILED.value,),
+                    )
+                    completion = self._task_completion_for_identity_unlocked(
+                        connection,
+                        identity=identity,
+                        required=True,
+                        expected_statuses=(AttemptStatus.FAILED.value,),
+                    )
+                    assert completion is not None
+                    stored_receipt = self._validate_task_claim_failure_receipt(
+                        completion["body"],
+                        identity=identity,
+                    )
+                    if stored_receipt != receipt:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "settled task failure receipt differs from replay"
+                        )
+                    self._validate_task_claim_failure_event_unlocked(
+                        connection,
+                        identity=identity,
+                        receipt=receipt,
+                    )
+                    self._commit_if_idle(connection)
+                    return lease
+
+                admitted_source_states = {
+                    (
+                        LeaseState.ACCEPTED,
+                        LeaseState.ACCEPTED,
+                        AttemptStatus.RUNNING,
+                    ),
+                    (
+                        LeaseState.EXPIRED,
+                        LeaseState.EXPIRED,
+                        AttemptStatus.EXPIRED,
+                    ),
+                }
+                source_state = (lease_state, claim_state, attempt_status)
+                if source_state not in admitted_source_states:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "task-claim failure authority has an invalid state pairing"
+                    )
+                lease = self._protect_task_claim_unlocked(
+                    connection,
+                    identity=identity,
+                    now=now,
+                    expected_attempt_status=attempt_status,
+                    allow_logically_completed=False,
+                    record_event=False,
+                    expected_lease_state=lease_state,
+                )
+
+                connection.execute(
+                    """
+                    INSERT INTO task_completions(
+                        task_cid, completed_at_ms, status, body_json
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        task_cid,
+                        now,
+                        AttemptStatus.FAILED.value,
+                        _canonical_json(receipt),
+                    ],
+                )
+                connection.execute(
+                    """
+                    UPDATE fenced_leases
+                    SET state = ?, revision = revision + 1
+                    WHERE lease_id = ? AND task_cid = ? AND claim_id = ?
+                      AND attempt_id = ? AND owner_session_id = ?
+                      AND attempt_number = ? AND fencing_token = ?
+                      AND fence_epoch = ? AND state = ?
+                    """,
+                    [
+                        LeaseState.RELEASED.value,
+                        lease_id,
+                        task_cid,
+                        claim_id,
+                        attempt_id,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                        lease_state.value,
+                    ],
+                )
+                connection.execute(
+                    """
+                    UPDATE task_claims
+                    SET state = ?, released_at_ms = ?, revision = revision + 1
+                    WHERE claim_id = ? AND task_cid = ? AND attempt_id = ?
+                      AND lease_id = ? AND owner_session_id = ?
+                      AND attempt_number = ? AND fencing_token = ?
+                      AND fence_epoch = ? AND state = ?
+                    """,
+                    [
+                        LeaseState.RELEASED.value,
+                        now,
+                        claim_id,
+                        task_cid,
+                        attempt_id,
+                        lease_id,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                        claim_state.value,
+                    ],
+                )
+                connection.execute(
+                    """
+                    UPDATE task_attempts
+                    SET status = ?, finished_at_ms = ?, revision = revision + 1
+                    WHERE attempt_id = ? AND task_cid = ?
+                      AND owner_session_id = ? AND attempt_number = ?
+                      AND fencing_token = ? AND fence_epoch = ? AND status = ?
+                    """,
+                    [
+                        AttemptStatus.FAILED.value,
+                        now,
+                        attempt_id,
+                        task_cid,
+                        owner_session_id,
+                        attempt_number,
+                        token,
+                        epoch,
+                        attempt_status.value,
+                    ],
+                )
+                connection.execute(
+                    "UPDATE coordination_tasks SET ready = FALSE WHERE task_cid = ?",
+                    [task_cid],
+                )
+
+                final_lease = self._protect_task_claim_unlocked(
+                    connection,
+                    identity=identity,
+                    now=now,
+                    expected_attempt_status=AttemptStatus.FAILED,
+                    allow_logically_completed=True,
+                    record_event=False,
+                    expected_lease_state=LeaseState.RELEASED,
+                    expected_completion_statuses=(AttemptStatus.FAILED.value,),
+                )
+                completion = self._task_completion_for_identity_unlocked(
+                    connection,
+                    identity=identity,
+                    required=True,
+                    expected_statuses=(AttemptStatus.FAILED.value,),
+                )
+                assert completion is not None
+                if self._validate_task_claim_failure_receipt(
+                    completion["body"], identity=identity
+                ) != receipt:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "task-claim failure lost its exact receipt"
+                    )
+                self._record_event(
+                    connection,
+                    lease_id=lease_id,
+                    scope_key=scope_key,
+                    event_type=TASK_CLAIM_FAILURE_SETTLED_EVENT,
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    observed_at_ms=now,
+                    body={
+                        "settlement_id": receipt["settlement_id"],
+                        "source_claim_state": claim_state.value,
+                        "source_attempt_status": attempt_status.value,
+                        "failure_receipt": receipt,
+                    },
+                )
+                self._validate_task_claim_failure_event_unlocked(
+                    connection,
+                    identity=identity,
+                    receipt=receipt,
+                )
+                self._commit_if_idle(connection)
+                refreshed = self.get_lease(final_lease.lease_id)
+                assert refreshed is not None
+                return refreshed
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    def rearm_failed_task(
+        self,
+        *,
+        failure_receipt: Mapping[str, Any],
+        control_task_observation: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Rearm one exact failed task after a distinct operator control CAS."""
+
+        receipt = self._validate_task_claim_failure_receipt(failure_receipt)
+        identity = self._task_claim_identity(receipt)
+        raw_observation, task, nested = self._control_task_projection(
+            control_task_observation
+        )
+        task_cid = str(identity["task_cid"])
+        control_status = _text(
+            task.get("status"), "control_task_status"
+        ).lower()
+        control_revision = _positive_int(
+            task.get("revision"), "control_task_revision"
+        )
+        if str(task.get("task_cid") or "") != task_cid:
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm control task does not match failed claim"
+            )
+        if control_status != "retrying":
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm control task is not retrying"
+            )
+        if control_revision != int(receipt["control_expected_revision"]) + 2:
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm revision does not follow block and requeue CASes"
+            )
+        task_body = task.get("body")
+        if not isinstance(task_body, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm control task has no durable body"
+            )
+        operator_receipt = task_body.get("completion_receipt")
+        if not isinstance(operator_receipt, Mapping) or set(operator_receipt) != {
+            "operation",
+            "settlement_id",
+        }:
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm receipt is not closed"
+            )
+        if (
+            operator_receipt.get("operation")
+            != TASK_CLAIM_FAILURE_REARM_OPERATION
+            or operator_receipt.get("settlement_id")
+            != receipt["settlement_id"]
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "operator rearm receipt does not bind the failed settlement"
+            )
+        if nested:
+            if raw_observation.get("changed") is not True:
+                raise DatabaseCoordinationStaleFenceError(
+                    "operator rearm CAS did not record a change"
+                )
+            if str(raw_observation.get("previous_status") or "") != "blocked":
+                raise DatabaseCoordinationStaleFenceError(
+                    "operator rearm CAS did not start from blocked"
+                )
+            if int(raw_observation.get("revision") or 0) != control_revision:
+                raise DatabaseCoordinationStaleFenceError(
+                    "operator rearm CAS revision disagrees with its task"
+                )
+            if not str(raw_observation.get("receipt_cid") or "").strip():
+                raise DatabaseCoordinationStaleFenceError(
+                    "operator rearm CAS has no receipt CID"
+                )
+        rearm_body: dict[str, Any] = {
+            "schema": TASK_CLAIM_FAILURE_REARM_SCHEMA,
+            "operation": TASK_CLAIM_FAILURE_REARM_OPERATION,
+            "task_cid": task_cid,
+            "failure_settlement_id": receipt["settlement_id"],
+            "control_status": control_status,
+            "control_revision": control_revision,
+            "control_receipt_id": canonical_content_cid(dict(operator_receipt)),
+        }
+        rearm_body["rearm_id"] = canonical_content_cid(rearm_body)
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        lease_id = str(identity["lease_id"])
+        token = int(identity["fencing_token"])
+        epoch = int(identity["fence_epoch"])
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=task_cid,
+            task_cid=task_cid,
+        )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                prior_rearms = connection.execute(
+                    """
+                    SELECT event_id, body_json FROM lease_events
+                    WHERE lease_id = ? AND scope_key = ? AND event_type = ?
+                      AND fencing_token = ? AND fence_epoch = ?
+                    ORDER BY event_id
+                    """,
+                    [
+                        lease_id,
+                        scope_key,
+                        TASK_CLAIM_FAILURE_REARMED_EVENT,
+                        token,
+                        epoch,
+                    ],
+                ).fetchall()
+                matching_rearms = []
+                for row in prior_rearms:
+                    mapping = _row_mapping(row)
+                    body = _decode_coordination_body(
+                        _row_get(mapping, "body_json", "1", default="{}"),
+                        table="lease_events",
+                        identity=str(_row_get(mapping, "event_id", "0", default="")),
+                    )
+                    if body == rearm_body:
+                        matching_rearms.append(body)
+                if len(matching_rearms) > 1:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "operator task rearm has duplicate authority events"
+                    )
+                if matching_rearms:
+                    self._protect_task_claim_unlocked(
+                        connection,
+                        identity=identity,
+                        now=now,
+                        expected_attempt_status=AttemptStatus.FAILED,
+                        allow_logically_completed=False,
+                        record_event=False,
+                        expected_lease_state=LeaseState.RELEASED,
+                    )
+                    self._commit_if_idle(connection)
+                    return {**rearm_body, "ready": True, "replayed": True}
+
+                self._protect_task_claim_unlocked(
+                    connection,
+                    identity=identity,
+                    now=now,
+                    expected_attempt_status=AttemptStatus.FAILED,
+                    allow_logically_completed=True,
+                    record_event=False,
+                    expected_lease_state=LeaseState.RELEASED,
+                    expected_completion_statuses=(AttemptStatus.FAILED.value,),
+                )
+                completion = self._task_completion_for_identity_unlocked(
+                    connection,
+                    identity=identity,
+                    required=True,
+                    expected_statuses=(AttemptStatus.FAILED.value,),
+                )
+                assert completion is not None
+                stored_receipt = self._validate_task_claim_failure_receipt(
+                    completion["body"],
+                    identity=identity,
+                )
+                if stored_receipt != receipt:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "operator rearm does not match stored failed settlement"
+                    )
+                deleted = connection.execute(
+                    """
+                    DELETE FROM task_completions
+                    WHERE task_cid = ? AND status = ? AND body_json = ?
+                    RETURNING task_cid
+                    """,
+                    [
+                        task_cid,
+                        AttemptStatus.FAILED.value,
+                        _canonical_json(receipt),
+                    ],
+                ).fetchone()
+                if deleted is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "operator rearm lost its exact failed task barrier"
+                    )
+                connection.execute(
+                    "UPDATE coordination_tasks SET ready = TRUE WHERE task_cid = ?",
+                    [task_cid],
+                )
+                self._record_event(
+                    connection,
+                    lease_id=lease_id,
+                    scope_key=scope_key,
+                    event_type=TASK_CLAIM_FAILURE_REARMED_EVENT,
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    observed_at_ms=now,
+                    body=rearm_body,
+                )
+                self._commit_if_idle(connection)
+                return {**rearm_body, "ready": True, "replayed": False}
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
     # -- specialized claim APIs ---------------------------------------------
 
     def claim_task(
@@ -6373,6 +7115,12 @@ __all__ = [
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
     "MAINTENANCE_LEASE_SCHEMA",
+    "TASK_CLAIM_FAILURE_SETTLEMENT_SCHEMA",
+    "TASK_CLAIM_FAILURE_REARM_SCHEMA",
+    "TASK_CLAIM_FAILURE_SETTLEMENT_OPERATION",
+    "TASK_CLAIM_FAILURE_REARM_OPERATION",
+    "TASK_CLAIM_FAILURE_SETTLED_EVENT",
+    "TASK_CLAIM_FAILURE_REARMED_EVENT",
     "CROSS_STORE_FENCE_GUARD_SCHEMA",
     "CROSS_STORE_FENCE_GUARD_EVENT",
     "CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD",

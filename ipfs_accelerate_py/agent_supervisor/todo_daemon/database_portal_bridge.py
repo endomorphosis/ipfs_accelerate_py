@@ -583,6 +583,17 @@ class DatabasePortalExecutionBridge:
                 summary = _bounded_portal_result(raw_result)
                 summaries.append(summary)
                 self._verify_projection(paths, binding)
+                implementation = raw_result.get("implementation_result")
+                if (
+                    isinstance(implementation, Mapping)
+                    and implementation.get("deferred") is True
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        str(
+                            implementation.get("reason")
+                            or "portal_execution_deferred"
+                        )
+                    )
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     if (

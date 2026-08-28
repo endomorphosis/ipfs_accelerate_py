@@ -228,6 +228,22 @@ def test_materialization_rejects_a_dirty_or_uncommitted_source(
         materializer._assert_committed_clean_source(REPO_ROOT, population)
 
 
+def test_materialization_refuses_preexisting_successor_sidecars(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_fresh_sidecars_test",
+    )
+    target = tmp_path / "control.duckdb"
+    (tmp_path / "control.execution.duckdb").touch(mode=0o600)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="execution/coordination authority is not fresh",
+    ):
+        materializer._assert_fresh_successor_operational_state(target)
+
+
 def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -277,6 +293,13 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
             assert migration_body["preworker_launch_failure"] == migration[
                 "preworker_launch_failure"
             ]
+            assert migration_body["preprovider_task_failure"] == migration[
+                "preprovider_task_failure"
+            ]
+            recovery_receipt = materializer._task_recovery_receipt(population)
+            assert migration_body["nonterminal_task_recovery_receipt"] == (
+                recovery_receipt
+            )
             migration_digest = materializer._identity(migration_body)
             source.plans.append_revision(
                 plan_cid=str(population["plan_root_cid"]),
@@ -287,7 +310,7 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
                     ],
                     "source_migration_revision": migration["migration_revision"],
                     "source_migration_digest": migration_digest,
-                    "supersession_mode": "source_authority_revision_only",
+                    "supersession_mode": materializer._M5_SUPERSESSION_MODE,
                 },
                 delta=materializer._migration_plan_delta(population),
             )
@@ -297,6 +320,18 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
                 digest=migration_digest,
                 body=migration_body,
             )
+            candidate = source.get_task("SAWM-001")
+            assert candidate is not None
+            assert (candidate.status, candidate.revision) == ("in_progress", 2)
+            recovery = source.compare_and_set_status(
+                candidate.task_cid,
+                expected_revision=2,
+                status="todo",
+                receipt=recovery_receipt,
+            )
+            assert recovery.changed is True
+            assert recovery.previous_status == "in_progress"
+            assert (recovery.task.status, recovery.task.revision) == ("todo", 3)
         finally:
             source.close()
 
@@ -308,7 +343,16 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
             migration_config=config,
             expected_validation_digest=validation_digest,
         )
-        assert verified["event_watermark"] == migration["prior_event_watermark"] + 2
+        assert verified["event_watermark"] == migration["prior_event_watermark"] + 3
+        assert verified["migration_event_watermark"] == 118
+        assert verified["target_event_watermark"] == 119
+        assert verified["projection_cid"] == materializer._M5_EXPECTED_PROJECTION_CID
+        assert verified["statuses"]["SAWM-001"] == "todo"
+        assert verified["revisions"]["SAWM-001"] == 3
+        assert verified["accepted_definition_changes"] == 0
+        assert verified["accepted_completion_changes"] == 0
+        assert verified["nonterminal_task_status_recovery_changes"] == 1
+        assert verified["task_recovery_receipt"] == recovery_receipt
         assert verified["projection_matches_events"] is True
         assert materializer._store_sha256(Path(prior["database_path"])) == migration[
             "prior_control_store_sha256"
@@ -320,6 +364,18 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
         )
         receipt_path = stage.parent / "migration-receipt.json"
         assert receipt_path.is_file()
+        assert receipt["schema"] == "sawm/non-authoritative-migration-receipt@2"
+        assert receipt["migration_event_watermark"] == 118
+        assert receipt["target_event_watermark"] == 119
+        assert receipt["migration_projection_cid"] != receipt["projection_cid"]
+        assert receipt["projection_cid"] == materializer._M5_EXPECTED_PROJECTION_CID
+        assert receipt["task_recovery_event_id"] == verified[
+            "task_recovery_event_id"
+        ]
+        assert receipt["task_recovery_receipt"] == recovery_receipt
+        assert receipt["nonterminal_task_status_recovery_changes"] == 1
+        assert not (stage.parent / "control.execution.duckdb").exists()
+        assert not (stage.parent / "control.coordination.duckdb").exists()
         assert materializer._ensure_migration_receipt(
             stage.parent, stage, population, verified, validation_digest
         ) == receipt
@@ -345,7 +401,7 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["completion_prerequisite"] is False
 
 
-def test_m4_migration_preserves_the_exact_m0_through_m3_authorities() -> None:
+def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_chain_test",
@@ -354,21 +410,27 @@ def test_m4_migration_preserves_the_exact_m0_through_m3_authorities() -> None:
     migration = population["migration_inventory"]
     history = migration["migration_history"]
 
-    assert migration["migration_revision"] == "SAWM-R2-M4"
+    assert migration["migration_revision"] == "SAWM-R2-M5"
     assert migration["migration_kind"] == (
-        "bounded_preworker_provider_binding_and_generation_recovery"
+        "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
     )
-    assert migration["supersession_reason"] == migration["migration_kind"]
-    assert migration["prior_plan_revision"] == 4
-    assert migration["target_plan_revision"] == 5
-    assert migration["prior_event_watermark"] == 113
-    assert len(history) == 3
+    assert migration["supersession_reason"] == (
+        "source_authority_revision_and_preprovider_task_requeue"
+    )
+    assert migration["prior_plan_revision"] == 5
+    assert migration["target_plan_revision"] == 6
+    assert migration["prior_event_watermark"] == 116
+    assert len(history) == 4
     m1 = history[0]
     m2 = history[1]
     m3 = history[2]
+    m4 = history[3]
     assert m1["migration_revision"] == "SAWM-R2-M1"
     assert m2["migration_revision"] == "SAWM-R2-M2"
     assert m3["migration_revision"] == "SAWM-R2-M3"
+    assert m4["migration_revision"] == "SAWM-R2-M4"
+    assert all(entry["schema"] == "sawm/source-migration-history-entry@1" for entry in history[:3])
+    assert m4["schema"] == "sawm/source-migration-history-entry@2"
     assert materializer._store_sha256(REPO_ROOT / m1["prior_store_id"]) == m1[
         "prior_control_store_sha256"
     ]
@@ -381,11 +443,24 @@ def test_m4_migration_preserves_the_exact_m0_through_m3_authorities() -> None:
     assert materializer._store_sha256(REPO_ROOT / m3["target_store_id"]) == m3[
         "target_control_store_sha256"
     ]
-    assert m3["target_control_store_sha256"] == migration[
+    assert materializer._store_sha256(REPO_ROOT / m4["target_store_id"]) == m4[
+        "target_control_store_sha256"
+    ]
+    assert m4["target_control_store_sha256"] == migration[
         "prior_control_store_sha256"
     ]
-    assert m3["target_event_prefix_sha256"] == migration[
+    assert m4["target_event_prefix_sha256"] == migration[
         "prior_event_prefix_sha256"
+    ]
+    assert m4["prior_event_watermark"] == 113
+    assert m4["migration_event_watermark"] == 115
+    assert m4["target_event_watermark"] == 116
+    assert m4["migration_projection_cid"] == migration[
+        "prior_materialization_projection_cid"
+    ]
+    assert m4["projection_cid"] == migration["prior_projection_cid"]
+    assert m4["migration_receipt_cid"] == migration[
+        "prior_materialization_receipt_cid"
     ]
     for entry in history:
         materializer._verify_receipt_anchor(
@@ -438,12 +513,39 @@ def test_m4_migration_preserves_the_exact_m0_through_m3_authorities() -> None:
     assert failure["implementation_provider_invoked"] is False
     assert failure["credential_handoff_retired"] is True
     assert failure["failure_time_authority"] == "unavailable"
+    preprovider = migration["preprovider_task_failure"]
+    assert preprovider["schema"] == "sawm/pre-provider-task-failure@1"
+    assert preprovider["task_alias"] == "SAWM-001"
+    assert preprovider["task_status"] == "in_progress"
+    assert preprovider["task_revision"] == 2
+    assert preprovider["canonical_event_watermark"] == 116
+    assert preprovider["canonical_projection_cid"] == migration[
+        "prior_projection_cid"
+    ]
+    assert preprovider["lifecycle_started"] is True
+    assert preprovider["worktree_setup_occurred"] is True
+    assert preprovider["provider_dispatched"] is False
+    assert preprovider["implementation_provider_invoked"] is False
+    assert preprovider["effect_claim_recorded"] is False
+    assert preprovider["implementation_commit_created"] is False
+    assert preprovider["merge_attempted"] is False
+    assert preprovider["task_completed"] is False
+    assert preprovider["owner_status"] == "stopped"
+    verified_failure = materializer._verify_preprovider_failure_artifacts(
+        REPO_ROOT, migration
+    )
+    assert verified_failure["provider_invocation_count"] == 0
+    assert verified_failure["effect_claim_count"] == 0
 
 
-def test_m4_provider_binding_paths_are_exact_protected_controls() -> None:
+def test_m5_recovery_paths_and_mixed_history_are_fail_closed() -> None:
     validator = _load(
         "scripts/validate_semantic_addressed_world_model_board.py",
-        "sawm_board_m4_provider_binding_paths_test",
+        "sawm_board_m5_recovery_paths_test",
+    )
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m5_recovery_paths_test",
     )
     config = json.loads(
         (
@@ -458,17 +560,56 @@ def test_m4_provider_binding_paths_are_exact_protected_controls() -> None:
             "prior_materialization_migration.json"
         ).read_text(encoding="utf-8")
     )
-    provider_controls = {
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    recovery_controls = {
+        "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+        "test/api/test_agent_supervisor_database_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
         "test/api/test_agent_supervisor_provider_command_binding.py",
     }
 
-    assert provider_controls.issubset(validator.CONTROL_RELATIVE_PATHS)
+    assert recovery_controls.issubset(validator.CONTROL_RELATIVE_PATHS)
+    assert recovery_controls.issubset(dependency_validator.CONTROL_PATHS)
     assert tuple(config["protected_paths"]) == validator.CONTROL_RELATIVE_PATHS
-    assert provider_controls.issubset(
+    assert recovery_controls.issubset(
         config["configured_board_live_capsule"]["control_paths"]
     )
-    assert provider_controls.issubset(migration["bounded_control_plane_repair_paths"])
+    assert recovery_controls.issubset(migration["bounded_control_plane_repair_paths"])
+    assert validator._m5_migration_errors(config, seal, migration) == []
+    assert dependency_validator._m5_source_migration_errors(
+        config, seal, migration
+    ) == []
+
+    collapsed_m4_watermarks = copy.deepcopy(migration)
+    collapsed_m4_watermarks["migration_history"][3][
+        "migration_event_watermark"
+    ] = 116
+    assert validator._m5_migration_errors(
+        config, seal, collapsed_m4_watermarks
+    )
+    assert dependency_validator._m5_source_migration_errors(
+        config, seal, collapsed_m4_watermarks
+    )
+
+    definition_rewrite = copy.deepcopy(config)
+    definition_rewrite["prior_materialization"]["nonterminal_task_requeue"][
+        "accepted_definition_changes"
+    ] = 1
+    assert validator._m5_migration_errors(definition_rewrite, seal, migration)
+    assert dependency_validator._m5_source_migration_errors(
+        definition_rewrite, seal, migration
+    )
 
 
 def test_live_owner_identity_requires_exact_canonical_replica_rows(

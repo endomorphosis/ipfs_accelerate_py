@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Render, migrate, and verify the append-only SAWM R2 supervisor program.
 
-The default action verifies the sealed prior authority, copies its exact bytes
-to a confined stage, appends the bounded source-migration suffix through the
-landed intent repository, and atomically publishes the successor store.  It
-never rematerializes accepted task/goal definitions or completion evidence.
+The default action verifies the sealed prior authority, copies only its exact
+canonical control-store bytes to a confined stage, appends the bounded source
+migration and operator-authorized nonterminal task recovery through the landed
+intent repository, and atomically publishes the successor store. It never
+rematerializes accepted task/goal definitions or completion evidence, and it
+never copies predecessor execution or coordination sidecars.
 """
 
 from __future__ import annotations
@@ -95,43 +97,32 @@ _M3_PREWORKER_FAILURE_V2: dict[str, Any] = {
     "failure_time_authority": "unavailable",
 }
 
-_M3_FROZEN_PRIOR_BINDING: dict[str, Any] = {
+_M4_FROZEN_PRIOR_BINDING: dict[str, Any] = {
     "prior_store_id": (
         "data/agent_supervisor/semantic_addressed_world_model/"
-        "run-r2-m3/control.duckdb"
+        "run-r2-m4/control.duckdb"
     ),
     "prior_control_store_sha256": (
-        "5f0ab2700371350502a6d8d73440f08f5c9b42e3580eaf671352e344344c5a7f"
+        "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670"
     ),
-    "prior_event_watermark": 113,
+    "prior_event_watermark": 116,
     "prior_event_prefix_sha256": (
-        "1d0374314d8cb413b0593bda79b8c654dd5fbd52790dae36a636e2ccd607a296"
+        "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911"
     ),
+    "prior_projection_cid": (
+        "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha"
+    ),
+    "prior_database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+    "prior_generation": 6,
+    "prior_plan_revision": 5,
 }
 
-# These are current datasets-authoritative operational-schema tables. A row
-# in any of them would contradict the sealed claim that the detached M3
-# coordinator failed before task dispatch or implementation-provider use.
-_PREWORKER_ZERO_ACTIVITY_TABLES: tuple[str, ...] = (
-    "task_revisions",
-    "task_assignments",
-    "task_blocks",
-    "task_attempts",
-    "attempt_phases",
-    "task_claims",
-    "provider_invocations",
-    "provider_calls",
-    "provider_responses",
-    "supervisor_instances",
-    "daemon_instances",
-    "daemon_sessions",
-    "heartbeats",
-    "worktrees",
-    "worktree_snapshots",
-    "worktree_paths",
-    "leases",
-    "lease_events",
+_M5_EXPECTED_PROJECTION_CID = (
+    "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q"
 )
+_M5_EVENT_SUFFIX_LENGTH = 3
+_M5_SUPERSESSION_REASON = "source_authority_revision_and_preprovider_task_requeue"
+_M5_SUPERSESSION_MODE = "source_authority_revision_and_nonterminal_task_recovery"
 
 
 class MaterializationError(RuntimeError):
@@ -210,6 +201,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
         "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
@@ -221,17 +213,23 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
         "test/api/test_agent_supervisor_configured_board_extension_projection.py",
         "test/api/test_agent_supervisor_configured_board_live_capsule.py",
         "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_database_coordination.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
         "test/api/test_agent_supervisor_native_dependency_pin.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
         "test/api/test_agent_supervisor_provider_command_binding.py",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
     )
@@ -281,8 +279,11 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     if (
         migration.get("schema")
-        != "sawm/prior-materialization-migration-inventory@2"
+        != "sawm/prior-materialization-migration-inventory@3"
         or migration.get("migration_revision") != expected_migration_revision
+        or migration.get("migration_kind")
+        != "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
+        or migration.get("supersession_reason") != _M5_SUPERSESSION_REASON
     ):
         raise MaterializationError("the sealed append-only migration revision is missing")
     launch_failure = migration.get("preworker_launch_failure")
@@ -293,6 +294,44 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         != launch_failure.get("error_payload_cid")
     ):
         raise MaterializationError("the typed pre-worker launch failure is invalid")
+    preprovider_failure = migration.get("preprovider_task_failure")
+    if (
+        not isinstance(preprovider_failure, dict)
+        or preprovider_failure.get("schema") != "sawm/pre-provider-task-failure@1"
+        or preprovider_failure.get("store_id") != migration.get("prior_store_id")
+        or preprovider_failure.get("control_store_sha256")
+        != migration.get("prior_control_store_sha256")
+        or preprovider_failure.get("canonical_event_watermark")
+        != migration.get("prior_event_watermark")
+        or preprovider_failure.get("canonical_event_prefix_sha256")
+        != migration.get("prior_event_prefix_sha256")
+        or preprovider_failure.get("canonical_projection_cid")
+        != migration.get("prior_projection_cid")
+        or preprovider_failure.get("source_binding_cid")
+        != migration.get("prior_source_binding_cid")
+        or preprovider_failure.get("successor_migration_revision")
+        != migration.get("migration_revision")
+        or preprovider_failure.get("successor_plan_revision")
+        != migration.get("target_plan_revision")
+        or preprovider_failure.get("successor_generation")
+        != migration.get("target_generation")
+        or preprovider_failure.get("successor_store_id")
+        != migration.get("target_store_id")
+        or preprovider_failure.get("implementation_provider_invoked") is not False
+        or preprovider_failure.get("provider_dispatched") is not False
+        or preprovider_failure.get("effect_claim_recorded") is not False
+        or preprovider_failure.get("implementation_commit_created") is not False
+        or preprovider_failure.get("merge_attempted") is not False
+        or preprovider_failure.get("task_completed") is not False
+    ):
+        raise MaterializationError("the sealed pre-provider task failure is invalid")
+    bounded_paths = migration.get("bounded_control_plane_repair_paths")
+    if (
+        not isinstance(bounded_paths, list)
+        or len(bounded_paths) != len(set(bounded_paths))
+        or any(path not in source["control_sha256"] for path in bounded_paths)
+    ):
+        raise MaterializationError("bounded control-plane repairs are not source-bound")
     prior_goal_cids = migration.get("prior_goal_cids")
     prior_task_cids = migration.get("prior_task_cids")
     if not isinstance(prior_goal_cids, dict) or not isinstance(prior_task_cids, dict):
@@ -506,13 +545,36 @@ def _verify_migration_history(
             raise MigrationRequired("sealed migration history entry is not an object")
         entry = dict(raw)
         expected_revision = f"SAWM-R2-M{ordinal}"
-        if (
-            entry.get("schema") != "sawm/source-migration-history-entry@1"
-            or entry.get("migration_revision") != expected_revision
-            or int(entry.get("target_event_watermark") or 0)
-            != int(entry.get("prior_event_watermark") or 0) + 2
-        ):
+        schema = entry.get("schema")
+        prior_watermark = int(entry.get("prior_event_watermark") or 0)
+        migration_watermark = int(
+            entry.get("migration_event_watermark")
+            or entry.get("target_event_watermark")
+            or 0
+        )
+        target_watermark = int(entry.get("target_event_watermark") or 0)
+        if entry.get("migration_revision") != expected_revision:
             raise MigrationRequired("sealed migration history sequence differs")
+        if schema == "sawm/source-migration-history-entry@1":
+            if (
+                ordinal > 3
+                or migration_watermark != prior_watermark + 2
+                or target_watermark != migration_watermark
+            ):
+                raise MigrationRequired("sealed @1 migration history sequence differs")
+        elif schema == "sawm/source-migration-history-entry@2":
+            if (
+                ordinal != 4
+                or migration_watermark != prior_watermark + 2
+                or target_watermark != migration_watermark + 1
+                or entry.get("post_migration_event_type")
+                != "intent.task_status_changed"
+                or entry.get("post_migration_task_status") != "in_progress"
+                or int(entry.get("post_migration_task_revision") or 0) != 2
+            ):
+                raise MigrationRequired("sealed @2 migration history sequence differs")
+        else:
+            raise MigrationRequired("sealed migration history schema differs")
         if previous is not None and (
             entry.get("prior_store_id") != previous.get("target_store_id")
             or entry.get("prior_control_store_sha256")
@@ -541,6 +603,12 @@ def _verify_migration_history(
             receipt_path,
             str(entry.get("migration_receipt_cid") or ""),
         )
+        receipt_file_sha256 = str(entry.get("migration_receipt_file_sha256") or "")
+        if (
+            receipt_file_sha256
+            and _store_sha256(receipt_path) != receipt_file_sha256
+        ):
+            raise MigrationRequired("sealed migration-history receipt bytes differ")
         evidence = connection.execute(
             "SELECT digest FROM evidence_nodes WHERE evidence_id = ? "
             "AND evidence_kind = 'operator_control_plane_source_migration'",
@@ -548,19 +616,45 @@ def _verify_migration_history(
         ).fetchall()
         if len(evidence) != 1 or str(evidence[0][0]) != entry.get("migration_digest"):
             raise MigrationRequired("sealed migration-history evidence differs")
-        event_ids = connection.execute(
-            "SELECT global_sequence, event_id FROM domain_events "
-            "WHERE global_sequence IN (?, ?) ORDER BY global_sequence",
-            [
-                int(entry["target_event_watermark"]) - 1,
-                int(entry["target_event_watermark"]),
-            ],
-        ).fetchall()
-        if [str(row[1]) for row in event_ids] != [
+        event_sequences = [migration_watermark - 1, migration_watermark]
+        expected_event_ids = [
             entry.get("plan_migration_event_id"),
             entry.get("migration_evidence_event_id"),
-        ]:
+        ]
+        if schema == "sawm/source-migration-history-entry@2":
+            event_sequences.append(target_watermark)
+            expected_event_ids.append(entry.get("post_migration_event_id"))
+        placeholders = ",".join("?" for _ in event_sequences)
+        event_ids = connection.execute(
+            "SELECT global_sequence, event_id, event_type, task_cid, body_json "
+            f"FROM domain_events WHERE global_sequence IN ({placeholders}) "
+            "ORDER BY global_sequence",
+            event_sequences,
+        ).fetchall()
+        if [str(row[1]) for row in event_ids] != expected_event_ids:
             raise MigrationRequired("sealed migration-history event identities differ")
+        if schema == "sawm/source-migration-history-entry@2":
+            post_event = event_ids[-1]
+            post_payload = json.loads(str(post_event[4]))
+            post_body = post_payload.get("body") or {}
+            if (
+                int(post_event[0]) != target_watermark
+                or str(post_event[2]) != entry.get("post_migration_event_type")
+                or str(post_event[3]) != entry.get("post_migration_task_cid")
+                or post_body.get("task_cid") != entry.get("post_migration_task_cid")
+                or post_body.get("status") != entry.get("post_migration_task_status")
+                or int(post_body.get("revision") or 0)
+                != int(entry.get("post_migration_task_revision") or 0)
+            ):
+                raise MigrationRequired("sealed post-migration runtime event differs")
+            migration_prefix, migration_count = _event_prefix_digest(
+                connection, migration_watermark
+            )
+            if (
+                migration_count != migration_watermark
+                or migration_prefix != entry.get("migration_event_prefix_sha256")
+            ):
+                raise MigrationRequired("sealed M4 migration-only event prefix differs")
         history.append(entry)
         previous = entry
 
@@ -582,6 +676,15 @@ def _verify_migration_history(
         != migration.get("prior_materialization_receipt_path")
     ):
         raise MigrationRequired("latest migration-history entry does not bind the predecessor")
+    if latest.get("schema") == "sawm/source-migration-history-entry@2" and (
+        latest.get("migration_event_watermark")
+        != migration.get("prior_materialization_event_watermark")
+        or latest.get("migration_projection_cid")
+        != migration.get("prior_materialization_projection_cid")
+        or latest.get("migration_receipt_file_sha256")
+        != migration.get("prior_materialization_receipt_file_sha256")
+    ):
+        raise MigrationRequired("latest migration-only receipt binding differs")
     return tuple(history)
 
 
@@ -625,22 +728,330 @@ def _assert_committed_clean_source(
         )
 
 
+def _verify_sealed_file(
+    root: Path,
+    relative_path: str,
+    expected_sha256: str,
+    *,
+    noun: str,
+) -> Path:
+    path = (root / str(relative_path or "")).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise MigrationRequired(f"sealed {noun} is missing or escapes the source root")
+    expected = str(expected_sha256 or "")
+    if expected.startswith("sha256:"):
+        expected = expected.removeprefix("sha256:")
+    if len(expected) != 64 or _store_sha256(path) != expected:
+        raise MigrationRequired(f"sealed {noun} bytes differ")
+    return path
+
+
+def _table_count(connection: Any, table_name: str) -> int:
+    row = connection.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+    return int(row[0]) if row is not None else -1
+
+
+def _verify_preprovider_failure_artifacts(
+    root: Path,
+    migration: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify the frozen M4 sidecars without making them successor authority."""
+
+    failure = migration["preprovider_task_failure"]
+    if (
+        failure.get("authority_class")
+        != "operator_frozen_predecessor_observation"
+        or failure.get("owner_status") != "stopped"
+        or failure.get("retry_deferred") is not True
+        or failure.get("attempt_consumed") is not False
+        or failure.get("provider_call_allowed") is not False
+        or failure.get("provider_dispatch_attempted") is not False
+        or failure.get("provider_invocation_recorded") is not False
+        or failure.get("authoritative_completion_evidence") is not False
+    ):
+        raise MigrationRequired("sealed M4 pre-provider authority classification differs")
+
+    execution_path = _verify_sealed_file(
+        root,
+        str(failure["execution_store_id"]),
+        str(failure["execution_store_sha256"]),
+        noun="M4 execution sidecar",
+    )
+    coordination_path = _verify_sealed_file(
+        root,
+        str(failure["coordination_store_id"]),
+        str(failure["coordination_store_sha256"]),
+        noun="M4 coordination sidecar",
+    )
+    for path_key, digest_key, noun in (
+        ("configured_board_launch_log_path", "configured_board_launch_log_sha256", "M4 launch log"),
+        ("implementation_daemon_log_path", "implementation_daemon_log_sha256", "M4 implementation log"),
+        ("supervisor_event_log_path", "supervisor_event_log_sha256", "M4 supervisor event log"),
+        ("merge_queue_store_path", "merge_queue_store_sha256", "M4 merge queue"),
+        ("quack_owner_status_path", "quack_owner_status_sha256", "M4 stopped owner status"),
+        ("portal_attempt_binding_path", "portal_attempt_binding_sha256", "M4 portal attempt binding"),
+    ):
+        _verify_sealed_file(
+            root,
+            str(failure[path_key]),
+            str(failure[digest_key]),
+            noun=noun,
+        )
+
+    import duckdb
+
+    execution = duckdb.connect(str(execution_path), read_only=True)
+    try:
+        execution_counts = {
+            "database_task_attempts": _table_count(execution, "database_task_attempts"),
+            "attempt_phases": _table_count(execution, "attempt_phases"),
+            "provider_invocations": _table_count(execution, "provider_invocations"),
+            "effect_claims": _table_count(execution, "effect_claims"),
+        }
+        if execution_counts != failure["execution_authority_counts"]:
+            raise MigrationRequired("sealed M4 execution-sidecar counts differ")
+        attempt = execution.execute(
+            "SELECT claim_id, task_cid, task_alias, attempt_number, owner_session_id, "
+            "fencing_token, fence_epoch, lease_id, committed_phase, status, revision "
+            "FROM database_task_attempts WHERE attempt_id = ?",
+            [failure["attempt_id"]],
+        ).fetchall()
+        expected_attempt = [
+            (
+                failure["claim_id"],
+                failure["task_cid"],
+                failure["task_alias"],
+                1,
+                failure["owner_session_id"],
+                int(failure["fencing_token"]),
+                int(failure["fence_epoch"]),
+                failure["lease_id"],
+                failure["database_attempt_committed_phase"],
+                failure["database_attempt_status"],
+                int(failure["database_attempt_revision"]),
+            )
+        ]
+        if attempt != expected_attempt:
+            raise MigrationRequired("sealed M4 execution attempt differs")
+        phases = execution.execute(
+            "SELECT phase, fencing_token, fence_epoch, revision, body_json "
+            "FROM attempt_phases WHERE attempt_id = ? ORDER BY revision",
+            [failure["attempt_id"]],
+        ).fetchall()
+        if (
+            [(str(row[0]), int(row[1]), int(row[2]), int(row[3])) for row in phases]
+            != [("claimed", 1, 1, 1), ("context", 1, 1, 2), ("failed", 1, 1, 3)]
+            or json.loads(str(phases[-1][4])).get("reason")
+            != failure["database_attempt_terminal_reason"]
+        ):
+            raise MigrationRequired("sealed M4 execution phase history differs")
+    finally:
+        execution.close()
+
+    coordination = duckdb.connect(str(coordination_path), read_only=True)
+    try:
+        coordination_counts = {
+            "task_attempts": _table_count(coordination, "task_attempts"),
+            "task_claims": _table_count(coordination, "task_claims"),
+            "fenced_leases": _table_count(coordination, "fenced_leases"),
+            "resource_claims": _table_count(coordination, "resource_claims"),
+            "task_completions": _table_count(coordination, "task_completions"),
+        }
+        if coordination_counts != failure["coordination_authority_counts"]:
+            raise MigrationRequired("sealed M4 coordination-sidecar counts differ")
+        attempt = coordination.execute(
+            "SELECT task_cid, attempt_number, owner_session_id, fencing_token, "
+            "fence_epoch, status, revision FROM task_attempts WHERE attempt_id = ?",
+            [failure["attempt_id"]],
+        ).fetchall()
+        if attempt != [
+            (
+                failure["task_cid"],
+                1,
+                failure["owner_session_id"],
+                int(failure["fencing_token"]),
+                int(failure["fence_epoch"]),
+                failure["coordination_attempt_status"],
+                int(failure["coordination_attempt_revision"]),
+            )
+        ]:
+            raise MigrationRequired("sealed M4 coordination attempt differs")
+        claim = coordination.execute(
+            "SELECT task_cid, owner_session_id, fencing_token, fence_epoch, "
+            "expires_at_ms, state, revision, attempt_id, attempt_number, lease_id "
+            "FROM task_claims WHERE claim_id = ?",
+            [failure["claim_id"]],
+        ).fetchall()
+        if claim != [
+            (
+                failure["task_cid"],
+                failure["owner_session_id"],
+                int(failure["fencing_token"]),
+                int(failure["fence_epoch"]),
+                int(failure["coordination_claim_expires_at_epoch_ms"]),
+                failure["coordination_claim_status"],
+                int(failure["coordination_claim_revision"]),
+                failure["attempt_id"],
+                1,
+                failure["lease_id"],
+            )
+        ]:
+            raise MigrationRequired("sealed M4 coordination claim differs")
+        lease = coordination.execute(
+            "SELECT task_cid, owner_session_id, fencing_token, fence_epoch, "
+            "expires_at_ms, state, revision, claim_id, attempt_id, attempt_number "
+            "FROM fenced_leases WHERE lease_id = ?",
+            [failure["lease_id"]],
+        ).fetchall()
+        if claim and lease != [
+            (
+                failure["task_cid"],
+                failure["owner_session_id"],
+                int(failure["fencing_token"]),
+                int(failure["fence_epoch"]),
+                int(failure["coordination_claim_expires_at_epoch_ms"]),
+                failure["coordination_lease_status"],
+                int(failure["coordination_lease_revision"]),
+                failure["claim_id"],
+                failure["attempt_id"],
+                1,
+            )
+        ]:
+            raise MigrationRequired("sealed M4 coordination lease differs")
+        ready = coordination.execute(
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            [failure["task_cid"]],
+        ).fetchall()
+        if ready != [(bool(failure["coordination_task_ready"]),)]:
+            raise MigrationRequired("sealed M4 coordination readiness differs")
+    finally:
+        coordination.close()
+
+    binding_path = _verify_sealed_file(
+        root,
+        str(failure["portal_attempt_binding_path"]),
+        str(failure["portal_attempt_binding_sha256"]),
+        noun="M4 portal attempt binding",
+    )
+    binding = _load_json(binding_path)
+    claimed_binding_id = str(binding.pop("binding_id", ""))
+    if (
+        claimed_binding_id != failure["portal_attempt_binding_id"]
+        or _identity(binding) != claimed_binding_id
+        or binding.get("task_cid") != failure["task_cid"]
+        or binding.get("task_alias") != failure["task_alias"]
+        or int(binding.get("task_revision") or 0) != int(failure["task_revision"])
+        or binding.get("attempt_id") != failure["attempt_id"]
+        or binding.get("claim_id") != failure["claim_id"]
+        or binding.get("lease_id") != failure["lease_id"]
+        or binding.get("projection_seed_digest")
+        != "sha256:" + failure["portal_task_projection_sha256"]
+        or binding.get("projection_authority") is not False
+    ):
+        raise MigrationRequired("sealed M4 portal attempt binding differs")
+
+    portal_dir = binding_path.parent
+    event_log = _verify_sealed_file(
+        root,
+        str((portal_dir / "portal-events.jsonl").relative_to(root)),
+        str(failure["portal_event_log_sha256"]),
+        noun="M4 portal event log",
+    )
+    manifest_path = _verify_sealed_file(
+        root,
+        str((portal_dir / "portal-events.jsonl.manifest.json").relative_to(root)),
+        str(failure["portal_event_manifest_sha256"]),
+        noun="M4 portal event manifest",
+    )
+    _verify_sealed_file(
+        root,
+        str((portal_dir / "task-projection.md").relative_to(root)),
+        str(failure["portal_task_projection_sha256"]),
+        noun="M4 portal task projection",
+    )
+    event_rows = [
+        json.loads(line)
+        for line in event_log.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if (
+        len(event_rows) != int(failure["portal_event_count"])
+        or [int(row.get("sequence") or 0) for row in event_rows]
+        != list(
+            range(
+                int(failure["portal_event_first_sequence"]),
+                int(failure["portal_event_last_sequence"]) + 1,
+            )
+        )
+        or event_rows[-1].get("event_id") != failure["portal_event_tail_id"]
+        or any(
+            row.get("previous_event_id")
+            != ("" if index == 0 else event_rows[index - 1].get("event_id"))
+            for index, row in enumerate(event_rows)
+        )
+    ):
+        raise MigrationRequired("sealed M4 portal event chain differs")
+    events_by_id = {str(row.get("event_id") or ""): row for row in event_rows}
+    probe_event = events_by_id.get(str(failure["failure_event_id"])) or {}
+    probe = ((probe_event.get("dependency_preflight") or {}).get("probe") or {})
+    exception_event = events_by_id.get(
+        str(failure["implementation_exception_event_id"])
+    ) or {}
+    finished_event = events_by_id.get(
+        str(failure["implementation_finished_event_id"])
+    ) or {}
+    if (
+        probe_event.get("type") != failure["failure_event_type"]
+        or probe_event.get("task_id") != failure["task_alias"]
+        or probe.get("error_sha256") != failure["probe_error_sha256"]
+        or probe.get("error_type") != failure["probe_error_type"]
+        or probe.get("reason") != failure["probe_reason"]
+        or exception_event.get("type") != "implementation_exception"
+        or exception_event.get("failure_kind") != failure["failure_kind"]
+        or exception_event.get("phase") != failure["failure_phase"]
+        or exception_event.get("reason") != failure["failure_reason"]
+        or exception_event.get("provider_call_allowed") is not False
+        or finished_event.get("type") != "implementation_finished"
+        or finished_event.get("provider_dispatched") is not False
+        or finished_event.get("implementation_commit")
+        or (finished_event.get("merge_result") or {}).get("merged") is not False
+        or finished_event.get("attempt_consumed") is not False
+    ):
+        raise MigrationRequired("sealed M4 pre-provider portal failure differs")
+    manifest = _load_json(manifest_path)
+    if (
+        manifest.get("snapshot_id") != failure["portal_event_snapshot_id"]
+        or manifest.get("last_event_id") != failure["portal_event_tail_id"]
+        or int(manifest.get("earliest_sequence") or 0)
+        != int(failure["portal_event_first_sequence"])
+        or int(manifest.get("latest_sequence") or 0)
+        != int(failure["portal_event_last_sequence"])
+    ):
+        raise MigrationRequired("sealed M4 portal manifest binding differs")
+    return {
+        "execution_store_sha256": failure["execution_store_sha256"],
+        "coordination_store_sha256": failure["coordination_store_sha256"],
+        "portal_event_log_sha256": failure["portal_event_log_sha256"],
+        "portal_event_manifest_sha256": failure["portal_event_manifest_sha256"],
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+    }
+
+
 def _verify_prior_store(
     root: Path,
     config: Mapping[str, Any],
     population: Mapping[str, Any],
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
-    launch_failure = migration.get("preworker_launch_failure")
-    if (
-        isinstance(launch_failure, Mapping)
-        and launch_failure.get("schema") == "sawm/pre-worker-launch-failure@2"
-        and any(
-            migration.get(key) != expected
-            for key, expected in _M3_FROZEN_PRIOR_BINDING.items()
-        )
+    if any(
+        migration.get(key) != expected
+        for key, expected in _M4_FROZEN_PRIOR_BINDING.items()
     ):
-        raise MigrationRequired("sealed M3 predecessor binding differs")
+        raise MigrationRequired("sealed M4 predecessor binding differs")
+    if migration.get("preworker_launch_failure") != _M3_PREWORKER_FAILURE_V2:
+        raise MigrationRequired("sealed M3 historical launch failure differs")
+    preprovider_failure = migration["preprovider_task_failure"]
     configured = config.get("prior_materialization") or {}
     for inventory_key, config_key in (
         ("migration_revision", "migration_revision"),
@@ -661,8 +1072,40 @@ def _verify_prior_store(
         != "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json"
         or configured.get("reason") != migration["supersession_reason"]
         or configured.get("preserve_append_only") is not True
+        or int(configured.get("migration_history_count") or 0)
+        != len(migration["migration_history"])
+        or int(configured.get("prior_plan_revision") or 0)
+        != int(migration["prior_plan_revision"])
+        or int(configured.get("target_plan_revision") or 0)
+        != int(migration["target_plan_revision"])
+        or int(configured.get("migration_event_watermark") or 0)
+        != int(migration["prior_event_watermark"]) + 2
+        or int(configured.get("target_event_watermark") or 0)
+        != int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+        or configured.get("target_projection_cid") != _M5_EXPECTED_PROJECTION_CID
     ):
         raise MaterializationError("scheduler prior-authority policy differs from its inventory")
+    requeue = configured.get("nonterminal_task_requeue") or {}
+    expected_requeue = {
+        "schema": "sawm/nonterminal-task-requeue-authorization@1",
+        "authorized": True,
+        "authority": "operator_source_migration",
+        "task_alias": "SAWM-001",
+        "task_cid": migration["prior_task_cids"]["SAWM-001"],
+        "from_status": "in_progress",
+        "from_revision": 2,
+        "to_status": "todo",
+        "to_revision": 3,
+        "reason": migration["migration_kind"],
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "expected_event_watermark": int(migration["prior_event_watermark"]) + 3,
+        "worker_self_approval": False,
+    }
+    if requeue != expected_requeue:
+        raise MaterializationError("scheduler task-requeue authority differs from its inventory")
     prior = (root / str(migration["prior_store_id"])).resolve()
     target = (root / str(migration["target_store_id"])).resolve()
     if not prior.is_relative_to(root) or not target.is_relative_to(root) or prior == target:
@@ -719,60 +1162,44 @@ def _verify_prior_store(
         completed = [str(row[0]) for row in task_rows if str(row[2]) == "completed"]
         if completed != ["SAWM-000"]:
             raise MigrationRequired(f"sealed prior completion set differs: {completed}")
+        statuses = {str(row[0]): str(row[2]) for row in task_rows}
+        expected_statuses = {
+            alias: (
+                "completed"
+                if alias == "SAWM-000"
+                else "in_progress"
+                if alias == "SAWM-001"
+                else "todo"
+            )
+            for alias in migration["prior_task_cids"]
+        }
+        if statuses != expected_statuses:
+            raise MigrationRequired("sealed M4 canonical task states differ")
+        sawm_001 = next(row for row in task_rows if row[0] == "SAWM-001")
         if (
-            isinstance(launch_failure, Mapping)
-            and launch_failure.get("schema") == "sawm/pre-worker-launch-failure@2"
+            int(sawm_001[3]) != int(preprovider_failure["task_revision"])
+            or str(sawm_001[1]) != preprovider_failure["task_cid"]
         ):
-            statuses = {str(row[0]): str(row[2]) for row in task_rows}
-            expected_statuses = {
-                alias: "completed" if alias == "SAWM-000" else "todo"
-                for alias in migration["prior_task_cids"]
-            }
-            if statuses != expected_statuses:
-                raise MigrationRequired(
-                    "sealed M3 task state changed before worker dispatch"
-                )
-            activity_counts: dict[str, int] = {}
-            for table_name in _PREWORKER_ZERO_ACTIVITY_TABLES:
-                try:
-                    row = connection.execute(
-                        f'SELECT COUNT(*) FROM "{table_name}"'
-                    ).fetchone()
-                except Exception as exc:
-                    raise MigrationRequired(
-                        "sealed M3 pre-worker authority table is unavailable: "
-                        f"{table_name}"
-                    ) from exc
-                activity_counts[table_name] = int(row[0]) if row is not None else -1
-            nonempty_activity = {
-                name: count
-                for name, count in activity_counts.items()
-                if count != 0
-            }
-            if nonempty_activity:
-                raise MigrationRequired(
-                    "sealed M3 contains worker/task/provider activity: "
-                    + json.dumps(
-                        nonempty_activity,
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    )
-                )
-            owner = connection.execute(
-                "SELECT server_id, process_birth_id, status "
-                "FROM state_servers WHERE generation = ?",
-                [int(launch_failure["owner_generation"])],
-            ).fetchall()
-            if owner != [
-                (
-                    launch_failure["owner_server_id"],
-                    launch_failure["owner_process_birth_id"],
-                    "stopped",
-                )
-            ]:
-                raise MigrationRequired(
-                    "sealed M3 launch owner identity or stopped state differs"
-                )
+            raise MigrationRequired("sealed M4 SAWM-001 revision binding differs")
+        canonical_counts = {
+            table_name: _table_count(connection, table_name)
+            for table_name in preprovider_failure["canonical_authority_counts"]
+        }
+        if canonical_counts != preprovider_failure["canonical_authority_counts"]:
+            raise MigrationRequired("sealed M4 canonical authority counts differ")
+        owner = connection.execute(
+            "SELECT server_id, process_birth_id, status "
+            "FROM state_servers WHERE generation = ?",
+            [int(preprovider_failure["owner_generation"])],
+        ).fetchall()
+        if owner != [
+            (
+                preprovider_failure["owner_server_id"],
+                preprovider_failure["owner_process_birth_id"],
+                "stopped",
+            )
+        ]:
+            raise MigrationRequired("sealed M4 launch owner identity or stopped state differs")
         operator = next(row for row in task_rows if row[0] == "SAWM-000")
         if str(operator[2]) != migration["prior_operator_status"] or int(operator[3]) != 2:
             raise MigrationRequired("sealed prior operator status/revision differs")
@@ -853,6 +1280,7 @@ def _verify_prior_store(
         root / str(migration["prior_materialization_receipt_path"]),
         str(migration["prior_materialization_receipt_cid"]),
     )
+    preprovider_evidence = _verify_preprovider_failure_artifacts(root, migration)
     # Landed schema and replay verification may obtain a read/write adapter;
     # run those checks only on an isolated copy. The accepted prior authority
     # above is opened read-only and its bytes are rehashed below.
@@ -876,6 +1304,7 @@ def _verify_prior_store(
         "event_prefix_sha256": migration["prior_event_prefix_sha256"],
         "event_watermark": migration["prior_event_watermark"],
         "projection_cid": migration["prior_projection_cid"],
+        "preprovider_evidence": preprovider_evidence,
     }
 
 
@@ -909,6 +1338,7 @@ def _verify_store(
         if snap.task_count != 45 or snap.goal_count != 29 or snap.plan_root_cid != population["plan_root_cid"]:
             raise MigrationRequired(f"population counts/root conflict: tasks={snap.task_count} goals={snap.goal_count} root={snap.plan_root_cid}")
         status_by_alias: dict[str, str] = {}
+        revision_by_alias: dict[str, int] = {}
         for expected in expected_tasks:
             observed = source.get_task(str(expected["task_cid"]))
             expected_outputs = [str(item["declared_path"]) for item in expected["outputs"]]
@@ -925,6 +1355,7 @@ def _verify_store(
             ):
                 raise MigrationRequired(f"task definition conflict: {expected['task_id']}")
             status_by_alias[observed.task_alias] = observed.status
+            revision_by_alias[observed.task_alias] = int(observed.revision)
         for expected in expected_goals:
             observed = source.get_goal(str(expected["goal_cid"]))
             if observed is None or str(observed.get("goal_alias")) != expected["goal_id"] or (observed.get("body") or {}).get("definition_cid") != expected["definition_cid"]:
@@ -937,6 +1368,21 @@ def _verify_store(
                 raise MaterializationError(
                     "migration verification requires exact config and validator binding"
                 )
+            expected_statuses = {
+                alias: "completed" if alias == "SAWM-000" else "todo"
+                for alias in population["migration_inventory"]["prior_task_cids"]
+            }
+            expected_revisions = {
+                alias: 2 if alias == "SAWM-000" else 3 if alias == "SAWM-001" else 1
+                for alias in population["migration_inventory"]["prior_task_cids"]
+            }
+            if status_by_alias != expected_statuses or revision_by_alias != expected_revisions:
+                raise MigrationRequired("M5 task-state recovery projection differs")
+            expected_target_watermark = (
+                int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+            )
+            if int(snap.event_cursor) != expected_target_watermark:
+                raise MigrationRequired("M5 materialization event watermark differs")
             plan = source.plans.get(str(population["plan_root_cid"]))
             if (
                 plan is None
@@ -1028,7 +1474,7 @@ def _verify_store(
                     "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
                     "source_migration_revision": migration["migration_revision"],
                     "source_migration_digest": migration_digest,
-                    "supersession_mode": "source_authority_revision_only",
+                    "supersession_mode": _M5_SUPERSESSION_MODE,
                     "last_delta": plan_delta,
                 }
                 observed_plan_body = json.loads(str(revision_rows[-1][1]))
@@ -1044,15 +1490,23 @@ def _verify_store(
                     or prefix_digest != migration["prior_event_prefix_sha256"]
                 ):
                     raise MigrationRequired("accepted event prefix changed during migration")
+                suffix_sequences = list(
+                    range(
+                        int(migration["prior_event_watermark"]) + 1,
+                        int(migration["prior_event_watermark"])
+                        + _M5_EVENT_SUFFIX_LENGTH
+                        + 1,
+                    )
+                )
+                placeholders = ",".join("?" for _ in suffix_sequences)
                 suffix_rows = connection.execute(
                     "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
                     "task_cid, attempt_id, session_id, recorded_at, body_json "
-                    "FROM domain_events WHERE global_sequence IN (?, ?) "
+                    f"FROM domain_events WHERE global_sequence IN ({placeholders}) "
                     "ORDER BY global_sequence",
-                    [int(migration["prior_event_watermark"]) + 1,
-                     int(migration["prior_event_watermark"]) + 2],
+                    suffix_sequences,
                 ).fetchall()
-                if len(suffix_rows) != 2:
+                if len(suffix_rows) != _M5_EVENT_SUFFIX_LENGTH:
                     raise MigrationRequired("migration event suffix differs")
                 events: list[dict[str, Any]] = []
                 for row in suffix_rows:
@@ -1094,7 +1548,7 @@ def _verify_store(
                     ):
                         raise MigrationRequired("migration event identity differs")
                     events.append(event)
-                plan_event, evidence_event = events
+                plan_event, evidence_event, recovery_event = events
                 expected_plan_event_body = {
                     "plan_cid": population["plan_root_cid"],
                     "goal_cid": migration["prior_goal_cids"][ROOT_GOAL],
@@ -1129,12 +1583,53 @@ def _verify_store(
                     or evidence_event["body"].get("body") != expected_evidence_event_body
                 ):
                     raise MigrationRequired("source migration evidence event differs")
+                recovery_receipt = _task_recovery_receipt(population)
+                recovery_body = recovery_event["body"].get("body") or {}
+                expected_recovery_body = {
+                    "task_cid": migration["prior_task_cids"]["SAWM-001"],
+                    "task_alias": "SAWM-001",
+                    "goal_cid": migration["prior_goal_cids"]["SAWM-G011"],
+                    "previous_status": "in_progress",
+                    "status": "todo",
+                    "revision": 3,
+                    "receipt": recovery_receipt,
+                    "recorded_at": recovery_event["recorded_at"],
+                }
+                if (
+                    recovery_event["event_type"] != "intent.task_status_changed"
+                    or recovery_event["task_cid"]
+                    != migration["prior_task_cids"]["SAWM-001"]
+                    or recovery_event["body"].get("subject_id")
+                    != migration["prior_task_cids"]["SAWM-001"]
+                    or recovery_body != expected_recovery_body
+                ):
+                    raise MigrationRequired("operator task-recovery event differs")
+                completion_rows = [
+                    (str(row[0]), str(row[1]))
+                    for row in connection.execute(
+                        "SELECT receipt_cid, task_cid FROM completion_receipts "
+                        "ORDER BY receipt_cid"
+                    ).fetchall()
+                ]
+                if completion_rows != [
+                    (
+                        migration["prior_completion_receipt_cid"],
+                        migration["prior_task_cids"]["SAWM-000"],
+                    )
+                ]:
+                    raise MigrationRequired("task recovery changed completion evidence")
                 migration_details = {
                     "migration_digest": migration_digest,
                     "migration_evidence_id": migration_evidence_id,
                     "plan_migration_event_id": plan_event["event_id"],
                     "migration_evidence_event_id": evidence_event["event_id"],
                     "migration_event_watermark": int(migration["prior_event_watermark"]) + 2,
+                    "task_recovery_receipt": recovery_receipt,
+                    "task_recovery_event_id": recovery_event["event_id"],
+                    "target_event_watermark": int(migration["prior_event_watermark"]) + 3,
+                    "accepted_definition_changes": 0,
+                    "accepted_completion_changes": 0,
+                    "nonterminal_task_status_recovery_changes": 1,
                 }
 
         # Replay in a short private directory, never beside either accepted
@@ -1151,9 +1646,12 @@ def _verify_store(
                 replay.close()
         if not projection_matches:
             raise MigrationRequired("event replay projection differs from the accepted projection")
+        if require_migration and str(snap.projection_cid) != _M5_EXPECTED_PROJECTION_CID:
+            raise MigrationRequired("M5 deterministic projection identity differs")
         return {"valid": True, "task_count": snap.task_count, "goal_count": snap.goal_count,
                 "projection_cid": snap.projection_cid, "event_watermark": snap.event_cursor,
                 "projection_matches_events": True, "statuses": status_by_alias,
+                "revisions": revision_by_alias,
                 **migration_details}
     finally:
         source.close()
@@ -1175,6 +1673,48 @@ def _validator_report(root: Path, script: str) -> dict[str, Any]:
     return report
 
 
+def _task_recovery_receipt(population: Mapping[str, Any]) -> dict[str, Any]:
+    migration = population["migration_inventory"]
+    failure = migration["preprovider_task_failure"]
+    return {
+        "schema": "sawm/operator-nonterminal-task-recovery@1",
+        "operation": "operator_preprovider_task_requeue",
+        "authority_class": "operator_control_plane",
+        "migration_revision": migration["migration_revision"],
+        "task_cid": failure["task_cid"],
+        "task_alias": failure["task_alias"],
+        "task_definition_cid": migration["prior_task_cids"]["SAWM-001"],
+        "expected_status": "in_progress",
+        "expected_revision": int(failure["task_revision"]),
+        "status": "todo",
+        "target_revision": int(failure["task_revision"]) + 1,
+        "prior_event_id": failure["canonical_claim_event_id"],
+        "prior_event_watermark": int(failure["canonical_event_watermark"]),
+        "prior_projection_cid": failure["canonical_projection_cid"],
+        "preprovider_failure_cid": _identity(failure),
+        "failure_kind": failure["failure_kind"],
+        "failure_reason": failure["failure_reason"],
+        "attempt_id": failure["attempt_id"],
+        "claim_id": failure["claim_id"],
+        "lease_id": failure["lease_id"],
+        "owner_session_id": failure["owner_session_id"],
+        "fencing_token": int(failure["fencing_token"]),
+        "fence_epoch": int(failure["fence_epoch"]),
+        "historical_execution_sidecar_copied": False,
+        "historical_coordination_sidecar_copied": False,
+        "automatic_retry_admitted": False,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "nonterminal_task_status_recovery_changes": 1,
+        "implementation_provider_invoked": False,
+        "effect_claim_recorded": False,
+        "implementation_commit_created": False,
+        "merge_attempted": False,
+        "task_completed": False,
+        "worker_self_approval": False,
+    }
+
+
 def _migration_body(
     population: Mapping[str, Any],
     config: Mapping[str, Any],
@@ -1182,7 +1722,7 @@ def _migration_body(
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
     return {
-        "schema": "sawm/operator-control-plane-source-migration@1",
+        "schema": "sawm/operator-control-plane-source-migration@2",
         "migration_revision": migration["migration_revision"],
         "board_namespace": NAMESPACE,
         "plan_revision": REVISION,
@@ -1213,12 +1753,16 @@ def _migration_body(
         },
         "quack_extension_pin": dict(config["quack_owner"]["pinned_extension"]),
         "preworker_launch_failure": dict(migration["preworker_launch_failure"]),
+        "preprovider_task_failure": dict(migration["preprovider_task_failure"]),
+        "nonterminal_task_recovery_receipt": _task_recovery_receipt(population),
         "validator_digest": validation_digest,
         "supersession_reason": migration["supersession_reason"],
-        "supersession_mode": "source_authority_revision_only",
+        "supersession_mode": _M5_SUPERSESSION_MODE,
         "prior_authority_preserved": True,
         "accepted_task_definitions_rewritten": False,
         "accepted_goal_definitions_rewritten": False,
+        "accepted_completion_changes": 0,
+        "nonterminal_task_status_recovery_changes": 1,
         "operator_completion_replayed": False,
         "worker_self_approval": False,
     }
@@ -1236,6 +1780,12 @@ def _migration_plan_delta(population: Mapping[str, Any]) -> dict[str, Any]:
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
         "accepted_definition_changes": 0,
         "accepted_completion_changes": 0,
+        "nonterminal_task_status_recovery_changes": 1,
+        "recovered_task_cid": migration["prior_task_cids"]["SAWM-001"],
+        "recovered_task_expected_status": "in_progress",
+        "recovered_task_expected_revision": 2,
+        "recovered_task_status": "todo",
+        "recovered_task_revision": 3,
     }
 
 
@@ -1285,21 +1835,33 @@ def _expected_migration_receipt(
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
     migration_watermark = int(migration["prior_event_watermark"]) + 2
+    target_watermark = (
+        int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+    )
+    recovery_receipt = _task_recovery_receipt(population)
     receipt = {
-        "schema": "sawm/non-authoritative-migration-receipt@1",
+        "schema": "sawm/non-authoritative-migration-receipt@2",
         "authoritative": False,
         "database_is_authority": True,
         "migration_revision": migration["migration_revision"],
         "program_definition_cid": population["program_definition_cid"],
-        "projection_cid": _projection_at_watermark(
+        "migration_projection_cid": _projection_at_watermark(
             target, population, migration_watermark
         ),
         "migration_event_watermark": migration_watermark,
+        "projection_cid": verified["projection_cid"],
+        "target_event_watermark": target_watermark,
         "validation_digest": validation_digest,
         "migration_digest": verified["migration_digest"],
         "migration_evidence_id": verified["migration_evidence_id"],
         "plan_migration_event_id": verified["plan_migration_event_id"],
         "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "task_recovery_event_id": verified["task_recovery_event_id"],
+        "task_recovery_receipt_cid": _identity(recovery_receipt),
+        "task_recovery_receipt": recovery_receipt,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "nonterminal_task_status_recovery_changes": 1,
         "prior_control_store_sha256": migration["prior_control_store_sha256"],
         "prior_event_prefix_sha256": migration["prior_event_prefix_sha256"],
         "prior_source_binding_cid": migration["prior_source_binding_cid"],
@@ -1308,6 +1870,7 @@ def _expected_migration_receipt(
             for entry in migration["migration_history"]
         ],
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "preprovider_failure_cid": _identity(migration["preprovider_task_failure"]),
         "prior_database_path": migration["prior_store_id"],
         "database_path": str(target.relative_to(root)),
     }
@@ -1450,6 +2013,28 @@ def _ducklake_projection(root: Path, config: Mapping[str, Any], record: Mapping[
     return receipt
 
 
+def _assert_fresh_successor_operational_state(target: Path) -> None:
+    """Refuse to adopt execution/coordination state from an earlier launch."""
+
+    prohibited = (
+        target.with_name("control.execution.duckdb"),
+        target.with_name("control.coordination.duckdb"),
+        target.with_name(f".{target.name}.state-owner.json"),
+        target.parent / "state",
+        target.parent / "events",
+        target.parent / "registry",
+        target.parent / "worktrees",
+        target.parent / "merge-queue",
+        target.parent / "quack-owner",
+    )
+    present = [str(path) for path in prohibited if path.exists()]
+    if present:
+        raise MaterializationError(
+            "successor execution/coordination authority is not fresh: "
+            + json.dumps(present, sort_keys=True, separators=(",", ":"))
+        )
+
+
 def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CONFIG_PATH) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     config_file = Path(config_path)
@@ -1462,6 +2047,15 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     target = (root / str(config["database_program"]["store_id"])).resolve()
     if str(config["database_program"]["store_id"]) != str(migration["target_store_id"]):
         raise MaterializationError("scheduler target differs from the sealed migration target")
+    if (
+        int(config["database_program"].get("store_generation") or 0)
+        != int(migration["target_generation"])
+        or str(config["quack_owner"].get("database_path") or "")
+        != str(migration["target_store_id"])
+        or str(config["quack_owner"].get("store_id") or "")
+        != str(migration["target_store_id"])
+    ):
+        raise MaterializationError("scheduler successor generation/owner binding differs")
     if not target.is_relative_to(root):
         raise MaterializationError("migration target escapes the repository root")
     dependency = _validator_report(root, "scripts/validate_semantic_addressed_world_model_dependencies.py")
@@ -1487,6 +2081,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
                 "program_definition_cid": population["program_definition_cid"],
                 "receipt": receipt, **verified}
 
+    _assert_fresh_successor_operational_state(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     preserved_stages = sorted(target.parent.glob(target.name + ".installing.*"))
     if preserved_stages:
@@ -1498,8 +2093,9 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
-    # Preserve the accepted database, task/goal definitions, evidence, and
-    # event prefix byte-for-byte before appending the source-only migration.
+    # Preserve only the accepted canonical control store. M4 execution and
+    # coordination sidecars remain immutable historical evidence and are
+    # deliberately never copied into the successor authority.
     shutil.copy2(prior_path, stage)
     if _store_sha256(stage) != migration["prior_control_store_sha256"]:
         raise MaterializationError("staged prior authority copy differs before migration")
@@ -1521,7 +2117,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
                 "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
                 "source_migration_revision": migration["migration_revision"],
                 "source_migration_digest": migration_digest,
-                "supersession_mode": "source_authority_revision_only",
+                "supersession_mode": _M5_SUPERSESSION_MODE,
             },
             delta=plan_delta,
         )
@@ -1534,6 +2130,28 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
         unchanged = source.get_task(operator.task_cid)
         if unchanged is None or unchanged.status != "completed" or unchanged.revision != 2:
             raise MaterializationError("source migration changed accepted SAWM-000 state")
+        candidate = source.get_task("SAWM-001")
+        if (
+            candidate is None
+            or candidate.status != "in_progress"
+            or candidate.revision != 2
+            or candidate.task_cid != migration["prior_task_cids"]["SAWM-001"]
+        ):
+            raise MaterializationError("preserved SAWM-001 recovery precondition differs")
+        recovery_receipt = _task_recovery_receipt(population)
+        recovery = source.compare_and_set_status(
+            candidate.task_cid,
+            expected_revision=2,
+            status="todo",
+            receipt=recovery_receipt,
+        )
+        if (
+            not recovery.changed
+            or recovery.previous_status != "in_progress"
+            or recovery.task.status != "todo"
+            or recovery.task.revision != 3
+        ):
+            raise MaterializationError("operator SAWM-001 recovery CAS was not admitted")
     finally:
         source.close()
     verified = _verify_store(
@@ -1544,7 +2162,9 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
         migration_config=config,
         expected_validation_digest=validation_digest,
     )
-    expected_watermark = int(migration["prior_event_watermark"]) + 2
+    expected_watermark = (
+        int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+    )
     if int(verified["event_watermark"]) != expected_watermark:
         raise MaterializationError(
             f"source migration emitted an unexpected event suffix: {verified['event_watermark']}"
@@ -1574,6 +2194,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
             "validation_digest": validation_digest, "prior_authority": prior,
             "plan_migration_event_id": plan_receipt.event_id,
             "migration_evidence_event_id": evidence.event_id,
+            "task_recovery_event_id": recovery.receipt_cid,
+            "task_recovery_receipt": recovery_receipt,
             "migration_digest": migration_digest,
             "ducklake_history": history, **verified}
     return {**report, "receipt": receipt}

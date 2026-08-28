@@ -2972,6 +2972,29 @@ def _run_bounded_probe_process(
         return returncode, bytes(output), {}
 
 
+def _read_dependency_probe_source() -> bytes:
+    """Read this module's exact bytes from its active import authority.
+
+    Accepted control-plane capsules may be imported from an in-memory archive
+    whose ``__file__`` path cannot be resolved as an ordinary filesystem path.
+    When the active loader exposes ``get_data``, that reader is authoritative:
+    its failure must propagate rather than silently falling back to a possibly
+    different checkout.  Ordinary filesystem imports retain the prior strict
+    path-resolution behavior when no loader reader exists.
+    """
+
+    spec = globals().get("__spec__")
+    loader = getattr(spec, "loader", None)
+    loader_reader = getattr(loader, "get_data", None)
+    if callable(loader_reader):
+        source = loader_reader(__file__)
+        if not isinstance(source, bytes):
+            raise TypeError("module loader get_data() did not return bytes")
+        return source
+    module_path = Path(__file__).resolve(strict=True)
+    return module_path.read_bytes()
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
@@ -2984,8 +3007,7 @@ def _run_dependency_probe(
         validation_environment,
         _run_dependency_probe,
     )
-    module_path = Path(__file__).resolve(strict=True)
-    source = module_path.read_bytes()
+    source = _read_dependency_probe_source()
     source_sha256 = hashlib.sha256(source).hexdigest()
     if len(source) > MAX_PROBE_SOURCE_BYTES:
         return {

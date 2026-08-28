@@ -1,5 +1,5 @@
 {
-  "schema": "semantic-addressed-world-model/capability-matrix@1",
+  "schema": "semantic-addressed-world-model/capability-matrix@2",
   "board_namespace": "semantic-addressed-world-model-v1",
   "plan_revision": "SAWM-PLAN-R2",
   "observed_on_utc_date": "2026-08-28",
@@ -47,45 +47,45 @@
     {
       "capability": "current configured-board scheduler",
       "source_status": "available",
-      "runtime_status": "not_yet_preflighted",
-      "evidence": "scripts/ops/agent_supervisor/configured_board_scheduler.py",
-      "required_gate": "SAWM scheduler schema validation and exact-tree preflight"
+      "runtime_status": "m4_preflight_dry_run_and_live_launch_passed_then_stopped_at_preprovider_task_failure",
+      "evidence": "scripts/ops/agent_supervisor/configured_board_scheduler.py and data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/logs/configured-board-20260828T063346Z.log",
+      "required_gate": "M5 exact-source revalidation, append-only migration, generation-7 owner admission, preflight and dry-run"
     },
     {
       "capability": "DuckDB embedded engine",
       "source_status": "available",
-      "runtime_status": "isolated_native_sealed_fd_probe_passed_control_schema_not_yet_preflighted",
-      "evidence": "duckdb 1.5.5/v1.5.5 loaded from exact sealed native bytes under /usr/bin/python3.12 -I -S -B; SELECT 42 passed",
-      "required_gate": "read/write/control schema probe through current state authority"
+      "runtime_status": "m4_authoritative_store_materialized_and_stopped_at_event_116",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb sha256:d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670; frozen event watermark 116",
+      "required_gate": "append-only M5 copy and exact predecessor verification before any successor mutation"
     },
     {
       "capability": "Quack multi-writer transport and exclusive state owner",
       "source_status": "available_with_caveats",
-      "runtime_status": "not_started_not_probed",
-      "evidence": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
-      "required_gate": "live attach/token/exclusive-owner/current-authority probe"
+      "runtime_status": "m4_generation_6_owner_started_served_and_cleanly_stopped",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/quack-owner/quack-state-server.status.json sha256:16e0aa98ea054cc8665355ba4bc10a05affb8d26c0fbbffc5650256deec1e1b0",
+      "required_gate": "fresh M5 generation-7 credential, exclusive-owner and current-authority admission"
     },
     {
       "capability": "DuckLake history projection",
       "source_status": "available_with_caveats",
-      "runtime_status": "not_started_not_probed",
-      "evidence": "ipfs_datasets_py/ipfs_datasets_py/ducklake",
+      "runtime_status": "m4_non_authoritative_local_history_projection_available",
+      "evidence": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/ducklake-history-receipt.json sha256:3a1334919596234da7127464b6736cf44171666a6c3eae26291de4beaf401e5e",
       "required_gate": "optional projection probe only",
       "authoritative": false
     },
     {
       "capability": "goal, task, revision, event and completion authority",
       "source_status": "available",
-      "runtime_status": "not_yet_bound_to_sawm_program",
-      "evidence": "ipfs_accelerate_py/agent_supervisor/task_sources and objectives",
-      "required_gate": "append-only SAWM materialization and accepted projection query"
+      "runtime_status": "m4_materialized_sawm_000_completed_sawm_001_claimed_in_progress",
+      "evidence": "M4 canonical event 116 baguqeera3qvtzkbfquvcwhk3weocoesvqlajklm736surlkl25jn2ljkllha; SAWM-000 completed@2, SAWM-001 in_progress@2, 43 tasks todo@1",
+      "required_gate": "M5 must preserve the accepted SAWM-000 receipt and migrate SAWM-001 in_progress to an append-only retryable successor state"
     },
     {
       "capability": "worktree, lease, fence, resource and merge lifecycle",
       "source_status": "available",
-      "runtime_status": "not_yet_exercised_for_sawm",
-      "evidence": "ipfs_accelerate_py/agent_supervisor/merge and runtime/resource_scheduler.py",
-      "required_gate": "scheduler dry-run plus isolated attempt lifecycle"
+      "runtime_status": "m4_task_claim_and_worktree_setup_exercised_preprovider_failure_cleaned_worktree",
+      "evidence": "M4 attempt attempt:bd4aa7ffd3ee4bc9b7c48af433ae2a99 and portal event snapshot event-log-snapshot:sha256:806ba18bf8230033aadf344c166a193b85c8cf77fd4a21792e4e61cd8ad02171",
+      "required_gate": "M5 must reconcile the execution/coordination attempt state before requeue; provider dispatch remains unexercised"
     },
     {
       "capability": "ContextCompiler and DecisionRuntime",
@@ -223,18 +223,62 @@
     {
       "capability": "Codex implementation provider",
       "source_status": "executable_observed",
-      "runtime_status": "current_provider_probe_admitted_for_independent_review_and_bounded_fallback",
-      "evidence": "/usr/local/bin/codex 0.150.1; root-owned executable chain; login status passed; current ProductionCLIProviderPolicy readiness passed",
+      "runtime_status": "m4_outer_capability_probe_admitted_no_task_provider_dispatch_or_invocation",
+      "evidence": "/usr/local/bin/codex 0.150.1; root-owned executable chain; login status passed; current ProductionCLIProviderPolicy readiness passed; M4 per-task provider tables remained empty",
       "required_gate": "per-attempt current supervisor route, budget, privacy, command-binding and secrets/environment policy"
     },
     {
       "capability": "remote model provider",
       "source_status": "provider_integration_present",
-      "runtime_status": "current_grok_cli_probe_admitted",
-      "evidence": "/home/barberb/.local/bin/grok -> account-standard grok 1.0.5 download; authenticated; current ProductionCLIProviderPolicy readiness passed",
+      "runtime_status": "m4_outer_capability_probe_admitted_no_task_provider_dispatch_or_invocation",
+      "evidence": "/home/barberb/.local/bin/grok -> account-standard grok 1.0.5 download; authenticated; current ProductionCLIProviderPolicy readiness passed; M4 per-task provider tables remained empty",
       "required_gate": "per-attempt privacy, credentials policy, cognitive budget, quota and provider command binding"
     }
   ],
+  "m4_runtime_observation": {
+    "schema": "semantic-addressed-world-model/m4-runtime-observation@1",
+    "authority_class": "operator_frozen_predecessor_observation",
+    "completion_authority": false,
+    "rollout_activation_authority": false,
+    "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+    "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+    "source_binding_cid": "sha256:72ae538afc063f98a4e7b0a799a619d6a8c499ceb51c9ceb4bffe95de5f9d323",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "control_store_sha256": "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670",
+    "event_watermark": 116,
+    "event_prefix_sha256": "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911",
+    "projection_cid": "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha",
+    "plan_revision": 5,
+    "owner_generation": 6,
+    "owner_status": "stopped",
+    "task_alias": "SAWM-001",
+    "task_status": "in_progress",
+    "task_revision": 2,
+    "attempt_id": "attempt:bd4aa7ffd3ee4bc9b7c48af433ae2a99",
+    "claim_id": "claim:22c0f7ef869c4f508b1cdc1324b16413",
+    "portal_snapshot_id": "event-log-snapshot:sha256:806ba18bf8230033aadf344c166a193b85c8cf77fd4a21792e4e61cd8ad02171",
+    "failure_reason": "validation_project_dependency_preflight_failed",
+    "failure_kind": "lifecycle_setup",
+    "database_attempt_terminal_reason": "external_protected_checkout_recovery_required",
+    "lifecycle_started": true,
+    "task_claimed": true,
+    "task_state_changed": true,
+    "worktree_setup_occurred": true,
+    "worktree_removed": true,
+    "worktree_branch_deleted": true,
+    "provider_dispatch_attempted": false,
+    "provider_dispatched": false,
+    "provider_invocation_recorded": false,
+    "effect_claim_recorded": false,
+    "implementation_commit_created": false,
+    "merge_attempted": false,
+    "task_completed": false,
+    "successor_migration_revision": "SAWM-R2-M5",
+    "successor_run_id": "run-r2-m5",
+    "successor_plan_revision": 6,
+    "successor_store_generation": 7,
+    "successor_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb"
+  },
   "fallback_invariants": [
     "No admitted checkpoint returns training_unavailable, not fabricated inference.",
     "Unavailable ANN preserves exact/static/symbolic/raw-source routes.",

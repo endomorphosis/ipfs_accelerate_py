@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -239,6 +240,56 @@ def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     )
     with pytest.raises(DatabasePortalBridgeError, match="outside its mutable status"):
         bridge.run_provider(_attempt())
+
+
+def test_bridge_honors_explicit_deferral_without_reason_keyword(
+    tmp_path: Path,
+) -> None:
+    class DeferredPortal:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "active_task_id": "",
+                "implementation_result": {
+                    "task_id": "LGSWF-004",
+                    "returncode": 1,
+                    "reason": "validation_project_dependency_preflight_failed",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                },
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portals: list[DeferredPortal] = []
+
+    def factory(_paths: object, _alias: str) -> DeferredPortal:
+        portal = DeferredPortal()
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="^validation_project_dependency_preflight_failed$",
+    ):
+        bridge.run_provider(_attempt())
+
+    assert portals and portals[0].closed is True
+    attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
+    assert len(attempt_boards) == 1
+    projection = attempt_boards[0].read_text(encoding="utf-8")
+    assert "- Status: ready" in projection
+    assert "Projection authority: false" in projection
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")

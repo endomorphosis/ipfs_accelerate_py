@@ -2956,19 +2956,35 @@ def retry_budget_repair_runtime_revision(
     generation, proposal admission, auto-rescue, and retry persistence.
     """
 
-    root = (
-        agent_supervisor_root.resolve()
-        if agent_supervisor_root is not None
-        else Path(__file__).resolve().parents[1]
-    )
     digest = hashlib.sha256()
     digest.update(RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
     digest.update(b"\0")
     for relative in RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
-        path = root / relative
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        if agent_supervisor_root is not None:
+            source = (agent_supervisor_root.resolve() / relative).read_bytes()
+        else:
+            spec = globals().get("__spec__")
+            loader = getattr(spec, "loader", None)
+            get_data = getattr(loader, "get_data", None)
+            if callable(get_data):
+                # ``__file__`` is a virtual member path inside the accepted
+                # memfd ZIP.  Resolving it follows /proc/self/fd to the
+                # intentionally deleted memfd name and loses the member.
+                # The loaded module's exact loader remains the authority for
+                # every source byte in that same accepted archive.
+                virtual_root = Path(__file__).parents[1]
+                source = get_data(str(virtual_root / relative))
+                if not isinstance(source, bytes):
+                    raise OSError(
+                        "loaded recovery source reader returned non-bytes"
+                    )
+            else:
+                source = (
+                    Path(__file__).resolve(strict=True).parents[1] / relative
+                ).read_bytes()
+        digest.update(source)
         digest.update(b"\0")
     return "sha256:" + digest.hexdigest()
 
@@ -67292,6 +67308,67 @@ DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
+DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-claim-failure-settlement@1"
+)
+DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/portal-failure-quarantine@1"
+)
+DATABASE_CONTROL_CLAIM_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
+)
+
+_DATABASE_CONTROL_READY_STATUSES = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "open",
+    }
+)
+_DATABASE_CONTROL_CLAIM_BINDING_KEYS = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "control_expected_status",
+        "control_expected_revision",
+        "control_task_projection_cid",
+        "binding_id",
+    }
+)
+_DATABASE_PORTAL_FAILURE_SETTLEMENT_KEYS = frozenset(
+    {
+        "schema",
+        "operation",
+        "failure_kind",
+        "failure_payload_digest",
+        "task_cid",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "control_expected_status",
+        "control_expected_revision",
+        "provider_invocation_count",
+        "effect_claim_count",
+        "automatic_retry_admitted",
+        "settlement_id",
+    }
+)
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -67681,6 +67758,8 @@ class DatabaseImplementationDaemon:
         )
         self._embedded_writer_lock_handle: Any = None
         self._markdown_status_writes = 0
+        self._last_claim_withdrawal: dict[str, Any] = {}
+        self._last_unsettled_quarantine_task_cids: tuple[str, ...] = ()
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -68610,8 +68689,47 @@ class DatabaseImplementationDaemon:
                 dependency_task_cids=tuple(live_deps),
                 body={"task_alias": task.task_alias, "status": task.status},
             )
+            readiness = self.coordinator.claimability(task.task_cid)
+            if str(readiness.get("completion_status") or "") == "failed":
+                self._rearm_operator_requeued_portal_failure(task)
             registered.append(task.task_cid)
         return registered
+
+    def _rearm_operator_requeued_portal_failure(self, task: Any) -> None:
+        """Rearm only a current canonical retry bound to one failed receipt."""
+
+        rows = self._require_connection().execute(
+            "SELECT attempt_id FROM database_task_attempts "
+            "WHERE task_cid = ? AND status = 'failed' "
+            "ORDER BY started_at_ms DESC, attempt_id DESC",
+            [str(task.task_cid)],
+        ).fetchall()
+        for row in rows:
+            attempt = self.get_attempt(str(row[0]))
+            if attempt is None:
+                continue
+            receipt = self._portal_failure_phase_receipt(attempt)
+            if receipt is None:
+                continue
+            rearm = getattr(self.coordinator, "rearm_failed_task", None)
+            if not callable(rearm):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator does not implement exact failed-task rearm"
+                )
+            to_dict = getattr(task, "to_dict", None)
+            if not callable(to_dict):
+                raise DatabaseImplementationAuthorityError(
+                    "operator requeue exposes no deterministic control projection"
+                )
+            rearm(
+                failure_receipt=receipt,
+                control_task_observation=dict(to_dict()),
+                now_ms=self._now_ms(),
+            )
+            return
+        raise DatabaseImplementationAuthorityError(
+            "failed coordination barrier has no exact local Portal receipt"
+        )
 
     @staticmethod
     def _automatic_claim_forbidden(task: Any) -> bool:
@@ -68634,11 +68752,70 @@ class DatabaseImplementationDaemon:
 
     def _automatic_claim_exclusions(self) -> set[str]:
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        return {
+        excluded = {
             str(task.task_cid)
             for task in ready.tasks
             if self._automatic_claim_forbidden(task)
         }
+        # Coordination registration is an operational projection.  A task can
+        # therefore remain ``ready`` there after canonical control authority
+        # has moved it to a terminal or operator-blocked state.  Keep existing
+        # in-progress crash/lease recovery claimable, but never let that stale
+        # projection resurrect a closed control task.
+        terminal_control_statuses = {
+            *IMPLEMENTATION_TASK_TERMINAL_STATUSES,
+            "blocked",
+            "complete",
+            "done",
+            "rejected",
+            "on_hold",
+        }
+        excluded.update(
+            str(task.task_cid)
+            for task in self.task_source.list_tasks(
+                limit=TASK_SOURCE_QUERY_LIMIT
+            ).tasks
+            if str(task.status or "").strip().lower()
+            in terminal_control_statuses
+        )
+        # A quarantine is the fail-closed terminal for an attempt whose exact
+        # cross-store settlement could not be constructed or admitted.  Its
+        # coordination lease may later expire, but elapsed time is not new
+        # evidence and must not make the same task/provider call claimable.
+        # Only an operator-owned source migration or other explicit repair may
+        # supersede this local negative-memory barrier.
+        quarantined: set[str] = set()
+        seen_tasks: set[str] = set()
+        rows = self._require_connection().execute(
+            """
+            SELECT a.task_cid, p.body_json
+            FROM database_task_attempts AS a
+            JOIN attempt_phases AS p ON p.attempt_id = a.attempt_id
+            WHERE a.status = 'failed' AND p.phase = 'failed'
+            ORDER BY a.started_at_ms DESC, a.attempt_id DESC, p.revision DESC
+            """
+        ).fetchall()
+        for row in rows:
+            if isinstance(row, Mapping):
+                task_cid_raw = row.get("task_cid")
+                body_json = row.get("body_json")
+            else:
+                task_cid_raw = row[0]
+                body_json = row[1]
+            task_cid = str(task_cid_raw or "")
+            if not task_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "quarantined attempt has no canonical task identity"
+                )
+            if task_cid in seen_tasks:
+                continue
+            seen_tasks.add(task_cid)
+            body = _database_daemon_load_json(body_json)
+            if body.get("schema") == DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA:
+                quarantined.add(task_cid)
+        self._last_unsettled_quarantine_task_cids = tuple(sorted(quarantined))
+        excluded.update(quarantined)
+        return excluded
 
     # -- claim / attempt ----------------------------------------------------
 
@@ -68650,6 +68827,8 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one ready task for this session; four sessions never share work."""
 
+        self._last_claim_withdrawal = {}
+        self._last_unsettled_quarantine_task_cids = ()
         self.sync_ready_tasks_into_coordination()
         excluded = {
             str(task_cid)
@@ -68688,30 +68867,109 @@ class DatabaseImplementationDaemon:
         if claim is None:
             return None
         task = self.task_source.get(claim.task_cid)
+        if task is None:
+            self._release_unadmitted_new_claim(
+                claim,
+                reason="canonical_control_task_missing_after_claim",
+            )
+            raise DatabaseImplementationAuthorityError(
+                "coordination claim has no canonical control task"
+            )
         task_alias = (
             str(task.task_alias)
-            if task is not None and getattr(task, "task_alias", None)
+            if getattr(task, "task_alias", None)
             else str(claim.task_cid)
         )
-        # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-        }:
-            self._protect_new_claim(claim)
-            self._cas_task_status_database(
-                task.task_cid,
-                expected_revision=int(task.revision),
-                new_status="in_progress",
-                receipt={
-                    "operation": "database_claim",
-                    "claim_id": claim.claim_id,
-                    "attempt_id": claim.attempt_id,
-                    "owner_session_id": self.owner_session_id,
-                },
+        task_status = str(task.status or "").strip().lower()
+        try:
+            # Move durable task status through the database only (never
+            # Markdown), and bind the exact post-claim control revision into
+            # the execution attempt before a provider can run.
+            if task_status in _DATABASE_CONTROL_READY_STATUSES:
+                self._protect_new_claim(claim)
+                cas_result = self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="in_progress",
+                    receipt={
+                        "operation": "database_claim",
+                        "claim_id": claim.claim_id,
+                        "attempt_id": claim.attempt_id,
+                        "lease_id": claim.lease_id,
+                        "attempt_number": int(claim.attempt_number),
+                        "owner_session_id": self.owner_session_id,
+                        "fencing_token": int(claim.fencing_token),
+                        "fence_epoch": int(claim.fence_epoch),
+                    },
+                )
+                task = getattr(cas_result, "task", None)
+                if task is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "control claim CAS returned no exact task projection"
+                    )
+                task_status = str(task.status or "").strip().lower()
+            elif task_status != "in_progress":
+                # The coordination ready bit is a projection and may have
+                # raced a canonical BLOCKED/terminal transition after the
+                # pre-claim exclusion snapshot.  Withdraw the unused claim;
+                # never create a local attempt or invoke a provider for it.
+                self._release_unadmitted_new_claim(
+                    claim,
+                    reason=(
+                        "canonical_control_task_unclaimable_after_claim:"
+                        + task_status
+                    ),
+                )
+                return None
+        except Exception:
+            observed = self.task_source.get(claim.task_cid)
+            observed_status = str(
+                getattr(observed, "status", "") or ""
+            ).strip().lower()
+            self._release_unadmitted_new_claim(
+                claim,
+                reason=(
+                    "canonical_control_claim_admission_failed:"
+                    + (observed_status or "unknown")
+                ),
             )
-        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
+            if observed_status and observed_status not in {
+                *_DATABASE_CONTROL_READY_STATUSES,
+                "in_progress",
+            }:
+                return None
+            raise
+        if task_status != "in_progress":
+            self._release_unadmitted_new_claim(
+                claim,
+                reason="canonical_control_claim_did_not_enter_in_progress",
+            )
+            return None
+        try:
+            control_binding = self._control_claim_binding(claim, task)
+            attempt = self._insert_attempt_from_claim(
+                claim,
+                task_alias=task_alias,
+                control_binding=control_binding,
+            )
+        except Exception:
+            stored = self.get_attempt(str(claim.attempt_id))
+            if stored is not None and self._execution_attempt_admission_matches(
+                stored,
+                claim=claim,
+                control_binding=(
+                    control_binding
+                    if "control_binding" in locals()
+                    else None
+                ),
+            ):
+                attempt = stored
+            else:
+                self._release_unadmitted_new_claim(
+                    claim,
+                    reason="execution_attempt_admission_failed",
+                )
+                raise
         self._record_event(
             "task_claimed",
             attempt_id=attempt.attempt_id,
@@ -68720,11 +68978,141 @@ class DatabaseImplementationDaemon:
         )
         return attempt
 
+    def _execution_attempt_admission_matches(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        claim: Any,
+        control_binding: Mapping[str, Any] | None,
+    ) -> bool:
+        if control_binding is None or not self._claim_matches_execution_attempt(
+            claim,
+            attempt,
+        ):
+            return False
+        if dict(attempt.body.get("control_binding") or {}) != dict(
+            control_binding
+        ):
+            return False
+        phases = self.phase_history(attempt.attempt_id)
+        return (
+            attempt.status == "running"
+            and attempt.committed_phase == ATTEMPT_PHASE_CLAIMED
+            and len(phases) == 1
+            and phases[0]["phase"] == ATTEMPT_PHASE_CLAIMED
+            and int(phases[0]["revision"]) == 1
+            and int(phases[0]["fencing_token"])
+            == int(attempt.fencing_token)
+            and int(phases[0]["fence_epoch"]) == int(attempt.fence_epoch)
+        )
+
+    def _release_unadmitted_new_claim(
+        self,
+        claim: Any,
+        *,
+        reason: str,
+    ) -> None:
+        """Withdraw a coordination claim that never entered execution state."""
+
+        try:
+            self.coordinator.release(
+                claim.as_fenced_lease(),
+                reason=str(reason or "unadmitted_control_claim")[:256],
+                expected_fencing_token=int(claim.fencing_token),
+                expected_fence_epoch=int(claim.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+            self._last_claim_withdrawal = {
+                "task_cid": str(claim.task_cid),
+                "claim_id": str(claim.claim_id),
+                "attempt_id": str(claim.attempt_id),
+                "lease_id": str(claim.lease_id),
+                "fencing_token": int(claim.fencing_token),
+                "fence_epoch": int(claim.fence_epoch),
+                "reason": str(reason or "unadmitted_control_claim")[:256],
+                "claim_state": "released",
+            }
+            return
+        except Exception:
+            # A lost response after commit is accepted only when the exact
+            # historical claim is observably closed.  A still-accepted claim
+            # must surface the original error and expire normally.
+            observed = self.coordinator.get_task_claim(str(claim.claim_id))
+            state = str(
+                getattr(
+                    getattr(observed, "state", ""),
+                    "value",
+                    getattr(observed, "state", ""),
+                )
+                or ""
+            )
+            if observed is not None and self._claim_matches_claim(
+                observed,
+                claim,
+            ) and state in {"released", "expired", "superseded"}:
+                self._last_claim_withdrawal = {
+                    "task_cid": str(claim.task_cid),
+                    "claim_id": str(claim.claim_id),
+                    "attempt_id": str(claim.attempt_id),
+                    "lease_id": str(claim.lease_id),
+                    "fencing_token": int(claim.fencing_token),
+                    "fence_epoch": int(claim.fence_epoch),
+                    "reason": str(reason or "unadmitted_control_claim")[:256],
+                    "claim_state": state,
+                }
+                return
+            raise
+
+    @staticmethod
+    def _claim_matches_claim(observed: Any, expected: Any) -> bool:
+        observed_identity = observed.to_dict()
+        expected_identity = expected.to_dict()
+        fields = (
+            "claim_id",
+            "task_cid",
+            "attempt_id",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+        )
+        return all(
+            observed_identity.get(name) == expected_identity.get(name)
+            for name in fields
+        )
+
+    @staticmethod
+    def _control_claim_binding(claim: Any, task: Any) -> dict[str, Any]:
+        to_dict = getattr(task, "to_dict", None)
+        if not callable(to_dict):
+            raise DatabaseImplementationAuthorityError(
+                "canonical control task exposes no deterministic projection"
+            )
+        task_projection = dict(to_dict())
+        binding: dict[str, Any] = {
+            "schema": DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            "task_cid": str(claim.task_cid),
+            "claim_id": str(claim.claim_id),
+            "attempt_id": str(claim.attempt_id),
+            "attempt_number": int(claim.attempt_number),
+            "lease_id": str(claim.lease_id),
+            "owner_session_id": str(claim.owner_session_id),
+            "fencing_token": int(claim.fencing_token),
+            "fence_epoch": int(claim.fence_epoch),
+            "control_expected_status": str(task.status).strip().lower(),
+            "control_expected_revision": int(task.revision),
+            "control_task_projection_cid": content_identity(task_projection),
+        }
+        binding["binding_id"] = content_identity(binding)
+        return binding
+
     def _insert_attempt_from_claim(
         self,
         claim: Any,
         *,
         task_alias: str,
+        control_binding: Mapping[str, Any],
     ) -> DatabaseTaskAttempt:
         self._protect_new_claim(claim)
         now = self._now_ms()
@@ -68742,7 +69130,10 @@ class DatabaseImplementationDaemon:
             status="running",
             started_at_ms=int(getattr(claim, "claimed_at_ms", now) or now),
             revision=1,
-            body={"worktree_id": str(getattr(claim, "worktree_id", "") or "")},
+            body={
+                "worktree_id": str(getattr(claim, "worktree_id", "") or ""),
+                "control_binding": dict(control_binding),
+            },
         )
         connection = self._require_connection()
         existing = connection.execute(
@@ -68751,51 +69142,65 @@ class DatabaseImplementationDaemon:
         ).fetchone()
         if existing is not None:
             stored = self.get_attempt(attempt.attempt_id)
-            if stored is not None:
+            if stored is not None and self._execution_attempt_admission_matches(
+                stored,
+                claim=claim,
+                control_binding=control_binding,
+            ):
                 return stored
-        connection.execute(
-            """
-            INSERT INTO database_task_attempts(
-                attempt_id, claim_id, task_cid, task_alias, attempt_number,
-                owner_session_id, fencing_token, fence_epoch, lease_id,
-                committed_phase, status, started_at_ms, finished_at_ms,
-                revision, body_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-            """,
-            [
-                attempt.attempt_id,
-                attempt.claim_id,
-                attempt.task_cid,
-                attempt.task_alias,
-                int(attempt.attempt_number),
-                attempt.owner_session_id,
-                int(attempt.fencing_token),
-                int(attempt.fence_epoch),
-                attempt.lease_id,
-                attempt.committed_phase,
-                attempt.status,
-                int(attempt.started_at_ms),
-                int(attempt.revision),
-                _database_daemon_json(dict(attempt.body)),
-            ],
-        )
-        connection.execute(
-            """
-            INSERT INTO attempt_phases(
-                attempt_id, phase, committed_at_ms, fencing_token, fence_epoch,
-                revision, body_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                attempt.attempt_id,
-                ATTEMPT_PHASE_CLAIMED,
-                now,
-                int(attempt.fencing_token),
-                int(attempt.fence_epoch),
-                1,
-                "{}",
-            ],
-        )
+            raise DatabaseImplementationConflictError(
+                "existing execution attempt does not match claim admission"
+            )
+        with self._lock:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO database_task_attempts(
+                        attempt_id, claim_id, task_cid, task_alias, attempt_number,
+                        owner_session_id, fencing_token, fence_epoch, lease_id,
+                        committed_phase, status, started_at_ms, finished_at_ms,
+                        revision, body_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                    """,
+                    [
+                        attempt.attempt_id,
+                        attempt.claim_id,
+                        attempt.task_cid,
+                        attempt.task_alias,
+                        int(attempt.attempt_number),
+                        attempt.owner_session_id,
+                        int(attempt.fencing_token),
+                        int(attempt.fence_epoch),
+                        attempt.lease_id,
+                        attempt.committed_phase,
+                        attempt.status,
+                        int(attempt.started_at_ms),
+                        int(attempt.revision),
+                        _database_daemon_json(dict(attempt.body)),
+                    ],
+                )
+                connection.execute(
+                    """
+                    INSERT INTO attempt_phases(
+                        attempt_id, phase, committed_at_ms, fencing_token,
+                        fence_epoch, revision, body_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        attempt.attempt_id,
+                        ATTEMPT_PHASE_CLAIMED,
+                        now,
+                        int(attempt.fencing_token),
+                        int(attempt.fence_epoch),
+                        1,
+                        "{}",
+                    ],
+                )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
         return attempt
 
     _ATTEMPT_SELECT = (
@@ -70024,6 +70429,664 @@ class DatabaseImplementationDaemon:
             "status": current.status,
         }
 
+    def _attempt_execution_evidence_counts(
+        self,
+        attempt_id: str,
+    ) -> dict[str, int]:
+        """Return exact accepted execution-receipt counts for one attempt."""
+
+        connection = self._require_connection()
+        return {
+            "provider_invocation_count": int(
+                connection.execute(
+                    "SELECT count(*) FROM provider_invocations "
+                    "WHERE attempt_id = ?",
+                    [str(attempt_id)],
+                ).fetchone()[0]
+            ),
+            "effect_claim_count": int(
+                connection.execute(
+                    "SELECT count(*) FROM effect_claims WHERE attempt_id = ?",
+                    [str(attempt_id)],
+                ).fetchone()[0]
+            ),
+        }
+
+    @staticmethod
+    def _claim_matches_execution_attempt(
+        claim: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        identity = claim.to_dict()
+        expected = {
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        return all(identity.get(name) == value for name, value in expected.items())
+
+    def _control_binding_for_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        raw = attempt.body.get("control_binding")
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "execution attempt has no claim-bound control revision"
+            )
+        binding = dict(raw)
+        if set(binding) != _DATABASE_CONTROL_CLAIM_BINDING_KEYS:
+            raise DatabaseImplementationAuthorityError(
+                "control claim binding is not a closed record"
+            )
+        binding_id = str(binding.pop("binding_id", "") or "")
+        if (
+            binding.get("schema") != DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
+            or not binding_id
+            or content_identity(binding) != binding_id
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "control claim binding content identity is invalid"
+            )
+        binding["binding_id"] = binding_id
+        expected = {
+            "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        mismatched = [
+            name
+            for name, value in expected.items()
+            if binding.get(name) != value
+        ]
+        if mismatched:
+            raise DatabaseImplementationAuthorityError(
+                "control claim binding disagrees with execution attempt: "
+                + ", ".join(mismatched)
+            )
+        if (
+            binding.get("control_expected_status") != "in_progress"
+            or isinstance(binding.get("control_expected_revision"), bool)
+            or not isinstance(binding.get("control_expected_revision"), int)
+            or int(binding["control_expected_revision"]) < 1
+            or not str(binding.get("control_task_projection_cid") or "")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "control claim binding has invalid status/revision authority"
+            )
+        return binding
+
+    def _build_portal_failure_settlement_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        failure: BaseException,
+    ) -> dict[str, Any]:
+        binding = self._control_binding_for_attempt(attempt)
+        evidence_counts = self._attempt_execution_evidence_counts(
+            attempt.attempt_id
+        )
+        failure_payload_digest = "sha256:" + hashlib.sha256(
+            canonical_json(
+                {
+                    "failure_code": "database_portal_bridge_error",
+                    "failure_reason_sha256": "sha256:"
+                    + hashlib.sha256(str(failure).encode("utf-8")).hexdigest(),
+                    "control_task_projection_cid": str(
+                        binding["control_task_projection_cid"]
+                    ),
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA,
+            "operation": "database_task_claim_failure",
+            "failure_kind": "terminal_portal_bridge_error",
+            "failure_payload_digest": failure_payload_digest,
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "control_expected_status": str(
+                binding["control_expected_status"]
+            ),
+            "control_expected_revision": int(
+                binding["control_expected_revision"]
+            ),
+            **evidence_counts,
+            "automatic_retry_admitted": False,
+        }
+        receipt["settlement_id"] = content_identity(receipt)
+        return self._validate_portal_failure_settlement_receipt(
+            receipt,
+            attempt=attempt,
+        )
+
+    def _validate_portal_failure_settlement_receipt(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        attempt: DatabaseTaskAttempt,
+        verify_evidence_counts: bool = True,
+    ) -> dict[str, Any]:
+        normalized = dict(receipt)
+        if set(normalized) != _DATABASE_PORTAL_FAILURE_SETTLEMENT_KEYS:
+            raise DatabaseImplementationAuthorityError(
+                "Portal failure settlement is not a closed record"
+            )
+        settlement_id = str(normalized.pop("settlement_id", "") or "")
+        if (
+            normalized.get("schema")
+            != DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
+            or normalized.get("operation")
+            != "database_task_claim_failure"
+            or normalized.get("failure_kind")
+            != "terminal_portal_bridge_error"
+            or not settlement_id
+            or content_identity(normalized) != settlement_id
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "Portal failure settlement content identity is invalid"
+            )
+        normalized["settlement_id"] = settlement_id
+        binding = self._control_binding_for_attempt(attempt)
+        expected = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "control_expected_status": str(
+                binding["control_expected_status"]
+            ),
+            "control_expected_revision": int(
+                binding["control_expected_revision"]
+            ),
+            "automatic_retry_admitted": False,
+        }
+        mismatched = [
+            name
+            for name, value in expected.items()
+            if normalized.get(name) != value
+        ]
+        if mismatched:
+            raise DatabaseImplementationAuthorityError(
+                "Portal failure settlement disagrees with exact authority: "
+                + ", ".join(mismatched)
+            )
+        failure_payload_digest = str(
+            normalized.get("failure_payload_digest") or ""
+        )
+        if (
+            not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                failure_payload_digest,
+            )
+            or normalized.get("automatic_retry_admitted") is not False
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "Portal failure settlement has invalid failure policy"
+            )
+        for name in ("provider_invocation_count", "effect_claim_count"):
+            value = normalized.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise DatabaseImplementationAuthorityError(
+                    f"Portal failure settlement has invalid {name}"
+                )
+        if verify_evidence_counts:
+            observed_counts = self._attempt_execution_evidence_counts(
+                attempt.attempt_id
+            )
+            if any(
+                int(normalized[name]) != int(observed_counts[name])
+                for name in observed_counts
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "Portal failure settlement execution evidence changed"
+                )
+        return normalized
+
+    def _portal_failure_phase_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        failure_phases = [
+            item
+            for item in self.phase_history(attempt.attempt_id)
+            if item.get("phase") == ATTEMPT_PHASE_FAILED
+            and isinstance(item.get("body"), Mapping)
+            and item.get("body", {}).get("schema")
+            == DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
+        ]
+        if not failure_phases:
+            return None
+        return self._validate_portal_failure_settlement_receipt(
+            failure_phases[-1]["body"],
+            attempt=attempt,
+        )
+
+    def _commit_portal_failure_phase(
+        self,
+        attempt: DatabaseTaskAttempt,
+        receipt: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt:
+        """Durably stop provider replay before either external store changes."""
+
+        validated = self._validate_portal_failure_settlement_receipt(
+            receipt,
+            attempt=attempt,
+        )
+        current = self.get_attempt(attempt.attempt_id)
+        if current is None:
+            raise DatabaseImplementationConflictError(
+                "terminal Portal execution attempt disappeared"
+            )
+        if current.status == "failed":
+            replay = self._portal_failure_phase_receipt(current)
+            if replay is None or replay["settlement_id"] != validated["settlement_id"]:
+                raise DatabaseImplementationConflictError(
+                    "failed execution attempt has a different settlement"
+                )
+            return current
+        if current.status != "running":
+            raise DatabaseImplementationConflictError(
+                f"terminal Portal attempt is {current.status!r}"
+            )
+        try:
+            # This is a non-authoritative terminal projection, not a work
+            # mutation.  The exact historical claim was checked before entry;
+            # allowing an expired claim prevents time from resurrecting the
+            # provider while the coordinator commits its FAILED settlement.
+            return self.commit_phase(
+                current,
+                ATTEMPT_PHASE_FAILED,
+                body=validated,
+                require_live_claim=False,
+            )
+        except Exception:
+            # Accept a true post-commit response loss only when the exact
+            # closed phase is now durable.
+            observed = self.get_attempt(current.attempt_id)
+            if observed is not None and observed.status == "failed":
+                replay = self._portal_failure_phase_receipt(observed)
+                if (
+                    replay is not None
+                    and replay["settlement_id"] == validated["settlement_id"]
+                ):
+                    return observed
+            raise
+
+    def _fail_coordination_claim(
+        self,
+        claim: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        settle = getattr(self.coordinator, "fail_task_claim", None)
+        if not callable(settle):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement exact failed-claim settlement"
+            )
+        first_error: BaseException | None = None
+        for _replay in range(2):
+            try:
+                lease = settle(
+                    claim,
+                    failure_receipt=dict(receipt),
+                    now_ms=self._now_ms(),
+                )
+                observed_claim = self.coordinator.get_task_claim(
+                    str(claim.claim_id)
+                )
+                observed_attempt = self.coordinator.get_task_attempt(
+                    str(claim.attempt_id)
+                )
+                lease_state = str(
+                    getattr(
+                        getattr(lease, "state", ""),
+                        "value",
+                        getattr(lease, "state", ""),
+                    )
+                    or ""
+                )
+                claim_state = str(
+                    getattr(
+                        getattr(observed_claim, "state", ""),
+                        "value",
+                        getattr(observed_claim, "state", ""),
+                    )
+                    or ""
+                )
+                attempt_status = str(
+                    getattr(
+                        getattr(observed_attempt, "status", ""),
+                        "value",
+                        getattr(observed_attempt, "status", ""),
+                    )
+                    or ""
+                )
+                if (
+                    observed_claim is None
+                    or observed_attempt is None
+                    or not self._claim_matches_claim(observed_claim, claim)
+                    or str(getattr(lease, "lease_id", "") or "")
+                    != str(claim.lease_id)
+                    or lease_state != "released"
+                    or claim_state != "released"
+                    or attempt_status != "failed"
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "failed-claim settlement did not preserve exact FAILED authority"
+                    )
+                return {
+                    "lease_state": lease_state,
+                    "claim_state": claim_state,
+                    "attempt_status": attempt_status,
+                    "settlement_id": str(receipt.get("settlement_id") or ""),
+                }
+            except Exception as exc:
+                if first_error is not None:
+                    raise first_error from exc
+                first_error = exc
+        assert first_error is not None
+        raise first_error
+
+    def _task_failure_settlement_receipt(
+        self,
+        task: Any,
+        *,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return None
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return None
+        if receipt.get("schema") != DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA:
+            return None
+        return self._validate_portal_failure_settlement_receipt(
+            receipt,
+            attempt=attempt,
+        )
+
+    def _settle_portal_failure_control_task(
+        self,
+        attempt: DatabaseTaskAttempt,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        validated = self._validate_portal_failure_settlement_receipt(
+            receipt,
+            attempt=attempt,
+        )
+        expected_revision = int(validated["control_expected_revision"])
+        expected_status = str(validated["control_expected_status"])
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "terminal Portal attempt has no canonical control task"
+            )
+        status = str(task.status or "").strip().lower()
+        revision = int(task.revision)
+        if status == expected_status and revision == expected_revision:
+            try:
+                cas_result = self._cas_task_status_database(
+                    attempt.task_cid,
+                    expected_revision=expected_revision,
+                    new_status="blocked",
+                    receipt=validated,
+                )
+                task = getattr(cas_result, "task", None)
+                if task is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "Portal failure control CAS returned no task projection"
+                    )
+            except Exception:
+                # A response may be lost after the owner committed the CAS.
+                task = self.task_source.get(attempt.task_cid)
+                if task is None:
+                    raise
+                exact = self._task_failure_settlement_receipt(
+                    task,
+                    attempt=attempt,
+                )
+                if (
+                    str(task.status or "").strip().lower() != "blocked"
+                    or int(task.revision) != expected_revision + 1
+                    or exact is None
+                    or exact["settlement_id"] != validated["settlement_id"]
+                ):
+                    raise
+        status = str(task.status or "").strip().lower()
+        revision = int(task.revision)
+        if status == "blocked" and revision == expected_revision + 1:
+            exact = self._task_failure_settlement_receipt(
+                task,
+                attempt=attempt,
+            )
+            if (
+                exact is None
+                or exact["settlement_id"] != validated["settlement_id"]
+            ):
+                raise DatabaseImplementationConflictError(
+                    "blocked control task has a different failure settlement"
+                )
+            return {
+                "status": "blocked",
+                "revision": revision,
+                "replayed": revision != expected_revision,
+                "superseded": False,
+            }
+        if revision > expected_revision:
+            # A distinct later operator transition supersedes this control
+            # projection.  Never overwrite it; the immutable execution and
+            # coordination FAILED evidence remains authoritative history.
+            return {
+                "status": status,
+                "revision": revision,
+                "replayed": False,
+                "superseded": True,
+            }
+        raise DatabaseImplementationConflictError(
+            "terminal Portal control task does not match its claim-bound "
+            f"revision/status ({status!r}, {revision})"
+        )
+
+    def _terminal_portal_failure_event_exists(
+        self,
+        attempt_id: str,
+        settlement_id: str,
+    ) -> bool:
+        rows = self._require_connection().execute(
+            "SELECT body_json FROM daemon_execution_events "
+            "WHERE attempt_id = ? AND event_type = ? ORDER BY recorded_at_ms",
+            [str(attempt_id), "terminal_portal_failure_settled"],
+        ).fetchall()
+        if len(rows) > 1:
+            raise DatabaseImplementationConflictError(
+                "terminal Portal settlement event is not unique"
+            )
+        if not rows:
+            return False
+        body = _database_daemon_load_json(rows[0][0])
+        if body.get("settlement_id") != settlement_id:
+            raise DatabaseImplementationConflictError(
+                "terminal Portal settlement event identity changed"
+            )
+        return True
+
+    def _settle_terminal_portal_failure(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        failure: BaseException,
+    ) -> dict[str, Any]:
+        """Fail one exact terminal Portal attempt without provider replay."""
+
+        attempt_id = str(
+            getattr(attempt, "attempt_id", "")
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else attempt
+        ).strip()
+        current = self.get_attempt(attempt_id)
+        if current is None:
+            raise DatabaseImplementationConflictError(
+                f"terminal Portal attempt {attempt_id!r} disappeared"
+            )
+        if current.status not in {"running", "failed"}:
+            raise DatabaseImplementationConflictError(
+                f"terminal Portal attempt {attempt_id!r} is {current.status!r}"
+            )
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        if claim is None or not self._claim_matches_execution_attempt(
+            claim,
+            current,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "terminal Portal attempt does not match its coordination claim"
+            )
+        if current.status == "running":
+            failure_receipt = self._build_portal_failure_settlement_receipt(
+                current,
+                failure=failure,
+            )
+            current = self._commit_portal_failure_phase(
+                current,
+                failure_receipt,
+            )
+        else:
+            failure_receipt = self._portal_failure_phase_receipt(current)
+            if failure_receipt is None:
+                raise DatabaseImplementationConflictError(
+                    "failed execution attempt lacks its exact settlement receipt"
+                )
+        coordination = self._fail_coordination_claim(claim, failure_receipt)
+        control = self._settle_portal_failure_control_task(
+            current,
+            failure_receipt,
+        )
+        evidence_counts = self._attempt_execution_evidence_counts(
+            current.attempt_id
+        )
+        result = {
+            "schema": DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA,
+            "settlement_id": failure_receipt["settlement_id"],
+            "task_cid": current.task_cid,
+            "task_alias": current.task_alias,
+            "attempt_id": current.attempt_id,
+            "claim_id": current.claim_id,
+            "control_status": str(control["status"]),
+            "control_revision": int(control["revision"]),
+            "control_superseded": bool(control["superseded"]),
+            "execution_status": current.status,
+            "claim_state": str(coordination.get("claim_state") or "released"),
+            "coordination_attempt_status": str(
+                coordination.get("attempt_status") or "failed"
+            ),
+            **evidence_counts,
+        }
+        if not self._terminal_portal_failure_event_exists(
+            current.attempt_id,
+            str(failure_receipt["settlement_id"]),
+        ):
+            self._record_event(
+                "terminal_portal_failure_settled",
+                attempt_id=current.attempt_id,
+                task_cid=current.task_cid,
+                body=result,
+            )
+        return result
+
+    def reconcile_terminal_portal_failures(self) -> list[dict[str, Any]]:
+        """Finish a crash-interrupted exact failure settlement once."""
+
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT attempt_id FROM database_task_attempts
+            WHERE status = 'failed' ORDER BY started_at_ms, attempt_id
+            """
+        ).fetchall()
+        reconciled: list[dict[str, Any]] = []
+        for row in rows:
+            attempt_id = str(row[0])
+            current = self.get_attempt(attempt_id)
+            if current is None:
+                continue
+            failure_phases = [
+                item
+                for item in self.phase_history(attempt_id)
+                if item.get("phase") == ATTEMPT_PHASE_FAILED
+                and item.get("body", {}).get("schema")
+                == DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
+            ]
+            if not failure_phases:
+                continue
+            receipt = self._validate_portal_failure_settlement_receipt(
+                failure_phases[-1]["body"],
+                attempt=current,
+            )
+            if self._terminal_portal_failure_event_exists(
+                current.attempt_id,
+                str(receipt["settlement_id"]),
+            ):
+                continue
+            claim = self.coordinator.get_task_claim(current.claim_id)
+            if claim is None or not self._claim_matches_execution_attempt(
+                claim,
+                current,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "failed Portal attempt lost its exact claim history"
+                )
+            coordination = self._fail_coordination_claim(claim, receipt)
+            control = self._settle_portal_failure_control_task(
+                current,
+                receipt,
+            )
+            result = {
+                "attempt_id": current.attempt_id,
+                "claim_id": current.claim_id,
+                "settlement_id": str(receipt["settlement_id"]),
+                "claim_state": str(
+                    coordination.get("claim_state") or "released"
+                ),
+                "coordination_attempt_status": str(
+                    coordination.get("attempt_status") or "failed"
+                ),
+                "control_status": str(control["status"]),
+                "control_revision": int(control["revision"]),
+                "control_superseded": bool(control["superseded"]),
+            }
+            if not self._terminal_portal_failure_event_exists(
+                current.attempt_id,
+                str(receipt["settlement_id"]),
+            ):
+                self._record_event(
+                    "terminal_portal_failure_settled",
+                    attempt_id=current.attempt_id,
+                    task_cid=current.task_cid,
+                    body=result,
+                )
+            reconciled.append(result)
+        return reconciled
+
     def _resume_attempt_without_process_crash(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -70068,48 +71131,117 @@ class DatabaseImplementationDaemon:
                 }
             if not isinstance(exc, DatabasePortalBridgeError):
                 raise
-            failed = None
             try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
+                settlement = self._settle_terminal_portal_failure(
+                    attempt,
+                    failure=exc,
                 )
-                if current is not None and current.status == "running":
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
-                            "reason": str(exc),
-                            "portal_retryable_failure": True,
-                        },
-                    )
             except Exception as fail_exc:
+                quarantined = self._quarantine_unsettled_portal_attempt(
+                    attempt,
+                    failure=exc,
+                    settlement_error=fail_exc,
+                )
                 return {
                     "resumed": True,
-                    "portal_retryable_failure": True,
+                    "portal_terminal_failure": True,
+                    "settlement_failed": True,
+                    "provider_replay_quarantined": quarantined is not None,
                     "reason": str(exc),
                     "fail_error": str(fail_exc),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                    "status": "retryable_portal_failure",
+                    "status": "portal_failure_settlement_failed",
                 }
             return {
                 "resumed": True,
-                "portal_retryable_failure": True,
+                "portal_terminal_failure": True,
                 "reason": str(exc),
-                "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
-                "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
-                "status": "failed",
+                "attempt_id": str(settlement["attempt_id"]),
+                "task_alias": str(settlement["task_alias"]),
+                "settlement": settlement,
+                "status": "blocked",
             }
+
+    def _quarantine_unsettled_portal_attempt(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        failure: BaseException,
+        settlement_error: BaseException,
+    ) -> DatabaseTaskAttempt | None:
+        """Stop identical provider replay when authority settlement fails.
+
+        This records only a non-authoritative local terminal cursor.  It does
+        not release the claim, mutate canonical control state, or invent the
+        missing claim-bound revision.  The exact claim must expire or be
+        repaired by a later operator before any replacement attempt can run.
+        """
+
+        attempt_id = str(
+            getattr(attempt, "attempt_id", "")
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else attempt
+        ).strip()
+        current = self.get_attempt(attempt_id)
+        if current is None or current.status == "failed":
+            return current
+        if current.status != "running":
+            return None
+        body: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA,
+            "operation": "quarantine_unsettled_portal_failure",
+            "task_cid": current.task_cid,
+            "attempt_id": current.attempt_id,
+            "claim_id": current.claim_id,
+            "lease_id": current.lease_id,
+            "owner_session_id": current.owner_session_id,
+            "fencing_token": int(current.fencing_token),
+            "fence_epoch": int(current.fence_epoch),
+            "failure_payload_digest": "sha256:"
+            + hashlib.sha256(str(failure).encode("utf-8")).hexdigest(),
+            "settlement_error_digest": "sha256:"
+            + hashlib.sha256(str(settlement_error).encode("utf-8")).hexdigest(),
+            "automatic_retry_admitted": False,
+            "control_mutation_admitted": False,
+            "coordination_release_admitted": False,
+        }
+        body["quarantine_id"] = content_identity(body)
+        try:
+            return self.commit_phase(
+                current,
+                ATTEMPT_PHASE_FAILED,
+                body=body,
+                require_live_claim=False,
+            )
+        except Exception:
+            observed = self.get_attempt(current.attempt_id)
+            if observed is not None and observed.status == "failed":
+                phases = [
+                    item
+                    for item in self.phase_history(observed.attempt_id)
+                    if item.get("phase") == ATTEMPT_PHASE_FAILED
+                ]
+                if (
+                    phases
+                    and phases[-1].get("body", {}).get("quarantine_id")
+                    == body["quarantine_id"]
+                ):
+                    return observed
+            raise
 
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         completion_reconciliations = self.reconcile_prepared_task_completions()
+        portal_failure_reconciliations = (
+            self.reconcile_terminal_portal_failures()
+        )
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-        reconciliation_write_count = len(completion_reconciliations) + len(
-            expired_attempt_reconciliations
+        reconciliation_write_count = (
+            len(completion_reconciliations)
+            + len(portal_failure_reconciliations)
+            + len(expired_attempt_reconciliations)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -70126,6 +71258,9 @@ class DatabaseImplementationDaemon:
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
                 "completion_reconciliations": completion_reconciliations,
+                "portal_failure_reconciliations": (
+                    portal_failure_reconciliations
+                ),
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
@@ -70133,11 +71268,28 @@ class DatabaseImplementationDaemon:
 
         attempt = self.claim_next()
         if attempt is None:
+            withdrawal = dict(self._last_claim_withdrawal)
+            quarantined_task_cids = list(
+                self._last_unsettled_quarantine_task_cids
+            )
             return {
-                "unchanged": reconciliation_write_count == 0,
-                "write_count": reconciliation_write_count,
+                "unchanged": (
+                    reconciliation_write_count == 0 and not withdrawal
+                ),
+                "write_count": reconciliation_write_count
+                + (1 if withdrawal else 0),
                 "active_task_id": "",
-                "selection_idle_reason": "no_ready_tasks",
+                "selection_idle_reason": (
+                    "claim_withdrawn_control_not_dispatchable"
+                    if withdrawal
+                    else (
+                        "unsettled_portal_failure_quarantine"
+                        if quarantined_task_cids
+                        else "no_ready_tasks"
+                    )
+                ),
+                "claim_withdrawal": withdrawal,
+                "unsettled_quarantine_task_cids": quarantined_task_cids,
                 "implementation_result": None,
                 "authority_mode": self.authority_mode,
                 "task_source_kind": self.task_source_kind,
@@ -70145,6 +71297,9 @@ class DatabaseImplementationDaemon:
                 "projections_required": False,
                 "control_schema_evidence": dict(self.control_schema_evidence),
                 "completion_reconciliations": completion_reconciliations,
+                "portal_failure_reconciliations": (
+                    portal_failure_reconciliations
+                ),
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
@@ -70162,6 +71317,7 @@ class DatabaseImplementationDaemon:
             "projections_required": False,
             "control_schema_evidence": dict(self.control_schema_evidence),
             "completion_reconciliations": completion_reconciliations,
+            "portal_failure_reconciliations": portal_failure_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,

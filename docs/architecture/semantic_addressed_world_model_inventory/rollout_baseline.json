@@ -1,5 +1,5 @@
 {
-  "schema": "semantic-addressed-world-model/rollout-baseline@1",
+  "schema": "semantic-addressed-world-model/rollout-baseline@2",
   "board_namespace": "semantic-addressed-world-model-v1",
   "plan_revision": "SAWM-PLAN-R2",
   "observed_on_utc_date": "2026-08-28",
@@ -15,6 +15,52 @@
     "preexisting_sawm_transition_cid": null,
     "preexisting_sawm_required_mode_task_count": 0,
     "claim": "No SAWM-specific world root or rollout receipt was found or fabricated at bootstrap."
+  },
+  "m4_control_plane_runtime_observation": {
+    "schema": "semantic-addressed-world-model/m4-control-plane-runtime-observation@1",
+    "authority_class": "operator_frozen_predecessor_observation",
+    "completion_authority": false,
+    "rollout_activation_authority": false,
+    "sawm_operational_influence": false,
+    "summary": "The M4 supervisor lifecycle, SAWM-001 task claim, and isolated-worktree setup occurred in bootstrap mode; provider dispatch, provider invocation, effect claim, implementation commit, merge attempt, task completion, and SAWM rollout influence did not occur.",
+    "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+    "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+    "source_binding_cid": "sha256:72ae538afc063f98a4e7b0a799a619d6a8c499ceb51c9ceb4bffe95de5f9d323",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "control_store_sha256": "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670",
+    "event_watermark": 116,
+    "event_prefix_sha256": "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911",
+    "projection_cid": "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha",
+    "owner_generation": 6,
+    "owner_status": "stopped",
+    "task_alias": "SAWM-001",
+    "task_status": "in_progress",
+    "task_revision": 2,
+    "attempt_id": "attempt:bd4aa7ffd3ee4bc9b7c48af433ae2a99",
+    "claim_id": "claim:22c0f7ef869c4f508b1cdc1324b16413",
+    "failure_reason": "validation_project_dependency_preflight_failed",
+    "failure_kind": "lifecycle_setup",
+    "database_attempt_terminal_reason": "external_protected_checkout_recovery_required",
+    "lifecycle_started": true,
+    "task_claimed": true,
+    "task_state_changed": true,
+    "worktree_setup_occurred": true,
+    "worktree_removed": true,
+    "worktree_branch_deleted": true,
+    "provider_dispatch_attempted": false,
+    "provider_dispatched": false,
+    "provider_invocation_recorded": false,
+    "effect_claim_recorded": false,
+    "implementation_commit_created": false,
+    "merge_attempted": false,
+    "task_completed": false,
+    "world_root_created": false,
+    "rollout_mode_changed": false,
+    "successor_migration_revision": "SAWM-R2-M5",
+    "successor_run_id": "run-r2-m5",
+    "successor_plan_revision": 6,
+    "successor_store_generation": 7,
+    "successor_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb"
   },
   "related_landed_rollout_surfaces": [
     {
@@ -166,11 +212,12 @@
     "llm_call_reduction": null,
     "token_reduction": null,
     "proof_or_test_coverage_change": null,
-    "reason": "No SAWM rollout or frozen benchmark has executed."
+    "reason": "No SAWM feature rollout or frozen benchmark has executed; M4 reached only bootstrap control lifecycle and a pre-provider task failure."
   },
   "limitations": [
     "This file defines the closed rollout baseline; it is not an activation receipt.",
     "Related landed shadow/rollout code does not establish SAWM mode.",
+    "The M4 task claim and worktree lifecycle are not implementation completion, provider execution, or rollout evidence.",
     "All post-bootstrap values require current-tree independently admitted evidence."
   ]
 }

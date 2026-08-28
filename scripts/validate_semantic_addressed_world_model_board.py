@@ -81,6 +81,7 @@ CONTROL_RELATIVE_PATHS = (
     "scripts/materialize_semantic_addressed_world_model_program.py",
     "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
     "ipfs_accelerate_py/agent_implementation_route.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
@@ -92,17 +93,23 @@ CONTROL_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
     "test/api/test_agent_supervisor_configured_board_extension_projection.py",
     "test/api/test_agent_supervisor_configured_board_live_capsule.py",
     "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_database_coordination.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
     "test/api/test_agent_supervisor_native_dependency_pin.py",
+    "test/api/test_agent_supervisor_project_dependency_preflight.py",
     "test/api/test_agent_supervisor_provider_command_binding.py",
     "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
 )
@@ -337,6 +344,409 @@ def _canonical_identity(value: Mapping[str, Any], *, identity_field: str) -> str
         allow_nan=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _m5_migration_errors(
+    config: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Verify the frozen M4 authority and the one bounded M5 recovery CAS."""
+
+    errors: list[str] = []
+    prior_store = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m4/control.duckdb"
+    )
+    target_store = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m5/control.duckdb"
+    )
+    m4_control_sha256 = (
+        "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670"
+    )
+    m4_event_prefix = (
+        "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911"
+    )
+    m4_projection = (
+        "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha"
+    )
+    m4_source_binding = (
+        "sha256:72ae538afc063f98a4e7b0a799a619d6a8c499ceb51c9ceb4bffe95de5f9d323"
+    )
+    sawm_001_cid = (
+        "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+    )
+    target_projection = (
+        "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q"
+    )
+    expected_requeue = {
+        "schema": "sawm/nonterminal-task-requeue-authorization@1",
+        "authorized": True,
+        "authority": "operator_source_migration",
+        "task_alias": "SAWM-001",
+        "task_cid": sawm_001_cid,
+        "from_status": "in_progress",
+        "from_revision": 2,
+        "to_status": "todo",
+        "to_revision": 3,
+        "reason": (
+            "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
+        ),
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "expected_event_watermark": 119,
+        "worker_self_approval": False,
+    }
+
+    expected_inventory = {
+        "schema": "sawm/prior-materialization-migration-inventory@3",
+        "migration_revision": "SAWM-R2-M5",
+        "migration_kind": (
+            "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
+        ),
+        "supersession_reason": (
+            "source_authority_revision_and_preprovider_task_requeue"
+        ),
+        "prior_store_id": prior_store,
+        "target_store_id": target_store,
+        "prior_plan_revision": 5,
+        "target_plan_revision": 6,
+        "target_generation": 7,
+        "prior_event_watermark": 116,
+        "prior_event_prefix_sha256": m4_event_prefix,
+        "prior_projection_cid": m4_projection,
+        "prior_control_store_sha256": m4_control_sha256,
+        "prior_source_binding_cid": m4_source_binding,
+        "prior_source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+        "prior_source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+        "prior_materialization_receipt_cid": (
+            "sha256:b24b3a2a0d325540761aaee03ea79bc88836b58577dab8583fec43f0de4c2a21"
+        ),
+        "prior_authority_preserved": True,
+    }
+    if any(migration.get(key) != value for key, value in expected_inventory.items()):
+        errors.append("M5 inventory does not bind the exact frozen M4 authority")
+
+    program = config.get("database_program")
+    prior = config.get("prior_materialization")
+    if not isinstance(program, Mapping) or (
+        program.get("store_id") != target_store
+        or program.get("store_generation") != "7"
+    ):
+        errors.append("M5 scheduler does not bind run-r2-m5 generation 7")
+    if not isinstance(prior, Mapping):
+        errors.append("M5 scheduler prior-materialization binding is absent")
+        prior = {}
+    expected_prior = {
+        "migration_revision": "SAWM-R2-M5",
+        "reason": "source_authority_revision_and_preprovider_task_requeue",
+        "store_id": prior_store,
+        "source_binding_cid": m4_source_binding,
+        "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+        "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+        "projection_cid": m4_projection,
+        "control_store_sha256": m4_control_sha256,
+        "event_watermark": 116,
+        "event_prefix_sha256": m4_event_prefix,
+        "migration_history_count": 4,
+        "prior_plan_revision": 5,
+        "target_plan_revision": 6,
+        "migration_event_watermark": 118,
+        "target_event_watermark": 119,
+        "target_projection_cid": target_projection,
+        "preserve_append_only": True,
+    }
+    if any(prior.get(key) != value for key, value in expected_prior.items()):
+        errors.append("M5 scheduler prior-materialization fields are not exact")
+    if dict(prior.get("nonterminal_task_requeue") or {}) != expected_requeue:
+        errors.append("M5 scheduler does not authorize exactly one SAWM-001 recovery CAS")
+
+    sealed = seal.get("source_migration")
+    if not isinstance(sealed, Mapping):
+        errors.append("M5 dependency-seal source migration is absent")
+        sealed = {}
+    expected_sealed = {
+        "migration_revision": "SAWM-R2-M5",
+        "migration_kind": (
+            "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
+        ),
+        "supersession_reason": (
+            "source_authority_revision_and_preprovider_task_requeue"
+        ),
+        "mode": "append_only_source_authority_revision",
+        "prior_store_id": prior_store,
+        "target_store_id": target_store,
+        "prior_plan_revision": 5,
+        "target_plan_revision": 6,
+        "prior_event_watermark": 116,
+        "prior_event_prefix_sha256": m4_event_prefix,
+        "prior_projection_cid": m4_projection,
+        "prior_control_store_sha256": m4_control_sha256,
+        "prior_source_binding_cid": m4_source_binding,
+        "prior_source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+        "prior_source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+        "prior_migration_count": 4,
+        "prior_migration_receipt_cid": (
+            "sha256:b24b3a2a0d325540761aaee03ea79bc88836b58577dab8583fec43f0de4c2a21"
+        ),
+        "migration_event_watermark": 118,
+        "target_event_watermark": 119,
+        "target_projection_cid": target_projection,
+        "accepted_definition_rewrite_allowed": False,
+        "accepted_completion_replay_allowed": False,
+        "prior_authority_preserved": True,
+    }
+    if any(sealed.get(key) != value for key, value in expected_sealed.items()):
+        errors.append("M5 dependency seal does not preserve the exact M4 authority")
+    if dict(sealed.get("nonterminal_task_requeue") or {}) != expected_requeue:
+        errors.append("M5 dependency seal recovery authorization is not exact")
+
+    history = migration.get("migration_history")
+    if (
+        not isinstance(history, list)
+        or len(history) != 4
+        or any(not isinstance(entry, Mapping) for entry in history)
+    ):
+        errors.append("M1-through-M4 migration history is not a four-entry sequence")
+        history = []
+    if history:
+        if [entry.get("migration_revision") for entry in history] != [
+            "SAWM-R2-M1",
+            "SAWM-R2-M2",
+            "SAWM-R2-M3",
+            "SAWM-R2-M4",
+        ]:
+            errors.append("M1-through-M4 migration revisions are not contiguous")
+        for index, entry in enumerate(history[:3]):
+            if (
+                entry.get("schema") != "sawm/source-migration-history-entry@1"
+                or not isinstance(entry.get("prior_event_watermark"), int)
+                or entry.get("target_event_watermark")
+                != entry.get("prior_event_watermark") + 2
+            ):
+                errors.append(
+                    f"M{index + 1} history must use @1 and add exactly two events"
+                )
+        for previous, current in zip(history, history[1:], strict=False):
+            if any(
+                current.get(prior_key) != previous.get(target_key)
+                for prior_key, target_key in (
+                    ("prior_store_id", "target_store_id"),
+                    ("prior_control_store_sha256", "target_control_store_sha256"),
+                    ("prior_event_watermark", "target_event_watermark"),
+                    ("prior_event_prefix_sha256", "target_event_prefix_sha256"),
+                    ("prior_source_binding_cid", "current_source_binding_cid"),
+                    ("prior_source_head", "current_source_head"),
+                    ("prior_source_tree", "current_source_tree"),
+                )
+            ):
+                errors.append("migration history predecessor/target continuity is broken")
+                break
+        m4 = history[3]
+        expected_m4 = {
+            "schema": "sawm/source-migration-history-entry@2",
+            "migration_revision": "SAWM-R2-M4",
+            "prior_event_watermark": 113,
+            "migration_event_watermark": 115,
+            "target_event_watermark": 116,
+            "migration_event_prefix_sha256": (
+                "724c47eaf1c70d6ddcf61059f133c752f2787a619aba040e4f2334ecbd287731"
+            ),
+            "target_event_prefix_sha256": m4_event_prefix,
+            "migration_projection_cid": (
+                "baguqeeramvvb5ij2hs4eniw735kyvfv3t253vp3tn7atk6vmw2qrcfuqf3sq"
+            ),
+            "projection_cid": m4_projection,
+            "target_control_store_sha256": m4_control_sha256,
+            "target_store_id": prior_store,
+            "current_source_binding_cid": m4_source_binding,
+            "post_migration_event_id": (
+                "baguqeera3qvtzkbfquvcwhk3weocoesvqlajklm736surlkl25jn2ljkllha"
+            ),
+            "post_migration_event_type": "intent.task_status_changed",
+            "post_migration_task_cid": sawm_001_cid,
+            "post_migration_task_revision": 2,
+            "post_migration_task_status": "in_progress",
+        }
+        if any(m4.get(key) != value for key, value in expected_m4.items()):
+            errors.append(
+                "M4 @2 history does not distinguish watermark 115 migration "
+                "from watermark 116 frozen target"
+            )
+        if (
+            m4.get("migration_receipt_cid")
+            != migration.get("prior_materialization_receipt_cid")
+            or m4.get("migration_receipt_path")
+            != migration.get("prior_materialization_receipt_path")
+        ):
+            errors.append("M4 history receipt does not bind the frozen predecessor")
+
+    failure = migration.get("preprovider_task_failure")
+    if not isinstance(failure, Mapping):
+        errors.append("frozen M4 pre-provider task failure is absent")
+        failure = {}
+    expected_failure = {
+        "schema": "sawm/pre-provider-task-failure@1",
+        "authority_class": "operator_frozen_predecessor_observation",
+        "authoritative_completion_evidence": False,
+        "store_id": prior_store,
+        "control_store_sha256": m4_control_sha256,
+        "database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "plan_revision": 5,
+        "owner_generation": 6,
+        "source_binding_cid": m4_source_binding,
+        "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+        "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+        "canonical_event_watermark": 116,
+        "canonical_event_prefix_sha256": m4_event_prefix,
+        "canonical_projection_cid": m4_projection,
+        "canonical_claim_event_id": (
+            "baguqeera3qvtzkbfquvcwhk3weocoesvqlajklm736surlkl25jn2ljkllha"
+        ),
+        "canonical_claim_event_type": "intent.task_status_changed",
+        "task_alias": "SAWM-001",
+        "task_cid": sawm_001_cid,
+        "task_previous_status": "todo",
+        "task_status": "in_progress",
+        "task_revision": 2,
+        "execution_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m4/control.execution.duckdb"
+        ),
+        "execution_store_sha256": (
+            "84e010b517a791039a6db16c2860a3292f6fb123d9884521ea52dc31f4223989"
+        ),
+        "coordination_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m4/control.coordination.duckdb"
+        ),
+        "coordination_store_sha256": (
+            "6e4211ed41f02e84e95877a20f94d56660f94d00e2bb80769d4fa4550032a3a2"
+        ),
+        "portal_attempt_path": (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/"
+            "state/sawm_database_portal_attempts/72474c065ac95c1e878159f3"
+        ),
+        "portal_attempt_binding_path": (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/"
+            "state/sawm_database_portal_attempts/72474c065ac95c1e878159f3/"
+            "database-attempt-binding.json"
+        ),
+        "portal_attempt_binding_id": (
+            "sha256:7c9ef3b030749b39ee01b772a3b54b43a77035dbb16f7ea1ec440f4646009f83"
+        ),
+        "portal_attempt_binding_sha256": (
+            "db00bde3459f4eb4973532110647baabe2b2ca335a6704b3dbd22f706ef0e92f"
+        ),
+        "portal_task_projection_sha256": (
+            "5710f2c084a967201a9c0ae1fd19d4aaaf7cb5257799462fba2eb768ac31dd01"
+        ),
+        "portal_event_log_sha256": (
+            "aca7c522a6868965405696bfcadcc88ca47236eebfca6ca50171e20c9c9a035e"
+        ),
+        "portal_event_manifest_sha256": (
+            "48fd39f4e4fe4a4c0d744111589d21eb84cc524fbc8a8c3ae67e458bec0bc67f"
+        ),
+        "portal_event_snapshot_id": (
+            "event-log-snapshot:sha256:"
+            "806ba18bf8230033aadf344c166a193b85c8cf77fd4a21792e4e61cd8ad02171"
+        ),
+        "portal_event_tail_id": (
+            "sha256:46e15c941d784c8e7e986b2668bd2a457a13777c3c08297ec8f936c31732590d"
+        ),
+        "portal_event_count": 13,
+        "portal_event_first_sequence": 1,
+        "portal_event_last_sequence": 13,
+        "database_attempt_terminal_reason": (
+            "external_protected_checkout_recovery_required"
+        ),
+        "attempt_consumed": False,
+        "retry_deferred": True,
+        "successor_migration_revision": "SAWM-R2-M5",
+        "successor_plan_revision": 6,
+        "successor_generation": 7,
+        "successor_store_id": target_store,
+    }
+    if any(failure.get(key) != value for key, value in expected_failure.items()):
+        errors.append("frozen M4 control/companion-store/portal evidence is not exact")
+    if failure.get("canonical_authority_counts") != {
+        "completion_receipts": 1,
+        "effect_claims": 0,
+        "merge_attempts": 0,
+        "provider_calls": 0,
+        "provider_invocations": 0,
+        "provider_responses": 0,
+        "task_assignments": 0,
+        "task_attempts": 0,
+        "task_claims": 0,
+    }:
+        errors.append("frozen M4 canonical authority counts are not exact")
+    if failure.get("execution_authority_counts") != {
+        "attempt_phases": 3,
+        "database_task_attempts": 1,
+        "effect_claims": 0,
+        "provider_invocations": 0,
+    } or failure.get("coordination_authority_counts") != {
+        "fenced_leases": 1,
+        "resource_claims": 0,
+        "task_attempts": 1,
+        "task_claims": 1,
+        "task_completions": 0,
+    }:
+        errors.append("frozen M4 companion authority counts are not exact")
+    for field in (
+        "provider_call_allowed",
+        "provider_dispatch_attempted",
+        "provider_dispatched",
+        "provider_invocation_recorded",
+        "implementation_provider_invoked",
+        "effect_claim_recorded",
+        "implementation_commit_created",
+        "merge_attempted",
+        "task_completed",
+    ):
+        if failure.get(field) is not False:
+            errors.append(f"frozen M4 evidence must retain {field}=false")
+    if failure.get("merge_queue_request_count") != 0:
+        errors.append("frozen M4 evidence must retain zero merge requests")
+
+    historical_failure = migration.get("preworker_launch_failure")
+    if not isinstance(historical_failure, Mapping) or (
+        len(history) == 4
+        and (
+            historical_failure.get("store_id") != history[2].get("target_store_id")
+            or historical_failure.get("source_head")
+            != history[2].get("current_source_head")
+            or historical_failure.get("source_tree")
+            != history[2].get("current_source_tree")
+        )
+    ):
+        errors.append("historical M3 pre-worker failure binding is not preserved")
+
+    repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())
+    required_repair_paths = {
+        "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+        "test/api/test_agent_supervisor_database_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
+        "test/api/test_agent_supervisor_provider_command_binding.py",
+    }
+    if (
+        not repair_paths
+        or len(repair_paths) != len(set(repair_paths))
+        or any(path not in CONTROL_RELATIVE_PATHS for path in repair_paths)
+        or not required_repair_paths.issubset(repair_paths)
+    ):
+        errors.append("M5 bounded repair sources/tests are not exact protected controls")
+    return errors
 
 
 def _stable_regular_bytes(path: Path, *, maximum: int) -> bytes:
@@ -1169,160 +1579,23 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "6"
+        or program.get("store_generation") != "7"
         or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
     if (
-        migration.get("schema") != "sawm/prior-materialization-migration-inventory@2"
-        or migration.get("migration_revision") != "SAWM-R2-M4"
-        or migration.get("migration_kind")
-        != "bounded_preworker_provider_binding_and_generation_recovery"
-        or migration.get("supersession_reason") != migration.get("migration_kind")
-        or migration.get("prior_authority_preserved") is not True
-        or prior.get("preserve_append_only") is not True
-        or prior.get("migration_revision") != migration.get("migration_revision")
-        or prior.get("reason") != migration.get("migration_kind")
-        or prior.get("store_id") != migration.get("prior_store_id")
-        or prior.get("program_definition_cid") != migration.get("prior_program_definition_cid")
+        prior.get("program_definition_cid") != migration.get("prior_program_definition_cid")
         or prior.get("plan_root_cid") != migration.get("prior_plan_root_cid")
-        or prior.get("source_binding_cid") != migration.get("prior_source_binding_cid")
-        or prior.get("projection_cid") != migration.get("prior_projection_cid")
         or set(migration.get("prior_task_cids") or {}) != set(TASK_IDS)
         or set(migration.get("prior_goal_cids") or {}) != set(GOAL_IDS)
         or migration.get("prior_task_count") != len(TASK_IDS)
         or migration.get("prior_goal_count") != len(GOAL_IDS)
         or migration.get("definition_source_binding_cid")
         != "sha256:cf4d9fa1ba595286866f5406e61b2ac71e4ed3730af70a2b07f88d0c16905e5e"
-        or migration.get("prior_event_watermark") != 113
-        or migration.get("prior_plan_revision") != 4
-        or migration.get("target_plan_revision") != 5
     ):
         config_errors.append("append-only prior-SAWM migration binding mismatch")
-    history = migration.get("migration_history")
-    if (
-        not isinstance(history, list)
-        or len(history) != 3
-        or any(not isinstance(entry, Mapping) for entry in history)
-        or [entry.get("migration_revision") for entry in history]
-        != ["SAWM-R2-M1", "SAWM-R2-M2", "SAWM-R2-M3"]
-        or any(
-            entry.get("schema") != "sawm/source-migration-history-entry@1"
-            for entry in history
-        )
-        or history[-1].get("target_store_id") != migration.get("prior_store_id")
-        or history[-1].get("target_control_store_sha256")
-        != migration.get("prior_control_store_sha256")
-        or history[-1].get("target_event_watermark")
-        != migration.get("prior_event_watermark")
-        or history[-1].get("target_event_prefix_sha256")
-        != migration.get("prior_event_prefix_sha256")
-        or history[-1].get("current_source_binding_cid")
-        != migration.get("prior_source_binding_cid")
-        or history[-1].get("migration_receipt_cid")
-        != migration.get("prior_materialization_receipt_cid")
-        or history[-1].get("migration_receipt_path")
-        != migration.get("prior_materialization_receipt_path")
-    ):
-        config_errors.append("M0-through-M3 migration history binding mismatch")
-    launch_failure = migration.get("preworker_launch_failure")
-    if isinstance(launch_failure, Mapping):
-        error_payload = launch_failure.get("error_payload")
-        error_payload_cid = (
-            "sha256:"
-            + hashlib.sha256(
-                json.dumps(
-                    error_payload,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                    allow_nan=False,
-                ).encode("utf-8")
-            ).hexdigest()
-        )
-    else:
-        error_payload_cid = ""
-    expected_launch_failure = {
-        "schema": "sawm/pre-worker-launch-failure@2",
-        "outer_launch_command": (
-            "python scripts/ops/agent_supervisor/"
-            "semantic_addressed_world_model.py launch"
-        ),
-        "outer_launch_exit_code": 0,
-        "command": (
-            "ipfs_accelerate_py.agent_supervisor.runtime."
-            "multi_supervisor_runner"
-        ),
-        "phase": "detached_coordinator_provider_entry_module_preflight",
-        "exit_code": 2,
-        "error_payload": {
-            "schema": "sawm/coordinator-error@1",
-            "valid": False,
-            "error": (
-                "ModuleNotFoundError: No module named "
-                "'ipfs_accelerate_py.agent_supervisor."
-                "provider_command_environment'"
-            ),
-        },
-        "error_payload_cid": (
-            "sha256:7eccdc0993160ddf88afeaa8acd66f951c525d0758c21326a6075d850b996afb"
-        ),
-        "source_head": "29fb3cec38d682702c952dd20111b56d993345bb",
-        "source_tree": "4e3e7532d4d850edabad1610d98bab82d4fe2410",
-        "configuration_root": (
-            "baguqeeraime2bkkng2cuttamu3qtrqxxlp3xim7hzpkpce7sunv7ptumfkeq"
-        ),
-        "store_id": (
-            "data/agent_supervisor/semantic_addressed_world_model/"
-            "run-r2-m3/control.duckdb"
-        ),
-        "owner_generation": 5,
-        "owner_server_id": "server:67f0d1bb-0289-45ae-b2bc-33c87f040124",
-        "owner_process_birth_id": "birth:eaf37ba44ad162fc5231eb6e4dbbf35e",
-        "control_plane_capsule_id": (
-            "sha256:50b6acb20e822d5a841282fbafc7aa5d32dfce9af68bca99c2107fffeb50ef9b"
-        ),
-        "control_plane_archive_sha256": (
-            "sha256:4ea5c26e631544abc5890e28f176685957a8fb367858c8653e9aee5289a00646"
-        ),
-        "control_plane_admission_cid": (
-            "baguqeeraug4eqqturk3lnsf2xfmg2sqrrm3ij6v7u5pnlxlcfbivzhyi6enq"
-        ),
-        "accepted_control_plane_admitted": True,
-        "coordinator_log_path": (
-            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/"
-            "logs/configured-board-20260828T060454Z.log"
-        ),
-        "coordinator_log_sha256": (
-            "sha256:d9932d7bb2f5d906a09a9fe9f1f28886913aec4a40dbdd803d1c17d049a8bc8b"
-        ),
-        "coordinator_pid": 3669646,
-        "coordinator_pid_projection_after_failure": "absent",
-        "provider_capability_probed": True,
-        "credential_handoff_retired": True,
-        "worker_started": False,
-        "task_claimed": False,
-        "task_state_changed": False,
-        "implementation_provider_invoked": False,
-        "failure_time_authority": "unavailable",
-    }
-    if (
-        not isinstance(launch_failure, Mapping)
-        or dict(launch_failure) != expected_launch_failure
-        or launch_failure.get("error_payload_cid") != error_payload_cid
-        or launch_failure.get("source_head") != migration.get("prior_source_head")
-        or launch_failure.get("source_tree") != migration.get("prior_source_tree")
-        or launch_failure.get("store_id") != migration.get("prior_store_id")
-    ):
-        config_errors.append("typed pre-worker launch failure binding mismatch")
-    repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())
-    if (
-        not repair_paths
-        or len(repair_paths) != len(set(repair_paths))
-        or any(path not in CONTROL_RELATIVE_PATHS for path in repair_paths)
-    ):
-        config_errors.append("bounded launch-repair paths are not exact protected controls")
+    config_errors.extend(_m5_migration_errors(config, seal, migration))
     config_errors.extend(_configured_board_dependency_errors(root, config, seal))
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (

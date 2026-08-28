@@ -30,13 +30,17 @@ from ipfs_accelerate_py.agent_supervisor.provider_command_binding import (
 
 
 _SEALED_PROVIDER_PREFLIGHT_BOOTSTRAP = r"""
+import hashlib
 import importlib
 import importlib.machinery
 import json
+import os
 import sys
 import types
 
 archive = sys.argv[1]
+assert archive.startswith("/proc/self/fd/")
+assert os.path.isfile(archive)
 sys.path.insert(0, archive)
 import ipfs_accelerate_py
 
@@ -86,13 +90,64 @@ assert isinstance(environment_origin, str) and environment_origin.startswith(
 )
 assert package_name + ".grok_cli_runner" not in sys.modules
 assert package_name + ".provider_command_environment" not in sys.modules
+
+# Exercise source consumers that must remain valid after the accepted archive
+# has been unlinked and survives only through its sealed memfd descriptor.
+timeout_name = package_name + ".todo_daemon.implementation_timeout"
+timeout_alias = package_name + ".implementation_timeout"
+timeout_module = importlib.import_module(timeout_name)
+sys.modules[timeout_alias] = timeout_module
+setattr(package, "implementation_timeout", timeout_module)
+
+preflight_name = package_name + ".validation.project_dependency_preflight"
+daemon_name = package_name + ".todo_daemon.implementation_daemon"
+preflight = importlib.import_module(preflight_name)
+daemon = importlib.import_module(daemon_name)
+preflight_origin = getattr(preflight, "__file__", None)
+daemon_origin = getattr(daemon, "__file__", None)
+assert isinstance(preflight_origin, str) and preflight_origin.startswith(
+    archive + "/"
+)
+assert isinstance(daemon_origin, str) and daemon_origin.startswith(archive + "/")
+
+preflight_source = preflight._read_dependency_probe_source()
+preflight_loader = getattr(preflight.__spec__, "loader", None)
+assert preflight_source == preflight_loader.get_data(preflight_origin)
+
+revision = daemon.retry_budget_repair_runtime_revision()
+assert revision.startswith("sha256:") and len(revision) == 71
+daemon_loader = getattr(daemon.__spec__, "loader", None)
+expected = hashlib.sha256()
+expected.update(daemon.RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
+expected.update(b"\0")
+for relative in daemon.RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
+    expected.update(relative.encode("utf-8"))
+    expected.update(b"\0")
+    expected.update(daemon_loader.get_data(package_path + "/" + relative))
+    expected.update(b"\0")
+assert revision == "sha256:" + expected.hexdigest()
+
+for name, loaded in tuple(sys.modules.items()):
+    if name.startswith(package_name + "."):
+        origin = getattr(loaded, "__file__", None)
+        assert isinstance(origin, str) and origin.startswith(archive + "/")
+
 print(
     json.dumps(
         {
             "binding_count": len(bindings),
             "complete": report.complete,
+            "daemon_origin": daemon_origin,
             "environment_origin": environment_origin,
+            "preflight_origin": preflight_origin,
+            "preflight_source_sha256": (
+                "sha256:" + hashlib.sha256(preflight_source).hexdigest()
+            ),
+            "recovery_source_count": len(
+                daemon.RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS
+            ),
             "runner_origin": runner_origin,
+            "runtime_revision": revision,
         },
         sort_keys=True,
     )
@@ -386,20 +441,31 @@ def test_sealed_archive_resolves_provider_bindings_and_preflights_runtime_runner
     try:
         assert completed.returncode == 0, completed.stderr
         result = json.loads(completed.stdout)
-        assert result == {
-            "binding_count": 14,
-            "complete": True,
-            "environment_origin": (
-                sealed.executable_path
-                + "/ipfs_accelerate_py/agent_supervisor/runtime/"
-                "provider_command_environment.py"
-            ),
-            "runner_origin": (
-                sealed.executable_path
-                + "/ipfs_accelerate_py/agent_supervisor/runtime/"
-                "grok_cli_runner.py"
-            ),
-        }
+        assert result["binding_count"] == 14
+        assert result["complete"] is True
+        assert result["environment_origin"] == (
+            sealed.executable_path
+            + "/ipfs_accelerate_py/agent_supervisor/runtime/"
+            "provider_command_environment.py"
+        )
+        assert result["runner_origin"] == (
+            sealed.executable_path
+            + "/ipfs_accelerate_py/agent_supervisor/runtime/"
+            "grok_cli_runner.py"
+        )
+        assert result["preflight_origin"] == (
+            sealed.executable_path
+            + "/ipfs_accelerate_py/agent_supervisor/validation/"
+            "project_dependency_preflight.py"
+        )
+        assert result["daemon_origin"] == (
+            sealed.executable_path
+            + "/ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_daemon.py"
+        )
+        assert result["preflight_source_sha256"].startswith("sha256:")
+        assert result["recovery_source_count"] == 5
+        assert result["runtime_revision"].startswith("sha256:")
         assert sealed.capsule_id == pin.capsule_id
         assert sealed.archive_sha256 == pin.archive_sha256
     finally:
