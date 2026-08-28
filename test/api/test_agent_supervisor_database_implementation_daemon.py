@@ -88,8 +88,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     _process_birth_content_id,
+    typed_database_blocked_retry_revalidation_requirement,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
@@ -13376,7 +13378,7 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
             task_alias="PCSM-010",
             status="retrying",
             revision=45,
-            body={},
+            body={"completion_receipt": {"operation": "legacy_retry"}},
         )
 
         def list_tasks(self, status=None, limit=50):
@@ -13406,13 +13408,22 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
         _record_event=lambda *_args, **_kwargs: None,
     )
 
-    def cas_status(task_cid, *, expected_revision, new_status, receipt, evidence_digests):
+    def cas_status(
+        task_cid,
+        *,
+        expected_revision,
+        new_status,
+        receipt,
+        expected_control_receipt,
+        evidence_digests,
+    ):
         cas.append(
             {
                 "task_cid": task_cid,
                 "expected_revision": expected_revision,
                 "new_status": new_status,
                 "evidence_digests": list(evidence_digests),
+                "expected_control_receipt": dict(expected_control_receipt),
             }
         )
         source.task.status = new_status
@@ -13441,6 +13452,175 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
     assert outcomes[0]["reason"] == "database_landed_merge_repair"
     assert cas[0]["new_status"] == "completed"
     assert cas[0]["expected_revision"] == 45
+    assert cas[0]["expected_control_receipt"] == {
+        "operation": "legacy_retry"
+    }
+
+
+def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid="task:pcsm-013",
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcsm-013",
+            task_alias="PCSM-013",
+            status="retrying",
+            revision=9,
+            body={
+                "completion_receipt": {"operation": "operator_retry"},
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: requirement,
+            },
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            return SimpleNamespace(tasks=(self.task,))
+
+        def get(self, _task_cid: str):
+            return self.task
+
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        task_source=_Source(),
+        _task_outputs_landed_on_target=lambda _task: (_ for _ in ()).throw(
+            AssertionError("landed outputs must not bypass fresh Portal proof")
+        ),
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+
+    assert DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon) == []
+
+
+def test_fresh_portal_requirement_survives_control_receipt_rotations() -> None:
+    task_cid = "task:pcsm-013"
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid=task_cid,
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+    daemon = SimpleNamespace()
+
+    for operation in (
+        "database_operator_blocked_retry_recovery",
+        "database_claim",
+        "database_attempt_admitted",
+        "database_portal_neutral_failure_quarantine",
+        "database_portal_terminal_failure",
+        "database_portal_validation_retry",
+    ):
+        task = SimpleNamespace(
+            task_cid=task_cid,
+            body={
+                "completion_receipt": {"operation": operation},
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: requirement,
+            },
+        )
+        assert DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            daemon,
+            task,
+        )
+
+
+def test_malformed_fresh_portal_requirement_fails_closed() -> None:
+    task = SimpleNamespace(
+        task_cid="task:pcsm-013",
+        body={
+            "completion_receipt": {"operation": "operator_retry"},
+            TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: "invalid",
+        },
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="fresh Portal revalidation requirement is malformed",
+    ):
+        DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            SimpleNamespace(),
+            task,
+        )
+
+
+def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race() -> None:
+    task_cid = "task:pcsm-013"
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid=task_cid,
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid=task_cid,
+            task_alias="PCSM-013",
+            status="blocked",
+            revision=8,
+            body={
+                "completion_receipt": {"operation": "terminal_failure"}
+            },
+        )
+        validation_recorded = False
+
+        def get(self, _task_cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            self.validation_recorded = True
+            self.task = SimpleNamespace(
+                task_cid=task_cid,
+                task_alias="PCSM-013",
+                status="retrying",
+                revision=9,
+                body={
+                    "completion_receipt": {"operation": "operator_retry"},
+                    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: (
+                        requirement
+                    ),
+                },
+            )
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: ("receipt.json",),
+        merge_target_ref="HEAD",
+        _cas_task_status_database=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("stale landed repair must not complete recovered work")
+        ),
+    )
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+
+    assert (
+        DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            source.task,
+        )
+        is None
+    )
+    assert source.validation_recorded is True
 
 
 def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:

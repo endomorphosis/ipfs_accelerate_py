@@ -82584,8 +82584,14 @@ class PortalImplementationDaemon:
 from ..merge.database_coordination import (
     TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE,
 )
+from ..task_sources.task_execution_route_policy import (
+    validated_typed_database_blocked_retry_revalidation_requirement,
+)
 from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_REASON,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
@@ -111629,7 +111635,13 @@ class DatabaseImplementationDaemon:
                 "neutral Portal quarantine lacks exact shared authority"
             )
 
-        if self._task_outputs_landed_on_target(task):
+        if (
+            not DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+                self,
+                task,
+            )
+            and self._task_outputs_landed_on_target(task)
+        ):
             completed = self._complete_landed_running_attempt(current, task)
             self._record_event(
                 "landed_merge_completed_instead_of_quarantine",
@@ -112448,33 +112460,123 @@ class DatabaseImplementationDaemon:
             },
         )
 
+    def _requires_fresh_portal_revalidation(self, task: Any) -> bool:
+        """Keep operator-recovered work on the normal Portal proof path."""
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        requirement = body.get(
+            TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+        )
+        if (
+            TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD in body
+            and not isinstance(requirement, Mapping)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "fresh Portal revalidation requirement is malformed"
+            )
+        if isinstance(requirement, Mapping):
+            try:
+                validated_typed_database_blocked_retry_revalidation_requirement(
+                    requirement,
+                    task_cid=task_cid,
+                )
+            except TaskSourceIntegrityError as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "fresh Portal revalidation requirement is malformed"
+                ) from exc
+            return True
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+        route = receipt.get("execution_route_binding")
+        return bool(
+            receipt.get("schema")
+            == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA
+            and receipt.get("operation")
+            == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION
+            and isinstance(route, Mapping)
+            and route.get("task_cid") == task_cid
+            and type(receipt.get("recovered_from_revision")) is int
+            and int(receipt["recovered_from_revision"]) >= 1
+            and type(receipt.get("fresh_attempt_number")) is int
+            and int(receipt["fresh_attempt_number"]) >= 1
+            and all(
+                type(receipt.get(name)) is str and bool(receipt.get(name))
+                for name in (
+                    "source_completion_receipt_id",
+                    "operator_handoff_receipt_id",
+                    "sidecar_evidence_id",
+                )
+            )
+        )
+
     def _complete_landed_quarantined_task(
         self,
         task: Any,
     ) -> dict[str, Any] | None:
-        status = str(getattr(task, "status", "") or "").strip().lower()
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        current = self.task_source.get(task_cid)
+        if current is None:
+            return None
+        status = str(getattr(current, "status", "") or "").strip().lower()
         if status not in {"quarantined", "retrying", "blocked"}:
             return None
-        if not self._task_outputs_landed_on_target(task):
+        if DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            self,
+            current,
+        ):
             return None
-        proof, digest = self._landed_merge_repair_proof(task)
+        body = getattr(current, "body", None)
+        control_receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        if not isinstance(control_receipt, Mapping):
+            return None
+        if not self._task_outputs_landed_on_target(current):
+            return None
+        proof, digest = self._landed_merge_repair_proof(current)
         self.task_source.record_validation_result(
-            task_cid=str(task.task_cid),
+            task_cid=task_cid,
             outcome="passed",
             evidence_digest=digest,
             argv=["database-landed-merge-repair"],
             body=proof,
         )
-        refreshed = self.task_source.get(task.task_cid)
+        refreshed = self.task_source.get(task_cid)
         if refreshed is None:
             raise DatabaseImplementationAuthorityError(
                 "landed merge repair lost the control task"
             )
+        refreshed_status = str(
+            getattr(refreshed, "status", "") or ""
+        ).strip().lower()
+        refreshed_body = getattr(refreshed, "body", None)
+        refreshed_receipt = (
+            refreshed_body.get("completion_receipt")
+            if isinstance(refreshed_body, Mapping)
+            else None
+        )
+        if (
+            refreshed_status != status
+            or not isinstance(refreshed_receipt, Mapping)
+            or dict(refreshed_receipt) != dict(control_receipt)
+            or DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+                self,
+                refreshed,
+            )
+        ):
+            return None
         self._cas_task_status_database(
             refreshed.task_cid,
             expected_revision=int(refreshed.revision),
             new_status="completed",
             receipt={**proof, "evidence_digest": digest},
+            expected_control_receipt=refreshed_receipt,
             evidence_digests=[digest],
         )
         self._record_event(

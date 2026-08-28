@@ -80,6 +80,7 @@ from .typed_state_owner import (
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
@@ -96,6 +97,7 @@ from .typed_state_owner import (
     _validated_stored_retry_cooldown,
     completion_progress_request,
     open_typed_state_owner_connection,
+    typed_database_blocked_retry_revalidation_requirement,
     validate_completion_progress_snapshot,
 )
 
@@ -2926,6 +2928,7 @@ class QuackStateClient:
         operator_handoff_receipt_id: str,
         sidecar_evidence_id: str,
         now_ms: int,
+        require_fresh_portal_revalidation: bool = False,
     ) -> CASResult:
         """Atomically admit one operator-sealed blocked retry.
 
@@ -3048,6 +3051,10 @@ class QuackStateClient:
             raise QuackClientError(
                 "blocked retry recovery now_ms must be a fixed integer"
             )
+        if type(require_fresh_portal_revalidation) is not bool:
+            raise QuackClientError(
+                "blocked retry recovery revalidation flag must be a bool"
+            )
 
         source_completion_receipt_id = "sha256:" + hashlib.sha256(
             canonical_json_bytes(prior)
@@ -3083,6 +3090,27 @@ class QuackStateClient:
             "execution_route_origin_revision": route_origin_revision,
         }
         body["completion_receipt"] = recovery_receipt
+        revalidation_requirement: dict[str, Any] | None = None
+        if require_fresh_portal_revalidation:
+            revalidation_requirement = (
+                typed_database_blocked_retry_revalidation_requirement(
+                    task_cid=task,
+                    source_completion_receipt_id=(
+                        source_completion_receipt_id
+                    ),
+                    operator_handoff_receipt_id=normalized_references[
+                        "operator_handoff_receipt_id"
+                    ],
+                    sidecar_evidence_id=normalized_references[
+                        "sidecar_evidence_id"
+                    ],
+                    recovered_from_revision=expected_task_revision,
+                    fresh_attempt_number=fresh_attempt_number,
+                )
+            )
+            body[
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+            ] = revalidation_requirement
         body_json = canonical_json_bytes(body).decode("utf-8")
         extension = {
             "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
@@ -3129,6 +3157,11 @@ class QuackStateClient:
             "extension_json": extension_json,
             "status": "retrying",
             "body_json": body_json,
+            **(
+                {"require_fresh_portal_revalidation": True}
+                if require_fresh_portal_revalidation
+                else {}
+            ),
         }
         command_digest = hashlib.sha256(
             canonical_json_bytes(parameters)
@@ -3254,6 +3287,15 @@ class QuackStateClient:
                     "execution_route_origin_revision"
                 ],
                 "store_revision_before": generation.revision,
+                **(
+                    {
+                        "fresh_portal_revalidation_requirement_id": (
+                            revalidation_requirement["requirement_id"]
+                        )
+                    }
+                    if revalidation_requirement is not None
+                    else {}
+                ),
             }
 
         return self.submit_command(command, apply=apply_recovery)

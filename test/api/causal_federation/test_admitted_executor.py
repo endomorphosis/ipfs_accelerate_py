@@ -76,6 +76,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
@@ -87,6 +88,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     _process_birth_content_id,
     _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
+    typed_database_blocked_retry_revalidation_requirement,
     typed_database_strict_resume_rejection_receipt_id,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
@@ -2924,9 +2926,11 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
         server.stop()
 
 
+@pytest.mark.parametrize("require_fresh_portal_revalidation", [False, True])
 def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    require_fresh_portal_revalidation: bool,
 ) -> None:
     database = tmp_path / "typed-operator-blocked-retry.duckdb"
     task_cid = "task:typed-operator-blocked-retry"
@@ -3102,7 +3106,25 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
         "operator_handoff_receipt_id": operator_handoff_receipt_id,
         "sidecar_evidence_id": sidecar_evidence_id,
         "now_ms": fixed_now_ms,
+        **(
+            {"require_fresh_portal_revalidation": True}
+            if require_fresh_portal_revalidation
+            else {}
+        ),
     }
+    source_completion_receipt_id = (
+        "sha256:" + hashlib.sha256(canonical_json_bytes(terminal)).hexdigest()
+    )
+    expected_revalidation_requirement = (
+        typed_database_blocked_retry_revalidation_requirement(
+            task_cid=task_cid,
+            source_completion_receipt_id=source_completion_receipt_id,
+            operator_handoff_receipt_id=operator_handoff_receipt_id,
+            sidecar_evidence_id=sidecar_evidence_id,
+            recovered_from_revision=4,
+            fresh_attempt_number=2,
+        )
+    )
     denial_client: QuackStateClient | None = None
     recovery_client: QuackStateClient | None = None
     normal_client: QuackStateClient | None = None
@@ -3147,8 +3169,7 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
             "queue_revision": 1,
             "retry_not_before_ms": fixed_now_ms,
             "source_completion_receipt_id": (
-                "sha256:"
-                + hashlib.sha256(canonical_json_bytes(terminal)).hexdigest()
+                source_completion_receipt_id
             ),
             "operator_handoff_receipt_id": operator_handoff_receipt_id,
             "sidecar_evidence_id": sidecar_evidence_id,
@@ -3161,15 +3182,23 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
             "execution_route_policy_id": route["policy_id"],
             "execution_route_origin_revision": route["task_revision"],
             "store_revision_before": before.revision,
+            **(
+                {
+                    "fresh_portal_revalidation_requirement_id": (
+                        expected_revalidation_requirement["requirement_id"]
+                    )
+                }
+                if require_fresh_portal_revalidation
+                else {}
+            ),
         }
         task_row = recovery_client.execute(
             "select_task_by_cid", {"task_cid": task_cid}
         )[0]
         assert task_row["status"] == "retrying"
         assert task_row["revision"] == 5
-        recovery_receipt = json.loads(task_row["body_json"])[
-            "completion_receipt"
-        ]
+        recovered_body = json.loads(task_row["body_json"])
+        recovery_receipt = recovered_body["completion_receipt"]
         assert recovery_receipt["operation"] == (
             TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION
         )
@@ -3179,6 +3208,15 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
         assert recovery_receipt["attempt_refunded"] is False
         assert recovery_receipt["fresh_attempt_number"] == 2
         assert recovery_receipt["execution_route_binding"] == route
+        if require_fresh_portal_revalidation:
+            assert recovered_body[
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+            ] == expected_revalidation_requirement
+        else:
+            assert (
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+                not in recovered_body
+            )
         cooldown_rows = recovery_client.execute(
             "executor_retry_cooldown_by_task", {"task_cid": task_cid}
         )
@@ -3282,6 +3320,15 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
         assert advanced is not None
         assert advanced.status == "in_progress"
         assert advanced.revision > 5
+        if require_fresh_portal_revalidation:
+            assert advanced.body[
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+            ] == expected_revalidation_requirement
+        else:
+            assert (
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+                not in advanced.body
+            )
 
         daemon.close()
         daemon = None

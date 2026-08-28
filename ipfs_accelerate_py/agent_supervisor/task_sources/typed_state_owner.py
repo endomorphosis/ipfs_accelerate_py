@@ -61,7 +61,11 @@ from .duckdb_state import (
 )
 
 _OWNER_LOGGER = logging.getLogger(__name__)
-from .task_execution_route_policy import TaskExecutionRouteBinding
+from .task_execution_route_policy import (
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
+    TaskExecutionRouteBinding,
+    typed_database_blocked_retry_revalidation_requirement,
+)
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -112,6 +116,8 @@ TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON: Final = (
 TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION: Final = (
     "database_portal_terminal_failure"
 )
+
+
 TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-strict-resume-rejection@1"
@@ -1837,9 +1843,20 @@ def _validated_blocked_retry_recovery_parameters(
         "status",
         "body_json",
     }
-    if set(parameters) != required:
+    optional = {"require_fresh_portal_revalidation"}
+    if frozenset(parameters) not in {
+        frozenset(required),
+        frozenset(required | optional),
+    }:
         raise TypedStateOwnerAuthorizationError(
             "blocked retry recovery command differs from its closed schema"
+        )
+    if (
+        "require_fresh_portal_revalidation" in parameters
+        and parameters["require_fresh_portal_revalidation"] is not True
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery revalidation requirement is invalid"
         )
     if (
         parameters.get("schema")
@@ -5025,6 +5042,29 @@ class TypedStateOwnerGateway:
             }
             expected_body = dict(prior_body)
             expected_body["completion_receipt"] = recovery_receipt
+            revalidation_requirement: dict[str, Any] | None = None
+            if recovery.get("require_fresh_portal_revalidation") is True:
+                revalidation_requirement = (
+                    typed_database_blocked_retry_revalidation_requirement(
+                        task_cid=values["task_cid"],
+                        source_completion_receipt_id=(
+                            source_completion_receipt_id
+                        ),
+                        operator_handoff_receipt_id=recovery[
+                            "operator_handoff_receipt_id"
+                        ],
+                        sidecar_evidence_id=recovery["sidecar_evidence_id"],
+                        recovered_from_revision=values[
+                            "expected_task_revision"
+                        ],
+                        fresh_attempt_number=recovery[
+                            "fresh_attempt_number"
+                        ],
+                    )
+                )
+                expected_body[
+                    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+                ] = revalidation_requirement
             expected_body_json = canonical_json_bytes(expected_body).decode(
                 "utf-8"
             )
@@ -5045,6 +5085,15 @@ class TypedStateOwnerGateway:
                 "recovery_receipt": recovery_receipt,
                 "source_completion_receipt_id": (
                     source_completion_receipt_id
+                ),
+                **(
+                    {
+                        "fresh_portal_revalidation_requirement_id": (
+                            revalidation_requirement["requirement_id"]
+                        )
+                    }
+                    if revalidation_requirement is not None
+                    else {}
                 ),
             }
         if operation == "task.status.cas.receipt":
