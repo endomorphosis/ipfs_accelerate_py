@@ -347,6 +347,62 @@ def _positive_launch_environment(
     return env
 
 
+def _native_extension_identity(
+    seal: Mapping[str, Any],
+) -> tuple[str, str, list[str]]:
+    """Bind DuckDB extension layout to the native ABI and sealed toolchain."""
+
+    errors: list[str] = []
+    native = seal.get("configured_board_native_dependency")
+    native_pin = native.get("pin") if type(native) is dict else None
+    toolchain = seal.get("toolchain")
+    if type(native_pin) is not dict or type(toolchain) is not dict:
+        return "", "", ["native DuckDB/toolchain extension identity is absent"]
+
+    native_platforms = {
+        ("linux", "aarch64"): "linux_arm64",
+        ("linux", "x86_64"): "linux_amd64",
+        ("darwin", "arm64"): "osx_arm64",
+        ("darwin", "x86_64"): "osx_amd64",
+        ("win32", "AMD64"): "windows_amd64",
+    }
+    toolchain_platforms = {
+        ("Linux", "aarch64"): "linux_arm64",
+        ("Linux", "x86_64"): "linux_amd64",
+        ("Darwin", "arm64"): "osx_arm64",
+        ("Darwin", "x86_64"): "osx_amd64",
+        ("Windows", "AMD64"): "windows_amd64",
+    }
+    native_platform = native_platforms.get(
+        (
+            str(native_pin.get("platform_name") or ""),
+            str(native_pin.get("platform_machine") or ""),
+        )
+    )
+    toolchain_platform = toolchain_platforms.get(
+        (
+            str(toolchain.get("operating_system") or ""),
+            str(toolchain.get("machine") or ""),
+        )
+    )
+    native_engine = str(native_pin.get("engine_version") or "")
+    distribution_version = str(native_pin.get("distribution_version") or "")
+    toolchain_version = str(toolchain.get("duckdb_distribution_version") or "")
+    if (
+        not native_engine
+        or native_engine != f"v{distribution_version}"
+        or distribution_version != toolchain_version
+    ):
+        errors.append("native DuckDB engine identity differs from the sealed toolchain")
+    if (
+        native_platform is None
+        or toolchain_platform is None
+        or native_platform != toolchain_platform
+    ):
+        errors.append("native DuckDB platform identity differs from the sealed toolchain")
+    return native_engine, native_platform or "", errors
+
+
 def _project_version(path: Path) -> str:
     with path.open("rb") as handle:
         project = tomllib.load(handle).get("project") or {}
@@ -508,6 +564,10 @@ def _validate_extension_projection_pins(
     owner = scheduler.get("quack_owner")
     if type(owner) is not dict:
         return {}, ["scheduler quack_owner is absent"]
+    expected_engine, expected_platform, identity_errors = (
+        _native_extension_identity(seal)
+    )
+    errors.extend(identity_errors)
 
     configured = seal.get("configured_board_quack_projection")
     configured_pin: dict[str, Any] = {}
@@ -559,8 +619,16 @@ def _validate_extension_projection_pins(
 
     engine_version = str(configured_pin.get("engine_version") or "")
     platform_name = str(configured_pin.get("platform") or "")
-    if not engine_version.startswith("v") or not platform_name:
-        errors.append("extension projection engine/platform binding is invalid")
+    if (
+        not engine_version.startswith("v")
+        or not platform_name
+        or engine_version != expected_engine
+        or platform_name != expected_platform
+    ):
+        errors.append(
+            "configured-board extension engine/platform differs from "
+            "native DuckDB/toolchain"
+        )
 
     for name, seal_key, scheduler_key in (
         ("quack", "quack_extension_pin", "pinned_extension"),
@@ -601,6 +669,15 @@ def _validate_extension_projection_pins(
         ):
             errors.append(f"{name} extension source pin policy is invalid")
             continue
+        if (
+            path.parent.name != expected_platform
+            or path.parent.parent.name != expected_engine
+            or info_path.parent != path.parent
+        ):
+            errors.append(
+                f"{name} extension path engine/platform differs from "
+                "native DuckDB/toolchain"
+            )
         try:
             payload_evidence = _stable_regular_evidence(path, maximum=64 * 1024 * 1024)
             info_evidence = _stable_regular_evidence(info_path, maximum=64 * 1024)
@@ -876,13 +953,41 @@ print(json.dumps({
                 "stderr": completed.stderr[-4000:],
             }
         try:
-            return json.loads(completed.stdout)
+            result = json.loads(completed.stdout)
         except json.JSONDecodeError:
             return {
                 "valid": False,
                 "stdout": completed.stdout[-4000:],
                 "stderr": completed.stderr[-4000:],
             }
+        if result.get("valid") is True:
+            rows = result.get("extension_rows")
+            normalized_rows: list[list[Any]] = []
+            if not isinstance(rows, list) or len(rows) != 2:
+                return {
+                    "valid": False,
+                    "error": "isolated extension rows are malformed",
+                }
+            for row in rows:
+                if (
+                    not isinstance(row, list)
+                    or len(row) != 5
+                    or row[0] not in expected_install_paths
+                    or row[4] != expected_install_paths[row[0]]
+                ):
+                    return {
+                        "valid": False,
+                        "error": "isolated extension path evidence drifted",
+                    }
+                relative = Path(row[4]).relative_to(home).as_posix()
+                normalized_rows.append(
+                    [*row[:4], f"$ISOLATED_HOME/{relative}"]
+                )
+            result["extension_rows"] = normalized_rows
+            result["extension_path_reporting"] = (
+                "normalized_after_exact_runtime_path_verification"
+            )
+        return result
     finally:
         _restore_and_remove_private_tree(probe_root)
 

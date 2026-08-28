@@ -32,6 +32,7 @@ from typing import Any
 
 from ...agent_implementation_route import (
     AgentSupervisorNativeDependencyLaunch,
+    AgentSupervisorNativeDependencyPin,
     parse_agent_supervisor_native_dependency_pin,
     seal_agent_supervisor_native_dependency,
     verify_agent_supervisor_native_dependency_sealed_fd,
@@ -91,10 +92,15 @@ from ..task_sources.todo_vector_index import parse_todo_blocks, split_csv
 from ..validation.validation_commands import split_validation_commands
 from .configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
     ConfiguredBoardExtensionPin,
+    ConfiguredBoardExtensionSetPin,
+    build_configured_board_extension_set_pin,
     inspect_configured_board_extension_sources,
     parse_configured_board_extension_pin,
-    project_configured_board_extension_home,
+    parse_configured_board_extension_set_pin,
+    project_configured_board_extension_set_home,
+    verify_configured_board_extension_set_home,
 )
 from .configured_board_live_capsule import (
     ConfiguredBoardLiveCapsuleAdmission,
@@ -235,6 +241,14 @@ class _ConfiguredBoardTaskPopulation:
     state_snapshot_id: str
 
 
+@dataclass(frozen=True)
+class _ConfiguredBoardDependencySealSnapshot:
+    """One exact HEAD-bound dependency-seal read reused for live launch."""
+
+    payload: Mapping[str, Any]
+    artifact: Mapping[str, object]
+
+
 def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
     """Whether this is the sealed v3 profile, rather than a legacy board."""
 
@@ -285,6 +299,7 @@ def _sealed_coordinator_environment(
     board: "ConfiguredBoard",
     *,
     extension_directory: Path | None = None,
+    extension_set_pin: ConfiguredBoardExtensionSetPin | None = None,
 ) -> dict[str, str]:
     """Build the positive environment for an accepted scheduler capsule.
 
@@ -329,7 +344,15 @@ def _sealed_coordinator_environment(
     }
     if os.environ.get("TZ"):
         environment["TZ"] = os.environ["TZ"]
-    if extension_directory is not None:
+    if (extension_directory is None) is not (extension_set_pin is None):
+        raise ConfiguredBoardError(
+            "configured-board extension projection and exact set pin must "
+            "be supplied together"
+        )
+    if extension_directory is not None and extension_set_pin is not None:
+        parsed_extension_set = parse_configured_board_extension_set_pin(
+            extension_set_pin.as_dict()
+        )
         resolved_extension_directory = extension_directory.resolve(strict=True)
         if (
             not resolved_extension_directory.is_dir()
@@ -339,13 +362,32 @@ def _sealed_coordinator_environment(
             raise ConfiguredBoardError(
                 "configured-board extension projection directory is invalid"
             )
+        try:
+            verified_home = verify_configured_board_extension_set_home(
+                parsed_extension_set.pins,
+                resolved_extension_directory.parent.parent,
+            )
+        except (OSError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                "configured-board exact extension set projection is invalid"
+            ) from exc
+        if verified_home / ".duckdb/extensions" != resolved_extension_directory:
+            raise ConfiguredBoardError(
+                "configured-board exact extension set directory drifted"
+            )
         environment[CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV] = str(
             resolved_extension_directory
+        )
+        environment[CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV] = (
+            parsed_extension_set.to_json()
         )
     program = board.database_program
     if program is None or program.authority_mode != AUTHORITY_MODE_QUACK:
         return environment
-    permitted = set(DATABASE_PROGRAM_ENV_NAMES)
+    permitted = set(DATABASE_PROGRAM_ENV_NAMES) - {
+        CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+        CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
+    }
     permitted.add("IPFS_ACCELERATE_AGENT_QUACK_TOKEN")
     handle = str(program.endpoint_secret_handle or "").strip()
     if handle.startswith("env://"):
@@ -3016,6 +3058,20 @@ def configured_board_launch_plan(
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
         environment.update(program.environment())
+    if live_admission is not None:
+        extension_directory = str(
+            os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or ""
+        )
+        if not extension_directory:
+            raise ConfiguredBoardError(
+                "configured-board live launch lacks its extension projection"
+            )
+        environment[CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV] = (
+            extension_directory
+        )
+        environment[CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV] = (
+            live_admission.extension_set_pin.to_json()
+        )
     return {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -3397,6 +3453,7 @@ def _build_live_capsule_admission(
     pin: AgentImplementationControlPlanePin,
     descriptor: int,
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
 ) -> ConfiguredBoardLiveCapsuleAdmission:
     """Bind the existing accepted source capsule to this configured board."""
 
@@ -3418,8 +3475,11 @@ def _build_live_capsule_admission(
                 "configured-board native dependency descriptor drifted"
             )
         program = board.resolved_database_program()
-        extension_pin, _extension_source, _extension_info = (
-            _configured_board_quack_projection(board)
+        extension_set_pin, extension_pins, _extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
         )
         admission = build_configured_board_live_capsule_admission(
             repo_root=board.repo_root,
@@ -3439,7 +3499,8 @@ def _build_live_capsule_admission(
             native_python_executable_sha256=(
                 native_dependency_launch.pin.python_executable_sha256
             ),
-            quack_extension_projection=extension_pin,
+            quack_extension_projection=extension_pins["quack"],
+            extension_set_pin=extension_set_pin,
             database_authority={
                 "authority_mode": program.authority_mode,
                 "task_source_kind": program.task_source_kind,
@@ -3452,6 +3513,15 @@ def _build_live_capsule_admission(
             max_lanes=board.max_lanes,
             strict_task_sharding=board.strict_task_sharding,
         )
+        dependency_artifacts = tuple(
+            artifact
+            for artifact in admission.control_artifacts
+            if artifact.get("path") == board.dependency_seal_path
+        )
+        if dependency_artifacts != (dependency_seal_snapshot.artifact,):
+            raise ConfiguredBoardError(
+                "configured-board live admission observed a different dependency seal"
+            )
     except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
         raise ConfiguredBoardError(
             "configured-board live control capsule admission failed"
@@ -3459,20 +3529,82 @@ def _build_live_capsule_admission(
     return admission
 
 
-def _configured_board_quack_projection(
+def _configured_board_dependency_seal_snapshot(
     board: ConfiguredBoard,
-) -> tuple[ConfiguredBoardExtensionPin, Path, Path]:
-    """Resolve and rehash the exact load-only Quack projection from the seal."""
+    *,
+    expected_artifact: Mapping[str, object] | None = None,
+) -> _ConfiguredBoardDependencySealSnapshot:
+    """Read the protected dependency seal once from the accepted Git generation."""
 
     if not board.dependency_seal_path:
         raise ConfiguredBoardError(
-            "configured-board Quack projection lacks a dependency seal"
+            "configured-board live launch lacks a dependency seal"
+        )
+    if (
+        board.dependency_seal_path not in board.protected_paths
+        or board.dependency_seal_path not in board.live_capsule_control_paths
+    ):
+        raise ConfiguredBoardError(
+            "configured-board dependency seal is not a protected live control"
         )
     try:
-        seal, _evidence = _read_stable_regular_json(
-            board.path(board.dependency_seal_path),
+        source_head, _source_tree = _git_identity(board.repo_root)
+        raw, _revision = _tracked_head_snapshot(
+            repo_root=board.repo_root,
+            path=board.path(board.dependency_seal_path),
+            source_head=source_head,
             max_bytes=4_194_304,
         )
+        def reject_duplicate_keys(
+            pairs: Sequence[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            payload: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in payload:
+                    raise ConfiguredBoardError(
+                        "configured-board dependency seal repeats a JSON key"
+                    )
+                payload[key] = value
+            return payload
+
+        seal = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+        if type(seal) is not dict:
+            raise ConfiguredBoardError(
+                "configured-board dependency seal is not a JSON object"
+            )
+        artifact: Mapping[str, object] = {
+            "path": board.dependency_seal_path,
+            "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "size": len(raw),
+        }
+        if expected_artifact is not None and dict(expected_artifact) != artifact:
+            raise ConfiguredBoardError(
+                "configured-board dependency seal differs from live admission"
+            )
+        return _ConfiguredBoardDependencySealSnapshot(
+            payload=dict(seal),
+            artifact=artifact,
+        )
+    except ConfiguredBoardError:
+        raise
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board dependency seal snapshot failed"
+        ) from exc
+
+
+def _configured_board_quack_projection(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[ConfiguredBoardExtensionPin, Path, Path]:
+    """Resolve Quack only from the exact seal snapshot used for this launch."""
+
+    try:
+        seal = dependency_seal_snapshot.payload
         projection = (
             seal.get("configured_board_quack_projection")
             if type(seal) is dict
@@ -3507,17 +3639,6 @@ def _configured_board_quack_projection(
             raise ConfiguredBoardError(
                 "configured-board Quack projection sources are not absolute"
             )
-        observed = inspect_configured_board_extension_sources(
-            source,
-            info,
-            name=pin.name,
-            engine_version=pin.engine_version,
-            platform=pin.platform,
-        )
-        if observed != pin:
-            raise ConfiguredBoardError(
-                "configured-board Quack projection sources differ"
-            )
         return pin, source, info
     except ConfiguredBoardError:
         raise
@@ -3527,10 +3648,160 @@ def _configured_board_quack_projection(
         ) from exc
 
 
-def _seal_configured_board_native_dependency(
+def _configured_board_extension_set_projection(
     board: ConfiguredBoard,
-) -> AgentSupervisorNativeDependencyLaunch:
-    """Authenticate the protected authorization, then seal exact DuckDB bytes."""
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[
+    ConfiguredBoardExtensionSetPin,
+    dict[str, ConfiguredBoardExtensionPin],
+    dict[str, tuple[Path, Path]],
+]:
+    """Resolve one exact co-versioned HTTPFS+Quack load set.
+
+    The protected dependency-seal snapshot supplies byte authority.  The
+    protected scheduler configuration supplies the expected DuckDB extension
+    versions used to verify the native loader's post-LOAD rows.  Neither
+    source alone is sufficient.
+    """
+
+    quack_pin, quack_source, quack_info = _configured_board_quack_projection(
+        board,
+        dependency_seal_snapshot=dependency_seal_snapshot,
+    )
+    seal = dependency_seal_snapshot.payload
+    httpfs = seal.get("httpfs_extension_pin")
+    expected_httpfs_fields = {
+        "path",
+        "sha256",
+        "size",
+        "info_path",
+        "info_sha256",
+        "info_size",
+        "version",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
+    }
+    if type(httpfs) is not dict or set(httpfs) != expected_httpfs_fields:
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS dependency pin is noncanonical"
+        )
+    owner = board.payload.get("quack_owner")
+    if type(owner) is not dict:
+        raise ConfiguredBoardError(
+            "configured-board Quack owner authority is unavailable"
+        )
+    owner_pins = {
+        "httpfs": owner.get("pinned_httpfs_extension"),
+        "quack": owner.get("pinned_extension"),
+    }
+    if any(type(value) is not dict for value in owner_pins.values()):
+        raise ConfiguredBoardError(
+            "configured-board extension owner pins are noncanonical"
+        )
+    httpfs_source = Path(str(httpfs.get("path") or ""))
+    httpfs_info = Path(str(httpfs.get("info_path") or ""))
+    if not httpfs_source.is_absolute() or not httpfs_info.is_absolute():
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS projection sources are not absolute"
+        )
+    try:
+        httpfs_pin = inspect_configured_board_extension_sources(
+            httpfs_source,
+            httpfs_info,
+            name="httpfs",
+            engine_version=quack_pin.engine_version,
+            platform=quack_pin.platform,
+        )
+        observed_quack_pin = inspect_configured_board_extension_sources(
+            quack_source,
+            quack_info,
+            name="quack",
+            engine_version=quack_pin.engine_version,
+            platform=quack_pin.platform,
+        )
+    except (OSError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board extension source inspection failed"
+        ) from exc
+    if observed_quack_pin != quack_pin:
+        raise ConfiguredBoardError(
+            "configured-board Quack source differs from its protected pin"
+        )
+    if (
+        httpfs.get("network_install_allowed") is not False
+        or httpfs.get("unsigned_extension_allowed") is not False
+        or httpfs_pin.payload_sha256
+        != f"sha256:{str(httpfs.get('sha256') or '')}"
+        or httpfs_pin.payload_size != httpfs.get("size")
+        or httpfs_pin.info_sha256
+        != f"sha256:{str(httpfs.get('info_sha256') or '')}"
+        or httpfs_pin.info_size != httpfs.get("info_size")
+    ):
+        raise ConfiguredBoardError(
+            "configured-board HTTPFS source differs from its protected pin"
+        )
+    pins = {"httpfs": httpfs_pin, "quack": quack_pin}
+    sources = {
+        "httpfs": (httpfs_source, httpfs_info),
+        "quack": (quack_source, quack_info),
+    }
+    for name, protected in (
+        ("httpfs", httpfs),
+        (
+            "quack",
+            {
+                "path": str(quack_source),
+                "info_path": str(quack_info),
+                "sha256": quack_pin.payload_sha256.removeprefix("sha256:"),
+                "size": quack_pin.payload_size,
+                "info_sha256": quack_pin.info_sha256.removeprefix("sha256:"),
+                "info_size": quack_pin.info_size,
+                "network_install_allowed": False,
+                "unsigned_extension_allowed": False,
+            },
+        ),
+    ):
+        configured = owner_pins[name]
+        assert isinstance(configured, dict)
+        for field in (
+            "path",
+            "info_path",
+            "sha256",
+            "size",
+            "info_sha256",
+            "info_size",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+        ):
+            if configured.get(field) != protected.get(field):
+                raise ConfiguredBoardError(
+                    f"configured-board {name} owner pin differs from "
+                    "the dependency seal"
+                )
+    versions = {
+        name: str(owner_pin.get("version") or "")
+        for name, owner_pin in owner_pins.items()
+        if isinstance(owner_pin, dict)
+    }
+    try:
+        extension_set_pin = build_configured_board_extension_set_pin(
+            pins,
+            versions=versions,
+        )
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "configured-board exact extension set pin is invalid"
+        ) from exc
+    return extension_set_pin, pins, sources
+
+
+def _configured_board_native_dependency_authority(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> tuple[AgentSupervisorNativeDependencyPin, str, Path]:
+    """Authenticate the protected authorization without creating a launch."""
 
     if (
         not board.dependency_seal_path
@@ -3541,10 +3812,7 @@ def _seal_configured_board_native_dependency(
             "configured-board native dependency lacks a protected seal"
         )
     try:
-        seal, _seal_evidence = _read_stable_regular_json(
-            board.path(board.dependency_seal_path),
-            max_bytes=4_194_304,
-        )
+        seal = dependency_seal_snapshot.payload
         if (
             type(seal) is not dict
             or seal.get("schema")
@@ -3684,13 +3952,7 @@ def _seal_configured_board_native_dependency(
             raise ConfiguredBoardError(
                 "configured-board native dependency source is not absolute"
             )
-        launch = seal_agent_supervisor_native_dependency(
-            source,
-            expected_pin=pin,
-            accepted_authorization_id=authorization_id,
-        )
-        verify_agent_supervisor_native_dependency_sealed_fd(launch)
-        return launch
+        return pin, authorization_id, source
     except ConfiguredBoardError:
         raise
     except (
@@ -3702,6 +3964,60 @@ def _seal_configured_board_native_dependency(
         raise ConfiguredBoardError(
             "configured-board native dependency admission failed"
         ) from exc
+
+
+def _seal_configured_board_native_dependency(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+) -> AgentSupervisorNativeDependencyLaunch:
+    """Authenticate the protected authorization, then seal exact DuckDB bytes."""
+
+    pin, authorization_id, source = _configured_board_native_dependency_authority(
+        board,
+        dependency_seal_snapshot=dependency_seal_snapshot,
+    )
+    try:
+        launch = seal_agent_supervisor_native_dependency(
+            source,
+            expected_pin=pin,
+            accepted_authorization_id=authorization_id,
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        return launch
+    except (OSError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board native dependency sealing failed"
+        ) from exc
+
+
+def _authenticate_configured_board_native_dependency_launch(
+    board: ConfiguredBoard,
+    *,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot,
+    launch: AgentSupervisorNativeDependencyLaunch,
+) -> None:
+    """Re-authenticate one propagated launch at an accepted inner birth."""
+
+    pin, authorization_id, _source = (
+        _configured_board_native_dependency_authority(
+            board,
+            dependency_seal_snapshot=dependency_seal_snapshot,
+        )
+    )
+    try:
+        launch_pin = parse_agent_supervisor_native_dependency_pin(
+            launch.pin.as_dict()
+        )
+        verify_agent_supervisor_native_dependency_sealed_fd(launch)
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "configured-board propagated native dependency is invalid"
+        ) from exc
+    if launch_pin != pin or launch.accepted_authorization_id != authorization_id:
+        raise ConfiguredBoardError(
+            "configured-board propagated native dependency is unauthorized"
+        )
 
 
 def _plan_bound_coordinator_module_argv(
@@ -3783,16 +4099,23 @@ def _launch_foreground_plan_bound_coordinator(
     implement: bool,
     duration_seconds: float,
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None,
 ) -> int:
     pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
     try:
-        extension_pin, extension_source, extension_info = (
-            _configured_board_quack_projection(board)
+        if dependency_seal_snapshot is None:
+            raise ConfiguredBoardError(
+                "configured-board coordinator lacks its dependency-seal snapshot"
+            )
+        extension_set_pin, extension_pins, extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
         )
-        extension_home = project_configured_board_extension_home(
-            extension_pin,
-            extension_path=extension_source,
-            info_path=extension_info,
+        extension_home = project_configured_board_extension_set_home(
+            extension_pins,
+            sources=extension_sources,
             parent=capsule_parent,
         )
         extension_directory = extension_home / ".duckdb/extensions"
@@ -3821,6 +4144,7 @@ def _launch_foreground_plan_bound_coordinator(
             env=_sealed_coordinator_environment(
                 board,
                 extension_directory=extension_directory,
+                extension_set_pin=extension_set_pin,
             ),
             stdin=subprocess.DEVNULL,
             start_new_session=False,
@@ -3845,6 +4169,7 @@ def _launch_detached_plan_bound_coordinator(
     implement: bool,
     duration_seconds: float,
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None,
 ) -> dict[str, Any]:
     """Detach the outer coordinator, never an individual finite wave."""
 
@@ -3887,13 +4212,19 @@ def _launch_detached_plan_bound_coordinator(
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
             board
         )
-        extension_pin, extension_source, extension_info = (
-            _configured_board_quack_projection(board)
+        if dependency_seal_snapshot is None:
+            raise ConfiguredBoardError(
+                "configured-board coordinator lacks its dependency-seal snapshot"
+            )
+        extension_set_pin, extension_pins, extension_sources = (
+            _configured_board_extension_set_projection(
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
+            )
         )
-        extension_home = project_configured_board_extension_home(
-            extension_pin,
-            extension_path=extension_source,
-            info_path=extension_info,
+        extension_home = project_configured_board_extension_set_home(
+            extension_pins,
+            sources=extension_sources,
             parent=capsule_parent,
         )
         extension_directory = extension_home / ".duckdb/extensions"
@@ -3923,6 +4254,7 @@ def _launch_detached_plan_bound_coordinator(
                 env=_sealed_coordinator_environment(
                     board,
                     extension_directory=extension_directory,
+                    extension_set_pin=extension_set_pin,
                 ),
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
@@ -4120,6 +4452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None
+    dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None
     native_dependency_owned = False
     try:
         board = load_configured_board(
@@ -4129,7 +4462,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         sealed_control_plane_required = (
             _sealed_configured_control_plane_required(board)
         )
-        preflight = preflight_configured_board(board)
         has_control_plane = bool(args.accepted_control_plane_pin_json)
         has_descriptor = args.accepted_control_plane_fd >= 3
         has_parent = args.accepted_control_plane_capsule_parent is not None
@@ -4166,6 +4498,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 verify_agent_supervisor_native_dependency_sealed_fd(
                     native_dependency_launch
                 )
+                if not _plan_bound_profile(board):
+                    dependency_seal_snapshot = (
+                        _configured_board_dependency_seal_snapshot(board)
+                    )
+                    _authenticate_configured_board_native_dependency_launch(
+                        board,
+                        dependency_seal_snapshot=dependency_seal_snapshot,
+                        launch=native_dependency_launch,
+                    )
             except (OSError, ValueError) as exc:
                 raise ConfiguredBoardError(
                     "configured-board native launch binding is invalid"
@@ -4221,6 +4562,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ConfiguredBoardError(
                     "configured scheduler accepted-tree root is foreign"
                 )
+        preflight = preflight_configured_board(board)
         if (
             args.command == "launch"
             and not args.dry_run
@@ -4229,8 +4571,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not _plan_bound_profile(board)
             and control_plane_pin is None
         ):
+            dependency_seal_snapshot = (
+                _configured_board_dependency_seal_snapshot(board)
+            )
             native_dependency_launch = _seal_configured_board_native_dependency(
-                board
+                board,
+                dependency_seal_snapshot=dependency_seal_snapshot,
             )
             native_dependency_owned = True
     except ConfiguredBoardError as exc:
@@ -4310,6 +4656,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         implement=bool(args.implement),
                         duration_seconds=float(args.duration_seconds),
                         native_dependency_launch=native_dependency_launch,
+                        dependency_seal_snapshot=dependency_seal_snapshot,
                     )
                 )
             except (ConfiguredBoardError, OSError) as exc:
@@ -4334,6 +4681,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     implement=bool(args.implement),
                     duration_seconds=float(args.duration_seconds),
                     native_dependency_launch=native_dependency_launch,
+                    dependency_seal_snapshot=dependency_seal_snapshot,
                 )
             except (ConfiguredBoardError, OSError, ValueError) as exc:
                 print(
@@ -4375,6 +4723,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             pin=control_plane_pin,
             descriptor=control_plane_descriptor,
             native_dependency_launch=native_dependency_launch,
+            dependency_seal_snapshot=dependency_seal_snapshot,
         )
         if control_plane_pin is not None
         and board.live_capsule_control_paths

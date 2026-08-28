@@ -21,6 +21,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from ..runtime.configured_board_extension_projection import (
+    CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
+    ConfiguredBoardExtensionProjectionError,
+    ConfiguredBoardSealedExtensionSet,
+    parse_configured_board_extension_set_pin_json,
+    seal_configured_board_extension_set_home,
+)
 from .quack_owner_mutation import (
     QUACK_OWNER_MUTATION_MAX_STEPS,
     QuackOwnerMutationError,
@@ -39,9 +47,6 @@ QUACK_PREFER_ENV = "IPFS_ACCELERATE_AGENT_QUACK_PREFER"
 QUACK_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
 QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 QUACK_MUTATION_BINDING_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING"
-CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV = (
-    "IPFS_ACCELERATE_AGENT_DUCKDB_EXTENSION_DIRECTORY"
-)
 QUACK_LIVE_OWNER_FILE_FALLBACK_TIMEOUT_SECONDS = 1.0
 _LOGGER = logging.getLogger(__name__)
 SQLITE_MAGIC = b"SQLite format 3\0"
@@ -406,6 +411,7 @@ class DuckDBConnection:
         self._quack_mutation_inbox = None
         self._quack_pending_mutations: list[dict[str, Any]] = []
         self._quack_uri = ""
+        self._quack_extension_seal: ConfiguredBoardSealedExtensionSet | None = None
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -449,6 +455,7 @@ class DuckDBConnection:
         instance._quack_mutation_inbox = None
         instance._quack_pending_mutations = []
         instance._quack_uri = ""
+        instance._quack_extension_seal = None
         return instance
 
     @property
@@ -578,10 +585,15 @@ class DuckDBConnection:
         uri = str(self._quack_uri or "")
         if not uri:
             raise DuckDBConnectionPolicyError("quack transport URI is unavailable")
+        old_seal = self._quack_extension_seal
+        self._quack_extension_seal = None
         try:
             self._connection.close()
         except Exception:
             pass
+        finally:
+            if old_seal is not None:
+                old_seal.close()
         fresh = open_quack_transport_connection(
             uri, token=self._quack_mutation_token
         )
@@ -591,7 +603,9 @@ class DuckDBConnection:
         self._quack_mutation_token = fresh._quack_mutation_token
         self._quack_mutation_inbox = fresh._quack_mutation_inbox
         self._quack_uri = fresh._quack_uri
+        self._quack_extension_seal = fresh._quack_extension_seal
         fresh._connection = None
+        fresh._quack_extension_seal = None
         fresh._closed = True
 
     def close(self) -> None:
@@ -602,8 +616,13 @@ class DuckDBConnection:
             self.rollback()
             self._connection.close()
         finally:
-            if self._lock_context is not None:
-                self._lock_context.__exit__(None, None, None)
+            try:
+                if self._quack_extension_seal is not None:
+                    self._quack_extension_seal.close()
+                    self._quack_extension_seal = None
+            finally:
+                if self._lock_context is not None:
+                    self._lock_context.__exit__(None, None, None)
 
     def __enter__(self) -> DuckDBConnection:
         if (
@@ -1002,25 +1021,41 @@ def open_quack_transport_connection(
         )
     if "'" in text or ";" in text or "\x00" in text:
         raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
+    raw_extension_directory = str(
+        os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or ""
+    )
+    raw_extension_set_pin = str(
+        os.environ.get(CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV, "") or ""
+    )
+    if bool(raw_extension_directory) != bool(raw_extension_set_pin):
+        raise DuckDBConnectionPolicyError(
+            "configured-board extension directory and exact set pin must "
+            "be provided together"
+        )
+    if raw_extension_directory != raw_extension_directory.strip():
+        raise DuckDBConnectionPolicyError(
+            "configured-board extension directory is noncanonical"
+        )
     try:
         import duckdb
     except ImportError as exc:
         raise DuckDBConnectionPolicyError(
             "DuckDB is required for Quack transport"
         ) from exc
-    # Quack must already be present in the reviewed local extension cache.
-    # Disable DuckDB's implicit installer and autoloader before ``LOAD`` so a
-    # missing client extension is a typed launch failure, never a download.
-    extension_directory = str(
-        os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or ""
-    ).strip()
+
+    # With no configured-board contract, retain the historical load-only
+    # behavior. A configured directory, however, is usable only with the
+    # independently authenticated exact httpfs+Quack set pin. The regular
+    # projection is source evidence; executable bytes are copied into sealed
+    # memfds and exposed only through suffix-preserving private load links.
+    sealed_extensions: ConfiguredBoardSealedExtensionSet | None = None
     connection_config = {
         "autoinstall_known_extensions": "false",
         "autoload_known_extensions": "false",
         "allow_unsigned_extensions": "false",
     }
-    if extension_directory:
-        extension_path = Path(extension_directory)
+    if raw_extension_directory:
+        extension_path = Path(raw_extension_directory)
         try:
             extension_path = extension_path.resolve(strict=True)
         except OSError as exc:
@@ -1035,13 +1070,63 @@ def open_quack_transport_connection(
             raise DuckDBConnectionPolicyError(
                 "configured-board extension projection is invalid"
             )
-        connection_config["extension_directory"] = str(extension_path)
-    connection = duckdb.connect(
-        ":memory:",
-        config=connection_config,
-    )
+        source_home = extension_path.parent.parent
+        try:
+            set_pin = parse_configured_board_extension_set_pin_json(
+                raw_extension_set_pin
+            )
+            sealed_extensions = seal_configured_board_extension_set_home(
+                set_pin,
+                source_home,
+            )
+        except ConfiguredBoardExtensionProjectionError as exc:
+            raise DuckDBConnectionPolicyError(
+                "configured-board exact extension set is invalid"
+            ) from exc
+        connection_config.update(
+            {
+                "enable_external_access": "true",
+                "extension_directory": str(
+                    sealed_extensions.extension_directory
+                ),
+            }
+        )
     try:
-        connection.execute("LOAD quack")
+        connection = duckdb.connect(
+            ":memory:",
+            config=connection_config,
+        )
+    except BaseException:
+        if sealed_extensions is not None:
+            sealed_extensions.close()
+        raise
+    try:
+        if sealed_extensions is None:
+            connection.execute("LOAD quack")
+        else:
+            with sealed_extensions.load_guard():
+                connection.execute("LOAD httpfs")
+                connection.execute("LOAD quack")
+                extension_rows = connection.execute(
+                    "SELECT extension_name, install_path, extension_version, "
+                    "installed, loaded FROM duckdb_extensions() "
+                    "WHERE extension_name IN ('httpfs', 'quack') "
+                    "ORDER BY extension_name"
+                ).fetchall()
+            expected_rows = [
+                (
+                    name,
+                    str(sealed_extensions.install_paths[name]),
+                    sealed_extensions.pin.versions[name],
+                    True,
+                    True,
+                )
+                for name in ("httpfs", "quack")
+            ]
+            if extension_rows != expected_rows:
+                raise DuckDBConnectionPolicyError(
+                    "loaded extension set differs from its exact pin"
+                )
         attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_ONLY"
         secret = str(
             token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
@@ -1062,28 +1147,57 @@ def open_quack_transport_connection(
             f"SELECT count(*) FROM {_QUACK_CONTROL_CATALOG}.tasks"
         )
         _consume_duckdb_result(probed)
-    except Exception:
+        if sealed_extensions is not None:
+            connection.execute("SET autoinstall_known_extensions=false")
+            connection.execute("SET autoload_known_extensions=false")
+            connection.execute("SET enable_external_access=false")
+            connection.execute("SET allow_unsigned_extensions=false")
+            connection.execute("SET lock_configuration=true")
+            settings = connection.execute(
+                "SELECT current_setting('autoinstall_known_extensions'), "
+                "current_setting('autoload_known_extensions'), "
+                "current_setting('enable_external_access'), "
+                "current_setting('allow_unsigned_extensions'), "
+                "current_setting('lock_configuration')"
+            ).fetchone()
+            if settings != (False, False, False, False, True):
+                raise DuckDBConnectionPolicyError(
+                    "configured-board Quack connection policy differs from "
+                    "its exact locked settings"
+                )
+    except BaseException:
         try:
             connection.close()
         except Exception:
             pass
+        if sealed_extensions is not None:
+            sealed_extensions.close()
         raise
     wrapped = DuckDBConnection.wrap(connection)
+    wrapped._quack_extension_seal = sealed_extensions
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
     wrapped._quack_uri = text
     wrapped._quack_mutation_token = secret
-    wrapped._quack_mutation_binding = _quack_mutation_binding_from_environment()
-    wrapped._quack_mutation_inbox = quack_owner_mutation_dir(
-        wrapped._quack_mutation_binding.get("store_id")
-        if isinstance(wrapped._quack_mutation_binding, Mapping)
-        else ""
-    )
-    if isinstance(wrapped._quack_mutation_binding, Mapping):
-        if wrapped._quack_mutation_binding.get("listen_uri") != text:
-            wrapped.close()
+    try:
+        wrapped._quack_mutation_binding = _quack_mutation_binding_from_environment()
+        wrapped._quack_mutation_inbox = quack_owner_mutation_dir(
+            wrapped._quack_mutation_binding.get("store_id")
+            if isinstance(wrapped._quack_mutation_binding, Mapping)
+            else ""
+        )
+        if (
+            isinstance(wrapped._quack_mutation_binding, Mapping)
+            and wrapped._quack_mutation_binding.get("listen_uri") != text
+        ):
             raise DuckDBConnectionPolicyError(
                 "quack mutation binding does not match attached endpoint"
             )
+    except BaseException:
+        try:
+            wrapped.close()
+        except Exception:
+            pass
+        raise
     return wrapped
 
 

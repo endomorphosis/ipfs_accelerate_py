@@ -1380,8 +1380,15 @@ class BoardControlPlane:
         if self.ducklake_attached:
             try:
                 self._project_relations_to_lake()
-            except Exception:
+            except Exception as exc:
                 self.ducklake_attached = False
+                self.backend = (
+                    "duckdb+quack" if self.quack_loaded else "hermetic-duckdb"
+                )
+                self.extension_errors = (
+                    *self.extension_errors,
+                    f"ducklake_projection: {type(exc).__name__}: {exc}",
+                )
         count_row = connection.execute(
             "SELECT COUNT(*) FROM board_catalog"
         ).fetchone()
@@ -1691,6 +1698,7 @@ def _open_extension_capable_connection(
     *,
     timeout_seconds: float,
     allow_extension_install: bool,
+    allow_extension_load: bool,
 ) -> DuckDBConnection:
     """Open the catalog with a raw DuckDB handle that can LOAD Quack/DuckLake."""
 
@@ -1707,26 +1715,184 @@ def _open_extension_capable_connection(
     except ImportError:
         lock_context.__exit__(None, None, None)
         raise
+    raw = None
     try:
-        configuration = (
-            {}
-            if allow_extension_install
-            else {
+        if allow_extension_install:
+            configuration = {}
+        elif allow_extension_load:
+            configuration = {
                 "autoinstall_known_extensions": "false",
                 "autoload_known_extensions": "false",
+                "enable_external_access": "true",
                 "allow_unsigned_extensions": "false",
             }
-        )
+        else:
+            configuration = {
+                "autoinstall_known_extensions": "false",
+                "autoload_known_extensions": "false",
+                "enable_external_access": "false",
+                "allow_unsigned_extensions": "false",
+                "threads": "1",
+                "memory_limit": "128MB",
+                "lock_configuration": "true",
+            }
         raw = duckdb.connect(str(database_path), config=configuration)
-        raw.execute("SET threads=1")
-        raw.execute("SET memory_limit='128MB'")
+        if allow_extension_install or allow_extension_load:
+            raw.execute("SET threads=1")
+            raw.execute("SET memory_limit='128MB'")
+        else:
+            settings = raw.execute(
+                "SELECT current_setting('autoinstall_known_extensions'), "
+                "current_setting('autoload_known_extensions'), "
+                "current_setting('enable_external_access'), "
+                "current_setting('allow_unsigned_extensions'), "
+                "current_setting('lock_configuration')"
+            ).fetchone()
+            if settings != (False, False, False, False, True):
+                raise BoardControlPlaneError(
+                    "board extension denial policy did not lock exactly"
+                )
     except BaseException:
+        if raw is not None:
+            raw.close()
         lock_context.__exit__(None, None, None)
         raise
     wrapped = DuckDBConnection.wrap(raw)
     wrapped.path = database_path
     wrapped._lock_context = lock_context
     return wrapped
+
+
+def _lock_extension_capable_connection(
+    connection: DuckDBConnection,
+    *,
+    allowed_root: Path | None = None,
+) -> None:
+    """Close the bounded extension-load window and make denial immutable."""
+
+    expected_root: Path | None = None
+    if allowed_root is not None:
+        resolved_root = allowed_root.resolve(strict=True)
+        if not resolved_root.is_dir():
+            raise BoardControlPlaneError(
+                "board DuckLake storage root is unavailable"
+            )
+        connection.execute("SET allowed_directories = ?", [[str(resolved_root)]])
+        expected_root = resolved_root
+    connection.execute("SET autoinstall_known_extensions=false")
+    connection.execute("SET autoload_known_extensions=false")
+    connection.execute("SET enable_external_access=false")
+    connection.execute("SET allow_unsigned_extensions=false")
+    connection.execute("SET lock_configuration=true")
+    settings = connection.execute(
+        "SELECT current_setting('autoinstall_known_extensions'), "
+        "current_setting('autoload_known_extensions'), "
+        "current_setting('enable_external_access'), "
+        "current_setting('allow_unsigned_extensions'), "
+        "current_setting('lock_configuration'), "
+        "current_setting('allowed_directories')"
+    ).fetchone()
+    observed = tuple(settings[index] for index in range(len(settings or ())))
+    directories = observed[5] if len(observed) == 6 else None
+    directories_are_confined = expected_root is None and directories == []
+    if expected_root is not None and isinstance(directories, list):
+        directories_are_confined = True
+        normalized: list[Path] = []
+        for item in directories:
+            try:
+                candidate = Path(str(item)).resolve(strict=False)
+                if expected_root is None:
+                    directories_are_confined = False
+                    break
+                candidate.relative_to(expected_root)
+            except (OSError, RuntimeError, ValueError):
+                directories_are_confined = False
+                break
+            normalized.append(candidate)
+        directories_are_confined = (
+            directories_are_confined
+            and expected_root is not None
+            and expected_root in normalized
+            and len(normalized) == len(set(normalized))
+        )
+    if observed[:5] != (False, False, False, False, True) or not (
+        directories_are_confined
+    ):
+        raise BoardControlPlaneError(
+            "board extension denial policy did not lock exactly"
+        )
+
+
+def _initialize_open_board_control_plane(
+    connection: DuckDBConnection,
+    *,
+    catalog_root: Path,
+    database_path: Path,
+    configured_policy: str,
+    installation_allowed: bool,
+) -> BoardControlPlane:
+    """Finish bounded extension setup before exposing the open connection."""
+
+    extension_errors: list[str] = []
+    quack_loaded = False
+    ducklake_loaded = False
+    ducklake_attached = False
+    if configured_policy == BOARD_EXTENSION_INSTALL_POLICY_DISABLED:
+        extension_errors.extend(
+            (
+                "quack: extension loading disabled by policy",
+                "ducklake: extension loading disabled by policy",
+            )
+        )
+    else:
+        quack_error = _try_load_extension(
+            connection,
+            "quack",
+            allow_install=installation_allowed,
+        )
+        if quack_error:
+            extension_errors.append(f"quack: {quack_error}")
+        else:
+            quack_loaded = True
+        ducklake_error = _try_load_extension(
+            connection,
+            "ducklake",
+            allow_install=installation_allowed,
+        )
+        if ducklake_error:
+            extension_errors.append(f"ducklake: {ducklake_error}")
+        else:
+            ducklake_loaded = True
+            attach_error = _attach_ducklake(connection, catalog_root)
+            if attach_error:
+                extension_errors.append(f"ducklake_attach: {attach_error}")
+            else:
+                ducklake_attached = True
+        if not installation_allowed:
+            _lock_extension_capable_connection(
+                connection,
+                allowed_root=catalog_root if ducklake_attached else None,
+            )
+    if ducklake_attached and quack_loaded:
+        backend = "ducklake+quack"
+    elif quack_loaded:
+        backend = "duckdb+quack"
+    else:
+        backend = "hermetic-duckdb"
+
+    plane = BoardControlPlane(
+        root=catalog_root,
+        database_path=database_path,
+        quack_loaded=quack_loaded,
+        ducklake_loaded=ducklake_loaded,
+        ducklake_attached=ducklake_attached,
+        backend=backend,
+        extension_errors=tuple(extension_errors),
+    )
+    plane._connection = connection
+    plane._install_schema()
+    plane.aggregate_boards()
+    return plane
 
 
 def open_board_control_plane(
@@ -1770,6 +1936,9 @@ def open_board_control_plane(
             database_path,
             timeout_seconds=timeout_seconds,
             allow_extension_install=installation_allowed,
+            allow_extension_load=(
+                configured_policy != BOARD_EXTENSION_INSTALL_POLICY_DISABLED
+            ),
         )
     except ImportError as exc:
         raise BoardControlPlaneUnavailableError(
@@ -1780,61 +1949,17 @@ def open_board_control_plane(
             f"could not open board control plane: {exc}"
         ) from exc
 
-    extension_errors: list[str] = []
-    quack_loaded = False
-    ducklake_loaded = False
-    ducklake_attached = False
-    if configured_policy == BOARD_EXTENSION_INSTALL_POLICY_DISABLED:
-        extension_errors.extend(
-            (
-                "quack: extension loading disabled by policy",
-                "ducklake: extension loading disabled by policy",
-            )
-        )
-    else:
-        quack_error = _try_load_extension(
+    try:
+        return _initialize_open_board_control_plane(
             connection,
-            "quack",
-            allow_install=installation_allowed,
+            catalog_root=catalog_root,
+            database_path=database_path,
+            configured_policy=configured_policy,
+            installation_allowed=installation_allowed,
         )
-        if quack_error:
-            extension_errors.append(f"quack: {quack_error}")
-        else:
-            quack_loaded = True
-        ducklake_error = _try_load_extension(
-            connection,
-            "ducklake",
-            allow_install=installation_allowed,
-        )
-        if ducklake_error:
-            extension_errors.append(f"ducklake: {ducklake_error}")
-        else:
-            ducklake_loaded = True
-            attach_error = _attach_ducklake(connection, catalog_root)
-            if attach_error:
-                extension_errors.append(f"ducklake_attach: {attach_error}")
-            else:
-                ducklake_attached = True
-    if ducklake_attached and quack_loaded:
-        backend = "ducklake+quack"
-    elif quack_loaded:
-        backend = "duckdb+quack"
-    else:
-        backend = "hermetic-duckdb"
-
-    plane = BoardControlPlane(
-        root=catalog_root,
-        database_path=database_path,
-        quack_loaded=quack_loaded,
-        ducklake_loaded=ducklake_loaded,
-        ducklake_attached=ducklake_attached,
-        backend=backend,
-        extension_errors=tuple(extension_errors),
-    )
-    plane._connection = connection
-    plane._install_schema()
-    plane.aggregate_boards()
-    return plane
+    except BaseException:
+        connection.close()
+        raise
 
 
 VALIDATION_PYTHON_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"

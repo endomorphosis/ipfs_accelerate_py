@@ -26,6 +26,7 @@ from typing import Any, Final
 
 from ...agent_implementation_route import (
     AgentSupervisorNativeDependencyLaunch,
+    parse_agent_supervisor_native_dependency_pin,
     verify_agent_supervisor_native_dependency_sealed_fd,
 )
 from ...llm_router import (
@@ -35,9 +36,14 @@ from ...llm_router import (
 from ..core.multiformats_identity import cid_for_dag_json, validate_cid
 from .configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
     ConfiguredBoardExtensionPin,
+    ConfiguredBoardExtensionSetPin,
+    build_configured_board_extension_set_pin,
     parse_configured_board_extension_pin,
-    verify_configured_board_extension_home,
+    parse_configured_board_extension_set_pin,
+    parse_configured_board_extension_set_pin_json,
+    verify_configured_board_extension_set_home,
 )
 
 CONFIGURED_BOARD_LIVE_CAPSULE_POLICY_SCHEMA: Final = (
@@ -69,6 +75,7 @@ _ADMISSION_FIELDS: Final = frozenset(
         "native_dependency_id",
         "native_python_executable_sha256",
         "quack_extension_projection",
+        "extension_set_pin",
         "database_authority",
         "max_lanes",
         "strict_task_sharding",
@@ -85,6 +92,60 @@ _DATABASE_FIELDS: Final = frozenset(
         "store_id",
         "store_generation",
         "endpoint_secret_handle",
+    }
+)
+_NATIVE_DEPENDENCY_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "source_path",
+        "acceptance",
+        "pin",
+        "sealed_memfd_required",
+        "ambient_site_import_allowed",
+        "ambient_loader_environment_allowed",
+    }
+)
+_NATIVE_AUTHORIZATION_REFERENCE_FIELDS: Final = frozenset(
+    {"schema", "path", "sha256", "size", "authorization_id"}
+)
+_NATIVE_AUTHORIZATION_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "board_namespace",
+        "plan_revision",
+        "status",
+        "scope",
+        "dependency_id",
+        "payload_sha256",
+        "python_executable_sha256",
+        "authority_basis",
+        "inspection_is_authority",
+        "authorization_may_claim_task_completion",
+        "authorization_id",
+    }
+)
+_QUACK_PROJECTION_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "source_path",
+        "info_path",
+        "pin",
+        "load_policy",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
+    }
+)
+_HTTPFS_PIN_FIELDS: Final = frozenset(
+    {
+        "path",
+        "sha256",
+        "size",
+        "info_path",
+        "info_sha256",
+        "info_size",
+        "version",
+        "network_install_allowed",
+        "unsigned_extension_allowed",
     }
 )
 
@@ -234,6 +295,7 @@ class ConfiguredBoardLiveCapsuleAdmission:
     native_dependency_id: str
     native_python_executable_sha256: str
     quack_extension_projection: ConfiguredBoardExtensionPin
+    extension_set_pin: ConfiguredBoardExtensionSetPin
     database_authority: Mapping[str, object]
     max_lanes: int
     strict_task_sharding: bool
@@ -260,6 +322,7 @@ class ConfiguredBoardLiveCapsuleAdmission:
             "quack_extension_projection": (
                 self.quack_extension_projection.as_dict()
             ),
+            "extension_set_pin": self.extension_set_pin.as_dict(),
             "database_authority": dict(self.database_authority),
             "max_lanes": self.max_lanes,
             "strict_task_sharding": self.strict_task_sharding,
@@ -387,6 +450,9 @@ def parse_configured_board_live_capsule_admission(
         quack_extension_projection=parse_configured_board_extension_pin(
             payload.get("quack_extension_projection")
         ),
+        extension_set_pin=parse_configured_board_extension_set_pin(
+            payload.get("extension_set_pin")
+        ),
         database_authority=normalized_authority,
         max_lanes=_positive_int(payload.get("max_lanes"), "max_lanes"),
         strict_task_sharding=strict,
@@ -395,6 +461,13 @@ def parse_configured_board_live_capsule_admission(
             payload.get("admission_cid"), "admission_cid"
         ),
     )
+    if (
+        admission.extension_set_pin.pins["quack"]
+        != admission.quack_extension_projection
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board Quack projection differs from its extension set"
+        )
     expected = _cid(admission.as_dict(include_identity=False))
     if admission.admission_cid != expected:
         raise ConfiguredBoardLiveCapsuleError(
@@ -451,6 +524,394 @@ def _stable_regular_bytes(path: Path, *, maximum: int = 8 * 1024 * 1024) -> byte
             "configured-board live control changed while it was read"
         )
     return bytes(raw)
+
+
+def _control_artifact(
+    admission: ConfiguredBoardLiveCapsuleAdmission,
+    relative: object,
+) -> Mapping[str, object]:
+    admitted = _relative(relative, "protected control path")
+    matches = tuple(
+        artifact
+        for artifact in admission.control_artifacts
+        if artifact.get("path") == admitted
+    )
+    if len(matches) != 1:
+        raise ConfiguredBoardLiveCapsuleError(
+            f"configured-board protected control is not admitted: {admitted}"
+        )
+    return matches[0]
+
+
+def _protected_control_bytes(
+    root: Path,
+    admission: ConfiguredBoardLiveCapsuleAdmission,
+    relative: object,
+    *,
+    maximum: int,
+) -> bytes:
+    artifact = _control_artifact(admission, relative)
+    admitted = str(artifact["path"])
+    candidate = root / admitted
+    current = root
+    for part in PurePosixPath(admitted).parts[:-1]:
+        current /= part
+        try:
+            metadata = os.lstat(current)
+        except OSError as exc:
+            raise ConfiguredBoardLiveCapsuleError(
+                f"configured-board protected control parent is unavailable: {admitted}"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise ConfiguredBoardLiveCapsuleError(
+                f"configured-board protected control parent is unsafe: {admitted}"
+            )
+    raw = _stable_regular_bytes(candidate, maximum=maximum)
+    if (
+        len(raw) != artifact["size"]
+        or "sha256:" + hashlib.sha256(raw).hexdigest() != artifact["sha256"]
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            f"configured-board protected control differs from admission: {admitted}"
+        )
+    return raw
+
+
+def _protected_control_json(
+    root: Path,
+    admission: ConfiguredBoardLiveCapsuleAdmission,
+    relative: object,
+    *,
+    maximum: int,
+) -> tuple[dict[str, object], bytes]:
+    raw = _protected_control_bytes(
+        root,
+        admission,
+        relative,
+        maximum=maximum,
+    )
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected control is not canonical JSON"
+        ) from exc
+    if type(payload) is not dict:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected control is not a JSON object"
+        )
+    return dict(payload), raw
+
+
+def _verify_protected_native_and_quack_authority(
+    admission: ConfiguredBoardLiveCapsuleAdmission,
+    *,
+    native_dependency_launch: AgentSupervisorNativeDependencyLaunch,
+    root: Path,
+) -> None:
+    """Authenticate the protected authority chain at this process birth."""
+
+    config, config_raw = _protected_control_json(
+        root,
+        admission,
+        admission.config_path,
+        maximum=4 * 1024 * 1024,
+    )
+    dependency_seal_path = _relative(
+        config.get("dependency_seal_path"),
+        "dependency_seal_path",
+    )
+    raw_program = config.get("database_program")
+    raw_generation = (
+        raw_program.get("store_generation")
+        if isinstance(raw_program, dict)
+        else None
+    )
+    try:
+        expected_database_authority = {
+            field: _text(
+                raw_program.get(field) if isinstance(raw_program, dict) else None,
+                f"database_program.{field}",
+            )
+            for field in _DATABASE_FIELDS - {"store_generation"}
+        }
+        generation_text = _text(
+            str(raw_generation) if raw_generation is not None else None,
+            "database_program.store_generation",
+        )
+        if not generation_text.isascii() or not generation_text.isdecimal():
+            raise ConfiguredBoardLiveCapsuleError(
+                "database_program.store_generation is invalid"
+            )
+        expected_database_authority["store_generation"] = _positive_int(
+            int(generation_text),
+            "database_program.store_generation",
+        )
+        expected_task_prefix = _text(config.get("task_prefix"), "task_prefix")
+        expected_max_lanes = _positive_int(config.get("max_lanes"), "max_lanes")
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected scheduler authority is invalid"
+        ) from exc
+    expected_strict_sharding = config.get("strict_task_sharding")
+    if type(expected_strict_sharding) is not bool:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected scheduler sharding is invalid"
+        )
+    expected_configuration_root = _cid(
+        {"bytes_sha256": hashlib.sha256(config_raw).hexdigest()}
+    )
+    if (
+        config.get("board_namespace") != admission.board_namespace
+        or config.get("plan_revision") != admission.plan_revision
+        or admission.task_prefix != expected_task_prefix
+        or admission.configuration_root != expected_configuration_root
+        or dict(admission.database_authority)
+        != expected_database_authority
+        or admission.max_lanes != expected_max_lanes
+        or admission.strict_task_sharding is not expected_strict_sharding
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board scheduler identity differs from admission"
+        )
+    seal, _seal_raw = _protected_control_json(
+        root,
+        admission,
+        dependency_seal_path,
+        maximum=4 * 1024 * 1024,
+    )
+    if (
+        seal.get("schema") != "semantic-addressed-world-model/dependency-seal@1"
+        or seal.get("board_namespace") != admission.board_namespace
+        or seal.get("plan_revision") != admission.plan_revision
+        or seal.get("status") != "sealed"
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected dependency seal is invalid"
+        )
+
+    native = seal.get("configured_board_native_dependency")
+    if type(native) is not dict or set(native) != _NATIVE_DEPENDENCY_FIELDS:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected native dependency is noncanonical"
+        )
+    if (
+        native.get("schema")
+        != "semantic-addressed-world-model/configured-board-native-dependency@1"
+        or native.get("sealed_memfd_required") is not True
+        or native.get("ambient_site_import_allowed") is not False
+        or native.get("ambient_loader_environment_allowed") is not False
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected native dependency policy is invalid"
+        )
+    try:
+        sealed_pin = parse_agent_supervisor_native_dependency_pin(native.get("pin"))
+        launch_pin = parse_agent_supervisor_native_dependency_pin(
+            native_dependency_launch.pin.as_dict()
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected native dependency pin is invalid"
+        ) from exc
+    if sealed_pin != launch_pin:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board native launch pin differs from protected authority"
+        )
+
+    reference = native.get("acceptance")
+    if (
+        type(reference) is not dict
+        or set(reference) != _NATIVE_AUTHORIZATION_REFERENCE_FIELDS
+        or reference.get("schema")
+        != (
+            "semantic-addressed-world-model/"
+            "native-dependency-authorization-reference@1"
+        )
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board native authorization reference is invalid"
+        )
+    authorization_path = _relative(
+        reference.get("path"),
+        "native authorization path",
+    )
+    authorization, authorization_raw = _protected_control_json(
+        root,
+        admission,
+        authorization_path,
+        maximum=65_536,
+    )
+    if (
+        type(reference.get("size")) is not int
+        or reference.get("size") != len(authorization_raw)
+        or reference.get("sha256")
+        != "sha256:" + hashlib.sha256(authorization_raw).hexdigest()
+        or type(authorization) is not dict
+        or set(authorization) != _NATIVE_AUTHORIZATION_FIELDS
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board native authorization artifact differs"
+        )
+    unsigned_authorization = dict(authorization)
+    authorization_id = str(
+        unsigned_authorization.pop("authorization_id", "") or ""
+    )
+    expected_authorization_id = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned_authorization,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if (
+        authorization_id != expected_authorization_id
+        or authorization_id != reference.get("authorization_id")
+        or authorization_id != native_dependency_launch.accepted_authorization_id
+        or authorization_id != admission.native_authorization_id
+        or authorization.get("schema")
+        != (
+            "semantic-addressed-world-model/"
+            "native-dependency-launch-authorization@1"
+        )
+        or authorization.get("board_namespace") != admission.board_namespace
+        or authorization.get("plan_revision") != admission.plan_revision
+        or authorization.get("status") != "accepted"
+        or authorization.get("scope")
+        != "configured-board-live-control-plane"
+        or authorization.get("dependency_id") != sealed_pin.dependency_id
+        or authorization.get("payload_sha256") != sealed_pin.payload_sha256
+        or authorization.get("python_executable_sha256")
+        != sealed_pin.python_executable_sha256
+        or authorization.get("authority_basis")
+        != (
+            "operator-owned protected control inside the accepted immutable "
+            "source capsule"
+        )
+        or authorization.get("inspection_is_authority") is not False
+        or authorization.get("authorization_may_claim_task_completion") is not False
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board native authorization was not admitted"
+        )
+
+    projection = seal.get("configured_board_quack_projection")
+    if type(projection) is not dict or set(projection) != _QUACK_PROJECTION_FIELDS:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected Quack projection is noncanonical"
+        )
+    try:
+        projection_pin = parse_configured_board_extension_pin(projection.get("pin"))
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected Quack projection pin is invalid"
+        ) from exc
+    if (
+        projection.get("schema")
+        != "semantic-addressed-world-model/configured-board-quack-projection@1"
+        or projection.get("load_policy") != "local_load_only"
+        or projection.get("network_install_allowed") is not False
+        or projection.get("unsigned_extension_allowed") is not False
+        or projection_pin != admission.quack_extension_projection
+        or projection_pin.engine_version != sealed_pin.engine_version
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board Quack projection differs from protected authority"
+        )
+
+    httpfs = seal.get("httpfs_extension_pin")
+    if type(httpfs) is not dict or set(httpfs) != _HTTPFS_PIN_FIELDS:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected HTTPFS pin is noncanonical"
+        )
+    admitted_pins = admission.extension_set_pin.pins
+    httpfs_pin = admitted_pins["httpfs"]
+    if (
+        admitted_pins["quack"] != projection_pin
+        or httpfs_pin.engine_version != projection_pin.engine_version
+        or httpfs_pin.platform != projection_pin.platform
+        or httpfs_pin.payload_sha256
+        != f"sha256:{str(httpfs.get('sha256') or '')}"
+        or httpfs_pin.payload_size != httpfs.get("size")
+        or httpfs_pin.info_sha256
+        != f"sha256:{str(httpfs.get('info_sha256') or '')}"
+        or httpfs_pin.info_size != httpfs.get("info_size")
+        or httpfs.get("network_install_allowed") is not False
+        or httpfs.get("unsigned_extension_allowed") is not False
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board extension set differs from protected authority"
+        )
+    owner = config.get("quack_owner")
+    if type(owner) is not dict:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected Quack owner is noncanonical"
+        )
+    configured_pins = {
+        "httpfs": owner.get("pinned_httpfs_extension"),
+        "quack": owner.get("pinned_extension"),
+    }
+    if any(type(value) is not dict for value in configured_pins.values()):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected extension owner pins are noncanonical"
+        )
+    protected_pins: dict[str, Mapping[str, object]] = {
+        "httpfs": httpfs,
+        "quack": {
+            "path": projection.get("source_path"),
+            "info_path": projection.get("info_path"),
+            "sha256": projection_pin.payload_sha256.removeprefix("sha256:"),
+            "size": projection_pin.payload_size,
+            "info_sha256": projection_pin.info_sha256.removeprefix("sha256:"),
+            "info_size": projection_pin.info_size,
+            "network_install_allowed": False,
+            "unsigned_extension_allowed": False,
+        },
+    }
+    for name, protected in protected_pins.items():
+        configured = configured_pins[name]
+        assert isinstance(configured, dict)
+        for field in (
+            "path",
+            "info_path",
+            "sha256",
+            "size",
+            "info_sha256",
+            "info_size",
+            "network_install_allowed",
+            "unsigned_extension_allowed",
+        ):
+            if configured.get(field) != protected.get(field):
+                raise ConfiguredBoardLiveCapsuleError(
+                    f"configured-board protected {name} owner pin drifted"
+                )
+    versions = {
+        name: str(configured.get("version") or "")
+        for name, configured in configured_pins.items()
+        if isinstance(configured, dict)
+    }
+    if versions.get("httpfs") != httpfs.get("version"):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected HTTPFS version drifted"
+        )
+    try:
+        protected_set_pin = build_configured_board_extension_set_pin(
+            admitted_pins,
+            versions=versions,
+        )
+    except ValueError as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected extension set is invalid"
+        ) from exc
+    if protected_set_pin != admission.extension_set_pin:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board extension set admission drifted"
+        )
 
 
 def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes:
@@ -525,6 +986,7 @@ def build_configured_board_live_capsule_admission(
     native_dependency_id: str,
     native_python_executable_sha256: str,
     quack_extension_projection: ConfiguredBoardExtensionPin,
+    extension_set_pin: ConfiguredBoardExtensionSetPin,
     database_authority: Mapping[str, object],
     max_lanes: int,
     strict_task_sharding: bool,
@@ -560,6 +1022,7 @@ def build_configured_board_live_capsule_admission(
         "native_dependency_id": native_dependency_id,
         "native_python_executable_sha256": native_python_executable_sha256,
         "quack_extension_projection": quack_extension_projection.as_dict(),
+        "extension_set_pin": extension_set_pin.as_dict(),
         "database_authority": dict(database_authority),
         "max_lanes": max_lanes,
         "strict_task_sharding": strict_task_sharding,
@@ -619,6 +1082,9 @@ def verify_configured_board_live_capsule(
     extension_directory = Path(
         str(os.environ.get(CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV, "") or "")
     )
+    extension_set_pin_json = str(
+        os.environ.get(CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV, "") or ""
+    )
     if (
         not extension_directory.is_absolute()
         or extension_directory.name != "extensions"
@@ -629,8 +1095,15 @@ def verify_configured_board_live_capsule(
         )
     extension_home = extension_directory.parent.parent
     try:
-        verified_home = verify_configured_board_extension_home(
-            parsed.quack_extension_projection,
+        environment_set_pin = parse_configured_board_extension_set_pin_json(
+            extension_set_pin_json
+        )
+        if environment_set_pin != parsed.extension_set_pin:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board extension set environment drifted"
+            )
+        verified_home = verify_configured_board_extension_set_home(
+            parsed.extension_set_pin.pins,
             extension_home,
         )
     except (OSError, ValueError) as exc:
@@ -672,6 +1145,11 @@ def verify_configured_board_live_capsule(
         raise ConfiguredBoardLiveCapsuleError(
             "configured-board protected controls drifted"
         )
+    _verify_protected_native_and_quack_authority(
+        parsed,
+        native_dependency_launch=native_dependency_launch,
+        root=root,
+    )
     return parsed
 
 

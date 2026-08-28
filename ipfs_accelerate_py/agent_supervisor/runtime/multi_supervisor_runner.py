@@ -83,6 +83,7 @@ from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 from .configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
 )
 from .configured_board_live_capsule import (
     ConfiguredBoardLiveCapsuleAdmission,
@@ -561,6 +562,7 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_FAILOVER_POLICY_ENV,
     DATABASE_PROGRAM_JSON_ENV,
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
+    CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
 )
 
 # Raw state credentials that must never reach implementation-provider children.

@@ -16,9 +16,11 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import stat
 import sys
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -271,9 +273,14 @@ class _SawmQuackTransport:
         self._replica_connection = None
         self._replica_path: Path | None = None
         self._refresh_sequence = 0
+        self._extension_projection_parent: Path | None = None
+        self._sealed_extension_set: Any | None = None
 
     @staticmethod
-    def _verify_extension_source(name: str, pin: Mapping[str, Any]) -> Path:
+    def _verify_extension_source(
+        name: str,
+        pin: Mapping[str, Any],
+    ) -> tuple[Path, Path]:
         """Verify accepted extension and metadata bytes before native LOAD."""
 
         if name not in {"httpfs", "quack"}:
@@ -402,27 +409,132 @@ class _SawmQuackTransport:
             or info_sha != pin["info_sha256"]
         ):
             raise OperatorError(f"{name} extension bytes differ from the reviewed pin")
-        return payload_path
+        return payload_path, info_path
+
+    def _ensure_extension_projection(self) -> Any:
+        """Publish reviewed bytes and return the shared sealed-set custodian."""
+
+        if self._sealed_extension_set is not None:
+            self._verify_sealed_extension_projection()
+            return self._sealed_extension_set
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+            ConfiguredBoardExtensionProjectionError,
+            build_configured_board_extension_set_pin,
+            inspect_configured_board_extension_sources,
+            project_configured_board_extension_set_home,
+            seal_configured_board_extension_set_home,
+        )
+
+        source_pins = {
+            "httpfs": self._owner.get("pinned_httpfs_extension") or {},
+            "quack": self._owner.get("pinned_extension") or {},
+        }
+        sources = {
+            name: self._verify_extension_source(name, pin)
+            for name, pin in source_pins.items()
+        }
+        roots = {payload.parent for payload, _info in sources.values()}
+        if len(roots) != 1:
+            raise OperatorError("reviewed extensions do not share one exact root")
+        source_root = next(iter(roots))
+        engine_version = source_root.parent.name
+        platform = source_root.name
+        if (
+            re.fullmatch(r"v[0-9][0-9A-Za-z.+_-]{0,62}", engine_version) is None
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}", platform)
+            is None
+        ):
+            raise OperatorError("reviewed extension engine/platform root is invalid")
+        pins = {
+            name: inspect_configured_board_extension_sources(
+                payload,
+                info,
+                name=name,
+                engine_version=engine_version,
+                platform=platform,
+            )
+            for name, (payload, info) in sources.items()
+        }
+        for name, pin in pins.items():
+            accepted = source_pins[name]
+            if (
+                pin.payload_sha256 != "sha256:" + str(accepted["sha256"])
+                or pin.payload_size != accepted["size"]
+                or pin.info_sha256 != "sha256:" + str(accepted["info_sha256"])
+                or pin.info_size != accepted["info_size"]
+            ):
+                raise OperatorError(
+                    f"{name} extension projection differs from its reviewed pin"
+                )
+        parent = Path(
+            tempfile.mkdtemp(prefix="sawm-quack-extension-projection-", dir="/tmp")
+        )
+        os.chmod(parent, 0o700)
+        sealed = None
+        try:
+            regular_home = project_configured_board_extension_set_home(
+                pins,
+                sources=sources,
+                parent=parent,
+            )
+            set_pin = build_configured_board_extension_set_pin(
+                pins,
+                versions={
+                    name: str(source_pins[name]["version"])
+                    for name in sorted(source_pins)
+                },
+            )
+            sealed = seal_configured_board_extension_set_home(
+                set_pin,
+                regular_home,
+            )
+            sealed.verify()
+            self._extension_projection_parent = parent
+            self._sealed_extension_set = sealed
+            return sealed
+        except BaseException as exc:
+            if sealed is not None:
+                sealed.close()
+            self._remove_regular_extension_projection(parent)
+            if isinstance(exc, ConfiguredBoardExtensionProjectionError):
+                raise OperatorError(str(exc)) from exc
+            raise
+
+    def _verify_sealed_extension_projection(self) -> None:
+        """Delegate custody and byte verification to the shared authority."""
+
+        sealed = self._sealed_extension_set
+        if sealed is None:
+            raise OperatorError("sealed extension projection is incomplete")
+        try:
+            sealed.verify()
+        except (OSError, ValueError) as exc:
+            raise OperatorError(str(exc)) from exc
 
     def _load_reviewed_extensions(self, connection: Any) -> None:
-        """Load only the two reviewed extensions and verify DuckDB's mapping."""
+        """Load exact sealed httpfs+Quack bytes and verify DuckDB's mapping."""
 
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+            ConfiguredBoardExtensionProjectionError,
+        )
+
+        sealed = self._ensure_extension_projection()
         extension_pins = {
             "httpfs": self._owner.get("pinned_httpfs_extension") or {},
             "quack": self._owner.get("pinned_extension") or {},
         }
-        accepted_paths = {
-            name: self._verify_extension_source(name, pin)
-            for name, pin in extension_pins.items()
-        }
-        connection.execute("LOAD httpfs")
-        connection.execute("LOAD quack")
-        observed_rows = connection.execute(
-            "SELECT extension_name, install_path, extension_version "
-            "FROM duckdb_extensions() "
-            "WHERE extension_name IN ('httpfs', 'quack') "
-            "AND installed AND loaded ORDER BY extension_name"
-        ).fetchall()
+        try:
+            with sealed.load_guard():
+                connection.execute("LOAD httpfs")
+                connection.execute("LOAD quack")
+                observed_rows = connection.execute(
+                    "SELECT extension_name, install_path, extension_version "
+                    "FROM duckdb_extensions() "
+                    "WHERE extension_name IN ('httpfs', 'quack') "
+                    "AND installed AND loaded ORDER BY extension_name"
+                ).fetchall()
+        except ConfiguredBoardExtensionProjectionError as exc:
+            raise OperatorError(str(exc)) from exc
         observed: dict[str, tuple[Path, str]] = {}
         if len(observed_rows) != len(extension_pins):
             raise OperatorError("loaded extension set is missing or ambiguous")
@@ -432,23 +544,17 @@ class _SawmQuackTransport:
             extension_name = str(row[0] or "")
             if extension_name not in extension_pins or extension_name in observed:
                 raise OperatorError("loaded extension set is missing or ambiguous")
-            try:
-                install_path = Path(str(row[1] or "")).resolve(strict=True)
-            except OSError as exc:
+            install_path = Path(str(row[1] or ""))
+            if not install_path.is_absolute():
                 raise OperatorError(
                     f"loaded {extension_name} extension path is unavailable"
-                ) from exc
+                )
             observed[extension_name] = (install_path, str(row[2] or ""))
         if set(observed) != set(extension_pins):
             raise OperatorError("loaded extension set is missing or ambiguous")
         for name, pin in extension_pins.items():
-            # Re-read the accepted bytes after LOAD so a path replacement
-            # between verification and DuckDB's loader cannot be admitted.
-            post_load_path = self._verify_extension_source(name, pin)
-            if (
-                post_load_path != accepted_paths[name]
-                or observed[name] != (post_load_path, pin["version"])
-            ):
+            expected_path = sealed.install_paths[name]
+            if observed[name] != (expected_path, pin["version"]):
                 raise OperatorError(
                     f"loaded {name} extension differs from the reviewed pin"
                 )
@@ -456,6 +562,7 @@ class _SawmQuackTransport:
     def _open_replica_connection(self, path: Path):
         import duckdb
 
+        sealed = self._ensure_extension_projection()
         connection = duckdb.connect(
             str(path),
             read_only=True,
@@ -464,6 +571,7 @@ class _SawmQuackTransport:
                 "autoload_known_extensions": "false",
                 "enable_external_access": "true",
                 "allow_unsigned_extensions": "false",
+                "extension_directory": str(sealed.extension_directory),
                 "threads": "1",
                 "memory_limit": "256MB",
             },
@@ -555,6 +663,43 @@ class _SawmQuackTransport:
             connection.close()
             self._replica_connection = None
 
+    @staticmethod
+    def _remove_regular_extension_projection(projection_parent: Path | None) -> None:
+        if projection_parent is None:
+            return
+        try:
+            if (
+                not projection_parent.is_absolute()
+                or projection_parent.parent != Path("/tmp")
+                or not projection_parent.name.startswith(
+                    "sawm-quack-extension-projection-"
+                )
+            ):
+                return
+            for current, directories, files in os.walk(projection_parent):
+                current_path = Path(current)
+                os.chmod(current_path, 0o700)
+                for name in directories:
+                    candidate = current_path / name
+                    if not candidate.is_symlink():
+                        os.chmod(candidate, 0o700)
+                for name in files:
+                    candidate = current_path / name
+                    if not candidate.is_symlink():
+                        os.chmod(candidate, 0o600)
+            shutil.rmtree(projection_parent)
+        except OSError:
+            return
+
+    def _remove_extension_projection(self) -> None:
+        sealed = self._sealed_extension_set
+        projection_parent = self._extension_projection_parent
+        self._sealed_extension_set = None
+        self._extension_projection_parent = None
+        if sealed is not None:
+            sealed.close()
+        self._remove_regular_extension_projection(projection_parent)
+
     def refresh(self, writer) -> Mapping[str, Any]:
         database = Path(writer.path).resolve()
         replica = database.with_name(
@@ -611,13 +756,17 @@ class _SawmQuackTransport:
 
         last_error: Exception | None = None
         deadline = time.monotonic() + 3.0
+        sealed = self._ensure_extension_projection()
         while True:
             client = duckdb.connect(
                 ":memory:",
                 config={
                     "autoinstall_known_extensions": "false",
                     "autoload_known_extensions": "false",
+                    "enable_external_access": "true",
                     "allow_unsigned_extensions": "false",
+                    "extension_directory": str(sealed.extension_directory),
+                    "lock_configuration": "true",
                 },
             )
             try:
@@ -654,9 +803,12 @@ class _SawmQuackTransport:
 
     def stop(self, connection=None) -> None:
         del connection
-        self._stop_replica()
-        self._serve_uri = ""
-        self._server_identity = {}
+        try:
+            self._stop_replica()
+        finally:
+            self._remove_extension_projection()
+            self._serve_uri = ""
+            self._server_identity = {}
 
 
 def _process_mutation_inbox(server: Any, *, max_requests: int = 32) -> None:
@@ -707,6 +859,48 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
     finally:
         signal.signal(signal.SIGINT, previous_int)
         signal.signal(signal.SIGTERM, previous_term)
+
+
+def _validate_offline_quack_start(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Revalidate committed controls and the exact store before native LOAD."""
+
+    dependency = _validator(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "validate_dependencies",
+    )
+    board = _validator(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "validate_program",
+    )
+    if dependency.get("valid") is not True or board.get("valid") is not True:
+        raise OperatorError("Quack start requires valid dependency and board seals")
+    materializer = _materializer()
+    population = materializer.build_population(REPO_ROOT)
+    materializer._assert_committed_clean_source(REPO_ROOT, population)
+    validation_digest = materializer._identity(
+        {
+            "dependency": dependency,
+            "board": board,
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+    prior = materializer._verify_prior_store(REPO_ROOT, config, population)
+    verified = materializer._verify_store(
+        REPO_ROOT / str(config["database_program"]["store_id"]),
+        population,
+        require_operator_complete=True,
+        require_migration=True,
+        migration_config=config,
+        expected_validation_digest=validation_digest,
+    )
+    return MappingProxyType(
+        {
+            "dependency_valid": True,
+            "board_valid": True,
+            "prior_authority": prior,
+            "store": verified,
+        }
+    )
 
 
 def _start_quack(config: Mapping[str, Any]) -> int:
@@ -1020,6 +1214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return _emit(materializer.materialize(REPO_ROOT, config_path))
         if args.command == "quack-start":
+            _validate_offline_quack_start(config)
             return _start_quack(config)
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")

@@ -481,6 +481,62 @@ def _extension_pin_errors(
     return errors
 
 
+def _native_extension_identity(
+    seal: Mapping[str, Any],
+) -> tuple[str, str, list[str]]:
+    """Derive the only extension engine/platform admitted by native DuckDB."""
+
+    native = seal.get("configured_board_native_dependency")
+    native_pin = native.get("pin") if type(native) is dict else None
+    toolchain = seal.get("toolchain")
+    if type(native_pin) is not dict or type(toolchain) is not dict:
+        return "", "", ["native DuckDB/toolchain extension identity is absent"]
+
+    native_platforms = {
+        ("linux", "aarch64"): "linux_arm64",
+        ("linux", "x86_64"): "linux_amd64",
+        ("darwin", "arm64"): "osx_arm64",
+        ("darwin", "x86_64"): "osx_amd64",
+        ("win32", "AMD64"): "windows_amd64",
+    }
+    toolchain_platforms = {
+        ("Linux", "aarch64"): "linux_arm64",
+        ("Linux", "x86_64"): "linux_amd64",
+        ("Darwin", "arm64"): "osx_arm64",
+        ("Darwin", "x86_64"): "osx_amd64",
+        ("Windows", "AMD64"): "windows_amd64",
+    }
+    native_platform = native_platforms.get(
+        (
+            str(native_pin.get("platform_name") or ""),
+            str(native_pin.get("platform_machine") or ""),
+        )
+    )
+    toolchain_platform = toolchain_platforms.get(
+        (
+            str(toolchain.get("operating_system") or ""),
+            str(toolchain.get("machine") or ""),
+        )
+    )
+    engine = str(native_pin.get("engine_version") or "")
+    distribution = str(native_pin.get("distribution_version") or "")
+    toolchain_version = str(toolchain.get("duckdb_distribution_version") or "")
+    errors: list[str] = []
+    if (
+        not engine
+        or engine != f"v{distribution}"
+        or distribution != toolchain_version
+    ):
+        errors.append("native DuckDB engine identity differs from the sealed toolchain")
+    if (
+        native_platform is None
+        or toolchain_platform is None
+        or native_platform != toolchain_platform
+    ):
+        errors.append("native DuckDB platform identity differs from the sealed toolchain")
+    return engine, native_platform or "", errors
+
+
 def _configured_board_dependency_errors(
     root: Path,
     config: Mapping[str, Any],
@@ -549,6 +605,10 @@ def _configured_board_dependency_errors(
     if not isinstance(quack_owner, Mapping):
         errors.append("scheduler Quack owner is absent")
         quack_owner = {}
+    expected_engine, expected_platform, identity_errors = (
+        _native_extension_identity(seal)
+    )
+    errors.extend(identity_errors)
     quack_pin = seal.get("quack_extension_pin")
     httpfs_pin = seal.get("httpfs_extension_pin")
     errors.extend(
@@ -566,6 +626,18 @@ def _configured_board_dependency_errors(
         httpfs_path = Path(str(httpfs_pin.get("path") or ""))
         if quack_path.parent != httpfs_path.parent:
             errors.append("Quack and httpfs pins do not share one exact engine/platform root")
+        for name, extension_path in (
+            ("quack", quack_path),
+            ("httpfs", httpfs_path),
+        ):
+            if (
+                extension_path.parent.name != expected_platform
+                or extension_path.parent.parent.name != expected_engine
+            ):
+                errors.append(
+                    f"{name} extension path engine/platform differs from "
+                    "native DuckDB/toolchain"
+                )
 
     projection = seal.get("configured_board_quack_projection")
     expected_projection_fields = {
@@ -618,6 +690,14 @@ def _configured_board_dependency_errors(
                 or projection_pin.info_size != quack_pin.get("info_size")
             ):
                 errors.append("configured-board Quack projection differs from its sealed source")
+            if (
+                projection_pin.engine_version != expected_engine
+                or projection_pin.platform != expected_platform
+            ):
+                errors.append(
+                    "configured-board extension engine/platform differs from "
+                    "native DuckDB/toolchain"
+                )
             projection_source = Path(str(projection.get("source_path") or ""))
             if (
                 projection_source.parent.name != projection_pin.platform
