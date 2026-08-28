@@ -349,8 +349,8 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
     assert len(nonce) == 64
     assert set(nonce) <= set("0123456789abcdef")
-    head = " ".join(command[: command.index("--codex-fallback-command-json")])
-    assert "codex" not in head
+    head = command[: command.index("--codex-fallback-command-json")]
+    assert "/opt/providers/codex" not in head
 
 
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))

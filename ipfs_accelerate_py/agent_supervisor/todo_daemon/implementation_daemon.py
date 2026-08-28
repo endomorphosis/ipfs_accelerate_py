@@ -2204,11 +2204,11 @@ def _grok_cli_command(
         ),
     )
     if (
-        allow_auth_unavailable_fallback
+        (allow_auth_unavailable_fallback or route_plan is not None)
         and "--codex-fallback-command-json" not in command
     ):
         raise RuntimeError(
-            "typed Grok authentication fallback requires a trusted Codex CLI"
+            "sealed Grok/Codex route requires a trusted Codex CLI"
         )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.6":
@@ -59952,6 +59952,57 @@ class PortalImplementationDaemon:
                     if self._scoped_control_plane_launch is not None
                     else ""
                 ),
+            )
+        if route_plan is not None:
+            # A quota-only route still carries an exact fallback model and
+            # reasoning-effort authority.  Do not drop that binding by
+            # falling through to the generic Grok command, whose legacy
+            # fallback defaults to Terra/medium.  The nonce plus canonical
+            # route binding lets the runner verify the configured high or
+            # medium tuple before it can act on a typed quota receipt.
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=route_plan.primary_model_id,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            if not (_grok_cli_available() and _grok_binary()):
+                raise ImplementationRetryDeferred(
+                    "quota-only sealed Grok/Codex route requires an "
+                    "authenticated pinned Grok CLI",
+                    backoff_seconds=300,
+                )
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=route_plan.primary_model_id,
+                failure_receipt_nonce=secrets.token_hex(32),
+                fallback_reasoning_effort=(
+                    route_plan.fallback_reasoning_effort
+                ),
+                route_plan=route_plan,
             )
         if self.implementation_command and not declared_provider:
             return shlex.split(self.implementation_command)
