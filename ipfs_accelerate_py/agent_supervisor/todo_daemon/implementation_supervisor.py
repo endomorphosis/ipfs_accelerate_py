@@ -18323,6 +18323,148 @@ class PortalImplementationSupervisor:
         self._record_event("dirty_worktree_rescued", result)
         return result
 
+    def _retire_original_branch_after_rescue(
+        self,
+        worktree_path: Path,
+        *,
+        original_branch: str,
+        original_head: str,
+        target_ref: str,
+        rescue_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Delete an exact merged implementation branch after rescue.
+
+        Switching a dirty pooled checkout to its rescue branch otherwise
+        leaves the pool sidecar's original branch alive forever.  Orphaned
+        pool metadata deliberately requires both the checkout and recorded
+        branch to be absent, so preserve the rescue branch while retiring the
+        exact original branch with Git's non-forcing delete guard.
+
+        Every identity and ancestry assertion is repeated after the rescue.
+        A missing or changed proof leaves the original branch intact.
+        """
+
+        started_at = utc_now()
+        branch = str(original_branch or "").removeprefix("refs/heads/")
+        expected_head = str(original_head or "").strip()
+        rescue_branch = str(
+            rescue_result.get("rescue_branch") or ""
+        ).removeprefix("refs/heads/")
+        rescue_commit = str(
+            rescue_result.get("rescue_commit") or ""
+        ).strip()
+        detail: dict[str, Any] = {
+            "attempted": False,
+            "retired": False,
+            "deleted": False,
+            "branch": branch,
+            "expected_head": expected_head,
+            "target_ref": target_ref,
+            "rescue_branch": rescue_branch,
+            "rescue_commit": rescue_commit,
+            "delete_mode": "non_force",
+            "started_at": started_at,
+        }
+
+        def finish(reason: str, **extra: Any) -> dict[str, Any]:
+            result = {
+                **detail,
+                "reason": reason,
+                **extra,
+                "finished_at": utc_now(),
+            }
+            self._record_event(
+                "rescued_original_branch_retirement",
+                result,
+            )
+            return result
+
+        if rescue_result.get("preserved") is not True:
+            return finish("rescue_not_preserved")
+        if not branch.startswith("implementation/"):
+            return finish("original_branch_not_implementation")
+        if not expected_head:
+            return finish("original_head_missing")
+        if not rescue_branch.startswith("rescue/worktree/"):
+            return finish("rescue_branch_identity_missing")
+        if not rescue_commit:
+            return finish("rescue_commit_identity_missing")
+
+        actual_branch = self._git_current_branch(worktree_path)
+        actual_head = self._git_ref_commit(worktree_path, "HEAD")
+        rescue_branch_head = self._git_ref_commit(
+            self.config.repo_root,
+            rescue_branch,
+        )
+        if (
+            actual_branch != rescue_branch
+            or actual_head != rescue_commit
+            or rescue_branch_head != rescue_commit
+        ):
+            return finish(
+                "rescue_identity_changed",
+                actual_branch=actual_branch,
+                actual_head=actual_head,
+                rescue_branch_head=rescue_branch_head,
+            )
+
+        original_branch_head = self._git_ref_commit(
+            self.config.repo_root,
+            branch,
+        )
+        if not original_branch_head:
+            return finish(
+                "original_branch_already_absent",
+                retired=True,
+            )
+        if original_branch_head != expected_head:
+            return finish(
+                "original_branch_identity_changed",
+                actual_head=original_branch_head,
+            )
+        if not self._git_ref_is_ancestor(
+            self.config.repo_root,
+            expected_head,
+            rescue_commit,
+        ):
+            return finish(
+                "rescue_commit_does_not_preserve_original_head",
+                actual_head=original_branch_head,
+            )
+        if not self._git_ref_is_ancestor(
+            self.config.repo_root,
+            branch,
+            target_ref,
+        ):
+            return finish(
+                "original_branch_no_longer_merged",
+                actual_head=original_branch_head,
+            )
+
+        command = ["git", "branch", "--delete", branch]
+        delete = subprocess.run(
+            command,
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        deleted = delete.returncode == 0
+        return finish(
+            (
+                "merged_original_branch_retired"
+                if deleted
+                else "merged_original_branch_retirement_failed"
+            ),
+            attempted=True,
+            retired=deleted,
+            deleted=deleted,
+            command=command,
+            returncode=delete.returncode,
+            stdout=delete.stdout[-4000:],
+            stderr=delete.stderr[-4000:],
+        )
+
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
@@ -18500,6 +18642,21 @@ class PortalImplementationSupervisor:
                         reason=f"cleanup_dirty_worktree:{dirty_reason}",
                     )
                     if rescue_result.get("preserved"):
+                        original_branch_retirement = (
+                            self._retire_original_branch_after_rescue(
+                                path,
+                                original_branch=branch,
+                                original_head=head,
+                                target_ref=target_ref,
+                                rescue_result=rescue_result,
+                            )
+                        )
+                        rescue_result = {
+                            **rescue_result,
+                            "original_branch_retirement": (
+                                original_branch_retirement
+                            ),
+                        }
                         skipped.append(
                             {
                                 "path": str(path),
