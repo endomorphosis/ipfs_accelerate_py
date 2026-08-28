@@ -20,6 +20,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTaskState,
+    parse_task_text,
+    portal_task_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     CONTROL_PLANE_RELOAD_STATUS,
@@ -35,6 +37,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import (
     WORKTREE_POOL_SCHEMA,
 )
 
+PCSM_027_DATABASE_TASK_CID = (
+    "baguqeerasd5j7p3geimlxdb62nar2sodoawnsdqfpy3udw2zihhpamcbn4ja"
+)
+PCSM_027_OBSERVED_PORTAL_TASK_CID = (
+    "baguqeera7swojthhh6pfwqqiswos4cjb36pb3rmwlgdw7rxkacu5si2wsi7q"
+)
+PCSM_027_DATABASE_ATTEMPT_ID = "attempt:7a81388546b64c40a9f01c2fc9479425"
+
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,10 +54,48 @@ def _write_json(path: Path, payload: Any) -> None:
     )
 
 
+def _write_recommitted_binding(path: Path, payload: dict[str, Any]) -> None:
+    body = dict(payload)
+    body.pop("binding_id", None)
+    payload["binding_id"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                body,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    _write_json(path, payload)
+
+
+def _recommit_projection_identity_change(fixture: dict[str, Any]) -> None:
+    projection = fixture["projection_path"].read_text(encoding="utf-8")
+    changed = projection.replace(
+        f"- Allowed Paths: artifacts/{fixture['task_alias']}.json",
+        "- Allowed Paths: artifacts/foreign-successor.json",
+    )
+    assert changed != projection
+    fixture["projection_path"].write_text(changed, encoding="utf-8")
+    binding = json.loads(fixture["binding_path"].read_text(encoding="utf-8"))
+    binding["projection_seed_digest"] = (
+        "sha256:" + hashlib.sha256(changed.encode("utf-8")).hexdigest()
+    )
+    binding["projection_immutable_digest"] = _projection_immutable_digest(changed)
+    _write_recommitted_binding(fixture["binding_path"], binding)
+
+
 def _seed_active_database_pool_lease(
     tmp_path: Path,
     *,
     mark_lifecycle_active: bool = True,
+    task_alias: str = "VRIF-010",
+    database_task_cid: str = "task:database-vrif-010",
+    database_attempt_number: int = 2,
+    attempt_id: str = "attempt:vrif-010:database-2",
 ) -> dict[str, Any]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -61,76 +109,38 @@ def _seed_active_database_pool_lease(
     state_dir.mkdir(parents=True)
     state_path = state_dir / "vrif_lane_2_task_state.json"
     PortalTaskState(
-        implementation_attempts={"VRIF-010": 3},
-        implementation_attempts_by_cid={"task:vrif-010": 3},
+        implementation_attempts={task_alias: 3},
+        implementation_attempts_by_cid={database_task_cid: 3},
     ).save(state_path)
 
-    attempt_id = "attempt:vrif-010:1"
     attempt_key = hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
     attempt_dir = state_dir / "vrif_lane_2_database_portal_attempts" / attempt_key
     attempt_dir.mkdir(parents=True)
     worktree_root = repo / "worktrees"
-    workspace = worktree_root / "workspace_vrif_010"
+    task_slug = task_alias.lower().replace("-", "_")
+    workspace = worktree_root / f"workspace_{task_slug}"
     workspace.mkdir(parents=True)
-    branch = "implementation/vrif-010-attempt-1"
-    task_cid = "task:vrif-010"
+    branch = f"implementation/{task_alias.lower()}-attempt-1"
     birth = current_process_birth()
 
-    lifecycle_store = WorktreeLifecycleStore(repo)
-    lifecycle = lifecycle_store.begin_preparing(
-        task_id="VRIF-010",
-        canonical_task_cid=task_cid,
-        attempt=1,
-        lane_id="lane-2",
-        workspace_path=workspace,
-        branch=branch,
-        merge_target="main",
-        state_dir=str(attempt_dir),
-        owner=birth,
-    )
-    if mark_lifecycle_active:
-        lifecycle = lifecycle_store.mark_active(
-            workspace,
-            lease_id=lifecycle.lease_id,
-            expected_fence=lifecycle.fence,
-        )
-
-    lease_token = "vrif-010-lease"
-    pool_path = worktree_root / ".pool-state" / f"{lease_token}.json"
-    pool = {
-        "schema": WORKTREE_POOL_SCHEMA,
-        "lease_token": lease_token,
-        "path": str(workspace),
-        "repo_root": str(repo),
-        "repo_common_dir": str(repo / ".git"),
-        "cache_key": "vrif",
-        "base_commit": "base",
-        "dependency_paths": [],
-        "state": "leased",
-        "lease_pid": os.getpid(),
-        "branch": branch,
-    }
-    _write_json(pool_path, pool)
-    lock_path = pool_path.with_suffix(".lock")
-    _write_json(lock_path, {"pid": os.getpid(), "created_at_epoch": 1.0})
-
-    canonical_task_key = "task-key:vrif-010"
-    owner_session_id = "owner-session:vrif-010"
+    canonical_task_key = f"task-key:{task_slug}"
+    owner_session_id = f"owner-session:{task_slug}"
     projection = "\n".join(
         (
             "# Database attempt projection (non-authoritative)",
             "",
-            "## VRIF-010 Active nested database work",
+            f"## {task_alias} Active nested database work",
             "",
             "- Status: ready",
-            f"- Database task CID: {task_cid}",
+            f"- Database task CID: {database_task_cid}",
             f"- Database attempt ID: {attempt_id}",
-            "- Database claim ID: claim:vrif-010",
-            "- Database attempt number: 1",
+            f"- Database claim ID: claim:{task_slug}",
+            f"- Database attempt number: {database_attempt_number}",
             f"- Database owner session ID: {owner_session_id}",
             f"- Canonical task key: {canonical_task_key}",
-            f"- Canonical task CID: {task_cid}",
+            f"- Canonical task CID: {database_task_cid}",
             "- Projection authority: false",
+            f"- Allowed Paths: artifacts/{task_alias}.json",
             "",
         )
     )
@@ -140,18 +150,18 @@ def _seed_active_database_pool_lease(
         "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
         "interface": "DatabasePortalExecutionBridge@1",
         "attempt_id": attempt_id,
-        "claim_id": "claim:vrif-010",
-        "attempt_number": 1,
+        "claim_id": f"claim:{task_slug}",
+        "attempt_number": database_attempt_number,
         "owner_session_id": owner_session_id,
-        "task_cid": task_cid,
+        "task_cid": database_task_cid,
         "canonical_task_key": canonical_task_key,
-        "task_alias": "VRIF-010",
+        "task_alias": task_alias,
         "goal_cid": "goal:vrif",
         "plan_cid": "plan:vrif",
         "task_revision": 1,
         "fencing_token": 1,
         "fence_epoch": 1,
-        "lease_id": "database-lease-vrif-010",
+        "lease_id": f"database-lease-{task_slug}",
         "task_body_digest": "sha256:" + hashlib.sha256(b"body").hexdigest(),
         "task_contract_digest": "sha256:"
         + hashlib.sha256(b"contract").hexdigest(),
@@ -178,10 +188,62 @@ def _seed_active_database_pool_lease(
     )
     binding_path = attempt_dir / "database-attempt-binding.json"
     _write_json(binding_path, binding)
+
+    projected_tasks = parse_task_text(
+        projection,
+        path=projection_path,
+        task_header_prefix=f"## {task_alias}",
+    )
+    assert len(projected_tasks) == 1
+    portal_identity = portal_task_identity(
+        projected_tasks[0],
+        todo_path=projection_path.resolve(),
+    )
+    portal_task_cid = portal_identity.canonical_task_cid
+    assert portal_task_cid != database_task_cid
+
+    lifecycle_store = WorktreeLifecycleStore(repo)
+    lifecycle = lifecycle_store.begin_preparing(
+        task_id=task_alias,
+        canonical_task_cid=portal_task_cid,
+        attempt=1,
+        lane_id="lane-2",
+        workspace_path=workspace,
+        branch=branch,
+        merge_target="main",
+        state_dir=str(attempt_dir),
+        owner=birth,
+    )
+    if mark_lifecycle_active:
+        lifecycle = lifecycle_store.mark_active(
+            workspace,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
+
+    lease_token = f"{task_slug}-lease"
+    pool_path = worktree_root / ".pool-state" / f"{lease_token}.json"
+    pool = {
+        "schema": WORKTREE_POOL_SCHEMA,
+        "lease_token": lease_token,
+        "path": str(workspace),
+        "repo_root": str(repo),
+        "repo_common_dir": str(repo / ".git"),
+        "cache_key": "vrif",
+        "base_commit": "base",
+        "dependency_paths": [],
+        "state": "leased",
+        "lease_pid": os.getpid(),
+        "branch": branch,
+    }
+    _write_json(pool_path, pool)
+    lock_path = pool_path.with_suffix(".lock")
+    _write_json(lock_path, {"pid": os.getpid(), "created_at_epoch": 1.0})
+
     nested_state_path = attempt_dir / "portal-task-state.json"
     PortalTaskState(
-        active_task_id="VRIF-010",
-        active_task_cid=task_cid,
+        active_task_id=task_alias,
+        active_task_cid=portal_task_cid,
         active_attempt=1,
         active_phase="validating",
         active_worktree_path=str(workspace),
@@ -221,6 +283,11 @@ def _seed_active_database_pool_lease(
         "projection_path": projection_path,
         "attempt_dir": attempt_dir,
         "binding": binding,
+        "database_task_cid": database_task_cid,
+        "database_attempt_number": database_attempt_number,
+        "portal_task_cid": portal_task_cid,
+        "portal_task_key": portal_identity.canonical_task_key,
+        "task_alias": task_alias,
         "nested_state_path": nested_state_path,
         "lifecycle_path": lifecycle_store.workspace_path_for(workspace),
         "workspace": workspace,
@@ -234,10 +301,18 @@ def _seed_live_unprojected_database_attempt(
     tmp_path: Path,
     *,
     lifecycle_state: str = "preparing",
+    task_alias: str = "VRIF-010",
+    database_task_cid: str = "task:database-vrif-010",
+    database_attempt_number: int = 2,
+    attempt_id: str = "attempt:vrif-010:database-2",
 ) -> dict[str, Any]:
     fixture = _seed_active_database_pool_lease(
         tmp_path,
         mark_lifecycle_active=lifecycle_state != "preparing",
+        task_alias=task_alias,
+        database_task_cid=database_task_cid,
+        database_attempt_number=database_attempt_number,
+        attempt_id=attempt_id,
     )
     if lifecycle_state == "settling":
         lifecycle = fixture["lifecycle"]
@@ -259,11 +334,11 @@ def _seed_live_unprojected_database_attempt(
             "pid": os.getpid(),
             "repo_root": str(fixture["repo"].resolve()),
             "state_dir": str(fixture["attempt_dir"].resolve()),
-            "task_id": "VRIF-010",
-            "canonical_task_cid": "task:vrif-010",
+            "task_id": fixture["task_alias"],
+            "canonical_task_cid": fixture["portal_task_cid"],
             "canonical_task_key": fixture["binding"]["canonical_task_key"],
             "attempt": 1,
-            "lease_id": "implementation-lease-vrif-010",
+            "lease_id": f"implementation-lease-{fixture['task_alias'].lower()}",
             "started_at": "2026-08-24T00:00:00+00:00",
         },
     )
@@ -449,10 +524,15 @@ def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
     assert fixture["state_path"].read_bytes() == original_state
 
 
-def _seed_stale_predecessor_projection(fixture: dict[str, Any]) -> bytes:
+def _seed_stale_predecessor_projection(
+    fixture: dict[str, Any],
+    *,
+    task_id: str = "VRIF-009",
+    task_cid: str = "task:vrif-009",
+) -> bytes:
     state = PortalTaskState.load(fixture["state_path"])
-    state.active_task_id = "VRIF-009"
-    state.active_task_cid = "task:vrif-009"
+    state.active_task_id = task_id
+    state.active_task_cid = task_cid
     state.active_attempt = 1
     state.active_phase = "implementing"
     state.implementation_in_progress = True
@@ -489,6 +569,62 @@ def test_watchdog_maintenance_defers_for_exact_nested_database_pool_lease(
         {},
     )
 
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+def test_watchdog_defers_at_pcsm_024_to_pcsm_027_two_identity_successor_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(
+        tmp_path,
+        task_alias="PCSM-027",
+        database_task_cid=PCSM_027_DATABASE_TASK_CID,
+        database_attempt_number=2,
+        attempt_id=PCSM_027_DATABASE_ATTEMPT_ID,
+    )
+    original_state = _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-024",
+        task_cid="",
+    )
+    supervisor = fixture["supervisor"]
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on active task PCSM-024",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda update: maintenance_calls.append(update),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    activity = supervisor._active_managed_database_pool_lease(fixture["child"])
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    # The incident's DuckDB identity D and observed Portal identity L are
+    # intentionally different.  This temporary projection derives its own
+    # path-bound L through the same production contract.
+    assert PCSM_027_OBSERVED_PORTAL_TASK_CID != PCSM_027_DATABASE_TASK_CID
+    assert fixture["portal_task_cid"] != PCSM_027_DATABASE_TASK_CID
+    assert fixture["binding"]["attempt_number"] == 2
+    assert fixture["lifecycle"].attempt == 1
+    assert activity is not None
+    assert activity["task_id"] == "PCSM-027"
+    assert activity["task_cid"] == fixture["portal_task_cid"]
+    assert activity["attempt"] == "1"
     assert decision.action == "continue"
     assert maintenance_calls == []
     assert fixture["state_path"].read_bytes() == original_state
@@ -585,11 +721,73 @@ def test_watchdog_maintenance_resumes_without_exact_database_corroboration(
 
 @pytest.mark.parametrize(
     "case",
+    ("missing_projection", "tampered_projection", "recommitted_portal_identity"),
+)
+def test_watchdog_maintenance_resumes_without_exact_projection_identity_bridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    _seed_stale_predecessor_projection(fixture)
+    if case == "missing_projection":
+        fixture["projection_path"].unlink()
+    elif case == "tampered_projection":
+        fixture["projection_path"].write_text(
+            fixture["projection_path"].read_text(encoding="utf-8")
+            + "\n- Allowed Paths: artifacts/uncommitted-tamper.json\n",
+            encoding="utf-8",
+        )
+    elif case == "recommitted_portal_identity":
+        _recommit_projection_identity_change(fixture)
+    maintenance_calls: list[object] = []
+    supervisor = fixture["supervisor"]
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on stale predecessor VRIF-009",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def _maintenance(update: object) -> dict[str, Any]:
+        maintenance_calls.append(update)
+        return {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": False,
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", _maintenance)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert len(maintenance_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "case",
     [
         "missing_lock",
         "foreign_lock_pid",
         "lock_task_mismatch",
         "tampered_binding",
+        "missing_projection",
+        "recommitted_portal_identity",
         "mismatched_child_birth",
         "foreign_repo_root",
         "terminal_lifecycle",
@@ -618,6 +816,10 @@ def test_database_nonterminal_claim_never_defers_without_exact_corroboration(
         payload = json.loads(fixture["binding_path"].read_text(encoding="utf-8"))
         payload["task_cid"] = "task:foreign"
         _write_json(fixture["binding_path"], payload)
+    elif case == "missing_projection":
+        fixture["projection_path"].unlink()
+    elif case == "recommitted_portal_identity":
+        _recommit_projection_identity_change(fixture)
     elif case == "mismatched_child_birth":
         observed = fixture["child"].identity_process_birth
         fixture["child"].identity_process_birth = ProcessBirthIdentity(
@@ -665,7 +867,9 @@ def test_database_nonterminal_claim_never_defers_without_exact_corroboration(
         "malformed_lifecycle",
         "terminal_lifecycle",
         "malformed_binding",
+        "missing_projection",
         "malformed_projection",
+        "recommitted_portal_identity",
         "legacy_binding_schema",
         "missing_canonical_task_key",
         "tampered_task_contract",
@@ -728,8 +932,12 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         _write_json(fixture["lifecycle_path"], lifecycle)
     elif case == "malformed_binding":
         fixture["binding_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "missing_projection":
+        fixture["projection_path"].unlink()
     elif case == "malformed_projection":
         fixture["projection_path"].write_text("# malformed\n", encoding="utf-8")
+    elif case == "recommitted_portal_identity":
+        _recommit_projection_identity_change(fixture)
     elif case == "legacy_binding_schema":
         binding = json.loads(
             fixture["binding_path"].read_text(encoding="utf-8")

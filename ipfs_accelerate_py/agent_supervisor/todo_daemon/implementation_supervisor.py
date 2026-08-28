@@ -138,6 +138,7 @@ from .database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
     DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE,
     DatabasePortalBridgeError,
+    _projection_immutable_digest,
     verify_database_portal_attempt_projection,
 )
 from .implementation_daemon import (
@@ -165,7 +166,9 @@ from .implementation_daemon import (
     normalize_implementation_protected_paths,
     normalize_relative_path_list,
     parse_task_file,
+    parse_task_text,
     parse_timestamp,
+    portal_task_identity,
     process_command_line,
     process_is_running,
     state_file_repair_reason,
@@ -11455,7 +11458,14 @@ class PortalImplementationSupervisor:
         *,
         attempt_root: Path,
     ) -> tuple[Path, dict[str, Any]] | None:
-        """Validate the exact database binding behind one lifecycle claim."""
+        """Validate the exact two-identity bridge behind one lifecycle claim.
+
+        Database attempt bindings own the DuckDB task CID, while Portal
+        lifecycle records own the path-bound identity derived from the same
+        immutable projection.  Those identities are deliberately distinct.
+        Accept their correlation only after the bridge binding, projection,
+        parsed task, and Portal identity transform all verify exactly.
+        """
 
         try:
             attempt_dir = Path(record.state_dir).resolve(strict=True)
@@ -11483,7 +11493,8 @@ class PortalImplementationSupervisor:
             or hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
             != attempt_dir.name
             or binding.get("task_alias") != record.task_id
-            or binding.get("task_cid") != record.canonical_task_cid
+            or type(binding.get("task_cid")) is not str
+            or not binding.get("task_cid")
             or type(binding.get("canonical_task_key")) is not str
             or not binding.get("canonical_task_key")
             or type(binding.get("claim_id")) is not str
@@ -11517,6 +11528,67 @@ class PortalImplementationSupervisor:
             ).encode("utf-8")
         ).hexdigest()
         if binding_id != expected_binding_id:
+            return None
+
+        projection_path = attempt_dir / "task-projection.md"
+        try:
+            projection_binding = verify_database_portal_attempt_projection(
+                projection_path,
+                expected_task_alias=record.task_id,
+                expected_task_cid=str(binding["task_cid"]),
+                allowed_root=attempt_root,
+            )
+            verified_projection_path = Path(
+                str(projection_binding.get("projection_path") or "")
+            ).resolve(strict=True)
+            expected_projection_path = projection_path.resolve(strict=True)
+            projection_text = verified_projection_path.read_text(
+                encoding="utf-8"
+            )
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=verified_projection_path,
+                task_header_prefix=f"## {record.task_id}",
+            )
+            if len(projected_tasks) != 1:
+                return None
+            projected_task = projected_tasks[0]
+            portal_identity = portal_task_identity(
+                projected_task,
+                todo_path=verified_projection_path,
+            )
+        except (
+            DatabasePortalBridgeError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            UnicodeError,
+            ValueError,
+        ):
+            return None
+        projected_metadata = projected_task.metadata
+        if (
+            projection_binding.get("verified") is not True
+            or verified_projection_path != expected_projection_path
+            or _projection_immutable_digest(projection_text)
+            != binding.get("projection_immutable_digest")
+            or any(
+                binding.get(key) != value
+                for key, value in projection_binding.items()
+                if key not in {"verified", "projection_path"}
+            )
+            or projected_task.task_id != record.task_id
+            or projected_metadata.get("projection authority") != "false"
+            or projected_metadata.get("database task cid")
+            != binding.get("task_cid")
+            or projected_metadata.get("canonical task cid")
+            != binding.get("task_cid")
+            or projected_metadata.get("canonical task key")
+            != binding.get("canonical_task_key")
+            or not portal_identity.canonical_task_key
+            or portal_identity.canonical_task_cid
+            != record.canonical_task_cid
+        ):
             return None
         return attempt_dir, binding
 
@@ -11782,42 +11854,19 @@ class PortalImplementationSupervisor:
             except (OSError, RuntimeError):
                 continue
             # The lifecycle record, pool lease, and nested daemon state expose
-            # the task CID/alias, attempt, branch, workspace, and live process
-            # birth, but they intentionally do not duplicate the database task
-            # key, contract digest, or repository tree.  Those three identities
-            # are therefore proved here at their strongest contention-free
-            # boundary: the bridge's exact canonical schema plus its binding_id
-            # commitment.  The watchdog must not open a competing database
-            # reader merely to decide whether an already-live child may finish.
+            # Portal's path-bound task identity, local attempt, branch,
+            # workspace, and live process birth.  The validator correlates
+            # that identity with the distinct DuckDB CID/attempt through the
+            # immutable projection and exact binding_id commitment.  The
+            # watchdog must not open a competing database reader merely to
+            # decide whether an already-live child may finish.
             validated_binding = self._validated_managed_database_lifecycle_binding(
                 record,
                 attempt_root=attempt_root,
             )
             if validated_binding is None:
                 continue
-            attempt_dir, binding = validated_binding
-            try:
-                projection_binding = verify_database_portal_attempt_projection(
-                    attempt_dir / "task-projection.md",
-                    expected_task_alias=record.task_id,
-                    expected_task_cid=record.canonical_task_cid,
-                    allowed_root=attempt_root,
-                )
-            except (
-                DatabasePortalBridgeError,
-                OSError,
-                RuntimeError,
-                TypeError,
-                ValueError,
-            ):
-                continue
-            if (
-                projection_binding.get("binding_id") != binding.get("binding_id")
-                or projection_binding.get("canonical_task_key")
-                != binding.get("canonical_task_key")
-                or projection_binding.get("attempt_number") != record.attempt
-            ):
-                continue
+            attempt_dir, _binding = validated_binding
 
             nested_state_path = attempt_dir / "portal-task-state.json"
             nested_state_payload = self._load_single_link_json_object(
