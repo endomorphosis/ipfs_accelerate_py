@@ -8,11 +8,11 @@ import os
 import socket
 import stat
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_PATH = ROOT / "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py"
@@ -254,3 +254,245 @@ def test_generic_bootstrap_survives_compact_track_projection(
     assert captured["pass_fds"] == (listener_fd,)
     assert command[-2:] == ["--database-owner-session-id", track.name]
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN=" not in " ".join(command)
+
+
+def _route_restart_fixture():
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceSnapshot,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRoutePolicy,
+    )
+
+    plan_root = "cid:plan-root"
+    repository_tree = "tree:repository"
+    operator_task = TaskRecord(
+        task_cid="cid:spar-000",
+        task_alias="SPAR-000",
+        goal_cid="cid:goal-000",
+        ordinal=0,
+        status="completed",
+        revision=2,
+        body={"completion": "operator", "status": "completed"},
+        plan_cid=plan_root,
+    )
+    implementation_task = TaskRecord(
+        task_cid="cid:spar-001",
+        task_alias="SPAR-001",
+        goal_cid="cid:goal-010",
+        ordinal=1,
+        status="todo",
+        revision=1,
+        body={"completion": "worker", "status": "todo"},
+        dependencies=(operator_task.task_cid,),
+        plan_cid=plan_root,
+    )
+    bootstrap_snapshot = TaskSourceSnapshot(
+        source_schema="task-source@1",
+        schema_version=1,
+        plan_root_cid=plan_root,
+        repository_tree_id=repository_tree,
+        projection_cid="cid:bootstrap-projection",
+        formal_plan_id="SPAR-PLAN-R1",
+        source_identity="cid:task-source",
+        revision=140,
+        event_cursor=140,
+        goal_count=2,
+        task_count=2,
+        dependency_count=1,
+        terminal=False,
+    )
+    policy = TaskExecutionRoutePolicy.seal(
+        snapshot=bootstrap_snapshot,
+        tasks=(operator_task, implementation_task),
+        execution_modes={
+            "SPAR-000": GROK_CODEX_EXECUTION_MODE,
+            "SPAR-001": GROK_CODEX_EXECUTION_MODE,
+        },
+    )
+    binding = policy.binding_for_task(implementation_task)
+    completion_receipt = {
+        "execution_route_binding": binding.to_dict(),
+        "execution_route_policy_id": policy.policy_id,
+        "execution_route_origin_revision": binding.task_revision,
+    }
+    retrying_task = replace(
+        implementation_task,
+        status="retrying",
+        revision=4,
+        body={
+            **dict(implementation_task.body),
+            "status": "retrying",
+            "completion_receipt": completion_receipt,
+        },
+    )
+    current_snapshot = replace(
+        bootstrap_snapshot,
+        projection_cid="cid:current-projection",
+    )
+    bootstrap = {
+        "operator_completed_task_ids": ["SPAR-000"],
+        "task_count": 2,
+        "plan_root_cid": plan_root,
+        "repository_tree_id": repository_tree,
+        "projection_cid": bootstrap_snapshot.projection_cid,
+    }
+    return (
+        bootstrap,
+        current_snapshot,
+        operator_task,
+        implementation_task,
+        retrying_task,
+        policy,
+    )
+
+
+def test_restart_reuses_exact_owner_written_execution_route_policy() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRoutePolicy,
+    )
+
+    materializer = _materializer()
+    (
+        bootstrap,
+        current_snapshot,
+        operator_task,
+        _implementation_task,
+        retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    resealed = TaskExecutionRoutePolicy.seal(
+        snapshot=current_snapshot,
+        tasks=(operator_task, retrying_task),
+        execution_modes={
+            "SPAR-000": GROK_CODEX_EXECUTION_MODE,
+            "SPAR-001": GROK_CODEX_EXECUTION_MODE,
+        },
+    )
+    assert resealed.policy_id != original_policy.policy_id
+
+    resumed = materializer._resume_execution_route_policy(
+        bootstrap=bootstrap,
+        snapshot=current_snapshot,
+        tasks=(operator_task, retrying_task),
+    )
+
+    assert resumed == original_policy
+
+
+def test_fresh_board_seals_current_execution_route_policy() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRoutePolicy,
+    )
+
+    materializer = _materializer()
+    (
+        bootstrap,
+        snapshot,
+        operator_task,
+        implementation_task,
+        _retrying_task,
+        _original_policy,
+    ) = _route_restart_fixture()
+    expected = TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=(operator_task, implementation_task),
+        execution_modes={
+            "SPAR-000": GROK_CODEX_EXECUTION_MODE,
+            "SPAR-001": GROK_CODEX_EXECUTION_MODE,
+        },
+    )
+
+    assert materializer._resume_execution_route_policy(
+        bootstrap=bootstrap,
+        snapshot=snapshot,
+        tasks=(operator_task, implementation_task),
+    ) == expected
+
+
+def test_restart_rejects_corrupted_execution_route_lineage() -> None:
+    materializer = _materializer()
+    (
+        bootstrap,
+        snapshot,
+        operator_task,
+        _implementation_task,
+        retrying_task,
+        _original_policy,
+    ) = _route_restart_fixture()
+    body = dict(retrying_task.body)
+    receipt = dict(body["completion_receipt"])
+    binding = dict(receipt["execution_route_binding"])
+    binding["policy_id"] = "cid:corrupted-policy"
+    receipt["execution_route_policy_id"] = binding["policy_id"]
+    receipt["execution_route_binding"] = binding
+    body["completion_receipt"] = receipt
+    corrupted = replace(retrying_task, body=body)
+
+    with pytest.raises(
+        materializer.OperatorError,
+        match="does not reconstruct exactly",
+    ):
+        materializer._resume_execution_route_policy(
+            bootstrap=bootstrap,
+            snapshot=snapshot,
+            tasks=(operator_task, corrupted),
+        )
+
+
+def test_restart_rejects_advanced_task_without_execution_route_lineage() -> None:
+    materializer = _materializer()
+    (
+        bootstrap,
+        snapshot,
+        operator_task,
+        implementation_task,
+        retrying_task,
+        _original_policy,
+    ) = _route_restart_fixture()
+    stripped = replace(retrying_task, body=dict(implementation_task.body))
+
+    with pytest.raises(
+        materializer.OperatorError,
+        match="advanced ordinary task lacks carried execution-route lineage",
+    ):
+        materializer._resume_execution_route_policy(
+            bootstrap=bootstrap,
+            snapshot=snapshot,
+            tasks=(operator_task, stripped),
+        )
+
+
+def test_restart_rejects_partial_execution_route_receipt() -> None:
+    materializer = _materializer()
+    (
+        bootstrap,
+        snapshot,
+        operator_task,
+        implementation_task,
+        _retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    partial = replace(
+        implementation_task,
+        body={
+            **dict(implementation_task.body),
+            "completion_receipt": {
+                "execution_route_policy_id": original_policy.policy_id,
+            },
+        },
+    )
+
+    with pytest.raises(
+        materializer.OperatorError,
+        match="partial execution-route receipt",
+    ):
+        materializer._resume_execution_route_policy(
+            bootstrap=bootstrap,
+            snapshot=snapshot,
+            tasks=(operator_task, partial),
+        )

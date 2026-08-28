@@ -1279,17 +1279,194 @@ def state_owner(config_path: Path) -> int:
     return 0
 
 
+def _resume_execution_route_policy(
+    *,
+    bootstrap: Mapping[str, Any],
+    snapshot: Any,
+    tasks: Sequence[Any],
+) -> Any:
+    """Reuse the exact first-launch route when authoritative tasks carry it.
+
+    Operational task revisions advance after claims, retries, and completion,
+    while the immutable plan revision can remain unchanged.  Re-sealing those
+    later revisions would mint a different policy ID with the same source
+    revision and make the daemon reject its own carried retry lineage.  The
+    bootstrap projection plus owner-written task receipts are sufficient to
+    reconstruct the original policy byte-for-byte; no sidecar or stale local
+    checkpoint is admitted as authority.
+
+    A fresh board has no carried bindings and simply seals the current
+    population.  Once any carried binding exists, every advanced ordinary task
+    must carry the same original policy and all untouched tasks must still be
+    at their initial revision.  Any mismatch fails closed.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRouteBinding,
+        TaskExecutionRouteEntry,
+        TaskExecutionRoutePolicy,
+        task_execution_contract_cid,
+    )
+
+    execution_modes = {
+        task.task_alias: GROK_CODEX_EXECUTION_MODE for task in tasks
+    }
+    current = TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=tasks,
+        execution_modes=execution_modes,
+    )
+    carried_by_task: dict[str, Any] = {}
+    route_receipt_fields = {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+    for task in tasks:
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            continue
+        present_route_fields = route_receipt_fields.intersection(receipt)
+        if not present_route_fields:
+            continue
+        if present_route_fields != route_receipt_fields or any(
+            receipt.get(field) is None for field in route_receipt_fields
+        ):
+            raise OperatorError(
+                "authoritative task carries a partial execution-route receipt"
+            )
+        raw_binding = receipt["execution_route_binding"]
+        try:
+            binding = TaskExecutionRouteBinding.from_dict(raw_binding)
+        except TaskSourceIntegrityError as exc:
+            raise OperatorError(
+                "authoritative task carries a malformed execution-route binding"
+            ) from exc
+        if (
+            binding.task_cid != task.task_cid
+            or binding.task_alias != task.task_alias
+            or binding.task_revision > task.revision
+            or binding.task_contract_cid != task_execution_contract_cid(task)
+            or binding.execution_mode != GROK_CODEX_EXECUTION_MODE
+            or not isinstance(receipt, Mapping)
+            or receipt.get("execution_route_policy_id") != binding.policy_id
+            or receipt.get("execution_route_origin_revision")
+            != binding.task_revision
+        ):
+            raise OperatorError(
+                "authoritative task execution-route lineage is inconsistent"
+            )
+        carried_by_task[task.task_cid] = binding
+
+    if not carried_by_task:
+        advanced_ordinary = [
+            task.task_alias
+            for task in tasks
+            if task.task_alias != "SPAR-000" and int(task.revision) != 1
+        ]
+        if advanced_ordinary:
+            raise OperatorError(
+                "advanced ordinary task lacks carried execution-route lineage"
+            )
+        return current
+
+    operator_completed = bootstrap.get("operator_completed_task_ids")
+    if operator_completed != ["SPAR-000"]:
+        raise OperatorError(
+            "bootstrap operator-completion identity is not exact"
+        )
+    projection_cid = str(bootstrap.get("projection_cid") or "")
+    if (
+        int(bootstrap.get("task_count") or 0) != len(tasks)
+        or bootstrap.get("plan_root_cid") != snapshot.plan_root_cid
+        or bootstrap.get("repository_tree_id") != snapshot.repository_tree_id
+        or not projection_cid
+    ):
+        raise OperatorError(
+            "bootstrap projection differs from the current route population"
+        )
+
+    policy_lineages = {
+        (
+            binding.policy_id,
+            binding.plan_root_cid,
+            binding.repository_tree_id,
+            int(binding.source_revision),
+        )
+        for binding in carried_by_task.values()
+    }
+    if len(policy_lineages) != 1:
+        raise OperatorError(
+            "authoritative tasks carry multiple execution-route policies"
+        )
+    policy_id, plan_root_cid, repository_tree_id, source_revision = next(
+        iter(policy_lineages)
+    )
+    if (
+        plan_root_cid != snapshot.plan_root_cid
+        or repository_tree_id != snapshot.repository_tree_id
+        or source_revision < 1
+        or source_revision > int(snapshot.revision)
+    ):
+        raise OperatorError(
+            "carried execution-route policy is outside the bootstrap lineage"
+        )
+
+    entries: list[Any] = []
+    for task in tasks:
+        binding = carried_by_task.get(task.task_cid)
+        if binding is not None:
+            entry = TaskExecutionRouteEntry(
+                task_cid=binding.task_cid,
+                task_alias=binding.task_alias,
+                task_revision=binding.task_revision,
+                task_contract_cid=binding.task_contract_cid,
+                execution_mode=binding.execution_mode,
+            )
+        else:
+            is_operator_bootstrap = (
+                task.task_alias == "SPAR-000"
+                and task.status in COMPLETED_STATUSES
+            )
+            if not is_operator_bootstrap and int(task.revision) != 1:
+                raise OperatorError(
+                    "advanced ordinary task lacks carried execution-route lineage"
+                )
+            entry = TaskExecutionRouteEntry(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                task_revision=int(task.revision),
+                task_contract_cid=task_execution_contract_cid(task),
+                execution_mode=GROK_CODEX_EXECUTION_MODE,
+            )
+        entries.append(entry)
+
+    try:
+        return TaskExecutionRoutePolicy(
+            plan_root_cid=plan_root_cid,
+            repository_tree_id=repository_tree_id,
+            source_revision=source_revision,
+            source_projection_cid=projection_cid,
+            entries=tuple(sorted(entries, key=lambda item: item.task_cid)),
+            policy_id=policy_id,
+        )
+    except TaskSourceIntegrityError as exc:
+        raise OperatorError(
+            "original execution-route policy does not reconstruct exactly"
+        ) from exc
+
+
 def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
-    """Seal one exact all-task route before the owner takes the DuckDB lease."""
+    """Seal or resume one exact route before the owner takes the DuckDB lease."""
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
-    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
-        GROK_CODEX_EXECUTION_MODE,
-        TaskExecutionRoutePolicy,
-    )
-
     bootstrap = _json_object(paths["bootstrap_receipt"])
     with DatabaseTaskSource(
         paths["database"],
@@ -1308,12 +1485,10 @@ def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
                 break
     if len(tasks) != int(snapshot.task_count):
         raise OperatorError("execution-route task population is incomplete")
-    return TaskExecutionRoutePolicy.seal(
+    return _resume_execution_route_policy(
+        bootstrap=bootstrap,
         snapshot=snapshot,
         tasks=tasks,
-        execution_modes={
-            task.task_alias: GROK_CODEX_EXECUTION_MODE for task in tasks
-        },
     )
 
 
