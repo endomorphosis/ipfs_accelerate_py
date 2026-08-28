@@ -1354,7 +1354,9 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        return open_duckdb_connection(self.config.database_path)
+        return open_duckdb_connection(
+            self.config.database_path, prefer_quack=False
+        )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
