@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/control/schemas/state_transition.schema.json",
+  "title": "ASEH canonical descriptive state transition table",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "authority", "states", "initial_state", "terminal_states", "events", "legacy_status_map", "transitions"],
+  "properties": {
+    "schema": {"const": "aseh/state-transition@1"},
+    "version": {"const": 1},
+    "table_identity": {"type": "string", "pattern": "^bafy[a-z2-7]+$"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mutation_authority", "transition_contract_only", "direct_task_table_writes_permitted"],
+      "properties": {
+        "mutation_authority": {"const": "IntentRepository"},
+        "transition_contract_only": {"const": true},
+        "direct_task_table_writes_permitted": {"const": false}
+      }
+    },
+    "states": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["discovered", "claimed", "dispatched", "provider_starting", "provider_running", "provider_completed", "provider_outcome_unknown", "validating", "validation_failed", "validation_succeeded", "rescue_pending", "retry_pending", "merge_pending", "merging", "reconciliation_pending", "terminal_succeeded", "terminal_failed", "quarantined", "compensated"]}},
+    "initial_state": {"const": "discovered"},
+    "terminal_states": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["terminal_succeeded", "terminal_failed", "quarantined", "compensated"]}},
+    "events": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["claim", "dispatch", "provider_start", "provider_completion", "provider_timeout", "provider_connection_loss", "validation_start", "validation_result", "rescue", "retry", "merge", "merge_conflict", "reconciliation", "terminalization", "owner_loss", "owner_restart", "lease_expiry", "fence_takeover", "confirmation_grant", "confirmation_expiry", "policy_change", "state_recovery"]}},
+    "legacy_status_map": {"type": "object", "additionalProperties": {"type": "string"}},
+    "transitions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/transition"}}
+  },
+  "$defs": {
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requires_cas", "requires_authoritative_owner", "requires_current_lease", "requires_current_fence", "requires_idempotency_key", "requires_event_receipt", "policy_snapshot_matches_invocation", "requires_current_validation", "requires_unknown_outcome_reconciliation", "preserves_observed_external_effect", "required_receipts", "required_observations"],
+      "properties": {
+        "requires_cas": {"const": true},
+        "requires_authoritative_owner": {"const": true},
+        "requires_current_lease": {"const": true},
+        "requires_current_fence": {"const": true},
+        "requires_idempotency_key": {"const": true},
+        "requires_event_receipt": {"const": true},
+        "policy_snapshot_matches_invocation": {"const": true},
+        "requires_current_validation": {"type": "boolean"},
+        "requires_unknown_outcome_reconciliation": {"type": "boolean"},
+        "preserves_observed_external_effect": {"type": "boolean"},
+        "required_receipts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+        "required_observations": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "source_state", "target_state", "outcome", "guards"],
+      "properties": {
+        "event": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "source_state": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "target_state": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "outcome": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "guards": {"$ref": "#/$defs/guard"}
+      }
+    }
+  }
+}

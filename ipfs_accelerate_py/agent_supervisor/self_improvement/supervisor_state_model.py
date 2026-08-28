@@ -40,6 +40,8 @@ from ..proof.prover_matrix_registry import CommandRequest, CommandResult
 
 SUPERVISOR_STATE_MODEL_VERSION: Final = 1
 SUPERVISOR_TRANSITION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/transition-schema@1"
+STATE_TRANSITION_TABLE_SCHEMA: Final = "aseh/state-transition@1"
+STATE_TRANSITION_TABLE_VERSION: Final = 1
 SUPERVISOR_TLA_MODEL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/tla-state-model@1"
 MODEL_CHECK_BOUNDS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/model-check-bounds@1"
 MODEL_CHECK_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/model-check-receipt@1"
@@ -62,6 +64,94 @@ LIVENESS_PROPERTIES: Final = ("BoundedProgress", "TerminalOutcomes")
 
 _NO_AGENT = "__NO_AGENT__"
 _RESERVED_IDENTIFIERS = {_NO_AGENT}
+_STATE_IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
+
+# This is a descriptive contract for the control-plane migration.  It does
+# not apply mutations: IntentRepository remains the only mutation authority.
+CANONICAL_SUPERVISOR_STATES: Final = (
+    "discovered",
+    "claimed",
+    "dispatched",
+    "provider_starting",
+    "provider_running",
+    "provider_completed",
+    "provider_outcome_unknown",
+    "validating",
+    "validation_failed",
+    "validation_succeeded",
+    "rescue_pending",
+    "retry_pending",
+    "merge_pending",
+    "merging",
+    "reconciliation_pending",
+    "terminal_succeeded",
+    "terminal_failed",
+    "quarantined",
+    "compensated",
+)
+CANONICAL_SUPERVISOR_EVENTS: Final = (
+    "claim",
+    "dispatch",
+    "provider_start",
+    "provider_completion",
+    "provider_timeout",
+    "provider_connection_loss",
+    "validation_start",
+    "validation_result",
+    "rescue",
+    "retry",
+    "merge",
+    "merge_conflict",
+    "reconciliation",
+    "terminalization",
+    "owner_loss",
+    "owner_restart",
+    "lease_expiry",
+    "fence_takeover",
+    "confirmation_grant",
+    "confirmation_expiry",
+    "policy_change",
+    "state_recovery",
+)
+CANONICAL_TERMINAL_STATES: Final = (
+    "terminal_succeeded",
+    "terminal_failed",
+    "quarantined",
+    "compensated",
+)
+LEGACY_STATUS_STATE_MAP: Final = {
+    "accepted": "claimed",
+    "admitted": "discovered",
+    "blocked": "rescue_pending",
+    "cancelled": "terminal_failed",
+    "claimed": "claimed",
+    "complete": "terminal_succeeded",
+    "completed": "terminal_succeeded",
+    "done": "terminal_succeeded",
+    "evidence_ready": "merge_pending",
+    "failed": "terminal_failed",
+    "in_progress": "provider_running",
+    "pending": "discovered",
+    "proposed": "discovered",
+    "quarantined": "quarantined",
+    "queued": "discovered",
+    "ready": "discovered",
+    "rejected": "terminal_failed",
+    "retrying": "retry_pending",
+    "running": "provider_running",
+    "settling": "merging",
+    "skipped": "terminal_succeeded",
+    "todo": "discovered",
+}
+_REQUIRED_TRANSITION_GUARDS: Final = (
+    "requires_cas",
+    "requires_authoritative_owner",
+    "requires_current_lease",
+    "requires_current_fence",
+    "requires_idempotency_key",
+    "requires_event_receipt",
+    "policy_snapshot_matches_invocation",
+)
 _TLC_SUCCESS_MARKERS = (
     "model checking completed. no error has been found",
     "model checking completed",
@@ -167,6 +257,382 @@ def _enum_value(value: Any, enum_type: type[Enum], field_name: str) -> Any:
         return enum_type(str(raw))
     except ValueError as exc:
         raise ModelValidationError(f"unsupported {field_name}: {raw!r}") from exc
+
+
+def _state_token(value: Any, field_name: str) -> str:
+    token = str(value).strip()
+    if not _STATE_IDENTIFIER.fullmatch(token):
+        raise ModelValidationError(f"{field_name} must be a lower-case state-machine identifier")
+    return token
+
+
+@dataclass(frozen=True)
+class StateTransitionGuard:
+    """Reviewed guard vocabulary for one descriptive control-plane edge.
+
+    The fields intentionally describe prerequisites instead of executing them.
+    This table can therefore be consumed by the later transition service without
+    becoming another task-state writer during the staged migration.
+    """
+
+    requires_cas: bool
+    requires_authoritative_owner: bool
+    requires_current_lease: bool
+    requires_current_fence: bool
+    requires_idempotency_key: bool
+    requires_event_receipt: bool
+    policy_snapshot_matches_invocation: bool
+    requires_current_validation: bool = False
+    requires_unknown_outcome_reconciliation: bool = False
+    preserves_observed_external_effect: bool = False
+    required_receipts: tuple[str, ...] = ()
+    required_observations: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in (
+            "requires_cas",
+            "requires_authoritative_owner",
+            "requires_current_lease",
+            "requires_current_fence",
+            "requires_idempotency_key",
+            "requires_event_receipt",
+            "policy_snapshot_matches_invocation",
+            "requires_current_validation",
+            "requires_unknown_outcome_reconciliation",
+            "preserves_observed_external_effect",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ModelValidationError(f"transition guard {name} must be boolean")
+        for name in _REQUIRED_TRANSITION_GUARDS:
+            if not getattr(self, name):
+                raise ModelValidationError(f"transition guard {name} must be true")
+        object.__setattr__(
+            self,
+            "required_receipts",
+            _strings(self.required_receipts, "transition guard required_receipts"),
+        )
+        object.__setattr__(
+            self,
+            "required_observations",
+            _strings(self.required_observations, "transition guard required_observations"),
+        )
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StateTransitionGuard":
+        if not isinstance(value, Mapping):
+            raise ModelValidationError("transition guards must be an object")
+        names = {
+            "requires_cas",
+            "requires_authoritative_owner",
+            "requires_current_lease",
+            "requires_current_fence",
+            "requires_idempotency_key",
+            "requires_event_receipt",
+            "policy_snapshot_matches_invocation",
+            "requires_current_validation",
+            "requires_unknown_outcome_reconciliation",
+            "preserves_observed_external_effect",
+            "required_receipts",
+            "required_observations",
+        }
+        unknown = set(value) - names
+        missing = set(_REQUIRED_TRANSITION_GUARDS) - set(value)
+        if unknown or missing:
+            raise ModelValidationError(
+                "transition guards must have the closed vocabulary "
+                f"(unknown={sorted(unknown)!r}, missing={sorted(missing)!r})"
+            )
+        return cls(
+            requires_cas=value["requires_cas"],
+            requires_authoritative_owner=value["requires_authoritative_owner"],
+            requires_current_lease=value["requires_current_lease"],
+            requires_current_fence=value["requires_current_fence"],
+            requires_idempotency_key=value["requires_idempotency_key"],
+            requires_event_receipt=value["requires_event_receipt"],
+            policy_snapshot_matches_invocation=value[
+                "policy_snapshot_matches_invocation"
+            ],
+            requires_current_validation=value.get("requires_current_validation", False),
+            requires_unknown_outcome_reconciliation=value.get(
+                "requires_unknown_outcome_reconciliation", False
+            ),
+            preserves_observed_external_effect=value.get(
+                "preserves_observed_external_effect", False
+            ),
+            required_receipts=tuple(value.get("required_receipts") or ()),
+            required_observations=tuple(value.get("required_observations") or ()),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requires_cas": self.requires_cas,
+            "requires_authoritative_owner": self.requires_authoritative_owner,
+            "requires_current_lease": self.requires_current_lease,
+            "requires_current_fence": self.requires_current_fence,
+            "requires_idempotency_key": self.requires_idempotency_key,
+            "requires_event_receipt": self.requires_event_receipt,
+            "policy_snapshot_matches_invocation": self.policy_snapshot_matches_invocation,
+            "requires_current_validation": self.requires_current_validation,
+            "requires_unknown_outcome_reconciliation": (
+                self.requires_unknown_outcome_reconciliation
+            ),
+            "preserves_observed_external_effect": self.preserves_observed_external_effect,
+            "required_receipts": list(self.required_receipts),
+            "required_observations": list(self.required_observations),
+        }
+
+
+@dataclass(frozen=True)
+class StateTransition:
+    """A deterministic edge keyed by source state, event, and observed outcome."""
+
+    event: str
+    source_state: str
+    target_state: str
+    outcome: str
+    guards: StateTransitionGuard
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "event", _state_token(self.event, "transition event"))
+        object.__setattr__(
+            self, "source_state", _state_token(self.source_state, "transition source_state")
+        )
+        object.__setattr__(
+            self, "target_state", _state_token(self.target_state, "transition target_state")
+        )
+        object.__setattr__(self, "outcome", _state_token(self.outcome, "transition outcome"))
+        if not isinstance(self.guards, StateTransitionGuard):
+            object.__setattr__(self, "guards", StateTransitionGuard.from_dict(self.guards))
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StateTransition":
+        if not isinstance(value, Mapping):
+            raise ModelValidationError("state transition must be an object")
+        expected = {"event", "source_state", "target_state", "outcome", "guards"}
+        if set(value) != expected:
+            raise ModelValidationError("state transition must use the closed transition shape")
+        return cls(
+            event=value["event"],
+            source_state=value["source_state"],
+            target_state=value["target_state"],
+            outcome=value["outcome"],
+            guards=StateTransitionGuard.from_dict(value["guards"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event": self.event,
+            "source_state": self.source_state,
+            "target_state": self.target_state,
+            "outcome": self.outcome,
+            "guards": self.guards.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class StateTransitionTable:
+    """Canonical, fail-closed descriptive transition table for ASEH control state."""
+
+    states: tuple[str, ...]
+    initial_state: str
+    terminal_states: tuple[str, ...]
+    events: tuple[str, ...]
+    authority: Mapping[str, Any]
+    legacy_status_map: Mapping[str, str]
+    transitions: tuple[StateTransition, ...]
+    schema: str = STATE_TRANSITION_TABLE_SCHEMA
+    version: int = STATE_TRANSITION_TABLE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema != STATE_TRANSITION_TABLE_SCHEMA or self.version != STATE_TRANSITION_TABLE_VERSION:
+            raise ModelValidationError("unsupported state transition table schema or version")
+        states = _strings(self.states, "states", required=True)
+        events = _strings(self.events, "events", required=True)
+        terminal = _strings(self.terminal_states, "terminal_states", required=True)
+        initial = _state_token(self.initial_state, "initial_state")
+        if states != tuple(sorted(CANONICAL_SUPERVISOR_STATES)) or events != tuple(
+            sorted(CANONICAL_SUPERVISOR_EVENTS)
+        ):
+            raise ModelValidationError("state transition table must cover the canonical states and events")
+        if initial != "discovered" or terminal != tuple(sorted(CANONICAL_TERMINAL_STATES)):
+            raise ModelValidationError("state transition table has an invalid initial or terminal state")
+        authority = _strict_mapping(self.authority, "transition table authority")
+        expected_authority = {
+            "mutation_authority": "IntentRepository",
+            "transition_contract_only": True,
+            "direct_task_table_writes_permitted": False,
+        }
+        if authority != expected_authority:
+            raise ModelValidationError("transition table cannot create or delegate mutation authority")
+        if not isinstance(self.legacy_status_map, Mapping):
+            raise ModelValidationError("legacy_status_map must be an object")
+        legacy = {
+            _state_token(key, "legacy status"): _state_token(value, "legacy status target")
+            for key, value in self.legacy_status_map.items()
+        }
+        if legacy != LEGACY_STATUS_STATE_MAP:
+            raise ModelValidationError("legacy_status_map must explicitly cover the current legacy statuses")
+        transitions = tuple(
+            item if isinstance(item, StateTransition) else StateTransition.from_dict(item)
+            for item in self.transitions
+        )
+        transitions = tuple(
+            sorted(
+                transitions,
+                key=lambda item: (item.source_state, item.event, item.outcome, item.target_state),
+            )
+        )
+        keys = [(item.source_state, item.event, item.outcome) for item in transitions]
+        if len(keys) != len(set(keys)):
+            raise ModelValidationError("state transition table is not deterministic")
+        for item in transitions:
+            if item.source_state not in states or item.target_state not in states:
+                raise ModelValidationError("state transition references an unknown state")
+            if item.event not in events:
+                raise ModelValidationError("state transition references an unknown event")
+            if item.source_state in terminal:
+                raise ModelValidationError("state transition leaves a terminal state")
+            if item.target_state == "provider_outcome_unknown":
+                if not (
+                    item.guards.requires_unknown_outcome_reconciliation
+                    and item.guards.preserves_observed_external_effect
+                ):
+                    raise ModelValidationError(
+                        "unknown provider outcome must require reconciliation and preserve effects"
+                    )
+            if item.source_state == "validation_failed" and item.target_state in {
+                "merge_pending",
+                "merging",
+                "terminal_succeeded",
+            }:
+                raise ModelValidationError("failed validation cannot reach success or merge")
+            if item.target_state in {"merge_pending", "merging", "terminal_succeeded"} and not (
+                item.guards.requires_current_validation
+            ):
+                raise ModelValidationError("merge and terminal success require current validation")
+            if item.target_state in terminal and "terminal_receipt" not in item.guards.required_receipts:
+                raise ModelValidationError("terminalization requires a terminal receipt")
+        if set(item.event for item in transitions) != set(events):
+            raise ModelValidationError("state transition table must cover every canonical event")
+        covered_states = {item.source_state for item in transitions} | {
+            item.target_state for item in transitions
+        }
+        if covered_states != set(states):
+            raise ModelValidationError("state transition table must cover every canonical state")
+        if not any(
+            item.event == "reconciliation" and item.source_state == "provider_outcome_unknown"
+            for item in transitions
+        ):
+            raise ModelValidationError("unknown provider outcomes must enter reconciliation")
+        object.__setattr__(self, "states", states)
+        object.__setattr__(self, "events", events)
+        object.__setattr__(self, "terminal_states", terminal)
+        object.__setattr__(self, "initial_state", initial)
+        object.__setattr__(self, "authority", authority)
+        object.__setattr__(self, "legacy_status_map", dict(sorted(legacy.items())))
+        object.__setattr__(self, "transitions", transitions)
+
+    @property
+    def table_identity(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def allowed_targets(
+        self, source_state: str, event: str, *, outcome: str = "default"
+    ) -> tuple[str, ...]:
+        source = _state_token(source_state, "source_state")
+        event_name = _state_token(event, "event")
+        outcome_name = _state_token(outcome, "outcome")
+        return tuple(
+            item.target_state
+            for item in self.transitions
+            if (item.source_state, item.event, item.outcome)
+            == (source, event_name, outcome_name)
+        )
+
+    def permits(self, source_state: str, event: str, *, outcome: str = "default") -> bool:
+        return bool(self.allowed_targets(source_state, event, outcome=outcome))
+
+    def map_legacy_status(self, status: str) -> str:
+        key = _state_token(status, "legacy status")
+        try:
+            return self.legacy_status_map[key]
+        except KeyError as exc:
+            raise ModelValidationError(f"unmapped legacy status: {status!r}") from exc
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": self.schema,
+            "version": self.version,
+            "authority": dict(self.authority),
+            "states": list(self.states),
+            "initial_state": self.initial_state,
+            "terminal_states": list(self.terminal_states),
+            "events": list(self.events),
+            "legacy_status_map": dict(self.legacy_status_map),
+            "transitions": [item.to_dict() for item in self.transitions],
+        }
+        if include_identity:
+            payload["table_identity"] = self.table_identity
+        return payload
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "StateTransitionTable":
+        if not isinstance(value, Mapping):
+            raise ModelValidationError("state transition table must be an object")
+        expected = {
+            "schema",
+            "version",
+            "authority",
+            "states",
+            "initial_state",
+            "terminal_states",
+            "events",
+            "legacy_status_map",
+            "transitions",
+            "table_identity",
+        }
+        unknown = set(value) - expected
+        required = expected - {"table_identity"}
+        missing = required - set(value)
+        if unknown or missing:
+            raise ModelValidationError(
+                "state transition table must use the closed table shape "
+                f"(unknown={sorted(unknown)!r}, missing={sorted(missing)!r})"
+            )
+        result = cls(
+            schema=value["schema"],
+            version=value["version"],
+            authority=value["authority"],
+            states=tuple(value["states"]),
+            initial_state=value["initial_state"],
+            terminal_states=tuple(value["terminal_states"]),
+            events=tuple(value["events"]),
+            legacy_status_map=value["legacy_status_map"],
+            transitions=tuple(value["transitions"]),
+        )
+        claimed = value.get("table_identity")
+        if claimed and claimed != result.table_identity:
+            raise ModelValidationError("state transition table identity does not match")
+        return result
+
+
+def canonical_state_transition_table_path() -> Path:
+    """Return the checked-in descriptive contract; loading it has no side effects."""
+
+    return Path(__file__).resolve().parents[1] / "control" / "schemas" / "state_transition_table.json"
+
+
+def load_canonical_state_transition_table(
+    path: Path | str | None = None,
+) -> StateTransitionTable:
+    """Load and fail closed on a malformed checked-in transition contract."""
+
+    table_path = canonical_state_transition_table_path() if path is None else Path(path)
+    try:
+        payload = json.loads(table_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ModelValidationError(f"cannot load state transition table: {table_path}") from exc
+    return StateTransitionTable.from_dict(payload)
 
 
 @dataclass(frozen=True)
