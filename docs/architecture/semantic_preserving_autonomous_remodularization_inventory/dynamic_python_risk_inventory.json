@@ -1,0 +1,232 @@
+{
+  "baseline_status": "planned_detection_not_safe_by_default",
+  "risks": [
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "getattr/setattr/delattr",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "globals/locals",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "eval/exec/compile",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "dynamic import/importlib",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "metaclasses/descriptors",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "decorator/class-decorator side effects",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "monkeypatch/pytest monkeypatch",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "plugins/entry points/registries",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "singledispatch/multimethod",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "dependency injection/callbacks/higher-order",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "closures/nonlocals",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "contextvars/thread/task locals",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "signals/atexit",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "module __getattr__/__dir__",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "serialization/pickle",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "inspect/getsource/signature",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "__module__/__qualname__",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "traceback/log path expectations",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "relative/circular imports",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "native extensions/FFI",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "generated code",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "ORM/model registration",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "web route registration",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "CLI command registration",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    },
+    {
+      "authority": "ipfs_datasets_py semantic facts",
+      "autonomy_tier": "Tier D; Tier E when opaque",
+      "coverage": "SPAR-008 plus task-specific runtime validation",
+      "kind": "environment-dependent imports",
+      "migration_policy": "preserve or explicitly migrate",
+      "required_validation": "typed static finding and bounded observation where policy permits",
+      "status": "unknown_until_current_module_analysis"
+    }
+  ],
+  "rule": "unknown widens the dynamic frontier and lowers autonomy",
+  "schema": "spar/dynamic-python-risk-inventory@1"
+}

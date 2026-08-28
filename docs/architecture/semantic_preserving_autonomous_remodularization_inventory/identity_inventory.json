@@ -1,0 +1,41 @@
+{
+  "capsule_types": [
+    "FunctionSemanticCapsule@1",
+    "MethodSemanticCapsule@1",
+    "ClassSemanticCapsule@1",
+    "TopLevelBlockCapsule@1",
+    "ModuleSemanticCapsule@1",
+    "PackageSemanticCapsule@1",
+    "CallsiteSemanticCapsule@1",
+    "StateOwnerCapsule@1",
+    "RegistrationCapsule@1",
+    "ResourceLifecycleCapsule@1"
+  ],
+  "identity_fields": [
+    "stable_symbol_id",
+    "source_cid",
+    "cst_cid",
+    "ast_cid",
+    "implementation_ir_cid",
+    "symbol_binding_cid",
+    "interface_contract_cid",
+    "effect_summary_cid",
+    "state_footprint_cid",
+    "dependency_slice_cid",
+    "behavior_summary_cid",
+    "initialization_dependency_cid",
+    "public_compatibility_cid",
+    "validation_profile_cid",
+    "provenance_cid",
+    "semantic_state_root_cid",
+    "function_capsule_cid"
+  ],
+  "rules": [
+    "CID identifies exact canonical bytes under declared codec/profile, not universal meaning",
+    "move may preserve implementation/contract identity while changing binding/compatibility identity",
+    "timestamps, process IDs, local paths, and model output are excluded from semantic identity",
+    "accepted @1 payloads are not rewritten in place"
+  ],
+  "schema": "spar/identity-inventory@1",
+  "status": "contract_planned_current_identity_reuse_required"
+}

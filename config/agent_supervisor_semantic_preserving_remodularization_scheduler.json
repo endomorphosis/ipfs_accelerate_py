@@ -1,0 +1,596 @@
+{
+  "accepted_plan_revision_alias": "SPAR-PLAN-R1",
+  "authoritative_board_projection_repair": {
+    "allowed_drift": "supervisor_generated_guardrail_suffix_only",
+    "automatic_repair_before_launch": true,
+    "bootstrap_receipt_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/evidence/bootstrap/bootstrap-materialization.json",
+    "canonical_authority": "DuckDB/DatabaseTaskSource@1 over Quack",
+    "canonical_block_mutation_permitted": false,
+    "markdown_task_mutation_permitted": false,
+    "mode": "sealed_bootstrap_projection",
+    "repair_receipt_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/evidence/control-plane/board-projection-repair.json",
+    "suppressed_finding_disposition": "typed_runtime_telemetry_only"
+  },
+  "authority_policy": {
+    "automatic_quack_to_file_fallback": false,
+    "candidate_self_promotion": false,
+    "cross_repository_writes_require_explicit_owner_and_gitlink_receipt": true,
+    "deterministic_current_tree_admission_required": true,
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "duckdb_transactional_authority": true,
+    "ducklake_projection_authority": false,
+    "ducklake_projection_is_acceptance_prerequisite": false,
+    "ducklake_projection_is_scheduling_prerequisite": false,
+    "exact_receipt_identity_required": true,
+    "markdown_is_completion_authority": false,
+    "one_authoritative_store_per_mutable_semantic_fact": true,
+    "procedure_self_authorization": false,
+    "provider_or_model_claim_is_completion_authority": false,
+    "quack_exclusive_state_owner_transport": true,
+    "task_board_status_is_completion_evidence": false,
+    "unknown_ownership_disposition": "typed_blocker",
+    "vector_similarity_is_authority": false,
+    "worker_self_approval": false
+  },
+  "autonomy_ceiling": {
+    "candidate_may_raise_ceiling": false,
+    "public_api_state_provider_receipt_or_cross_package_migration_mode": "proposal_only",
+    "tier_a": "deterministic validation",
+    "tier_b": "full declared validation",
+    "tier_c": "guarded stronger trace/proof gates",
+    "tier_d": "approval unless qualified procedure",
+    "tier_e": "abstain"
+  },
+  "board_namespace": "semantic-preserving-autonomous-remodularization-v1",
+  "check_interval_seconds": 10,
+  "codebase_refill_enabled": true,
+  "completion_policy": {
+    "active_mutating_claims_empty_required": true,
+    "all_task_dependencies_terminal_required": true,
+    "blocking_obligations_empty_required": true,
+    "current_tree_required": true,
+    "ducklake_outage_cannot_block_core_completion": true,
+    "final_report_required": true,
+    "goal_completion_contracts_required": true,
+    "merge_queue_settled_required": true,
+    "non_success_terminals_never_report_success": true,
+    "required_mode_roots_and_receipts_required": true,
+    "required_receipts_and_seals_verify": true,
+    "safety_floors_noncompensable": true,
+    "self_hosted_capstone_required": true,
+    "terminal_task_id": "SPAR-050"
+  },
+  "daemon_interval_seconds": 20,
+  "database_program": {
+    "authority_mode": "quack",
+    "claim_policy": {
+      "idle_lane_work_stealing": "virgin-transfer",
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-claim-policy@1",
+      "strict_task_sharding": true,
+      "task_prefix": "SPAR-",
+      "task_shard_count": 3
+    },
+    "endpoint_secret_handle": "handle:spar-v1",
+    "event_store_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/events",
+    "explicit_legacy": false,
+    "export_profile": "spar-v1",
+    "failover_policy": "fail_closed",
+    "quack_endpoint": "quack:127.0.0.1:46731",
+    "runtime_registry_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/registry",
+    "schema_revision": "1",
+    "store_generation": "1",
+    "store_id": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/control.duckdb",
+    "task_source_kind": "duckdb",
+    "worktree_root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
+  },
+  "dependency_guardrail_enabled": true,
+  "dependency_seal_cid": "sha256:37b704b5330232dcd234ed26850733237461239d4e991f1d0c7dc3f9202771f0",
+  "dependency_seal_path": "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
+  "dependency_validator_path": "scripts/validate_semantic_preserving_remodularization_dependencies.py",
+  "ducklake_projection_program": {
+    "acceptance_prerequisite": false,
+    "authority": false,
+    "catalog_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/ducklake/catalog.duckdb",
+    "completion_prerequisite": false,
+    "data_path": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/ducklake/data",
+    "extension_install_policy": "no_implicit_install",
+    "mode": "enabled_non_authoritative",
+    "network_access": "deny",
+    "outage_policy": "typed_unavailable_continue_core",
+    "scheduling_prerequisite": false,
+    "source": "DuckDB event/outbox snapshots"
+  },
+  "exit_when_all_tracks_terminal": true,
+  "goal_hierarchy": {
+    "SPAR-G000": [
+      "SPAR-G010",
+      "SPAR-G020",
+      "SPAR-G030",
+      "SPAR-G040",
+      "SPAR-G050",
+      "SPAR-G060",
+      "SPAR-G070",
+      "SPAR-G080"
+    ],
+    "SPAR-G010": [
+      "SPAR-G011",
+      "SPAR-G012",
+      "SPAR-G013"
+    ],
+    "SPAR-G020": [
+      "SPAR-G021",
+      "SPAR-G022",
+      "SPAR-G023"
+    ],
+    "SPAR-G030": [
+      "SPAR-G031",
+      "SPAR-G032",
+      "SPAR-G033"
+    ],
+    "SPAR-G040": [
+      "SPAR-G041",
+      "SPAR-G042",
+      "SPAR-G043"
+    ],
+    "SPAR-G050": [
+      "SPAR-G051",
+      "SPAR-G052",
+      "SPAR-G053"
+    ],
+    "SPAR-G060": [
+      "SPAR-G061",
+      "SPAR-G062",
+      "SPAR-G063"
+    ],
+    "SPAR-G070": [
+      "SPAR-G071",
+      "SPAR-G072",
+      "SPAR-G073"
+    ],
+    "SPAR-G080": [
+      "SPAR-G081",
+      "SPAR-G082"
+    ]
+  },
+  "goal_prefix": "SPAR-G",
+  "idle_lane_work_stealing": "virgin-transfer",
+  "implementation_log_stall_seconds": 1200,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "initial_projection": {
+    "blocked_task_ids": [],
+    "completed_task_ids": [
+      "SPAR-000"
+    ],
+    "goal_count": 32,
+    "ready_task_ids": [
+      "SPAR-001"
+    ],
+    "root_goal_id": "SPAR-G000",
+    "task_count": 51,
+    "task_dependency_count": 109,
+    "task_dependency_root_cid": "sha256:62da5c48a818a1769eeaeb3dbf4ab18ca4b57a0a8a56beda3ffc32b1329231e6",
+    "terminal_task_id": "SPAR-050"
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "initial_focus": "semantic-and-identity",
+      "initial_task_ids": [
+        "SPAR-001"
+      ],
+      "name": "spar-lane-0",
+      "strict_shard_remainder": 0
+    },
+    {
+      "index": 1,
+      "initial_focus": "storage-transformation-and-validation",
+      "initial_task_ids": [],
+      "name": "spar-lane-1",
+      "strict_shard_remainder": 1
+    },
+    {
+      "index": 2,
+      "initial_focus": "proof-rollout-and-qualification",
+      "initial_task_ids": [],
+      "name": "spar-lane-2",
+      "strict_shard_remainder": 2
+    }
+  ],
+  "materializer_path": "scripts/materialize_semantic_preserving_remodularization_program.py",
+  "max_lanes": 3,
+  "max_restarts": 4,
+  "max_task_attempts": 4,
+  "merge_retry_budget": 4,
+  "merge_target_branch": "codex/semantic-preserving-autonomous-remodularization-v1",
+  "objective_goal_refinement_enabled": true,
+  "objective_refill_enabled": true,
+  "objectives_path": "docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md",
+  "operational_control_plane": {
+    "automatic_file_fallback_permitted": false,
+    "canonical_gateway": "StateRepository/QuackStateRepository with StateCommand transactions",
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "duckdb_role": "authoritative transactional goals, tasks, lifecycle, schema, CAS, fencing, receipts and projection cursor",
+    "ducklake_role": "non-authoritative history and benchmark analytics",
+    "markdown_is_authority": false,
+    "name": "DuckDB + Quack + DuckLake",
+    "outage_policy": "fail_closed",
+    "quack_role": "mandatory multi-reader/multi-writer transport and exclusive fenced state owner"
+  },
+  "plan_path": "docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md",
+  "poll_interval_seconds": 5,
+  "program_identifier": "semantic-preserving-autonomous-remodularization-v1",
+  "protected_paths": [
+    ".gitignore",
+    "benchmarks/agent_supervisor/semantic_refactoring/preregistration.json",
+    "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json",
+    "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
+    "docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md",
+    "docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md",
+    "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/authority_matrix.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/benchmark_preregistration.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/dynamic_python_risk_inventory.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/identity_inventory.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/interface_inventory.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/overlap_gap_matrix.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json",
+    "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json",
+    "scripts/materialize_semantic_preserving_remodularization_program.py",
+    "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py",
+    "scripts/validate_semantic_preserving_remodularization_board.py",
+    "scripts/validate_semantic_preserving_remodularization_dependencies.py",
+    "test/api/semantic_refactoring/test_bootstrap_controls.py"
+  ],
+  "provider": {
+    "capability_probe_required_at_launch": true,
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_provider_id": "codex",
+    "fallback_reasoning_effort": "high",
+    "fallback_trigger": "primary_quota_exhausted",
+    "max_concurrency": 3,
+    "primary_model_id": "grok-4.6",
+    "primary_provider_id": "grok_cli",
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "reconciliation_guardrail_enabled": true,
+  "refill_policy": {
+    "derived_refill": {
+      "cooldown_seconds": 300,
+      "max_open_tasks": 64,
+      "max_tasks_per_epoch": 3,
+      "min_open_tasks": 2
+    },
+    "generic_fix_prompts_permitted": false,
+    "identical_retry_without_new_evidence_permitted": false,
+    "source": "accepted current semantic-state findings only"
+  },
+  "retry_budget_guardrail_enabled": true,
+  "runtime_paths": {
+    "evidence": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/evidence",
+    "logs": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/logs",
+    "merge_queue": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/merge-queue",
+    "quack_owner": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/quack-owner",
+    "root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1",
+    "state": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/state",
+    "worktrees": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.semantic-preserving-autonomous-remodularization.scheduler_config@1",
+  "source_binding": {
+    "accelerator_planning_revision": "e3c9831d4465d0e9f1aba336994a385541611895",
+    "accelerator_planning_tree": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051",
+    "accelerator_required_ancestor": "e3c9831d4465d0e9f1aba336994a385541611895",
+    "accelerator_required_branch": "codex/semantic-preserving-autonomous-remodularization-v1",
+    "bootstrap_task_source": "duckdb",
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "datasets_planning_revision": "41bbe7ede20294944cccb77f22072351a29e6902",
+    "datasets_submodule_path": "ipfs_datasets_py",
+    "kit_planning_revision": "80bbdc3443e560b9bf40339c864a32689ccad8ef",
+    "kit_submodule_path": "ipfs_kit_py",
+    "mcp_plus_plus_planning_revision": "31096be86103f29faef80a01e03d09b1ad7345c6",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "planning_revision_is_runtime_completion_evidence": false,
+    "record_recursive_repository_forest_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "require_clean_checkout_at_launch": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true
+  },
+  "stale_seconds": 1800,
+  "strict_task_sharding": true,
+  "task_groups": {
+    "SPAR-G011": [
+      "SPAR-000",
+      "SPAR-001"
+    ],
+    "SPAR-G012": [
+      "SPAR-003",
+      "SPAR-005"
+    ],
+    "SPAR-G013": [
+      "SPAR-004"
+    ],
+    "SPAR-G021": [
+      "SPAR-002",
+      "SPAR-007"
+    ],
+    "SPAR-G022": [
+      "SPAR-008",
+      "SPAR-009",
+      "SPAR-010",
+      "SPAR-011"
+    ],
+    "SPAR-G023": [
+      "SPAR-006"
+    ],
+    "SPAR-G031": [
+      "SPAR-012"
+    ],
+    "SPAR-G032": [
+      "SPAR-013",
+      "SPAR-014",
+      "SPAR-015"
+    ],
+    "SPAR-G033": [
+      "SPAR-016",
+      "SPAR-017",
+      "SPAR-018"
+    ],
+    "SPAR-G041": [
+      "SPAR-019",
+      "SPAR-020",
+      "SPAR-021"
+    ],
+    "SPAR-G042": [
+      "SPAR-022",
+      "SPAR-023",
+      "SPAR-024"
+    ],
+    "SPAR-G043": [
+      "SPAR-025"
+    ],
+    "SPAR-G051": [
+      "SPAR-026",
+      "SPAR-027"
+    ],
+    "SPAR-G052": [
+      "SPAR-028",
+      "SPAR-029"
+    ],
+    "SPAR-G053": [
+      "SPAR-030",
+      "SPAR-031",
+      "SPAR-032"
+    ],
+    "SPAR-G061": [
+      "SPAR-033"
+    ],
+    "SPAR-G062": [
+      "SPAR-034"
+    ],
+    "SPAR-G063": [
+      "SPAR-035"
+    ],
+    "SPAR-G071": [
+      "SPAR-036",
+      "SPAR-037",
+      "SPAR-038",
+      "SPAR-044"
+    ],
+    "SPAR-G072": [
+      "SPAR-039"
+    ],
+    "SPAR-G073": [
+      "SPAR-040",
+      "SPAR-041",
+      "SPAR-042",
+      "SPAR-043"
+    ],
+    "SPAR-G081": [
+      "SPAR-045",
+      "SPAR-046",
+      "SPAR-047",
+      "SPAR-048"
+    ],
+    "SPAR-G082": [
+      "SPAR-049",
+      "SPAR-050"
+    ]
+  },
+  "task_prefix": "SPAR-",
+  "taskboard_path": "docs/architecture/semantic_preserving_autonomous_remodularization.todo.md",
+  "validation_retry_budget": 4,
+  "validator_path": "scripts/validate_semantic_preserving_remodularization_board.py",
+  "watchdog_startup_grace_seconds": 300,
+  "waves": [
+    {
+      "id": "W0",
+      "task_ids": [
+        "SPAR-000"
+      ]
+    },
+    {
+      "id": "W1",
+      "task_ids": [
+        "SPAR-001"
+      ]
+    },
+    {
+      "id": "W2",
+      "task_ids": [
+        "SPAR-002",
+        "SPAR-003",
+        "SPAR-004",
+        "SPAR-005"
+      ]
+    },
+    {
+      "id": "W3",
+      "task_ids": [
+        "SPAR-006",
+        "SPAR-007",
+        "SPAR-008",
+        "SPAR-011"
+      ]
+    },
+    {
+      "id": "W4",
+      "task_ids": [
+        "SPAR-009",
+        "SPAR-010",
+        "SPAR-012"
+      ]
+    },
+    {
+      "id": "W5",
+      "task_ids": [
+        "SPAR-013"
+      ]
+    },
+    {
+      "id": "W6",
+      "task_ids": [
+        "SPAR-014",
+        "SPAR-015"
+      ]
+    },
+    {
+      "id": "W7",
+      "task_ids": [
+        "SPAR-016",
+        "SPAR-017",
+        "SPAR-018"
+      ]
+    },
+    {
+      "id": "W8",
+      "task_ids": [
+        "SPAR-019"
+      ]
+    },
+    {
+      "id": "W9",
+      "task_ids": [
+        "SPAR-020",
+        "SPAR-021",
+        "SPAR-022",
+        "SPAR-023",
+        "SPAR-024"
+      ]
+    },
+    {
+      "id": "W10",
+      "task_ids": [
+        "SPAR-025",
+        "SPAR-026"
+      ]
+    },
+    {
+      "id": "W11",
+      "task_ids": [
+        "SPAR-027",
+        "SPAR-028",
+        "SPAR-029",
+        "SPAR-030"
+      ]
+    },
+    {
+      "id": "W12",
+      "task_ids": [
+        "SPAR-031",
+        "SPAR-032",
+        "SPAR-033"
+      ]
+    },
+    {
+      "id": "W13",
+      "task_ids": [
+        "SPAR-034",
+        "SPAR-035"
+      ]
+    },
+    {
+      "id": "W14",
+      "task_ids": [
+        "SPAR-036",
+        "SPAR-037"
+      ]
+    },
+    {
+      "id": "W15",
+      "task_ids": [
+        "SPAR-038",
+        "SPAR-039"
+      ]
+    },
+    {
+      "id": "W16",
+      "task_ids": [
+        "SPAR-040"
+      ]
+    },
+    {
+      "id": "W17",
+      "task_ids": [
+        "SPAR-041"
+      ]
+    },
+    {
+      "id": "W18",
+      "task_ids": [
+        "SPAR-042"
+      ]
+    },
+    {
+      "id": "W19",
+      "task_ids": [
+        "SPAR-043"
+      ]
+    },
+    {
+      "id": "W20",
+      "task_ids": [
+        "SPAR-044",
+        "SPAR-045"
+      ]
+    },
+    {
+      "id": "W21",
+      "task_ids": [
+        "SPAR-046"
+      ]
+    },
+    {
+      "id": "W22",
+      "task_ids": [
+        "SPAR-047"
+      ]
+    },
+    {
+      "id": "W23",
+      "task_ids": [
+        "SPAR-048"
+      ]
+    },
+    {
+      "id": "W24",
+      "task_ids": [
+        "SPAR-049"
+      ]
+    },
+    {
+      "id": "W25",
+      "task_ids": [
+        "SPAR-050"
+      ]
+    }
+  ],
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py",
+    "ipfs_accelerate_py/mcplusplus"
+  ]
+}

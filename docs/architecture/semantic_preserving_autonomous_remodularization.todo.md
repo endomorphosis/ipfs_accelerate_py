@@ -1,0 +1,3252 @@
+# Semantic-Preserving Autonomous Remodularization task board
+
+Executable sealed bootstrap projection for `semantic-preserving-autonomous-remodularization-v1` using plan revision `SPAR-PLAN-R1`.
+DuckDB is authoritative for goals, tasks, dependencies, attempts, leases, fencing, CAS, evidence and completion. Quack is the exclusive loopback state-owner transport. DuckLake is optional non-authoritative history/analytics. Markdown cannot change runtime status.
+
+`SPAR-000` is operator-only. It is sealed and completed by the materializer after current-tree dependency/board validation; no implementation worker may claim or complete it. All ordinary tasks begin `todo`; dependencies project as waiting rather than blocked.
+
+## Parallel waves
+
+```text
+W0   SPAR-000
+W1   SPAR-001
+W2   SPAR-002 | SPAR-003 | SPAR-004 | SPAR-005
+W3   SPAR-006 | SPAR-007 | SPAR-008 | SPAR-011
+W4   SPAR-009 | SPAR-010 | SPAR-012
+W5   SPAR-013
+W6   SPAR-014 | SPAR-015
+W7   SPAR-016 | SPAR-017 | SPAR-018
+W8   SPAR-019
+W9   SPAR-020 | SPAR-021 | SPAR-022 | SPAR-023 | SPAR-024
+W10  SPAR-025 | SPAR-026
+W11  SPAR-027 | SPAR-028 | SPAR-029 | SPAR-030
+W12  SPAR-031 | SPAR-032 | SPAR-033
+W13  SPAR-034 | SPAR-035
+W14  SPAR-036 | SPAR-037
+W15  SPAR-038 | SPAR-039
+W16  SPAR-040
+W17  SPAR-041
+W18  SPAR-042
+W19  SPAR-043
+W20  SPAR-044 | SPAR-045
+W21  SPAR-046
+W22  SPAR-047
+W23  SPAR-048
+W24  SPAR-049
+W25  SPAR-050
+```
+
+Only tasks in the same wave with disjoint exact scopes may execute concurrently. Unknown overlap, shared exports/registries/gitlinks/facades/configuration, or overlapping SCCs serialize under one integration owner.
+
+## SPAR-000 Freeze authorities, architecture, board, seals, benchmark, and scheduler
+
+- Stable task ID: SPAR-000
+- Status: todo
+- Completion: operator
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: operator-bootstrap
+- Goal id: SPAR-G011
+- Parent goal ID: SPAR-G010
+- Subgoal ID: SPAR-G011
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Inventory exact repositories, predecessors, authorities, dirty state, capabilities, dynamic risks, and baselines; seal the reviewed plan, board, scheduler, validators, materializer, and benchmark before delegation.
+- Depends on:
+- Owned paths: docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md, docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md, docs/architecture/semantic_preserving_autonomous_remodularization.todo.md, docs/architecture/semantic_preserving_autonomous_remodularization_inventory, config/semantic_preserving_autonomous_remodularization_dependencies.seal.json, config/agent_supervisor_semantic_preserving_remodularization_scheduler.json, scripts/validate_semantic_preserving_remodularization_dependencies.py, scripts/validate_semantic_preserving_remodularization_board.py, scripts/materialize_semantic_preserving_remodularization_program.py, scripts/ops/agent_supervisor/semantic_preserving_remodularization.py
+- Predicted files: docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md, docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md, docs/architecture/semantic_preserving_autonomous_remodularization.todo.md, docs/architecture/semantic_preserving_autonomous_remodularization_inventory, config/semantic_preserving_autonomous_remodularization_dependencies.seal.json, config/agent_supervisor_semantic_preserving_remodularization_scheduler.json, scripts/validate_semantic_preserving_remodularization_dependencies.py, scripts/validate_semantic_preserving_remodularization_board.py, scripts/materialize_semantic_preserving_remodularization_program.py, scripts/ops/agent_supervisor/semantic_preserving_remodularization.py
+- Predicted symbols: SPAR operator control bundle and seal
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md, docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md, docs/architecture/semantic_preserving_autonomous_remodularization.todo.md, docs/architecture/semantic_preserving_autonomous_remodularization_inventory, config/semantic_preserving_autonomous_remodularization_dependencies.seal.json, config/agent_supervisor_semantic_preserving_remodularization_scheduler.json, scripts/validate_semantic_preserving_remodularization_dependencies.py, scripts/validate_semantic_preserving_remodularization_board.py, scripts/materialize_semantic_preserving_remodularization_program.py, scripts/ops/agent_supervisor/semantic_preserving_remodularization.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: operator_control
+- Public API impact: none
+- State impact: Immutable control inputs and operator completion evidence only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit all operator control paths; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=operator-bootstrap; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: operator
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: operator-bootstrap
+- Concurrency group: operator-bootstrap
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 scripts/validate_semantic_preserving_remodularization_dependencies.py --check-all && python3 scripts/validate_semantic_preserving_remodularization_board.py --check-all
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_PLAN.md, docs/architecture/semantic_preserving_autonomous_remodularization.objectives.md, docs/architecture/semantic_preserving_autonomous_remodularization.todo.md, docs/architecture/semantic_preserving_autonomous_remodularization_inventory, config/semantic_preserving_autonomous_remodularization_dependencies.seal.json, config/agent_supervisor_semantic_preserving_remodularization_scheduler.json, scripts/validate_semantic_preserving_remodularization_dependencies.py, scripts/validate_semantic_preserving_remodularization_board.py, scripts/materialize_semantic_preserving_remodularization_program.py, scripts/ops/agent_supervisor/semantic_preserving_remodularization.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-001 Audit current semantic-state, repair, graph, proof, VFS, storage, codemod, and supervisor capabilities
+
+- Stable task ID: SPAR-001
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: capability-audit
+- Goal id: SPAR-G011
+- Parent goal ID: SPAR-G010
+- Subgoal ID: SPAR-G011
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Produce a current-tree overlap/gap matrix locating exact owners and classifying every required capability by verified evidence status.
+- Depends on: SPAR-000
+- Owned paths: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/verified_capability_matrix.json, test/api/semantic_refactoring/test_capability_matrix.py
+- Predicted files: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/verified_capability_matrix.json, test/api/semantic_refactoring/test_capability_matrix.py
+- Predicted symbols: VerifiedCapabilityMatrix and current-tree probes
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/verified_capability_matrix.json, test/api/semantic_refactoring/test_capability_matrix.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=capability-audit; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: capability-audit
+- Concurrency group: capability-audit
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_capability_matrix.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/verified_capability_matrix.json, test/api/semantic_refactoring/test_capability_matrix.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-002 Define function, method, class, callsite, block, module, and package capsule contracts
+
+- Stable task ID: SPAR-002
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: capsule-contracts
+- Goal id: SPAR-G021
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G021
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Extend datasets semantic authority with closed deterministic versioned capsules, strict canonical encoding, immutable nested values, and provider-free exports.
+- Depends on: SPAR-001
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py
+- Predicted symbols: FunctionSemanticCapsule and related @1 capsule types
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=capsule-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: capsule-contracts
+- Concurrency group: capsule-contracts
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-003 Define implementation, binding, contract, effect, state, dependency, behavior, and validation identities
+
+- Stable task ID: SPAR-003
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: identity-contracts
+- Goal id: SPAR-G012
+- Parent goal ID: SPAR-G010
+- Subgoal ID: SPAR-G012
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Separate location-independent implementation identity from binding and compatibility identity, preserving existing @1 readers and excluding observational metadata.
+- Depends on: SPAR-001
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/identities.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_identities.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/identities.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_identities.py
+- Predicted symbols: SemanticArtifactIdentitySet@1 and golden move vectors
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/identities.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_identities.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=identity-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: identity-contracts
+- Concurrency group: identity-contracts
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_identities.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/identities.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_identities.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-004 Define top-level initialization, registration, resource, and public compatibility contracts
+
+- Stable task ID: SPAR-004
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: compatibility-contracts
+- Goal id: SPAR-G013
+- Parent goal ID: SPAR-G010
+- Subgoal ID: SPAR-G013
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Make top-level blocks, import effects, registries, decorators, resources, serialization, introspection, CLI/plugin, and patch-target obligations first-class and explicit when unsupported.
+- Depends on: SPAR-001
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_compatibility_contracts.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_compatibility_contracts.py
+- Predicted symbols: InitializationBlock and PublicCompatibilityObligation contracts
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_compatibility_contracts.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=compatibility-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: compatibility-contracts
+- Concurrency group: compatibility-contracts
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_compatibility_contracts.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_compatibility_contracts.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-005 Implement datasets multi-view function and module projection contracts
+
+- Stable task ID: SPAR-005
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: projection-contracts
+- Goal id: SPAR-G012
+- Parent goal ID: SPAR-G010
+- Subgoal ID: SPAR-G012
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Add exact model-pinned advisory projection records for all declared semantic views plus deterministic structural fingerprints when neural capability is unavailable.
+- Depends on: SPAR-001
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/projections.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_projections.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/projections.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_projections.py
+- Predicted symbols: SemanticProjection@1 and ProjectionUnavailable@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/projections.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_projections.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=projection-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: projection-contracts
+- Concurrency group: projection-contracts
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_projections.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/projections.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_projections.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-006 Implement kit verified projection storage, index manifests, and exact resolver
+
+- Stable task ID: SPAR-006
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: projection-storage
+- Goal id: SPAR-G023
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G023
+- Owning repository: ipfs_kit_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Reuse kit block/vector authorities to verify projection bytes, generations, manifests, corruption, staleness, rebuilds, and exact current-capsule resolution.
+- Depends on: SPAR-002, SPAR-003, SPAR-004, SPAR-005
+- Owned paths: ipfs_kit_py/ipfs_kit_py/semantic_refactoring/projection_store.py, ipfs_kit_py/tests/test_semantic_refactoring_projection_store.py
+- Predicted files: ipfs_kit_py/ipfs_kit_py/semantic_refactoring/projection_store.py, ipfs_kit_py/tests/test_semantic_refactoring_projection_store.py
+- Predicted symbols: VerifiedProjectionStore adapter and exact resolver
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_kit_py/ipfs_kit_py/semantic_refactoring/projection_store.py, ipfs_kit_py/tests/test_semantic_refactoring_projection_store.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_kit_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=projection-storage; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: projection-storage
+- Concurrency group: projection-storage
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_kit_py/tests/test_semantic_refactoring_projection_store.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_kit_py/ipfs_kit_py/semantic_refactoring/projection_store.py, ipfs_kit_py/tests/test_semantic_refactoring_projection_store.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-007 Build the typed static program and refactoring graph
+
+- Stable task ID: SPAR-007
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: program-graph
+- Goal id: SPAR-G021
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G021
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Extend the current program graph with typed semantic/refactoring nodes and edges bound to exact tree, analyzer, environment, and unresolved frontier.
+- Depends on: SPAR-002, SPAR-003, SPAR-004, SPAR-005
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/program_graph.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_program_graph.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/program_graph.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_program_graph.py
+- Predicted symbols: SemanticRefactoringGraphView@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/program_graph.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_program_graph.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=program-graph; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: program-graph
+- Concurrency group: program-graph
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_program_graph.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/program_graph.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_program_graph.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-008 Implement dynamic Python frontier and runtime evidence adapters
+
+- Stable task ID: SPAR-008
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: dynamic-frontier
+- Goal id: SPAR-G022
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G022
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Detect and classify reflection, dynamic imports/dispatch, monkeypatching, registration, framework dynamics, FFI, generated code, and bounded hermetic runtime evidence without hiding unknowns.
+- Depends on: SPAR-002, SPAR-003, SPAR-004, SPAR-005
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/dynamic_frontier.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_dynamic_frontier.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/dynamic_frontier.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_dynamic_frontier.py
+- Predicted symbols: DynamicPythonFrontier@1 and typed findings
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/dynamic_frontier.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_dynamic_frontier.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=dynamic-frontier; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: dynamic-frontier
+- Concurrency group: dynamic-frontier
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_dynamic_frontier.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/dynamic_frontier.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_dynamic_frontier.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-009 Infer state ownership, aliasing, lifecycle, lock, and transaction structure
+
+- Stable task ID: SPAR-009
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: state-ownership
+- Goal id: SPAR-G022
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G022
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Build exact/conservative read-write summaries, alias sets, owner candidates, lifecycle and synchronization relations, and reject duplicated mutable state.
+- Depends on: SPAR-007, SPAR-008
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/state_ownership.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_state_ownership.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/state_ownership.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_state_ownership.py
+- Predicted symbols: StateOwnershipGraph@1 and StateExtractionCandidate@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/state_ownership.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_state_ownership.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=state-ownership; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: state-ownership
+- Concurrency group: state-ownership
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_state_ownership.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/state_ownership.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_state_ownership.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-010 Build initialization-order and import-time effect graph
+
+- Stable task ID: SPAR-010
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: initialization
+- Goal id: SPAR-G022
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G022
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Partition top-level execution into content-addressed blocks, infer ordering/cycles/effects, synthesize explicit initialization candidates, and bind observation profiles.
+- Depends on: SPAR-007, SPAR-008
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/initialization.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_initialization.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/initialization.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_initialization.py
+- Predicted symbols: InitializationOrderGraph@1 and InitializationStateMachine@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/initialization.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_initialization.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=initialization; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: initialization
+- Concurrency group: initialization
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_initialization.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/initialization.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_initialization.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-011 Build public API and compatibility inventory
+
+- Stable task ID: SPAR-011
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: public-compatibility
+- Goal id: SPAR-G022
+- Parent goal ID: SPAR-G020
+- Subgoal ID: SPAR-G022
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Inventory every declared import/API/binding/serialization/introspection/CLI/plugin/registration/documentation/patch obligation and disposition each consumer.
+- Depends on: SPAR-002, SPAR-003, SPAR-004, SPAR-005
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/public_compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_public_compatibility.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/public_compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_public_compatibility.py
+- Predicted symbols: PublicCompatibilityInventory@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/public_compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_public_compatibility.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=public-compatibility; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: public-compatibility
+- Concurrency group: public-compatibility
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_public_compatibility.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/public_compatibility.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_public_compatibility.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-012 Compute hard-dependency SCCs and extraction condensation DAG
+
+- Stable task ID: SPAR-012
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: scc-condensation
+- Goal id: SPAR-G031
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G031
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Compute deterministic SCCs under a versioned hard-edge policy, preserve conservative edges, build the extraction DAG, and support incremental invalidation.
+- Depends on: SPAR-007, SPAR-008
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/scc.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_scc.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/scc.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_scc.py
+- Predicted symbols: SCCSnapshot@1 and ExtractionCondensationDAG@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/scc.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_scc.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=scc-condensation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: scc-condensation
+- Concurrency group: scc-condensation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_scc.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/scc.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_scc.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-013 Implement deterministic candidate partition generators
+
+- Stable task ID: SPAR-013
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: partition-generation
+- Goal id: SPAR-G032
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Generate multiple deterministic candidates from SCC, state, contract, tests/proofs, graph, and co-change evidence; keep projection clustering advisory.
+- Depends on: SPAR-009, SPAR-010, SPAR-011, SPAR-012
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_generators.py, test/api/semantic_refactoring/test_partition_generators.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_generators.py, test/api/semantic_refactoring/test_partition_generators.py
+- Predicted symbols: ProgramPartitionCandidate@1 generators
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_generators.py, test/api/semantic_refactoring/test_partition_generators.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=partition-generation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: partition-generation
+- Concurrency group: partition-generation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_partition_generators.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_generators.py, test/api/semantic_refactoring/test_partition_generators.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-014 Implement multi-objective partition comparison and policy
+
+- Stable task ID: SPAR-014
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: partition-policy
+- Goal id: SPAR-G032
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Evaluate complete reproducible objective breakdowns and fail closed on SCC, state, consumer, compatibility, ordering, resource, frontier, proof, or transaction constraints.
+- Depends on: SPAR-013
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_policy.py, test/api/semantic_refactoring/test_partition_policy.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_policy.py, test/api/semantic_refactoring/test_partition_policy.py
+- Predicted symbols: PartitionObjectiveProfile and comparison receipt
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_policy.py, test/api/semantic_refactoring/test_partition_policy.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=partition-policy; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: partition-policy
+- Concurrency group: partition-policy
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_partition_policy.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_policy.py, test/api/semantic_refactoring/test_partition_policy.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-015 Implement analogous-refactor retrieval and optional partition ranker
+
+- Stable task ID: SPAR-015
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: partition-retrieval
+- Goal id: SPAR-G032
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Retrieve exact/lexical/graph/vector prior refactors and optionally reorder already-admitted candidates without granting authority or hiding violations.
+- Depends on: SPAR-006, SPAR-013
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_retrieval.py, test/api/semantic_refactoring/test_partition_retrieval.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_retrieval.py, test/api/semantic_refactoring/test_partition_retrieval.py
+- Predicted symbols: AnalogousRefactorRetriever and advisory ranker
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_retrieval.py, test/api/semantic_refactoring/test_partition_retrieval.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=partition-retrieval; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: partition-retrieval
+- Concurrency group: partition-retrieval
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_partition_retrieval.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/partition_retrieval.py, test/api/semantic_refactoring/test_partition_retrieval.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-016 Synthesize module-boundary assume/guarantee contracts
+
+- Stable task ID: SPAR-016
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: boundary-contracts
+- Goal id: SPAR-G033
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G033
+- Owning repository: ipfs_datasets_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Create explicit assumptions, guarantees, effects, exceptions, state/resource ownership, initialization, concurrency, authorization, serialization, versioning, and proof obligations for every cut edge.
+- Depends on: SPAR-014
+- Owned paths: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/boundary_contracts.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_boundary_contracts.py
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/boundary_contracts.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_boundary_contracts.py
+- Predicted symbols: ModuleBoundaryContract@1 family
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/boundary_contracts.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_boundary_contracts.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_datasets_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=boundary-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: boundary-contracts
+- Concurrency group: boundary-contracts
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q ipfs_datasets_py/tests/unit/semantic_refactoring/test_boundary_contracts.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/boundary_contracts.py, ipfs_datasets_py/tests/unit/semantic_refactoring/test_boundary_contracts.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-017 Synthesize target module APIs and dependency direction
+
+- Stable task ID: SPAR-017
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: target-api
+- Goal id: SPAR-G033
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G033
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Propose public/private exports, protocols, adapters, state-owner interfaces, responsibility statements, and cycle-free dependency directions.
+- Depends on: SPAR-014
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/target_api.py, test/api/semantic_refactoring/test_target_api.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/target_api.py, test/api/semantic_refactoring/test_target_api.py
+- Predicted symbols: TargetModuleAPIPlan@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/target_api.py, test/api/semantic_refactoring/test_target_api.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=target-api; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: target-api
+- Concurrency group: target-api
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_target_api.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/target_api.py, test/api/semantic_refactoring/test_target_api.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-018 Plan compatibility façades and migrations
+
+- Stable task ID: SPAR-018
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: facade-planning
+- Goal id: SPAR-G033
+- Parent goal ID: SPAR-G030
+- Subgoal ID: SPAR-G033
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Generate explicit façade, re-export, wrapper, deprecation, CLI/plugin, registry, serialization, introspection, traceback, and patch-target migration plans for every consumer.
+- Depends on: SPAR-011, SPAR-014
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/facade_planner.py, test/api/semantic_refactoring/test_facade_planner.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/facade_planner.py, test/api/semantic_refactoring/test_facade_planner.py
+- Predicted symbols: CompatibilityFacadePlan@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/facade_planner.py, test/api/semantic_refactoring/test_facade_planner.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=facade-planning; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: facade-planning
+- Concurrency group: facade-planning
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_facade_planner.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/facade_planner.py, test/api/semantic_refactoring/test_facade_planner.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-019 Compile exact refactor transformation packets
+
+- Stable task ID: SPAR-019
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: packet-compilation
+- Goal id: SPAR-G041
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G041
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Bind exact preimages, bounded moves/rewrites/adapters/façade edits, expected deltas, allowed paths/effects, lease/fence, validation, and rollback.
+- Depends on: SPAR-016, SPAR-017, SPAR-018
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/transformation_packet.py, test/api/semantic_refactoring/test_transformation_packet.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/transformation_packet.py, test/api/semantic_refactoring/test_transformation_packet.py
+- Predicted symbols: RefactorTransformationPacket@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/transformation_packet.py, test/api/semantic_refactoring/test_transformation_packet.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=packet-compilation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: packet-compilation
+- Concurrency group: packet-compilation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_transformation_packet.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/transformation_packet.py, test/api/semantic_refactoring/test_transformation_packet.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-020 Implement or adapt CST-preserving move and extraction codemods
+
+- Stable task ID: SPAR-020
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cst-transform
+- Goal id: SPAR-G041
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G041
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Use the current best available CST/codemod capability for deterministic bounded moves with comments/source maps preserved and typed refusal for unsupported constructs.
+- Depends on: SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py, test/api/semantic_refactoring/test_codemod.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py, test/api/semantic_refactoring/test_codemod.py
+- Predicted symbols: CSTExtractionCodemod adapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py, test/api/semantic_refactoring/test_codemod.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=cst-transform; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: cst-transform
+- Concurrency group: cst-transform
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_codemod.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py, test/api/semantic_refactoring/test_codemod.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-021 Implement import, re-export, and callsite rewrite transformations
+
+- Stable task ID: SPAR-021
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: import-transform
+- Goal id: SPAR-G041
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G041
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Rewrite exact symbol imports/callsites, create authorized exports, verify preimages, and reject new cycles or undispositioned consumers.
+- Depends on: SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/import_rewriter.py, test/api/semantic_refactoring/test_import_rewriter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/import_rewriter.py, test/api/semantic_refactoring/test_import_rewriter.py
+- Predicted symbols: ImportRewrite and ReexportPlan executor
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/import_rewriter.py, test/api/semantic_refactoring/test_import_rewriter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=import-transform; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: import-transform
+- Concurrency group: import-transform
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_import_rewriter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/import_rewriter.py, test/api/semantic_refactoring/test_import_rewriter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-022 Implement explicit state-object and boundary-adapter transformations
+
+- Stable task ID: SPAR-022
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: state-transform
+- Goal id: SPAR-G042
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Move state owners and synthesize explicit state objects, protocols, adapters, or injection only with complete ownership/lifecycle/synchronization obligations.
+- Depends on: SPAR-009, SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/state_transform.py, test/api/semantic_refactoring/test_state_transform.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/state_transform.py, test/api/semantic_refactoring/test_state_transform.py
+- Predicted symbols: ExplicitStateObjectPlan executor
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/state_transform.py, test/api/semantic_refactoring/test_state_transform.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=state-transform; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: state-transform
+- Concurrency group: state-transform
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_state_transform.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/state_transform.py, test/api/semantic_refactoring/test_state_transform.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-023 Preserve initialization, decorators, registries, CLI, plugins, and resource lifecycles
+
+- Stable task ID: SPAR-023
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: initialization-transform
+- Goal id: SPAR-G042
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Apply deterministic transformations or adapters for order-sensitive initialization, registrations, commands/routes/plugins, signals, atexit, and resources with required trace validation.
+- Depends on: SPAR-010, SPAR-018, SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/initialization_transform.py, test/api/semantic_refactoring/test_initialization_transform.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/initialization_transform.py, test/api/semantic_refactoring/test_initialization_transform.py
+- Predicted symbols: InitializationRewritePlan executor
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/initialization_transform.py, test/api/semantic_refactoring/test_initialization_transform.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=initialization-transform; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: initialization-transform
+- Concurrency group: initialization-transform
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_initialization_transform.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/initialization_transform.py, test/api/semantic_refactoring/test_initialization_transform.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-024 Preserve binding, introspection, and serialization compatibility
+
+- Stable task ID: SPAR-024
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: binding-compatibility
+- Goal id: SPAR-G042
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Implement exact wrappers/migrations for signatures, annotations, module/qualname, pickle, reflection, tracebacks, docs, and patch targets; classify intentional incompatibility.
+- Depends on: SPAR-011, SPAR-018, SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/binding_compatibility.py, test/api/semantic_refactoring/test_binding_compatibility.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/binding_compatibility.py, test/api/semantic_refactoring/test_binding_compatibility.py
+- Predicted symbols: BindingCompatibilityAdapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/binding_compatibility.py, test/api/semantic_refactoring/test_binding_compatibility.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=binding-compatibility; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: binding-compatibility
+- Concurrency group: binding-compatibility
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_binding_compatibility.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/binding_compatibility.py, test/api/semantic_refactoring/test_binding_compatibility.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-025 Implement checkpointed transactional extraction waves
+
+- Stable task ID: SPAR-025
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: transactional-waves
+- Goal id: SPAR-G043
+- Parent goal ID: SPAR-G040
+- Subgoal ID: SPAR-G043
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Apply one bounded packet at a time in isolated fenced worktrees with exact before hashes, dependency order, rollback, VFS mutation receipts, and effect auditing.
+- Depends on: SPAR-020, SPAR-021, SPAR-022, SPAR-023, SPAR-024
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/extraction_wave.py, test/api/semantic_refactoring/test_extraction_wave.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/extraction_wave.py, test/api/semantic_refactoring/test_extraction_wave.py
+- Predicted symbols: ExtractionWave executor and RollbackPlan
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/extraction_wave.py, test/api/semantic_refactoring/test_extraction_wave.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=transactional-waves; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: transactional-waves
+- Concurrency group: transactional-waves
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_extraction_wave.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/extraction_wave.py, test/api/semantic_refactoring/test_extraction_wave.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-026 Integrate datasets test/proof selection and full-suite fallback
+
+- Stable task ID: SPAR-026
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: selection-adapter
+- Goal id: SPAR-G051
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G051
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Consume current datasets-owned selection bound to roots/obligations/uncertainty and enforce raw-source plus full-suite fallback where required.
+- Depends on: SPAR-007, SPAR-008, SPAR-011, SPAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/selection_adapter.py, test/api/semantic_refactoring/test_selection_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/selection_adapter.py, test/api/semantic_refactoring/test_selection_adapter.py
+- Predicted symbols: RefactorValidationSelectionAdapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/selection_adapter.py, test/api/semantic_refactoring/test_selection_adapter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=selection-adapter; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: selection-adapter
+- Concurrency group: selection-adapter
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_selection_adapter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/selection_adapter.py, test/api/semantic_refactoring/test_selection_adapter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-027 Implement translation-validation contracts and orchestrator
+
+- Stable task ID: SPAR-027
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: translation-validation
+- Goal id: SPAR-G051
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G051
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Validate each concrete original/candidate transformation across syntax, imports, APIs, types/effects, contracts, tests, proofs, traces, state, compatibility, and resources without collapsing evidence classes.
+- Depends on: SPAR-025, SPAR-026
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/translation_validation.py, test/api/semantic_refactoring/test_translation_validation.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/translation_validation.py, test/api/semantic_refactoring/test_translation_validation.py
+- Predicted symbols: TranslationValidationRequest/Result and RefactorEquivalenceClaim
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/translation_validation.py, test/api/semantic_refactoring/test_translation_validation.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=translation-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: translation-validation
+- Concurrency group: translation-validation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_translation_validation.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/translation_validation.py, test/api/semantic_refactoring/test_translation_validation.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-028 Implement differential execution and import/runtime trace comparison
+
+- Stable task ID: SPAR-028
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: differential-execution
+- Goal id: SPAR-G052
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G052
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Run hermetic paired old/new workflows and compare outputs, exceptions, effects, import events, registrations, state transitions, resources, and declared trace projections.
+- Depends on: SPAR-025, SPAR-026
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/differential.py, test/api/semantic_refactoring/test_differential.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/differential.py, test/api/semantic_refactoring/test_differential.py
+- Predicted symbols: DifferentialExecutionReceipt@1
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/differential.py, test/api/semantic_refactoring/test_differential.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=differential-execution; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: differential-execution
+- Concurrency group: differential-execution
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_differential.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/differential.py, test/api/semantic_refactoring/test_differential.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-029 Implement property, metamorphic, mutation, and adversarial validation
+
+- Stable task ID: SPAR-029
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: mutation-validation
+- Goal id: SPAR-G052
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G052
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Reuse/generate bounded relations and mutants for moved boundaries/façades and block acceptance on critical survivors or unknown required dynamics.
+- Depends on: SPAR-025, SPAR-026
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/adversarial_validation.py, test/api/semantic_refactoring/test_adversarial_validation.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/adversarial_validation.py, test/api/semantic_refactoring/test_adversarial_validation.py
+- Predicted symbols: RefactorMutationAndAdversarialValidator
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/adversarial_validation.py, test/api/semantic_refactoring/test_adversarial_validation.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=mutation-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: mutation-validation
+- Concurrency group: mutation-validation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_adversarial_validation.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/adversarial_validation.py, test/api/semantic_refactoring/test_adversarial_validation.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-030 Integrate Tactician and production Hammer for boundary obligations
+
+- Stable task ID: SPAR-030
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: tactician-hammer
+- Goal id: SPAR-G053
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G053
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Build content-addressed premise corpora, lower and decompose finite obligations, run bounded proof/countermodel search, reconstruct proofs, and replay supported countermodels.
+- Depends on: SPAR-016, SPAR-025, SPAR-026
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_adapter.py, test/api/semantic_refactoring/test_proof_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_adapter.py, test/api/semantic_refactoring/test_proof_adapter.py
+- Predicted symbols: TacticianHammer remodularization adapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_adapter.py, test/api/semantic_refactoring/test_proof_adapter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=tactician-hammer; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: tactician-hammer
+- Concurrency group: tactician-hammer
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_proof_adapter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_adapter.py, test/api/semantic_refactoring/test_proof_adapter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-031 Integrate e-graphs, equality saturation, interpolation, and abstraction refinement
+
+- Stable task ID: SPAR-031
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: proof-normalization
+- Goal id: SPAR-G053
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G053
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Use sound proof-backed normalization and supported interpolation/refinement for suitable expressions, adapters, imports, state projections, and smaller boundary summaries.
+- Depends on: SPAR-027, SPAR-028, SPAR-030
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_normalization.py, test/api/semantic_refactoring/test_proof_normalization.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_normalization.py, test/api/semantic_refactoring/test_proof_normalization.py
+- Predicted symbols: RefactorProofNormalizationAdapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_normalization.py, test/api/semantic_refactoring/test_proof_normalization.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=proof-normalization; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: proof-normalization
+- Concurrency group: proof-normalization
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_proof_normalization.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/proof_normalization.py, test/api/semantic_refactoring/test_proof_normalization.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-032 Implement bounded CEGIS/CEGAR boundary and adapter synthesis
+
+- Stable task ID: SPAR-032
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: bounded-synthesis
+- Goal id: SPAR-G053
+- Parent goal ID: SPAR-G050
+- Subgoal ID: SPAR-G053
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Synthesize small adapters, guards, protocols, state mappings, or initialization repairs from explicit examples/counterexamples/obligations, then re-enter full validation.
+- Depends on: SPAR-027, SPAR-028, SPAR-030
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/bounded_synthesis.py, test/api/semantic_refactoring/test_bounded_synthesis.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/bounded_synthesis.py, test/api/semantic_refactoring/test_bounded_synthesis.py
+- Predicted symbols: BoundaryAdapterSynthesizer
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/bounded_synthesis.py, test/api/semantic_refactoring/test_bounded_synthesis.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=bounded-synthesis; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: bounded-synthesis
+- Concurrency group: bounded-synthesis
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_bounded_synthesis.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/bounded_synthesis.py, test/api/semantic_refactoring/test_bounded_synthesis.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-033 Implement exact refactor-state, transition, proof, and procedure reuse
+
+- Stable task ID: SPAR-033
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: exact-reuse
+- Goal id: SPAR-G061
+- Parent goal ID: SPAR-G060
+- Subgoal ID: SPAR-G061
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Build exact freshness-bound reuse keys over trees, state, partitions, policy, environment, toolchain, obligations, validation, and procedure version; retain negative episodes.
+- Depends on: SPAR-025, SPAR-027, SPAR-030
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/refactor_memory.py, test/api/semantic_refactoring/test_refactor_memory.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/refactor_memory.py, test/api/semantic_refactoring/test_refactor_memory.py
+- Predicted symbols: RefactorTransition@1 and exact reuse decision
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/refactor_memory.py, test/api/semantic_refactoring/test_refactor_memory.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=exact-reuse; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: exact-reuse
+- Concurrency group: exact-reuse
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_refactor_memory.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/refactor_memory.py, test/api/semantic_refactoring/test_refactor_memory.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-034 Compile accepted refactor waves into proof-carrying procedures
+
+- Stable task ID: SPAR-034
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: procedure-compilation
+- Goal id: SPAR-G062
+- Parent goal ID: SPAR-G060
+- Subgoal ID: SPAR-G062
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Normalize accepted trajectories, anti-unify plans, infer preconditions/effects/rollback, preserve holes, qualify held-out/adversarial cases, and promote through the existing procedure authority.
+- Depends on: SPAR-031, SPAR-032, SPAR-033
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/procedure_adapter.py, test/api/semantic_refactoring/test_procedure_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/procedure_adapter.py, test/api/semantic_refactoring/test_procedure_adapter.py
+- Predicted symbols: ProofCarryingProcedure refactor adapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/procedure_adapter.py, test/api/semantic_refactoring/test_procedure_adapter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=procedure-compilation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: procedure-compilation
+- Concurrency group: procedure-compilation
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_procedure_adapter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/procedure_adapter.py, test/api/semantic_refactoring/test_procedure_adapter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-035 Integrate minimal semantic context and residual model routing
+
+- Stable task ID: SPAR-035
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: context-routing
+- Goal id: SPAR-G063
+- Parent goal ID: SPAR-G060
+- Subgoal ID: SPAR-G063
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Extend the current ContextCompiler/compression harness with named unresolved questions, exact affected slices, contracts, counterexamples, evidence, analogous refactors, and allowed effects.
+- Depends on: SPAR-033
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/context_adapter.py, test/api/semantic_refactoring/test_context_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/context_adapter.py, test/api/semantic_refactoring/test_context_adapter.py
+- Predicted symbols: SemanticRefactorContextAdapter and route receipt
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/context_adapter.py, test/api/semantic_refactoring/test_context_adapter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=context-routing; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: context-routing
+- Concurrency group: context-routing
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_context_adapter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/context_adapter.py, test/api/semantic_refactoring/test_context_adapter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-036 Implement monolith opportunity detection and goal compilation
+
+- Stable task ID: SPAR-036
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: opportunity-detection
+- Goal id: SPAR-G071
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G071
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Detect oversized or structurally overloaded modules under a versioned policy and compile exact findings, risks, autonomy, and acceptance into durable goals.
+- Depends on: SPAR-007, SPAR-008, SPAR-009, SPAR-010, SPAR-011, SPAR-014
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/opportunity_detector.py, test/api/semantic_refactoring/test_opportunity_detector.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/opportunity_detector.py, test/api/semantic_refactoring/test_opportunity_detector.py
+- Predicted symbols: MonolithOpportunityDetector and GoalCompiler
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/opportunity_detector.py, test/api/semantic_refactoring/test_opportunity_detector.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=opportunity-detection; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: opportunity-detection
+- Concurrency group: opportunity-detection
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_opportunity_detector.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/opportunity_detector.py, test/api/semantic_refactoring/test_opportunity_detector.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-037 Implement subgoal refinement, extraction-wave task synthesis, and backlog repair
+
+- Stable task ID: SPAR-037
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: task-synthesis
+- Goal id: SPAR-G071
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G071
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Refine findings into bounded inventory/extraction/state/boundary/façade/validation/repair/rescan/retirement tasks with exact scopes, evidence, rollback, and deduplicated retries.
+- Depends on: SPAR-019, SPAR-035, SPAR-036
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/task_compiler.py, test/api/semantic_refactoring/test_task_compiler.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/task_compiler.py, test/api/semantic_refactoring/test_task_compiler.py
+- Predicted symbols: PartitionSubgoalRefiner and ExtractionWaveTaskCompiler
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/task_compiler.py, test/api/semantic_refactoring/test_task_compiler.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=task-synthesis; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: task-synthesis
+- Concurrency group: task-synthesis
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_task_compiler.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/task_compiler.py, test/api/semantic_refactoring/test_task_compiler.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-038 Implement fixed-point remodularization controller
+
+- Stable task ID: SPAR-038
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: fixed-point
+- Goal id: SPAR-G071
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G071
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: After every accepted/rejected wave rebuild semantic state, graph, SCCs, contracts, frontier, partitions, and selections until fixed-point or a typed terminal.
+- Depends on: SPAR-027, SPAR-037
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/fixed_point.py, test/api/semantic_refactoring/test_fixed_point.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/fixed_point.py, test/api/semantic_refactoring/test_fixed_point.py
+- Predicted symbols: FixedPointRemodularizationController
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/fixed_point.py, test/api/semantic_refactoring/test_fixed_point.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=fixed-point; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: fixed-point
+- Concurrency group: fixed-point
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_fixed_point.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/fixed_point.py, test/api/semantic_refactoring/test_fixed_point.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-039 Integrate semantic world roots, VFS outbox, recovery, and cross-repository updates
+
+- Stable task ID: SPAR-039
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: root-integration
+- Goal id: SPAR-G072
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G072
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Persist packets/projections/receipts/transitions through kit authorities and integrate generation CAS, recovery, stale-writer rejection, gitlinks, and explicit cross-repository ownership.
+- Depends on: SPAR-025, SPAR-033
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/world_root_adapter.py, test/api/semantic_refactoring/test_world_root_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/world_root_adapter.py, test/api/semantic_refactoring/test_world_root_adapter.py
+- Predicted symbols: SemanticRefactorWorldRootAdapter
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/world_root_adapter.py, test/api/semantic_refactoring/test_world_root_adapter.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=root-integration; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: root-integration
+- Concurrency group: root-integration
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_world_root_adapter.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/world_root_adapter.py, test/api/semantic_refactoring/test_world_root_adapter.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-040 Activate shadow_plan
+
+- Stable task ID: SPAR-040
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: shadow-plan
+- Goal id: SPAR-G073
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G073
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Run complete analysis and planning without source mutation or routing influence; compare and retain false/unsafe candidates.
+- Depends on: SPAR-038, SPAR-039
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/rollout.py, test/api/semantic_refactoring/test_shadow_plan.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/rollout.py, test/api/semantic_refactoring/test_shadow_plan.py
+- Predicted symbols: shadow_plan rollout gate
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/rollout.py, test/api/semantic_refactoring/test_shadow_plan.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=shadow-plan; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: shadow-plan
+- Concurrency group: shadow-plan
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_shadow_plan.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/rollout.py, test/api/semantic_refactoring/test_shadow_plan.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-041 Activate shadow_apply
+
+- Stable task ID: SPAR-041
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: shadow-apply
+- Goal id: SPAR-G073
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G073
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Apply bounded packets only in disposable isolated worktrees, run full validation, publish hypothetical transitions, and prove no merge/root promotion.
+- Depends on: SPAR-040
+- Owned paths: test/api/semantic_refactoring/test_shadow_apply.py
+- Predicted files: test/api/semantic_refactoring/test_shadow_apply.py
+- Predicted symbols: shadow_apply rollout receipt
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: test/api/semantic_refactoring/test_shadow_apply.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=shadow-apply; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: shadow-apply
+- Concurrency group: shadow-apply
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_shadow_apply.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: test/api/semantic_refactoring/test_shadow_apply.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-042 Activate and qualify guarded
+
+- Stable task ID: SPAR-042
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: guarded
+- Goal id: SPAR-G073
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G073
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Permit only qualified Tier A and selected Tier B waves through current merge gates; require approval above that ceiling and reject vector/model-only authority.
+- Depends on: SPAR-041
+- Owned paths: test/api/semantic_refactoring/test_guarded_rollout.py
+- Predicted files: test/api/semantic_refactoring/test_guarded_rollout.py
+- Predicted symbols: guarded rollout qualification
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: test/api/semantic_refactoring/test_guarded_rollout.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=guarded; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: guarded
+- Concurrency group: guarded
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_guarded_rollout.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: test/api/semantic_refactoring/test_guarded_rollout.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-043 Activate required dogfooding
+
+- Stable task ID: SPAR-043
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: required
+- Goal id: SPAR-G073
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G073
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Require every subsequent program task to consume refactoring context and emit exact pre/post roots, partition, boundary, packet, route, validation, and transition receipts.
+- Depends on: SPAR-042
+- Owned paths: test/api/semantic_refactoring/test_required_rollout.py
+- Predicted files: test/api/semantic_refactoring/test_required_rollout.py
+- Predicted symbols: required rollout gate
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: test/api/semantic_refactoring/test_required_rollout.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=required; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: required
+- Concurrency group: required
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_required_rollout.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: test/api/semantic_refactoring/test_required_rollout.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-044 Add typed Python/CLI/MCP control and diagnostics
+
+- Stable task ID: SPAR-044
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: control-surface
+- Goal id: SPAR-G071
+- Parent goal ID: SPAR-G070
+- Subgoal ID: SPAR-G071
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Extend the current typed Python service and thin CLI/MCP adapters with deterministic non-authoritative diagnostics and narrow authorized operations; MCP never shells out.
+- Depends on: SPAR-035, SPAR-043
+- Owned paths: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/service.py, ipfs_accelerate_py/agent_supervisor/semantic_refactoring/cli.py, test/api/semantic_refactoring/test_control_surface.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/service.py, ipfs_accelerate_py/agent_supervisor/semantic_refactoring/cli.py, test/api/semantic_refactoring/test_control_surface.py
+- Predicted symbols: SemanticRefactoringService and thin adapters
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/service.py, ipfs_accelerate_py/agent_supervisor/semantic_refactoring/cli.py, test/api/semantic_refactoring/test_control_surface.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=control-surface; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: control-surface
+- Concurrency group: control-surface
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_control_surface.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: ipfs_accelerate_py/agent_supervisor/semantic_refactoring/service.py, ipfs_accelerate_py/agent_supervisor/semantic_refactoring/cli.py, test/api/semantic_refactoring/test_control_surface.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-045 Build controlled 5k/20k/100k-LOC scale fixtures and benchmark corpus
+
+- Stable task ID: SPAR-045
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: benchmark-corpus
+- Goal id: SPAR-G081
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G081
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Create rights-admitted frozen synthetic/controlled monoliths spanning state, initialization, dynamics, registries, async, exceptions, resources, APIs, and seeded defects with sealed splits.
+- Depends on: SPAR-043
+- Owned paths: benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json, benchmarks/agent_supervisor/semantic_refactoring/fixtures, test/api/semantic_refactoring/test_benchmark_corpus.py
+- Predicted files: benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json, benchmarks/agent_supervisor/semantic_refactoring/fixtures, test/api/semantic_refactoring/test_benchmark_corpus.py
+- Predicted symbols: Frozen scale corpus and split manifest
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json, benchmarks/agent_supervisor/semantic_refactoring/fixtures, test/api/semantic_refactoring/test_benchmark_corpus.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: benchmark_fixture_generation
+- Public API impact: bounded_internal_implementation
+- State impact: internal or compatibility-preserving only
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=benchmark-corpus; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: No new authority; immutable evidence or explicitly fenced state only.
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: benchmark-corpus
+- Concurrency group: benchmark-corpus
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_benchmark_corpus.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: benchmarks/agent_supervisor/semantic_refactoring/corpus_manifest.json, benchmarks/agent_supervisor/semantic_refactoring/fixtures, test/api/semantic_refactoring/test_benchmark_corpus.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-046 Run end-to-end acceptance matrix
+
+- Stable task ID: SPAR-046
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: acceptance-matrix
+- Goal id: SPAR-G081
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G081
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Exercise inventory through extraction, façade, validation, transition, restart, reuse, replan, rollback, corruption, staleness, unsafe splits, failed proofs, and root conflicts.
+- Depends on: SPAR-044, SPAR-045
+- Owned paths: test/api/semantic_refactoring/test_end_to_end_acceptance.py, benchmarks/agent_supervisor/semantic_refactoring/acceptance_matrix.json
+- Predicted files: test/api/semantic_refactoring/test_end_to_end_acceptance.py, benchmarks/agent_supervisor/semantic_refactoring/acceptance_matrix.json
+- Predicted symbols: End-to-end acceptance matrix receipt
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: test/api/semantic_refactoring/test_end_to_end_acceptance.py, benchmarks/agent_supervisor/semantic_refactoring/acceptance_matrix.json; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: bounded_internal_implementation
+- Public API impact: internal or compatibility-preserving only
+- State impact: No new authority; immutable evidence or explicitly fenced state only.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=acceptance-matrix; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier B
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: acceptance-matrix
+- Concurrency group: acceptance-matrix
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_end_to_end_acceptance.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: test/api/semantic_refactoring/test_end_to_end_acceptance.py, benchmarks/agent_supervisor/semantic_refactoring/acceptance_matrix.json
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-047 Benchmark autonomy, context reduction, partition quality, and semantic assurance
+
+- Stable task ID: SPAR-047
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: benchmark
+- Goal id: SPAR-G081
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G081
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Run the preregistered ablation ladder with unchanged denominators, safety gates, provider/tokenizer criteria, and honest failed/escalated/rejected/unavailable results.
+- Depends on: SPAR-046
+- Owned paths: benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json, test/api/semantic_refactoring/test_benchmark_report.py
+- Predicted files: benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json, test/api/semantic_refactoring/test_benchmark_report.py
+- Predicted symbols: Preregistered ablation report
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json, test/api/semantic_refactoring/test_benchmark_report.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: benchmark_execution
+- Public API impact: bounded_internal_implementation
+- State impact: internal or compatibility-preserving only
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=benchmark; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: No new authority; immutable evidence or explicitly fenced state only.
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: benchmark
+- Concurrency group: benchmark
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_benchmark_report.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: benchmarks/agent_supervisor/semantic_refactoring/benchmark_report.json, test/api/semantic_refactoring/test_benchmark_report.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-048 Run adversarial, security, privacy, chaos, and recovery qualification
+
+- Stable task ID: SPAR-048
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: adversarial-qualification
+- Goal id: SPAR-G081
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G081
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Attack prompt injection, forged identity, poisoned vectors, frontier hiding, evidence weakening, state/order/compatibility breaks, leakage, cancellation, crashes, and concurrent publication.
+- Depends on: SPAR-047
+- Owned paths: benchmarks/agent_supervisor/semantic_refactoring/adversarial_report.json, test/api/semantic_refactoring/test_adversarial_qualification.py
+- Predicted files: benchmarks/agent_supervisor/semantic_refactoring/adversarial_report.json, test/api/semantic_refactoring/test_adversarial_qualification.py
+- Predicted symbols: Adversarial/security/chaos qualification receipt
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: benchmarks/agent_supervisor/semantic_refactoring/adversarial_report.json, test/api/semantic_refactoring/test_adversarial_qualification.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: adversarial_qualification
+- Public API impact: none
+- State impact: No accepted state mutation outside current fenced authorities.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=adversarial-qualification; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier D
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: adversarial-qualification
+- Concurrency group: adversarial-qualification
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_adversarial_qualification.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: benchmarks/agent_supervisor/semantic_refactoring/adversarial_report.json, test/api/semantic_refactoring/test_adversarial_qualification.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-049 Perform required-mode self-hosted capstone remodularization
+
+- Stable task ID: SPAR-049
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: capstone
+- Goal id: SPAR-G082
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G082
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Have the supervisor decompose a bounded real oversized module through verified waves, compile a reusable procedure, and run a later lower/no-LLM procedure wave without top-level completion bypass.
+- Depends on: SPAR-048
+- Owned paths: benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json, test/api/semantic_refactoring/test_capstone_receipts.py
+- Predicted files: benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json, test/api/semantic_refactoring/test_capstone_receipts.py
+- Predicted symbols: Required-mode capstone roots and transitions
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json, test/api/semantic_refactoring/test_capstone_receipts.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: guarded_source_transformation
+- Public API impact: compatibility façade only; no unaccepted API break
+- State impact: Accepted transitions only through VFS/CAS/merge authority.
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=capstone; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: Tier C
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: capstone
+- Concurrency group: capstone
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_capstone_receipts.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: benchmarks/agent_supervisor/semantic_refactoring/capstone_report.json, test/api/semantic_refactoring/test_capstone_receipts.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.
+
+## SPAR-050 Publish release, migration, compatibility, benchmark, and limitation report
+
+- Stable task ID: SPAR-050
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: SPAR-G082
+- Parent goal ID: SPAR-G080
+- Subgoal ID: SPAR-G082
+- Owning repository: ipfs_accelerate_py
+- Board namespace: semantic-preserving-autonomous-remodularization-v1
+- Base revision: e3c9831d4465d0e9f1aba336994a385541611895
+- Base repository tree: fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051
+- Base plan revision: SPAR-PLAN-R1
+- Objective: Verify all seals/tasks/roots, focused/regression suites, identity preservation, model/context changes, unsupported dynamics, scale denominators, capstone, migration, façade retirement, and transitive final root.
+- Depends on: SPAR-049
+- Owned paths: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json, docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_FINAL_REPORT.md, test/api/semantic_refactoring/test_release_gate.py
+- Predicted files: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json, docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_FINAL_REPORT.md, test/api/semantic_refactoring/test_release_gate.py
+- Predicted symbols: Release and limitation reports
+- Read scope: Exact accepted predecessors, current semantic-state/program-graph slices, declared source/test/proof inputs, and current capability receipts only.
+- Write scope: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json, docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_FINAL_REPORT.md, test/api/semantic_refactoring/test_release_gate.py; isolated leased/fenced worktree only; nested repository writes only when `ipfs_accelerate_py` owns the task and gitlink integration is explicit.
+- External effect scope: Network denied for ordinary tests; no implicit install/model download; no protected-branch, credential, production, or undeclared repository effect.
+- Authority impact: Extends the named current authority through versioned contracts/adapters; never creates a competing task, graph, identity, VFS, proof, context, scheduler, vector, merge, or state authority.
+- Effect class: release_evidence
+- Public API impact: bounded_internal_implementation
+- State impact: internal or compatibility-preserving only
+- Preconditions: All dependencies accepted against current roots; exact preimages; current provider/capability probe; required raw source available; no unresolved scope conflict.
+- Declared effects: Write owned paths; run declared hermetic validation; emit content-addressed receipts; request merges only through current authority.
+- Permitted effects: Deterministic bounded source/test/evidence changes in owned paths, isolated subprocess validation, and current-authority state commands through Quack.
+- Prohibited effects: Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies; direct multi-process DuckDB; unrestricted diff; hidden dynamic frontier; vector/model authority; self-approval; fabricated evidence; implicit network/install.
+- Resource class: cpu-standard-local-proof
+- Timeout: 14400 seconds; maximum 21600 seconds
+- Provider role: implementation proposal; independent supervisor validation and merge authority remain separate
+- Context budget: input_tokens=36000; output_tokens=12000; exact/procedural prefix first; residual-only fallback
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=16; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=release; merge_slots=1; persistence_kib_s=2048
+- Model-route class: exact reuse, verified procedure, deterministic analysis/transform, proof/synthesis, specialist ranking, then one named residual general-model question
+- No-model route: exact receipt reuse -> verified procedure -> AST/CST/graph/state/effect/contract analysis -> proof search -> deterministic transform -> independent validation
+- Model fallback: one typed unresolved residual with bounded semantic slice; output is proposal-only and cannot remove a gate
+- Autonomy tier: No new authority; immutable evidence or explicitly fenced state only.
+- Rollout mode: bootstrap until SPAR-040; then the explicitly accepted progressive mode
+- Parallel lane: release
+- Concurrency group: release
+- Conflict policy: Exact path/symbol/SCC/state-owner overlap serializes; shared exports, registries, gitlinks, façades, scheduler controls, and unknown scopes require an integration owner.
+- Lease and fencing: One exact task/attempt/base-tree/plan-root lease, token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot write, validate, merge, settle, or accept.
+- Interfaces: Existing datasets semantic contracts, kit storage/VFS contracts, accelerator supervisor/runtime contracts, and versioned narrow SPAR adapters only.
+- Acceptance subset: exact-current-tree; declared-effects; independent-validation; rollback; authority-separation; no-safety-floor-regression
+- Completion contract: Declared current-tree validation, evidence, compatibility, proof/trace requirements, merge/post-merge checks, and affected fixed-point conditions pass; unsupported required behavior is a typed terminal, never success.
+- Validation: python3 -m pytest -q test/api/semantic_refactoring/test_release_gate.py
+- Proof requirements: Exact source/tree/environment bindings; current obligation roots; independent reconstruction or explicitly bounded observation; no transfer across stale toolchain/profile/tree.
+- Rollback: Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.
+- Required evidence: exact inputs/preimages; route/context receipt; diff/effect audit; test/proof/trace/compatibility receipts as applicable; merge/post-merge/root receipt
+- Evidence: Separate static facts, may-facts, runtime observations, specifications, tests, proof candidates, reconstructed proofs, countermodels, vector candidates, model hypotheses, decisions, and accepted transitions.
+- Final result identity: pending; only current authority derives it after validation, merge, and post-merge acceptance
+- Outputs: docs/architecture/semantic_preserving_autonomous_remodularization_inventory/final_report.json, docs/architecture/SEMANTIC_PRESERVING_AUTONOMOUS_REMODULARIZATION_FINAL_REPORT.md, test/api/semantic_refactoring/test_release_gate.py
+- Raw-source requirements: Every directly edited source/test and every uncertain or dynamically affected region; vectors/projections cannot suppress raw-source fallback.
+- Protected paths: plan, objectives, board, dependency seal, authority matrix, benchmark preregistration, rollout baseline/policy, scheduler, materializer, validators, and release safety floors
+- Limitations: General Python equivalence is not claimed; evidence is bounded by the declared observation/proof profile and unresolved dynamics lower autonomy.
+- Capability blockers: none at bootstrap; newly observed unavailability remains typed and only blocks dependent work.

@@ -1,0 +1,85 @@
+{
+  "authoritative_repositories": [
+    {
+      "branch": "codex/semantic-preserving-autonomous-remodularization-v1",
+      "dirty_entries": 0,
+      "head": "e3c9831d4465d0e9f1aba336994a385541611895",
+      "origin": "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+      "package_version": "0.0.45",
+      "public_import_root": "ipfs_accelerate_py",
+      "repository": "ipfs_accelerate_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1",
+      "tree": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051"
+    },
+    {
+      "branch": "detached-gitlink",
+      "dirty_entries": 0,
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "origin": "https://github.com/endomorphosis/ipfs_datasets_py.git",
+      "package_version": "0.2.0",
+      "public_import_root": "ipfs_datasets_py",
+      "repository": "ipfs_datasets_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1/ipfs_datasets_py",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    },
+    {
+      "branch": "detached-gitlink",
+      "dirty_entries": 0,
+      "head": "80bbdc3443e560b9bf40339c864a32689ccad8ef",
+      "origin": "https://github.com/endomorphosis/ipfs_kit_py.git",
+      "package_version": "current-gitlink",
+      "public_import_root": "ipfs_kit_py",
+      "repository": "ipfs_kit_py",
+      "root": "/home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1/ipfs_kit_py",
+      "tree": "543ccd2bd78994d4e3d55cd44993ae6ca65e4c28"
+    }
+  ],
+  "auxiliary_gitlinks": [
+    {
+      "access": "initialized read-only prerequisite unless an explicit task owns it",
+      "head": "31096be86103f29faef80a01e03d09b1ad7345c6",
+      "path": "ipfs_accelerate_py/mcplusplus",
+      "tree": "61776431577f0c276546f25e4178a47a64007180"
+    }
+  ],
+  "environment": {
+    "executable": "/home/barberb/.local/bin/python",
+    "gitmodules_sha256": "9b5856970fc61b9c18f7d272c1ed5b9322e5e7df08a8f74a100da2e33852bf90",
+    "implementation": "CPython",
+    "pyproject_sha256": "26a8ed30df2d8cb08a0853ecd56d81077ab52ba571775df7ffa58494d8988c40",
+    "python": "3.12.3",
+    "requirements_sha256": "db63abfc0624140dfb23b96d8d024d48a83013626fc227a56c4c26ad6682cc01"
+  },
+  "execution_root": "/home/barberb/lift_coding/.worktrees/semantic-preserving-autonomous-remodularization-v1",
+  "network_install_policy": "no implicit install, model download, or ordinary-test network access",
+  "observed_at": "2026-08-28T16:53:33Z",
+  "preserved_user_work": {
+    "embedded_accelerator": {
+      "disposition": "never used as clean evidence or mutated by SPAR",
+      "head": "5d79bbf8bb61e027fbda76920580cb9d4fd919c1",
+      "root": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "status_entries": 6,
+      "status_sha256": "c261a97a9d4d91da96af386077e5cdf9c1532273614a73911d8c07a063913798",
+      "tree": "c5ddd043de58349aafac0f9af03c1b018313623d"
+    },
+    "embedded_datasets": {
+      "disposition": "never used as clean evidence or mutated by SPAR",
+      "head": "ac82107e246b30e35a2bbdcf75e01370d22350c6",
+      "root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "status_entries": 31,
+      "status_sha256": "a1b4619c21ab5c19d90aa666b48d10d7f5034a2abe2ce57e0f854892429d9c83",
+      "tree": "2b3d892dd1c31fb6b8a3eebdb88616d411c49a47"
+    },
+    "superproject": {
+      "branch": "chore/fmt-check-main",
+      "disposition": "untouched preservation boundary",
+      "head": "8601408d6406681a14a9488d31d1cd9a16164649",
+      "root": "/home/barberb/lift_coding",
+      "status_bytes": 114104426,
+      "status_entries": 585915,
+      "status_sha256": "f0a737302e4455c55e60edc28403da4f339e9b64811cc0b0dcf0c87e2d9629b3",
+      "tree": "e35dfaebbd229d7e7de988b2e0345444d9284221"
+    }
+  },
+  "schema": "spar/repository-baseline@1"
+}

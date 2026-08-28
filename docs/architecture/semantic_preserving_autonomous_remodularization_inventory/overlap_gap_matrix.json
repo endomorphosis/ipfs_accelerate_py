@@ -1,0 +1,76 @@
+{
+  "current_tree_reuse": [
+    "agent_supervisor.semantic_state",
+    "agent_supervisor.architecture_refactorer",
+    "analysis.program_graph",
+    "analysis.code_symbol_vector_index",
+    "proof.tactician_hammer_coordinator",
+    "procedure_compiler",
+    "context.context_compiler",
+    "merge worktree/lease/fence/queue",
+    "task_sources DatabaseTaskSource/Quack",
+    "kit VFS/WAL/CAS",
+    "DuckLake projections"
+  ],
+  "gaps": [
+    "no landed semantic-refactoring capsule family with all declared identity dimensions",
+    "no explicit initialization-order/happens-before refactor graph relation",
+    "no deterministic source-mutation executor behind PCAR candidates; must use current fenced workers",
+    "no arbitrary-Python extraction translation-validation receipt",
+    "no SPAR accepted-wave/fixed-point contract composed from current roots and merge receipts"
+  ],
+  "predecessors": [
+    {
+      "branch": "agent/semantic-addressed-world-model-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse candidate identities/roots only after current-store lookup and freshness",
+      "historical_revision": "9c92490e245a",
+      "program": "semantic-addressed-world-model-v1"
+    },
+    {
+      "branch": "agent/proof-gated-contract-repair",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current landed proof adapters; historical task titles are not completion",
+      "historical_revision": "bcd8fc4efb6e",
+      "program": "proof-gated-contract-repair and Tactician/Hammer"
+    },
+    {
+      "branch": "integration/ipfs-kit-fuse-vfs-main-20260810",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current VFS/WAL/CAS interfaces and verify exact source",
+      "historical_revision": "b6ce7c9688fa",
+      "program": "VFS symbolic assurance"
+    },
+    {
+      "branch": "feat/semantic-state-harness",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current semantic-state producer/view and receipts",
+      "historical_revision": "6feb0a71138d",
+      "program": "semantic-state harness"
+    },
+    {
+      "branch": "agent/semantic-compression-governor-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current ContextCompiler/compression authority",
+      "historical_revision": "485edc0871c5",
+      "program": "semantic-compression governor"
+    },
+    {
+      "branch": "codex/proof-carrying-procedure-compiler-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current procedure compiler/registry/verifier",
+      "historical_revision": "d426d838b0ef",
+      "program": "proof-carrying procedure compiler"
+    },
+    {
+      "branch": "codex/proof-carrying-architecture-refactorer-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse landed ArchitectureIR, graphs, boundaries, state/public surface, operators, scheduler patterns",
+      "historical_revision": "0374c408469c",
+      "program": "proof-carrying architecture refactorer"
+    }
+  ],
+  "program": "semantic-preserving-autonomous-remodularization-v1",
+  "schema": "spar/overlap-gap-matrix@1",
+  "supersession_policy": "preserve accepted identity/evidence; add only versioned adapter, missing integration, migration, qualification, or successor task"
+}
