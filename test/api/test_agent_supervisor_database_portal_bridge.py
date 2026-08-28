@@ -119,12 +119,16 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
 )
 
 
-def _attempt(*, attempt_number: int = 1) -> DatabaseTaskAttempt:
+def _attempt(
+    *,
+    attempt_number: int = 1,
+    task_alias: str = "LGSWF-004",
+) -> DatabaseTaskAttempt:
     return DatabaseTaskAttempt(
         attempt_id="attempt:001",
         claim_id="claim:001",
         task_cid="task:cid:004",
-        task_alias="LGSWF-004",
+        task_alias=task_alias,
         attempt_number=attempt_number,
         owner_session_id="session:bridge",
         fencing_token=7,
@@ -1048,6 +1052,44 @@ def _owned_record(owner: str) -> SimpleNamespace:
         **record.body,
         "owning_repository": owner,
         "markdown_metadata": {"owning_repository": owner},
+    }
+    return record
+
+
+def _sealed_spar_owned_record(owner: str = "ipfs_datasets_py") -> SimpleNamespace:
+    record = _owned_record(owner)
+    record.task_alias = "SPAR-002"
+    record.plan_cid = (
+        "baguqeerap2rmrhmwizmpkijsg5se5am7i6btb4wzyop3ezqpfa5p3kxnbryq"
+    )
+    record.outputs = (
+        {
+            "path": (
+                "ipfs_datasets_py/ipfs_datasets_py/"
+                "semantic_refactoring/capsules.py"
+            )
+        },
+        {
+            "path": (
+                "ipfs_datasets_py/tests/unit/semantic_refactoring/"
+                "test_capsules.py"
+            )
+        },
+    )
+    record.validations = (
+        {
+            "argv": [
+                "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+                "semantic_refactoring/test_capsules.py"
+            ]
+        },
+    )
+    record.body = {
+        **record.body,
+        "accepted_plan_root_cid": record.plan_cid,
+        "base_plan_revision": "SPAR-PLAN-R1",
+        "board_namespace": "semantic-preserving-autonomous-remodularization-v1",
+        "stable_task_id": record.task_alias,
     }
     return record
 
@@ -11996,6 +12038,120 @@ def test_bridge_scopes_validation_to_checked_nested_repository(
     ) in projection
     assert "- Outputs: ipfs_datasets_py/logic/verification_api.py" not in projection
     assert "- Validation: 'python -m pytest" not in projection
+
+
+def test_bridge_preserves_sealed_spar_workspace_scoped_nested_paths(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    nested_repository = repository_root / "ipfs_datasets_py"
+    nested_repository.mkdir(parents=True)
+    (nested_repository / ".git").write_text(
+        "gitdir: ../.git/modules/ipfs_datasets_py\n",
+        encoding="utf-8",
+    )
+    record = _sealed_spar_owned_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+        repository_root=repository_root,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+        task_header_prefix="## SPAR-",
+    )
+
+    paths, _binding = bridge._ensure_attempt_projection(
+        _attempt(task_alias="SPAR-002"),
+        record,
+    )
+    projection = paths.task_projection.read_text(encoding="utf-8")
+    parsed = parse_task_text(
+        projection,
+        path=paths.task_projection,
+        task_header_prefix="## SPAR-",
+    )
+
+    assert len(parsed) == 1
+    assert task_declared_output_paths(parsed[0]) == (
+        "ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py",
+        "ipfs_datasets_py/tests/unit/semantic_refactoring/test_capsules.py",
+    )
+    assert parsed[0].validation == [
+        (
+            "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+            "semantic_refactoring/test_capsules.py"
+        )
+    ]
+    assert "ipfs_datasets_py/ipfs_datasets_py/ipfs_datasets_py" not in projection
+    assert "- Validation: cd ipfs_datasets_py &&" not in projection
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "owner_relative_output",
+        "owner_relative_validation",
+        "validation_shell_suffix",
+        "validation_shell_metacharacter",
+        "wrong_plan_root",
+    ),
+)
+def test_bridge_rejects_malformed_sealed_spar_workspace_path_frame(
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    nested_repository = repository_root / "ipfs_datasets_py"
+    nested_repository.mkdir(parents=True)
+    (nested_repository / ".git").write_text(
+        "gitdir: ../.git/modules/ipfs_datasets_py\n",
+        encoding="utf-8",
+    )
+    record = _sealed_spar_owned_record()
+    if malformation == "owner_relative_output":
+        record.outputs = ({"path": "tests/unit/test_capsules.py"},)
+    elif malformation == "owner_relative_validation":
+        record.validations = (
+            {"argv": ["python3 -m pytest -q tests/unit/test_capsules.py"]},
+        )
+    elif malformation == "validation_shell_suffix":
+        record.validations = (
+            {
+                "argv": [
+                    "python3 -m pytest -q ipfs_datasets_py/tests/unit/"
+                    "semantic_refactoring/test_capsules.py && echo unsafe"
+                ]
+            },
+        )
+    elif malformation == "validation_shell_metacharacter":
+        target = "ipfs_datasets_py/tests/unit/test_capsules.py;unsafe.py"
+        record.outputs = (
+            record.outputs[0],
+            {"path": target},
+        )
+        record.validations = (
+            {"argv": [f"python3 -m pytest -q {target}"]},
+        )
+    else:
+        record.body["accepted_plan_root_cid"] = "baguqeerawrong"
+    factory_calls: list[str] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        factory_calls.append(alias)
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repository_root,
+        worktree_submodule_paths=("ipfs_datasets_py",),
+        task_header_prefix="## SPAR-",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="sealed SPAR"):
+        bridge.run_provider(_attempt(task_alias="SPAR-002"))
+    assert factory_calls == []
 
 
 def test_bridge_projection_preserves_database_identity_through_scoped_preflight(

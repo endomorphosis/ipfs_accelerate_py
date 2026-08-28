@@ -3,6 +3,7 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "e23fa4eb12a48bc40239b6ff32c33eecc165966c264caf351037ac2ecd9dbc21",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "ef5722ff8d1e47765ada85e5058736bb3cd66bcf47e0ab049a118dfd0b10f84d",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "b2a1dd096278393d2bb3272aa8b8bce928b54e6ba659b39024139b30ea37de1e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "3a2e09fa15343d0b76e8abcf2b27b3e3b22ee793a23dd46d11e8db003a4821c3",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "c2eb2564a2f4622f15a0e83e2998ac19c78697f96822affe530b6492a259bd67",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "eae6b5833bd077f346c28ba4da9b1c4ce62cd9d5d917e821112a26a6ee38d54a",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "3f6f4777432c064f5e6023d43fb490b2add33da38ac7107b34e577f09b4b4a38",
@@ -23,7 +24,7 @@
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json": "6ef71a960844a5b49b13293de74b9ae8dc8c70e714beac4e1671f3c7ba61107a",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json": "b77373a0cefd1ea29058ed8a30cd1bb97be8bef6e420385629c5ff69fd5d3f39",
     "scripts/materialize_semantic_preserving_remodularization_program.py": "c158d3060ae4780814db35d39a22ea7d5f552158005e3d033edb72add8500306",
-    "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "c6cda97a6ce3864cd64e88a0dd2610ac4c4e5cabbd15af66071bb8fdf6281cd6",
+    "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "7fd743d2c39f7ca75c33fd79b68d0e59e1252edb178361f9f7a5f787c98d56e7",
     "scripts/validate_semantic_preserving_remodularization_board.py": "2f6cbe622e97e207ac6c901ccf1e70244739214b25e710c244d9c5b2b7c8d00d",
     "scripts/validate_semantic_preserving_remodularization_dependencies.py": "dbefc0537caef67393da5a765ec619025eb0175529d5b0e7df8099ef00cc44ba",
     "test/api/semantic_refactoring/test_bootstrap_controls.py": "e8147cad4c5c84076a6a9c8a3008773dd7c1023017228207f544caccf102fb81"
@@ -484,7 +485,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:4f29760c5e69d4fff2df2d0c5e5e943e9885e3f3e5d6ab1b5498738e0eb29ae9",
+  "seal_cid": "sha256:8619589c4303d06851cd9675fdbf47b1351fc4fe356cc8bb5f7475bb12d93bc2",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

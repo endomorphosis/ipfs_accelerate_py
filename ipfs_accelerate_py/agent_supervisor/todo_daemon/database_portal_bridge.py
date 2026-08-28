@@ -77,6 +77,14 @@ DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-consumed-no-progress@1"
 )
+_SPAR_BOARD_NAMESPACE: Final[str] = (
+    "semantic-preserving-autonomous-remodularization-v1"
+)
+_SPAR_PLAN_REVISION: Final[str] = "SPAR-PLAN-R1"
+_SPAR_PLAN_ROOT_CID: Final[str] = (
+    "baguqeerap2rmrhmwizmpkijsg5se5am7i6btb4wzyop3ezqpfa5p3kxnbryq"
+)
+_SPAR_TASK_HEADER_PREFIX: Final[str] = "## SPAR-"
 _VRIF_BENCHMARK_TASK_ALIAS: Final[str] = "VRIF-030"
 _VRIF_BENCHMARK_OUTPUT_PATHS: Final[frozenset[str]] = frozenset(
     {
@@ -3212,6 +3220,131 @@ class DatabasePortalExecutionBridge:
                 "scoped validation command does not preserve repository authority"
             )
         return [value]
+
+    def _uses_sealed_spar_workspace_path_frame(
+        self,
+        *,
+        record: Any,
+        body: Mapping[str, Any],
+        repository: str,
+    ) -> bool:
+        """Recognize the one sealed board whose nested paths are workspace-relative.
+
+        Existing configured boards store nested-repository paths relative to
+        their owner and rely on ``_scope_outputs``/``_scope_validations`` to
+        enter that repository. SPAR-PLAN-R1 was sealed with superproject
+        paths instead. Treating those records as owner-relative grants the
+        provider and merge pipeline different paths from the sealed v5 task
+        contract, so this adapter is intentionally exact and fail closed.
+        """
+
+        if not repository:
+            return False
+        stable_task_id = str(body.get("stable_task_id") or "")
+        task_alias = str(getattr(record, "task_alias", "") or "")
+        namespace = str(body.get("board_namespace") or "")
+        has_spar_marker = (
+            self.task_header_prefix == _SPAR_TASK_HEADER_PREFIX
+            or namespace == _SPAR_BOARD_NAMESPACE
+            or stable_task_id.startswith("SPAR-")
+            or task_alias.startswith("SPAR-")
+        )
+        if not has_spar_marker:
+            return False
+        if (
+            self.task_header_prefix != _SPAR_TASK_HEADER_PREFIX
+            or namespace != _SPAR_BOARD_NAMESPACE
+            or body.get("base_plan_revision") != _SPAR_PLAN_REVISION
+            or body.get("accepted_plan_root_cid") != _SPAR_PLAN_ROOT_CID
+            or str(getattr(record, "plan_cid", "") or "")
+            != _SPAR_PLAN_ROOT_CID
+            or re.fullmatch(r"SPAR-[0-9]{3}", stable_task_id) is None
+            or task_alias != stable_task_id
+            or body.get("owning_repository") != repository
+        ):
+            raise DatabasePortalBridgeError(
+                "sealed SPAR task does not match its workspace path frame"
+            )
+        return True
+
+    def _task_scoped_outputs(
+        self,
+        *,
+        record: Any,
+        body: Mapping[str, Any],
+        repository: str,
+    ) -> list[str]:
+        outputs = _output_values(record, body)
+        if not self._uses_sealed_spar_workspace_path_frame(
+            record=record,
+            body=body,
+            repository=repository,
+        ):
+            return self._scope_outputs(outputs, repository)
+
+        scoped: list[str] = []
+        owner_prefix = f"{repository}/"
+        for output in outputs:
+            path = _safe_output_path(output)
+            if not path.startswith(owner_prefix):
+                raise DatabasePortalBridgeError(
+                    "sealed SPAR output is not workspace-relative to its owner"
+                )
+            if path not in scoped:
+                scoped.append(path)
+        return scoped
+
+    def _task_scoped_validations(
+        self,
+        *,
+        record: Any,
+        body: Mapping[str, Any],
+        repository: str,
+    ) -> list[str]:
+        validations = _validation_values(record, body)
+        if not self._uses_sealed_spar_workspace_path_frame(
+            record=record,
+            body=body,
+            repository=repository,
+        ):
+            return self._scope_validations(validations, repository)
+
+        if len(validations) != 1:
+            raise DatabasePortalBridgeError(
+                "sealed SPAR nested task must have exactly one validation"
+            )
+        command = validations[0]
+        try:
+            tokens = shlex.split(command, posix=True)
+        except ValueError as exc:
+            raise DatabasePortalBridgeError(
+                "sealed SPAR validation has malformed shell syntax"
+            ) from exc
+        if (
+            len(tokens) != 5
+            or tokens[:4] != ["python3", "-m", "pytest", "-q"]
+            or validation_command_repository_root(command) != ""
+        ):
+            raise DatabasePortalBridgeError(
+                "sealed SPAR validation is outside the workspace pytest grammar"
+            )
+        target = _safe_output_path(tokens[4])
+        if (
+            not target.startswith(f"{repository}/")
+            or not target.endswith(".py")
+            or shlex.quote(target) != target
+            or command != f"python3 -m pytest -q {target}"
+            or target
+            not in self._task_scoped_outputs(
+                record=record,
+                body=body,
+                repository=repository,
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "sealed SPAR validation target is outside declared owner outputs"
+            )
+        return [command]
 
     def _paths(self, attempt: Any) -> DatabasePortalAttemptPaths:
         attempt_key = hashlib.sha256(str(attempt.attempt_id).encode("utf-8")).hexdigest()[:24]
@@ -6928,16 +7061,18 @@ class DatabasePortalExecutionBridge:
         repository_scope = self._validation_repository_scope(body)
         outputs = tuple(
             sorted(
-                self._scope_outputs(
-                    _output_values(record, body),
-                    repository_scope,
+                self._task_scoped_outputs(
+                    record=record,
+                    body=body,
+                    repository=repository_scope,
                 )
             )
         )
         validation_commands = tuple(
-            self._scope_validations(
-                _validation_values(record, body),
-                repository_scope,
+            self._task_scoped_validations(
+                record=record,
+                body=body,
+                repository=repository_scope,
             )
         )
         repository_tree_id = str(
@@ -7409,10 +7544,15 @@ class DatabasePortalExecutionBridge:
         ):
             return None
         repository = self._validation_repository_scope(body)
-        outputs = self._scope_outputs(_output_values(record, body), repository)
-        validations = self._scope_validations(
-            _validation_values(record, body),
-            repository,
+        outputs = self._task_scoped_outputs(
+            record=record,
+            body=body,
+            repository=repository,
+        )
+        validations = self._task_scoped_validations(
+            record=record,
+            body=body,
+            repository=repository,
         )
         revision = getattr(record, "revision", 0)
         if not outputs or not validations or type(revision) is not int or revision < 1:
@@ -7506,9 +7646,10 @@ class DatabasePortalExecutionBridge:
                 repo_root=self.repository_root,
                 target_ref=self.merge_target_ref,
             )
-            scoped_outputs = self._scope_outputs(
-                _output_values(record, body),
-                self._validation_repository_scope(body),
+            scoped_outputs = self._task_scoped_outputs(
+                record=record,
+                body=body,
+                repository=self._validation_repository_scope(body),
             )
             if recovery.get("declared_outputs") != scoped_outputs:
                 raise LandedCompletionRecoveryError(
@@ -7631,10 +7772,15 @@ class DatabasePortalExecutionBridge:
             body.get("objective") or body.get("title") or body.get("description") or alias
         )
         repository_scope = self._validation_repository_scope(body)
-        outputs = self._scope_outputs(_output_values(record, body), repository_scope)
-        validations = self._scope_validations(
-            _validation_values(record, body),
-            repository_scope,
+        outputs = self._task_scoped_outputs(
+            record=record,
+            body=body,
+            repository=repository_scope,
+        )
+        validations = self._task_scoped_validations(
+            record=record,
+            body=body,
+            repository=repository_scope,
         )
         acceptance = _acceptance_value(record, body)
         landed_recovery_seed = self._landed_completion_claim_seed_from_record(
@@ -11599,9 +11745,10 @@ class DatabasePortalExecutionBridge:
             )
         body = dict(getattr(record, "body", {}) or {})
         repository_scope = self._validation_repository_scope(body)
-        output_paths = self._scope_outputs(
-            _output_values(record, body),
-            repository_scope,
+        output_paths = self._task_scoped_outputs(
+            record=record,
+            body=body,
+            repository=repository_scope,
         )
         for output in output_paths:
             output_path = PurePosixPath(output)
@@ -14869,9 +15016,10 @@ class DatabasePortalExecutionBridge:
         source_attempt_number = seed.get("attempt_number")
         target_attempt_number = getattr(attempt, "attempt_number", 0)
         source_portal_attempt = seed.get("portal_attempt")
-        scoped_outputs = self._scope_outputs(
-            _output_values(record, body),
-            self._validation_repository_scope(body),
+        scoped_outputs = self._task_scoped_outputs(
+            record=record,
+            body=body,
+            repository=self._validation_repository_scope(body),
         )
         if (
             seed.get("schema") != DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
@@ -14972,9 +15120,10 @@ class DatabasePortalExecutionBridge:
                 "validation retry successor claim has no retry seed"
             )
         repository_scope = self._validation_repository_scope(claim_body)
-        scoped_outputs = self._scope_outputs(
-            _output_values(record, claim_body),
-            repository_scope,
+        scoped_outputs = self._task_scoped_outputs(
+            record=record,
+            body=claim_body,
+            repository=repository_scope,
         )
         changed_paths = seed.get("changed_paths")
         if (
