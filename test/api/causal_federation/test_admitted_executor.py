@@ -6932,6 +6932,29 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         durable = adapter.get(task_cid)
         assert durable is not None and durable.status == "retrying"
         assert durable.body["completion_receipt"] == first["transition_receipt"]
+        cooldown_rows = client.execute(
+            "executor_retry_cooldown_by_task", {"task_cid": task_cid}
+        )
+        assert len(cooldown_rows) == 1
+        cooldown = adapter._validated_retry_cooldown_row(
+            cooldown_rows[0], task_cid=task_cid
+        )
+        tampered_receipt = dict(durable.body["completion_receipt"])
+        tampered_receipt.pop("queue_receipt")
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="post-merge retry receipt differs",
+        ):
+            adapter._validate_retrying_cooldown_binding(
+                replace(
+                    durable,
+                    body={
+                        **durable.body,
+                        "completion_receipt": tampered_receipt,
+                    },
+                ),
+                cooldown,
+            )
         generation = client.load_generation()
 
         replay = adapter.recover_post_merge_retry(

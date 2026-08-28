@@ -935,7 +935,29 @@ class TypedDatabaseTaskSource:
             "queue_reason": extension_values.get("reason"),
             "control_expected_revision": task.revision - 1,
         }
-        if operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS:
+        # These operation names predate the atomic typed-owner command and
+        # therefore remain valid with the legacy retry receipt shape.  Only
+        # the closed post-merge transition body selects the stronger queue
+        # receipt binding.  This preserves accepted legacy rows while making
+        # deletion of the queue receipt from a new transition fail closed.
+        post_merge_shape = any(
+            name in receipt_values
+            for name in (
+                "execution_phase",
+                "execution_revision",
+                "execution_finished_at_ms",
+                "request_id",
+                "candidate_commit",
+                "source_binding_id",
+                "source_projection_immutable_digest",
+                "coordination",
+                "queue_receipt",
+            )
+        )
+        if (
+            operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+            and post_merge_shape
+        ):
             queue_receipt = receipt_values.get("queue_receipt")
             expected_queue_receipt = _post_merge_retry_queue_receipt(
                 {
