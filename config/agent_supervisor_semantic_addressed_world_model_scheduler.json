@@ -15,10 +15,10 @@
   "benchmark_manifest_path": "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
   "merge_target_branch": "agent/semantic-addressed-world-model-v1",
   "source_binding": {
-    "accelerator_required_ancestor": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
+    "accelerator_required_ancestor": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
     "accelerator_required_branch": "agent/semantic-addressed-world-model-v1",
-    "accelerator_baseline_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
-    "accelerator_baseline_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
+    "accelerator_baseline_head": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
+    "accelerator_baseline_tree": "ec160726a9c92436222071e8119730df81eba8a6",
     "bootstrap_task_source": "quack",
     "ipfs_datasets_submodule_path": "ipfs_datasets_py",
     "ipfs_datasets_planning_revision": "58e5455a600d9b88e311842541d6612649d5b8cb",
@@ -32,6 +32,156 @@
     "record_repository_revision_at_launch": true,
     "changed_revision_requires_new_operator_source_seal": true,
     "planning_revision_is_runtime_completion_evidence": false
+  },
+  "validation_runtime": {
+    "schema": "semantic-addressed-world-model/validation-runtime@1",
+    "python_executable": "/usr/bin/python3.12",
+    "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "python_version": "3.12.3",
+    "pythonpath_entries": [
+      "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages-py-multihash",
+      "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages",
+      "/opt/ipfs-accelerate-legal-validation-7ffe92439767/site-packages"
+    ],
+    "ordered_pythonpath_sha256": "sha256:b33b316a356490f3f80be252ccc22ae94163c0c398a1f77548c4f0d10c5bc707",
+    "required_modules": [
+      "packaging",
+      "pytest"
+    ],
+    "delta_deployment": {
+      "root": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf",
+      "schema": "ipfs-accelerate-aseh-wheel-delta-deployment@1",
+      "deployment_body_sha256": "sha256:c7d197d7cce26a2cd28a461220b7b7b848f77650265b84447cafb8e66505b18d",
+      "manifest_entry_count": 4526,
+      "artifacts": [
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/BUILD_CONTRACT.json",
+          "sha256": "sha256:17e20a218f3934bf7b6dd6e80bcba8b76a2f42e85362c49a226547927f5b311e"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/CLOSURE.json",
+          "sha256": "sha256:3c26150daa5697e78405e2da0d9bffb1a91d030aff906811b4f93b4b133ef8e3"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/COLLISIONS.json",
+          "sha256": "sha256:8ad82936c0f6aa14be1066483b92500930ae5520acea9a6ea9652e5cac885fe5"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/DEPLOYMENT.json",
+          "sha256": "sha256:0d557e24f3254e958f8d37ec8d10299b9fdd34e7685621b09dddb84245932cf2"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/DIRECT_REQUIREMENTS.txt",
+          "sha256": "sha256:0842be6780f2cafb759087e506ca11a34ef20df68bbe2dd504a89522ce020633"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/IMPORT_CONTRACT.json",
+          "sha256": "sha256:de9ac3b168124f212df644f391626a6f16808e6aa7f5ab4652fdf7f86bef17ff"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/IMPORT_SMOKE.json",
+          "sha256": "sha256:92315ed765b6740af6baa84d319658c27f678287083e14c508b7edb47d8fb460"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/LOCK.txt",
+          "sha256": "sha256:d3db803570fc0d590187971dcbb6e22514c8b42be93c880993e6dd4c4e3deb86"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/PAYLOAD_MANIFEST.jsonl",
+          "sha256": "sha256:9b3ba6caebcff215c3de2ef00d5b588d059aff92ddc15cd4ffde8eb2dcd766b8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/TREE_AUDIT.json",
+          "sha256": "sha256:22cf8eaad767eb65f74ddc2ea371086031afc11f47e25bc7cf8d9a3320cfd3e8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/VERIFICATION_CONTRACT.json",
+          "sha256": "sha256:bf4e60384438f22c0eb43b6146d341667a23154ef6472a610249f81daf36c295"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/WHEELS.json",
+          "sha256": "sha256:d020ce204068f34678a1d5c5fc65860bc4b759370c3016ebf3c9463da8316d67"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/WHEEL_AUDIT.json",
+          "sha256": "sha256:c1928ca420025ce510d87db9a5cbadb6e97c7050c76b5f568189c0715ccc53c8"
+        }
+      ]
+    },
+    "base_deployment": {
+      "root": "/opt/ipfs-accelerate-legal-validation-7ffe92439767",
+      "schema": "ipfs-accelerate-legal-validation-deployment@1",
+      "deployment_body_sha256": "sha256:566c3806a52b07aa72ee3b6bb4e604e00cde502ac771d3b87fd1ce7fd84d949a",
+      "manifest_entry_count": 28058,
+      "artifacts": [
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/ASYNC_SMOKE.json",
+          "sha256": "sha256:ca2f2289f808cfbc66fbc7cdb5f9af6fddb9d6880417a136da6e3ec4f7e737c7"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/CLOSURE.json",
+          "sha256": "sha256:cf2cf2e6dc17dc5906c834aad3d42d4d123653b458ed290f73c3d9a11c43710a"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/COLLECTION.json",
+          "sha256": "sha256:eda31c90a7a7be79b38f257e926426de86733cf46028bb6ebe6c7e7c5b9d64f8"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/DEPLOYMENT.json",
+          "sha256": "sha256:654d64e130c9b8e748ea76c3947eb47cc52bea64adb40f2592f7204dfe503ad0"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/DIRECT_REQUIREMENTS.txt",
+          "sha256": "sha256:d84de7ee9fa44796973e3656680583d1e8a69142018d9b724b666a7d561ffa38"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/IMPORT_SMOKE.json",
+          "sha256": "sha256:45e856c88fbdf3d33b51bca2756284ddf5c0b00fda6f3b6dc737671501cbdfda"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/LOCK.txt",
+          "sha256": "sha256:cc6678e4a724136ae866392b36bf98aa274c28cd3a37ff1a29c2d917449f73a9"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/PAYLOAD_MANIFEST.jsonl",
+          "sha256": "sha256:7ffe92439767e99c849a4f7aad0ee5d64e19ab9f754b5f0915f00571ac51f85a"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/WHEELS.json",
+          "sha256": "sha256:771062b6a93d2e4feb41acf90982cf32009522cb69fb373deb4044b6f3ea6eda"
+        },
+        {
+          "path": "/opt/ipfs-accelerate-legal-validation-7ffe92439767/WHEEL_AUDIT.json",
+          "sha256": "sha256:01e56d36c78b43f280d70dce8f8364536f448279d6be224df792e23ec64f6fcc"
+        }
+      ]
+    },
+    "project_dependency_preflight_qualification": {
+      "scope": "all_nonoperator_operational_validations",
+      "task_alias_first": "SAWM-001",
+      "task_alias_last": "SAWM-044",
+      "validation_command_count": 46,
+      "requirements_count": 43,
+      "passed": true,
+      "reason": "approved_validation_environment_satisfies_project_dependencies",
+      "missing_count": 0,
+      "incompatible_count": 0,
+      "invalid_count": 0,
+      "source_receipt_id": "9f5beaff8aa5fefb28576d29d5cbc1b5332e8160f03f9cc7ac698edf9872ae10",
+      "path_sensitive": true,
+      "runtime_authority": false,
+      "recompute_required": true
+    },
+    "policy": {
+      "required_owner_uid": 0,
+      "writable_entries_allowed": false,
+      "symlinks_allowed": false,
+      "pyc_allowed": false,
+      "network_allowed": false,
+      "installer_allowed": false,
+      "ambient_user_site_allowed": false,
+      "automatic_install_allowed": false
+    }
   },
   "initial_projection": {
     "task_count": 45,
@@ -52,23 +202,23 @@
     "authority_mode": "quack",
     "task_source_kind": "duckdb",
     "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
-    "quack_endpoint": "quack:127.0.0.1:45247",
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb",
-    "store_generation": "7",
+    "quack_endpoint": "quack:127.0.0.1:45248",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/control.duckdb",
+    "store_generation": "8",
     "schema_revision": "datasets-authoritative-operational-v1",
-    "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/events",
-    "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/registry",
-    "worktree_root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/worktrees",
+    "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/events",
+    "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/registry",
+    "worktree_root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/worktrees",
     "export_profile": "semantic-addressed-world-model-r2",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
   "quack_owner": {
-    "database_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb",
-    "state_dir": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/quack-owner",
+    "database_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/control.duckdb",
+    "state_dir": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/quack-owner",
     "host": "127.0.0.1",
-    "port": 45247,
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb",
+    "port": 45248,
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/control.duckdb",
     "repository_id": "ipfs_accelerate_py:semantic-addressed-world-model-v1",
     "secret_handle": "env://SAWM_QUACK_TOKEN",
     "allow_experimental_local_extension": true,
@@ -102,53 +252,75 @@
     }
   },
   "prior_materialization": {
-    "migration_revision": "SAWM-R2-M5",
+    "migration_revision": "SAWM-R2-M6",
     "inventory_path": "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json",
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/control.duckdb",
     "program_definition_cid": "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72",
     "plan_root_cid": "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914",
-    "source_binding_cid": "sha256:72ae538afc063f98a4e7b0a799a619d6a8c499ceb51c9ceb4bffe95de5f9d323",
-    "source_head": "1322089b8317c4ccb4678e0f4a2469b827a2dbec",
-    "source_tree": "38ed294b53fa9dde76b1ba92c57a9b931e49978c",
-    "projection_cid": "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha",
-    "control_store_sha256": "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670",
-    "event_watermark": 116,
-    "event_prefix_sha256": "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911",
-    "migration_history_count": 4,
-    "prior_plan_revision": 5,
-    "target_plan_revision": 6,
-    "migration_event_watermark": 118,
-    "target_event_watermark": 119,
-    "target_projection_cid": "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q",
-    "nonterminal_task_requeue": {
-      "schema": "sawm/nonterminal-task-requeue-authorization@1",
+    "source_binding_cid": "sha256:81d0fbd74e48c214b5334432cfa0f55e5d6b51a6f5096fa85e323512cf11fb77",
+    "source_head": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
+    "source_tree": "ec160726a9c92436222071e8119730df81eba8a6",
+    "projection_cid": "baguqeeram7gdldpraa6twhuvfbqbeou4gefgmj5szitgb6ij2nmwobx727wq",
+    "control_store_sha256": "e2b8e8a15abe9c2a5b53dd540e9621c11a85f63fcc3799da331bb55e3bfbc408",
+    "event_watermark": 121,
+    "event_prefix_sha256": "f07bb22f380f30901d0ca16af4bf6bbc3b544f039fb1f43728828d92a95a3f9e",
+    "migration_history_count": 5,
+    "prior_generation": 7,
+    "target_generation": 8,
+    "prior_plan_revision": 6,
+    "target_plan_revision": 7,
+    "prior_materialization_event_watermark": 119,
+    "prior_materialization_projection_cid": "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q",
+    "prior_materialization_receipt_cid": "sha256:7a3800b6ba8cdf722d846bb2fd0bf505b78114cd659f806f7eafe7df81ec71b8",
+    "prior_materialization_receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/migration-receipt.json",
+    "prior_materialization_receipt_file_sha256": "37838a3153c6fa59d6a9a31d8c17fea3bf902f50fed517112ceac23932ad14ea",
+    "migration_event_watermark": 123,
+    "operational_validation_first_event_watermark": 124,
+    "operational_validation_last_event_watermark": 167,
+    "operational_validation_revision_changes": 44,
+    "target_event_watermark": 168,
+    "target_projection_cid": "baguqeeraztioh4pdrleiio2hzt2dtxh7o7ae2jk237fvcflktepffj6dpuya",
+    "operational_validation_requeue": {
+      "schema": "sawm/operational-validation-requeue-authorization@1",
       "authorized": true,
       "authority": "operator_source_migration",
-      "task_alias": "SAWM-001",
-      "task_cid": "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76",
-      "from_status": "in_progress",
-      "from_revision": 2,
+      "task_alias_first": "SAWM-001",
+      "task_alias_last": "SAWM-044",
+      "task_count": 44,
+      "task_identity_manifest_cid": "sha256:902037a87e711082e57c8dcf002eab669f0dc83c35e9f372ba197a18f8acf1d3",
+      "validation_command_count": 46,
+      "validation_token_from": "/home/barberb/.local/bin/python",
+      "validation_token_to": "python",
+      "recovered_task_alias": "SAWM-001",
+      "recovered_task_cid": "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76",
+      "from_status": "blocked",
+      "from_revision": 5,
+      "operational_status": "blocked",
+      "operational_revision": 6,
       "to_status": "todo",
-      "to_revision": 3,
-      "reason": "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery",
+      "to_revision": 7,
+      "reason": "bounded_validation_runtime_and_operational_board_command_recovery",
       "provider_invocation_count": 0,
       "effect_claim_count": 0,
+      "implementation_commit_count": 0,
+      "merge_attempt_count": 0,
       "accepted_definition_changes": 0,
       "accepted_completion_changes": 0,
-      "expected_event_watermark": 119,
+      "operational_validation_revision_changes": 44,
+      "expected_event_watermark": 168,
       "worker_self_approval": false
     },
     "operator_task_cid": "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6",
     "preserve_append_only": true,
-    "reason": "source_authority_revision_and_preprovider_task_requeue"
+    "reason": "source_authority_revision_and_settled_preprovider_task_requeue"
   },
   "ducklake_history_projection": {
     "enabled_when_locally_available": true,
     "load_local_only": true,
     "install_or_network_forbidden": true,
-    "catalog_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/ducklake/history.ducklake",
-    "data_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/ducklake/data",
-    "receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/ducklake-history-receipt.json",
+    "catalog_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/ducklake/history.ducklake",
+    "data_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/ducklake/data",
+    "receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/ducklake-history-receipt.json",
     "authority": false,
     "scheduling_prerequisite": false,
     "completion_prerequisite": false,
@@ -182,11 +354,11 @@
     "ipfs_kit_py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5",
-    "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/state",
-    "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/worktrees",
-    "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/merge-queue",
-    "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m5/logs",
+    "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6",
+    "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/state",
+    "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/worktrees",
+    "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/merge-queue",
+    "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6/logs",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "lanes": [
@@ -293,6 +465,8 @@
       "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
       "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
       "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "requirements.txt",
       "scripts/materialize_semantic_addressed_world_model_program.py",
       "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
       "scripts/validate_semantic_addressed_world_model_board.py",
@@ -312,6 +486,7 @@
   },
   "protected_paths": [
     ".gitignore",
+    "requirements.txt",
     "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
     "docs/architecture/semantic_addressed_world_model.objectives.md",
     "docs/architecture/semantic_addressed_world_model.todo.md",
@@ -351,6 +526,7 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
     "test/api/test_agent_supervisor_configured_board_extension_projection.py",

@@ -3,10 +3,11 @@
 
 The default action verifies the sealed prior authority, copies only its exact
 canonical control-store bytes to a confined stage, appends the bounded source
-migration and operator-authorized nonterminal task recovery through the landed
-intent repository, and atomically publishes the successor store. It never
-rematerializes accepted task/goal definitions or completion evidence, and it
-never copies predecessor execution or coordination sidecars.
+migration, successor operational-validation revisions, and operator-authorized
+settled-task recovery through the landed intent repository, and atomically
+publishes the successor store. It never rewrites accepted task/goal definitions
+or completion evidence, and it never copies predecessor execution or
+coordination sidecars.
 """
 
 from __future__ import annotations
@@ -97,32 +98,47 @@ _M3_PREWORKER_FAILURE_V2: dict[str, Any] = {
     "failure_time_authority": "unavailable",
 }
 
-_M4_FROZEN_PRIOR_BINDING: dict[str, Any] = {
+_M5_FROZEN_PRIOR_BINDING: dict[str, Any] = {
     "prior_store_id": (
         "data/agent_supervisor/semantic_addressed_world_model/"
-        "run-r2-m4/control.duckdb"
+        "run-r2-m5/control.duckdb"
     ),
     "prior_control_store_sha256": (
-        "d0c531d2ea30c512beb3587152527c4f605b5a5bf89e6311bf7aaa1974bff670"
+        "e2b8e8a15abe9c2a5b53dd540e9621c11a85f63fcc3799da331bb55e3bfbc408"
     ),
-    "prior_event_watermark": 116,
+    "prior_event_watermark": 121,
     "prior_event_prefix_sha256": (
-        "77b1a6b834658038c0f0cc44870a28f9fb480750e34dda408ab5718e83ee8911"
+        "f07bb22f380f30901d0ca16af4bf6bbc3b544f039fb1f43728828d92a95a3f9e"
     ),
     "prior_projection_cid": (
-        "baguqeera65d24eqqbusuk6vznpmhm4nr65fas3i75dytebq5bev72bs6jaha"
+        "baguqeeram7gdldpraa6twhuvfbqbeou4gefgmj5szitgb6ij2nmwobx727wq"
     ),
     "prior_database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
-    "prior_generation": 6,
-    "prior_plan_revision": 5,
+    "prior_generation": 7,
+    "prior_plan_revision": 6,
 }
 
-_M5_EXPECTED_PROJECTION_CID = (
-    "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q"
+_M6_EXPECTED_PROJECTION_CID = (
+    "baguqeeraztioh4pdrleiio2hzt2dtxh7o7ae2jk237fvcflktepffj6dpuya"
 )
-_M5_EVENT_SUFFIX_LENGTH = 3
-_M5_SUPERSESSION_REASON = "source_authority_revision_and_preprovider_task_requeue"
-_M5_SUPERSESSION_MODE = "source_authority_revision_and_nonterminal_task_recovery"
+_M6_OPERATIONAL_TASK_COUNT = 44
+_M6_OPERATIONAL_VALIDATION_COUNT = 46
+_M6_EVENT_SUFFIX_LENGTH = 47
+_M6_MIGRATION_EVENT_OFFSET = 2
+_M6_OPERATIONAL_FIRST_OFFSET = 3
+_M6_OPERATIONAL_LAST_OFFSET = 46
+_M6_RECOVERY_EVENT_OFFSET = 47
+_M6_VALIDATION_TOKEN_FROM = "/home/barberb/.local/bin/python"
+_M6_VALIDATION_TOKEN_TO = "python"
+_M6_TASK_IDENTITY_MANIFEST_CID = (
+    "sha256:902037a87e711082e57c8dcf002eab669f0dc83c35e9f372ba197a18f8acf1d3"
+)
+_M6_SUPERSESSION_REASON = (
+    "source_authority_revision_and_settled_preprovider_task_requeue"
+)
+_M6_SUPERSESSION_MODE = (
+    "source_authority_revision_and_operational_validation_recovery"
+)
 
 
 class MaterializationError(RuntimeError):
@@ -181,6 +197,7 @@ def _git(root: Path, *args: str) -> str:
 def _source_binding(root: Path) -> dict[str, Any]:
     controls = (
         ".gitignore",
+        "requirements.txt",
         "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
         "docs/architecture/semantic_addressed_world_model.objectives.md",
         "docs/architecture/semantic_addressed_world_model.todo.md",
@@ -220,6 +237,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
         "test/api/test_agent_supervisor_configured_board_extension_projection.py",
@@ -259,6 +277,93 @@ def _metadata_payload(card: Any) -> dict[str, Any]:
     return {str(key).replace(" ", "_"): str(value) for key, value in sorted(card.metadata.items())}
 
 
+def _operational_task_aliases() -> tuple[str, ...]:
+    return tuple(f"SAWM-{ordinal:03d}" for ordinal in range(1, 45))
+
+
+def _task_identity_manifest_cid(task_cids: Mapping[str, Any]) -> str:
+    manifest = [
+        {"task_alias": alias, "task_cid": str(task_cids[alias])}
+        for alias in _operational_task_aliases()
+    ]
+    return _identity(manifest)
+
+
+def _operational_validation_commands(
+    commands: Sequence[Sequence[str]],
+    *,
+    task_alias: str,
+) -> tuple[tuple[str, ...], int]:
+    revised: list[tuple[str, ...]] = []
+    replacements = 0
+    for argv in commands:
+        revised_argv: list[str] = []
+        for part in argv:
+            text = str(part)
+            count = text.count(_M6_VALIDATION_TOKEN_FROM)
+            replacements += count
+            revised_argv.append(
+                text.replace(_M6_VALIDATION_TOKEN_FROM, _M6_VALIDATION_TOKEN_TO)
+            )
+        revised.append(tuple(revised_argv))
+    if not revised or replacements != len(revised):
+        raise MigrationRequired(
+            f"{task_alias} operational validation token cardinality differs"
+        )
+    return tuple(revised), replacements
+
+
+def _operational_validation_receipt(
+    population: Mapping[str, Any],
+    *,
+    task_alias: str,
+    task_cid: str,
+    expected_status: str,
+    expected_revision: int,
+    prior_validations: Sequence[Sequence[str]],
+    operational_validations: Sequence[Sequence[str]],
+    replacement_count: int,
+) -> dict[str, Any]:
+    migration = population["migration_inventory"]
+    receipt = {
+        "schema": "sawm/operational-validation-revision@1",
+        "authority_class": "operator_control_plane",
+        "migration_revision": migration["migration_revision"],
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "historical_definition_cid": migration["prior_task_cids"][task_alias],
+        "historical_definition_rewritten": False,
+        "expected_status": expected_status,
+        "expected_revision": int(expected_revision),
+        "status": expected_status,
+        "target_revision": int(expected_revision) + 1,
+        "prior_source_binding_cid": migration["prior_source_binding_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_count": len(prior_validations),
+        "validation_token_from": _M6_VALIDATION_TOKEN_FROM,
+        "validation_token_to": _M6_VALIDATION_TOKEN_TO,
+        "validation_token_replacement_count": int(replacement_count),
+        "prior_validation_digest": _identity(
+            {
+                "task_cid": task_cid,
+                "validations": [list(argv) for argv in prior_validations],
+            }
+        ),
+        "operational_validation_digest": _identity(
+            {
+                "task_cid": task_cid,
+                "validations": [list(argv) for argv in operational_validations],
+            }
+        ),
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    return {**receipt, "receipt_cid": _identity(receipt)}
+
+
 def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     board = _board_module(root)
@@ -282,8 +387,8 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         != "sawm/prior-materialization-migration-inventory@3"
         or migration.get("migration_revision") != expected_migration_revision
         or migration.get("migration_kind")
-        != "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
-        or migration.get("supersession_reason") != _M5_SUPERSESSION_REASON
+        != "bounded_validation_runtime_and_operational_board_command_recovery"
+        or migration.get("supersession_reason") != _M6_SUPERSESSION_REASON
     ):
         raise MaterializationError("the sealed append-only migration revision is missing")
     launch_failure = migration.get("preworker_launch_failure")
@@ -297,7 +402,7 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     preprovider_failure = migration.get("preprovider_task_failure")
     if (
         not isinstance(preprovider_failure, dict)
-        or preprovider_failure.get("schema") != "sawm/pre-provider-task-failure@1"
+        or preprovider_failure.get("schema") != "sawm/pre-provider-task-failure@2"
         or preprovider_failure.get("store_id") != migration.get("prior_store_id")
         or preprovider_failure.get("control_store_sha256")
         != migration.get("prior_control_store_sha256")
@@ -323,6 +428,9 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or preprovider_failure.get("implementation_commit_created") is not False
         or preprovider_failure.get("merge_attempted") is not False
         or preprovider_failure.get("task_completed") is not False
+        or preprovider_failure.get("canonical_task_status") != "blocked"
+        or int(preprovider_failure.get("canonical_task_revision") or 0) != 5
+        or preprovider_failure.get("settlement_closed") is not True
     ):
         raise MaterializationError("the sealed pre-provider task failure is invalid")
     bounded_paths = migration.get("bounded_control_plane_repair_paths")
@@ -336,6 +444,11 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     prior_task_cids = migration.get("prior_task_cids")
     if not isinstance(prior_goal_cids, dict) or not isinstance(prior_task_cids, dict):
         raise MaterializationError("prior SAWM identity maps are incomplete")
+    if (
+        _task_identity_manifest_cid(prior_task_cids)
+        != _M6_TASK_IDENTITY_MANIFEST_CID
+    ):
+        raise MaterializationError("operational task identity manifest differs")
 
     goal_cids: dict[str, str] = {}
     goal_definitions: dict[str, dict[str, Any]] = {}
@@ -552,6 +665,11 @@ def _verify_migration_history(
             or entry.get("target_event_watermark")
             or 0
         )
+        materialization_watermark = int(
+            entry.get("materialization_event_watermark")
+            or entry.get("target_event_watermark")
+            or 0
+        )
         target_watermark = int(entry.get("target_event_watermark") or 0)
         if entry.get("migration_revision") != expected_revision:
             raise MigrationRequired("sealed migration history sequence differs")
@@ -573,6 +691,25 @@ def _verify_migration_history(
                 or int(entry.get("post_migration_task_revision") or 0) != 2
             ):
                 raise MigrationRequired("sealed @2 migration history sequence differs")
+        elif schema == "sawm/source-migration-history-entry@3":
+            runtime_events = entry.get("post_materialization_events")
+            if (
+                ordinal != 5
+                or migration_watermark != prior_watermark + 2
+                or materialization_watermark != migration_watermark + 1
+                or target_watermark != materialization_watermark + 2
+                or not isinstance(runtime_events, list)
+                or len(runtime_events) != 2
+                or [int(item.get("global_sequence") or 0) for item in runtime_events]
+                != [materialization_watermark + 1, materialization_watermark + 2]
+                or [item.get("event_type") for item in runtime_events]
+                != ["intent.task_status_changed", "intent.task_status_changed"]
+                or [item.get("task_status") for item in runtime_events]
+                != ["in_progress", "blocked"]
+                or [int(item.get("task_revision") or 0) for item in runtime_events]
+                != [4, 5]
+            ):
+                raise MigrationRequired("sealed @3 migration history sequence differs")
         else:
             raise MigrationRequired("sealed migration history schema differs")
         if previous is not None and (
@@ -624,6 +761,12 @@ def _verify_migration_history(
         if schema == "sawm/source-migration-history-entry@2":
             event_sequences.append(target_watermark)
             expected_event_ids.append(entry.get("post_migration_event_id"))
+        elif schema == "sawm/source-migration-history-entry@3":
+            event_sequences.append(materialization_watermark)
+            expected_event_ids.append(entry.get("materialization_event_id"))
+            for runtime_event in entry["post_materialization_events"]:
+                event_sequences.append(int(runtime_event["global_sequence"]))
+                expected_event_ids.append(runtime_event.get("event_id"))
         placeholders = ",".join("?" for _ in event_sequences)
         event_ids = connection.execute(
             "SELECT global_sequence, event_id, event_type, task_cid, body_json "
@@ -655,6 +798,55 @@ def _verify_migration_history(
                 or migration_prefix != entry.get("migration_event_prefix_sha256")
             ):
                 raise MigrationRequired("sealed M4 migration-only event prefix differs")
+        elif schema == "sawm/source-migration-history-entry@3":
+            materialization_event = event_ids[2]
+            materialization_payload = json.loads(str(materialization_event[4]))
+            materialization_body = materialization_payload.get("body") or {}
+            if (
+                int(materialization_event[0]) != materialization_watermark
+                or str(materialization_event[2]) != "intent.task_status_changed"
+                or str(materialization_event[3])
+                != entry.get("materialization_task_cid")
+                or materialization_body.get("task_cid")
+                != entry.get("materialization_task_cid")
+                or materialization_body.get("status") != "todo"
+                or int(materialization_body.get("revision") or 0) != 3
+            ):
+                raise MigrationRequired("sealed M5 materialization event differs")
+            for observed, expected in zip(
+                event_ids[3:], entry["post_materialization_events"], strict=True
+            ):
+                payload = json.loads(str(observed[4]))
+                body = payload.get("body") or {}
+                if (
+                    int(observed[0]) != int(expected["global_sequence"])
+                    or str(observed[1]) != expected["event_id"]
+                    or str(observed[2]) != expected["event_type"]
+                    or str(observed[3]) != expected["task_cid"]
+                    or body.get("task_cid") != expected["task_cid"]
+                    or body.get("status") != expected["task_status"]
+                    or int(body.get("revision") or 0)
+                    != int(expected["task_revision"])
+                ):
+                    raise MigrationRequired("sealed M5 runtime event differs")
+            for watermark, digest_key, noun in (
+                (
+                    migration_watermark,
+                    "migration_event_prefix_sha256",
+                    "migration-only",
+                ),
+                (
+                    materialization_watermark,
+                    "materialization_event_prefix_sha256",
+                    "materialization",
+                ),
+                (target_watermark, "target_event_prefix_sha256", "runtime"),
+            ):
+                prefix, count = _event_prefix_digest(connection, watermark)
+                if count != watermark or prefix != entry.get(digest_key):
+                    raise MigrationRequired(
+                        f"sealed M5 {noun} event prefix differs"
+                    )
         history.append(entry)
         previous = entry
 
@@ -676,15 +868,27 @@ def _verify_migration_history(
         != migration.get("prior_materialization_receipt_path")
     ):
         raise MigrationRequired("latest migration-history entry does not bind the predecessor")
-    if latest.get("schema") == "sawm/source-migration-history-entry@2" and (
-        latest.get("migration_event_watermark")
-        != migration.get("prior_materialization_event_watermark")
-        or latest.get("migration_projection_cid")
-        != migration.get("prior_materialization_projection_cid")
-        or latest.get("migration_receipt_file_sha256")
-        != migration.get("prior_materialization_receipt_file_sha256")
-    ):
-        raise MigrationRequired("latest migration-only receipt binding differs")
+    if latest.get("schema") in {
+        "sawm/source-migration-history-entry@2",
+        "sawm/source-migration-history-entry@3",
+    }:
+        latest_materialization_watermark = latest.get(
+            "materialization_event_watermark",
+            latest.get("migration_event_watermark"),
+        )
+        latest_materialization_projection = latest.get(
+            "materialization_projection_cid",
+            latest.get("migration_projection_cid"),
+        )
+        if (
+            latest_materialization_watermark
+            != migration.get("prior_materialization_event_watermark")
+            or latest_materialization_projection
+            != migration.get("prior_materialization_projection_cid")
+            or latest.get("migration_receipt_file_sha256")
+            != migration.get("prior_materialization_receipt_file_sha256")
+        ):
+            raise MigrationRequired("latest materialization receipt binding differs")
     return tuple(history)
 
 
@@ -755,7 +959,7 @@ def _verify_preprovider_failure_artifacts(
     root: Path,
     migration: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Verify the frozen M4 sidecars without making them successor authority."""
+    """Verify the frozen M5 sidecars without making them successor authority."""
 
     failure = migration["preprovider_task_failure"]
     if (
@@ -768,28 +972,36 @@ def _verify_preprovider_failure_artifacts(
         or failure.get("provider_dispatch_attempted") is not False
         or failure.get("provider_invocation_recorded") is not False
         or failure.get("authoritative_completion_evidence") is not False
+        or failure.get("settlement_closed") is not True
     ):
-        raise MigrationRequired("sealed M4 pre-provider authority classification differs")
+        raise MigrationRequired("sealed M5 pre-provider authority classification differs")
 
     execution_path = _verify_sealed_file(
         root,
         str(failure["execution_store_id"]),
         str(failure["execution_store_sha256"]),
-        noun="M4 execution sidecar",
+        noun="M5 execution sidecar",
+    )
+    _verify_sealed_file(
+        root,
+        str(failure["execution_wal_path"]),
+        str(failure["execution_wal_sha256"]),
+        noun="M5 execution WAL",
     )
     coordination_path = _verify_sealed_file(
         root,
         str(failure["coordination_store_id"]),
         str(failure["coordination_store_sha256"]),
-        noun="M4 coordination sidecar",
+        noun="M5 coordination sidecar",
     )
     for path_key, digest_key, noun in (
-        ("configured_board_launch_log_path", "configured_board_launch_log_sha256", "M4 launch log"),
-        ("implementation_daemon_log_path", "implementation_daemon_log_sha256", "M4 implementation log"),
-        ("supervisor_event_log_path", "supervisor_event_log_sha256", "M4 supervisor event log"),
-        ("merge_queue_store_path", "merge_queue_store_sha256", "M4 merge queue"),
-        ("quack_owner_status_path", "quack_owner_status_sha256", "M4 stopped owner status"),
-        ("portal_attempt_binding_path", "portal_attempt_binding_sha256", "M4 portal attempt binding"),
+        ("configured_board_launch_log_path", "configured_board_launch_log_sha256", "M5 launch log"),
+        ("implementation_daemon_log_path", "implementation_daemon_log_sha256", "M5 implementation log"),
+        ("supervisor_event_log_path", "supervisor_event_log_sha256", "M5 supervisor event log"),
+        ("supervisor_status_path", "supervisor_status_sha256", "M5 supervisor status"),
+        ("merge_queue_store_path", "merge_queue_store_sha256", "M5 merge queue"),
+        ("quack_owner_status_path", "quack_owner_status_sha256", "M5 stopped owner status"),
+        ("portal_attempt_binding_path", "portal_attempt_binding_sha256", "M5 portal attempt binding"),
     ):
         _verify_sealed_file(
             root,
@@ -809,7 +1021,7 @@ def _verify_preprovider_failure_artifacts(
             "effect_claims": _table_count(execution, "effect_claims"),
         }
         if execution_counts != failure["execution_authority_counts"]:
-            raise MigrationRequired("sealed M4 execution-sidecar counts differ")
+            raise MigrationRequired("sealed M5 execution-sidecar counts differ")
         attempt = execution.execute(
             "SELECT claim_id, task_cid, task_alias, attempt_number, owner_session_id, "
             "fencing_token, fence_epoch, lease_id, committed_phase, status, revision "
@@ -832,19 +1044,25 @@ def _verify_preprovider_failure_artifacts(
             )
         ]
         if attempt != expected_attempt:
-            raise MigrationRequired("sealed M4 execution attempt differs")
+            raise MigrationRequired("sealed M5 execution attempt differs")
         phases = execution.execute(
             "SELECT phase, fencing_token, fence_epoch, revision, body_json "
             "FROM attempt_phases WHERE attempt_id = ? ORDER BY revision",
             [failure["attempt_id"]],
         ).fetchall()
+        failed_body = json.loads(str(phases[-1][4])) if phases else {}
         if (
             [(str(row[0]), int(row[1]), int(row[2]), int(row[3])) for row in phases]
             != [("claimed", 1, 1, 1), ("context", 1, 1, 2), ("failed", 1, 1, 3)]
-            or json.loads(str(phases[-1][4])).get("reason")
-            != failure["database_attempt_terminal_reason"]
+            or failed_body.get("settlement_id") != failure["settlement_id"]
+            or failed_body.get("failure_kind")
+            != failure["settlement_failure_kind"]
+            or failed_body.get("failure_payload_digest")
+            != failure["failure_payload_digest"]
+            or int(failed_body.get("provider_invocation_count") or 0) != 0
+            or int(failed_body.get("effect_claim_count") or 0) != 0
         ):
-            raise MigrationRequired("sealed M4 execution phase history differs")
+            raise MigrationRequired("sealed M5 execution settlement differs")
     finally:
         execution.close()
 
@@ -858,7 +1076,7 @@ def _verify_preprovider_failure_artifacts(
             "task_completions": _table_count(coordination, "task_completions"),
         }
         if coordination_counts != failure["coordination_authority_counts"]:
-            raise MigrationRequired("sealed M4 coordination-sidecar counts differ")
+            raise MigrationRequired("sealed M5 coordination-sidecar counts differ")
         attempt = coordination.execute(
             "SELECT task_cid, attempt_number, owner_session_id, fencing_token, "
             "fence_epoch, status, revision FROM task_attempts WHERE attempt_id = ?",
@@ -875,7 +1093,7 @@ def _verify_preprovider_failure_artifacts(
                 int(failure["coordination_attempt_revision"]),
             )
         ]:
-            raise MigrationRequired("sealed M4 coordination attempt differs")
+            raise MigrationRequired("sealed M5 coordination attempt differs")
         claim = coordination.execute(
             "SELECT task_cid, owner_session_id, fencing_token, fence_epoch, "
             "expires_at_ms, state, revision, attempt_id, attempt_number, lease_id "
@@ -896,7 +1114,7 @@ def _verify_preprovider_failure_artifacts(
                 failure["lease_id"],
             )
         ]:
-            raise MigrationRequired("sealed M4 coordination claim differs")
+            raise MigrationRequired("sealed M5 coordination claim differs")
         lease = coordination.execute(
             "SELECT task_cid, owner_session_id, fencing_token, fence_epoch, "
             "expires_at_ms, state, revision, claim_id, attempt_id, attempt_number "
@@ -917,13 +1135,24 @@ def _verify_preprovider_failure_artifacts(
                 1,
             )
         ]:
-            raise MigrationRequired("sealed M4 coordination lease differs")
+            raise MigrationRequired("sealed M5 coordination lease differs")
+        completion = coordination.execute(
+            "SELECT status, body_json FROM task_completions WHERE task_cid = ?",
+            [failure["task_cid"]],
+        ).fetchall()
+        completion_body = json.loads(str(completion[0][1])) if completion else {}
+        if (
+            len(completion) != 1
+            or str(completion[0][0]) != "failed"
+            or completion_body.get("settlement_id") != failure["settlement_id"]
+        ):
+            raise MigrationRequired("sealed M5 coordination settlement differs")
         ready = coordination.execute(
             "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
             [failure["task_cid"]],
         ).fetchall()
         if ready != [(bool(failure["coordination_task_ready"]),)]:
-            raise MigrationRequired("sealed M4 coordination readiness differs")
+            raise MigrationRequired("sealed M5 coordination readiness differs")
     finally:
         coordination.close()
 
@@ -931,7 +1160,7 @@ def _verify_preprovider_failure_artifacts(
         root,
         str(failure["portal_attempt_binding_path"]),
         str(failure["portal_attempt_binding_sha256"]),
-        noun="M4 portal attempt binding",
+        noun="M5 portal attempt binding",
     )
     binding = _load_json(binding_path)
     claimed_binding_id = str(binding.pop("binding_id", ""))
@@ -940,7 +1169,8 @@ def _verify_preprovider_failure_artifacts(
         or _identity(binding) != claimed_binding_id
         or binding.get("task_cid") != failure["task_cid"]
         or binding.get("task_alias") != failure["task_alias"]
-        or int(binding.get("task_revision") or 0) != int(failure["task_revision"])
+        or int(binding.get("task_revision") or 0)
+        != int(failure["canonical_claim_revision"])
         or binding.get("attempt_id") != failure["attempt_id"]
         or binding.get("claim_id") != failure["claim_id"]
         or binding.get("lease_id") != failure["lease_id"]
@@ -948,26 +1178,26 @@ def _verify_preprovider_failure_artifacts(
         != "sha256:" + failure["portal_task_projection_sha256"]
         or binding.get("projection_authority") is not False
     ):
-        raise MigrationRequired("sealed M4 portal attempt binding differs")
+        raise MigrationRequired("sealed M5 portal attempt binding differs")
 
     portal_dir = binding_path.parent
     event_log = _verify_sealed_file(
         root,
         str((portal_dir / "portal-events.jsonl").relative_to(root)),
         str(failure["portal_event_log_sha256"]),
-        noun="M4 portal event log",
+        noun="M5 portal event log",
     )
     manifest_path = _verify_sealed_file(
         root,
         str((portal_dir / "portal-events.jsonl.manifest.json").relative_to(root)),
         str(failure["portal_event_manifest_sha256"]),
-        noun="M4 portal event manifest",
+        noun="M5 portal event manifest",
     )
     _verify_sealed_file(
         root,
         str((portal_dir / "task-projection.md").relative_to(root)),
         str(failure["portal_task_projection_sha256"]),
-        noun="M4 portal task projection",
+        noun="M5 portal task projection",
     )
     event_rows = [
         json.loads(line)
@@ -990,10 +1220,11 @@ def _verify_preprovider_failure_artifacts(
             for index, row in enumerate(event_rows)
         )
     ):
-        raise MigrationRequired("sealed M4 portal event chain differs")
+        raise MigrationRequired("sealed M5 portal event chain differs")
     events_by_id = {str(row.get("event_id") or ""): row for row in event_rows}
     probe_event = events_by_id.get(str(failure["failure_event_id"])) or {}
-    probe = ((probe_event.get("dependency_preflight") or {}).get("probe") or {})
+    preflight = probe_event.get("dependency_preflight") or {}
+    probe = preflight.get("probe") or {}
     exception_event = events_by_id.get(
         str(failure["implementation_exception_event_id"])
     ) or {}
@@ -1003,9 +1234,12 @@ def _verify_preprovider_failure_artifacts(
     if (
         probe_event.get("type") != failure["failure_event_type"]
         or probe_event.get("task_id") != failure["task_alias"]
-        or probe.get("error_sha256") != failure["probe_error_sha256"]
-        or probe.get("error_type") != failure["probe_error_type"]
+        or preflight.get("receipt_id") != failure["preflight_receipt_id"]
+        or preflight.get("retry_fingerprint")
+        != failure["preflight_retry_fingerprint"]
+        or preflight.get("reason") != failure["preflight_reason"]
         or probe.get("reason") != failure["probe_reason"]
+        or preflight.get("validation_roots") != failure["validation_roots"]
         or exception_event.get("type") != "implementation_exception"
         or exception_event.get("failure_kind") != failure["failure_kind"]
         or exception_event.get("phase") != failure["failure_phase"]
@@ -1017,7 +1251,7 @@ def _verify_preprovider_failure_artifacts(
         or (finished_event.get("merge_result") or {}).get("merged") is not False
         or finished_event.get("attempt_consumed") is not False
     ):
-        raise MigrationRequired("sealed M4 pre-provider portal failure differs")
+        raise MigrationRequired("sealed M5 pre-provider portal failure differs")
     manifest = _load_json(manifest_path)
     if (
         manifest.get("snapshot_id") != failure["portal_event_snapshot_id"]
@@ -1027,14 +1261,38 @@ def _verify_preprovider_failure_artifacts(
         or int(manifest.get("latest_sequence") or 0)
         != int(failure["portal_event_last_sequence"])
     ):
-        raise MigrationRequired("sealed M4 portal manifest binding differs")
+        raise MigrationRequired("sealed M5 portal manifest binding differs")
+    for mutation in failure["owner_mutation_receipts"]:
+        path = _verify_sealed_file(
+            root,
+            mutation["path"],
+            mutation["sha256"],
+            noun="M5 owner mutation receipt",
+        )
+        result = _load_json(path)
+        observed = result.get("observed") or {}
+        if (
+            result.get("request_id") != mutation["request_id"]
+            or result.get("result_cid") != mutation["result_cid"]
+            or observed.get("event_id") != mutation["event_id"]
+            or observed.get("old_status") != mutation["old_status"]
+            or int(observed.get("old_revision") or 0)
+            != int(mutation["old_revision"])
+            or observed.get("new_status") != mutation["new_status"]
+            or int(observed.get("new_revision") or 0)
+            != int(mutation["new_revision"])
+        ):
+            raise MigrationRequired("sealed M5 owner mutation result differs")
     return {
         "execution_store_sha256": failure["execution_store_sha256"],
         "coordination_store_sha256": failure["coordination_store_sha256"],
         "portal_event_log_sha256": failure["portal_event_log_sha256"],
         "portal_event_manifest_sha256": failure["portal_event_manifest_sha256"],
+        "settlement_id": failure["settlement_id"],
         "provider_invocation_count": 0,
         "effect_claim_count": 0,
+        "implementation_commit_count": 0,
+        "merge_attempt_count": 0,
     }
 
 
@@ -1046,9 +1304,9 @@ def _verify_prior_store(
     migration = population["migration_inventory"]
     if any(
         migration.get(key) != expected
-        for key, expected in _M4_FROZEN_PRIOR_BINDING.items()
+        for key, expected in _M5_FROZEN_PRIOR_BINDING.items()
     ):
-        raise MigrationRequired("sealed M4 predecessor binding differs")
+        raise MigrationRequired("sealed M5 predecessor binding differs")
     if migration.get("preworker_launch_failure") != _M3_PREWORKER_FAILURE_V2:
         raise MigrationRequired("sealed M3 historical launch failure differs")
     preprovider_failure = migration["preprovider_task_failure"]
@@ -1079,33 +1337,66 @@ def _verify_prior_store(
         or int(configured.get("target_plan_revision") or 0)
         != int(migration["target_plan_revision"])
         or int(configured.get("migration_event_watermark") or 0)
-        != int(migration["prior_event_watermark"]) + 2
+        != int(migration["prior_event_watermark"]) + _M6_MIGRATION_EVENT_OFFSET
+        or int(configured.get("operational_validation_first_event_watermark") or 0)
+        != int(migration["prior_event_watermark"]) + _M6_OPERATIONAL_FIRST_OFFSET
+        or int(configured.get("operational_validation_last_event_watermark") or 0)
+        != int(migration["prior_event_watermark"]) + _M6_OPERATIONAL_LAST_OFFSET
         or int(configured.get("target_event_watermark") or 0)
-        != int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
-        or configured.get("target_projection_cid") != _M5_EXPECTED_PROJECTION_CID
+        != int(migration["prior_event_watermark"]) + _M6_EVENT_SUFFIX_LENGTH
+        or configured.get("target_projection_cid") != _M6_EXPECTED_PROJECTION_CID
+        or int(configured.get("prior_materialization_event_watermark") or 0)
+        != int(migration["prior_materialization_event_watermark"])
+        or configured.get("prior_materialization_projection_cid")
+        != migration["prior_materialization_projection_cid"]
+        or configured.get("prior_materialization_receipt_cid")
+        != migration["prior_materialization_receipt_cid"]
+        or configured.get("prior_materialization_receipt_path")
+        != migration["prior_materialization_receipt_path"]
+        or configured.get("prior_materialization_receipt_file_sha256")
+        != migration["prior_materialization_receipt_file_sha256"]
     ):
         raise MaterializationError("scheduler prior-authority policy differs from its inventory")
-    requeue = configured.get("nonterminal_task_requeue") or {}
+    requeue = configured.get("operational_validation_requeue") or {}
     expected_requeue = {
-        "schema": "sawm/nonterminal-task-requeue-authorization@1",
+        "schema": "sawm/operational-validation-requeue-authorization@1",
         "authorized": True,
         "authority": "operator_source_migration",
-        "task_alias": "SAWM-001",
-        "task_cid": migration["prior_task_cids"]["SAWM-001"],
-        "from_status": "in_progress",
-        "from_revision": 2,
+        "task_alias_first": "SAWM-001",
+        "task_alias_last": "SAWM-044",
+        "task_count": _M6_OPERATIONAL_TASK_COUNT,
+        "task_identity_manifest_cid": _M6_TASK_IDENTITY_MANIFEST_CID,
+        "validation_command_count": _M6_OPERATIONAL_VALIDATION_COUNT,
+        "validation_token_from": _M6_VALIDATION_TOKEN_FROM,
+        "validation_token_to": _M6_VALIDATION_TOKEN_TO,
+        "recovered_task_alias": "SAWM-001",
+        "recovered_task_cid": migration["prior_task_cids"]["SAWM-001"],
+        "from_status": "blocked",
+        "from_revision": 5,
+        "operational_status": "blocked",
+        "operational_revision": 6,
         "to_status": "todo",
-        "to_revision": 3,
+        "to_revision": 7,
         "reason": migration["migration_kind"],
         "provider_invocation_count": 0,
         "effect_claim_count": 0,
+        "implementation_commit_count": 0,
+        "merge_attempt_count": 0,
         "accepted_definition_changes": 0,
         "accepted_completion_changes": 0,
-        "expected_event_watermark": int(migration["prior_event_watermark"]) + 3,
+        "operational_validation_revision_changes": _M6_OPERATIONAL_TASK_COUNT,
+        "expected_event_watermark": int(migration["prior_event_watermark"])
+        + _M6_EVENT_SUFFIX_LENGTH,
         "worker_self_approval": False,
     }
     if requeue != expected_requeue:
-        raise MaterializationError("scheduler task-requeue authority differs from its inventory")
+        raise MaterializationError(
+            "scheduler operational-validation requeue authority differs from its inventory"
+        )
+    if not isinstance(config.get("validation_runtime"), Mapping) or not config[
+        "validation_runtime"
+    ]:
+        raise MaterializationError("scheduler validation runtime is not sealed")
     prior = (root / str(migration["prior_store_id"])).resolve()
     target = (root / str(migration["target_store_id"])).resolve()
     if not prior.is_relative_to(root) or not target.is_relative_to(root) or prior == target:
@@ -1167,26 +1458,27 @@ def _verify_prior_store(
             alias: (
                 "completed"
                 if alias == "SAWM-000"
-                else "in_progress"
+                else "blocked"
                 if alias == "SAWM-001"
                 else "todo"
             )
             for alias in migration["prior_task_cids"]
         }
         if statuses != expected_statuses:
-            raise MigrationRequired("sealed M4 canonical task states differ")
+            raise MigrationRequired("sealed M5 canonical task states differ")
         sawm_001 = next(row for row in task_rows if row[0] == "SAWM-001")
         if (
-            int(sawm_001[3]) != int(preprovider_failure["task_revision"])
+            int(sawm_001[3])
+            != int(preprovider_failure["canonical_task_revision"])
             or str(sawm_001[1]) != preprovider_failure["task_cid"]
         ):
-            raise MigrationRequired("sealed M4 SAWM-001 revision binding differs")
+            raise MigrationRequired("sealed M5 SAWM-001 revision binding differs")
         canonical_counts = {
             table_name: _table_count(connection, table_name)
             for table_name in preprovider_failure["canonical_authority_counts"]
         }
         if canonical_counts != preprovider_failure["canonical_authority_counts"]:
-            raise MigrationRequired("sealed M4 canonical authority counts differ")
+            raise MigrationRequired("sealed M5 canonical authority counts differ")
         owner = connection.execute(
             "SELECT server_id, process_birth_id, status "
             "FROM state_servers WHERE generation = ?",
@@ -1199,7 +1491,7 @@ def _verify_prior_store(
                 "stopped",
             )
         ]:
-            raise MigrationRequired("sealed M4 launch owner identity or stopped state differs")
+            raise MigrationRequired("sealed M5 launch owner identity or stopped state differs")
         operator = next(row for row in task_rows if row[0] == "SAWM-000")
         if str(operator[2]) != migration["prior_operator_status"] or int(operator[3]) != 2:
             raise MigrationRequired("sealed prior operator status/revision differs")
@@ -1318,51 +1610,135 @@ def _verify_store(
     expected_validation_digest: str = "",
 ) -> dict[str, Any]:
     _assert_offline(path)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
         verify_datasets_authoritative_operational_schema,
     )
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
+
     schema = verify_datasets_authoritative_operational_schema(path)
     if schema.get("valid") is not True:
-        raise MigrationRequired("existing database does not verify as datasets-authoritative operational schema")
-    source = DatabaseTaskSource(path, install_schema=False,
-                                repository_tree_id=str(population["repository_tree_id"]),
-                                plan_root_cid=str(population["plan_root_cid"]))
+        raise MigrationRequired(
+            "existing database does not verify as datasets-authoritative operational schema"
+        )
+    source = DatabaseTaskSource(
+        path,
+        install_schema=False,
+        repository_tree_id=str(population["repository_tree_id"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+    )
     try:
         migration_details: dict[str, Any] = {}
         snap = source.snapshot()
         expected_tasks = list(population["taskboard"])
         expected_goals = list(population["objectives"])
-        if snap.task_count != 45 or snap.goal_count != 29 or snap.plan_root_cid != population["plan_root_cid"]:
-            raise MigrationRequired(f"population counts/root conflict: tasks={snap.task_count} goals={snap.goal_count} root={snap.plan_root_cid}")
+        migration = population["migration_inventory"]
+        if (
+            snap.task_count != 45
+            or snap.goal_count != 29
+            or snap.plan_root_cid != population["plan_root_cid"]
+        ):
+            raise MigrationRequired(
+                "population counts/root conflict: "
+                f"tasks={snap.task_count} goals={snap.goal_count} "
+                f"root={snap.plan_root_cid}"
+            )
+
         status_by_alias: dict[str, str] = {}
         revision_by_alias: dict[str, int] = {}
+        operational_receipts: dict[str, dict[str, Any]] = {}
         for expected in expected_tasks:
+            alias = str(expected["task_id"])
+            raw = source.intent.get_task(str(expected["task_cid"]))
             observed = source.get_task(str(expected["task_cid"]))
-            expected_outputs = [str(item["declared_path"]) for item in expected["outputs"]]
-            expected_acceptance = [str(item["criterion"]) for item in expected["acceptance_criteria"]]
-            expected_validations = [[str(command)] for command in expected["validation_commands"]]
+            prior_validations = tuple(
+                (str(command),) for command in expected["validation_commands"]
+            )
+            expected_validations: tuple[tuple[str, ...], ...] = prior_validations
+            expected_body_receipt: Mapping[str, Any] | None = None
+            if require_migration and alias in _operational_task_aliases():
+                expected_validations, replacement_count = (
+                    _operational_validation_commands(
+                        prior_validations,
+                        task_alias=alias,
+                    )
+                )
+                prior_status = "blocked" if alias == "SAWM-001" else "todo"
+                prior_revision = 5 if alias == "SAWM-001" else 1
+                expected_body_receipt = _operational_validation_receipt(
+                    population,
+                    task_alias=alias,
+                    task_cid=str(expected["task_cid"]),
+                    expected_status=prior_status,
+                    expected_revision=prior_revision,
+                    prior_validations=prior_validations,
+                    operational_validations=expected_validations,
+                    replacement_count=replacement_count,
+                )
+                operational_receipts[alias] = dict(expected_body_receipt)
+            expected_outputs = [dict(item) for item in expected["outputs"]]
+            expected_acceptance = [
+                dict(item) for item in expected["acceptance_criteria"]
+            ]
+            expected_identity = {
+                "task_cid": str(expected["task_cid"]),
+                "task_alias": alias,
+                "repository_tree_id": migration["definition_source_binding_cid"],
+            }
             if (
                 observed is None
-                or observed.task_alias != expected["task_id"]
-                or observed.body.get("definition_cid") != expected["definition_cid"]
+                or raw is None
+                or observed.task_alias != alias
+                or raw["identity"] != expected_identity
+                or observed.body.get("definition_cid")
+                != expected["definition_cid"]
+                or observed.body.get("definition") != expected["definition"]
                 or sorted(observed.dependencies) != sorted(expected["depends_on"])
-                or [str((item.get("effect") or {}).get("declared_path")) for item in observed.outputs] != expected_outputs
-                or [str(item.get("criterion")) for item in observed.acceptance] != expected_acceptance
-                or [list(item.get("argv") or ()) for item in observed.validations] != expected_validations
+                or [dict(item.get("effect") or {}) for item in observed.outputs]
+                != expected_outputs
+                or [dict(item.get("evidence_policy") or {}) for item in observed.acceptance]
+                != expected_acceptance
+                or tuple(
+                    tuple(str(part) for part in item.get("argv") or ())
+                    for item in observed.validations
+                )
+                != expected_validations
+                or any(dict(item.get("policy") or {}) for item in observed.validations)
             ):
-                raise MigrationRequired(f"task definition conflict: {expected['task_id']}")
-            status_by_alias[observed.task_alias] = observed.status
-            revision_by_alias[observed.task_alias] = int(observed.revision)
+                raise MigrationRequired(f"task definition conflict: {alias}")
+            if require_migration:
+                if alias == "SAWM-000":
+                    if "operational_validation_revision" in observed.body:
+                        raise MigrationRequired("operator task acquired an operational revision")
+                elif observed.body.get("operational_validation_revision") != expected_body_receipt:
+                    raise MigrationRequired(
+                        f"operational validation receipt differs: {alias}"
+                    )
+            status_by_alias[alias] = observed.status
+            revision_by_alias[alias] = int(observed.revision)
+
         for expected in expected_goals:
             observed = source.get_goal(str(expected["goal_cid"]))
-            if observed is None or str(observed.get("goal_alias")) != expected["goal_id"] or (observed.get("body") or {}).get("definition_cid") != expected["definition_cid"]:
+            if (
+                observed is None
+                or str(observed.get("goal_alias")) != expected["goal_id"]
+                or (observed.get("body") or {}).get("definition_cid")
+                != expected["definition_cid"]
+                or (observed.get("body") or {}).get("definition")
+                != expected["definition"]
+            ):
                 raise MigrationRequired(f"goal definition conflict: {expected['goal_id']}")
-        if require_operator_complete and status_by_alias.get("SAWM-000") not in {"completed", "complete", "done"}:
+        if (
+            require_operator_complete
+            and status_by_alias.get("SAWM-000")
+            not in {"completed", "complete", "done"}
+        ):
             raise MigrationRequired("SAWM-000 lacks an admitted completion CAS")
-        migration = population["migration_inventory"]
+
         if require_migration:
             if migration_config is None or not expected_validation_digest:
                 raise MaterializationError(
@@ -1370,33 +1746,47 @@ def _verify_store(
                 )
             expected_statuses = {
                 alias: "completed" if alias == "SAWM-000" else "todo"
-                for alias in population["migration_inventory"]["prior_task_cids"]
+                for alias in migration["prior_task_cids"]
             }
             expected_revisions = {
-                alias: 2 if alias == "SAWM-000" else 3 if alias == "SAWM-001" else 1
-                for alias in population["migration_inventory"]["prior_task_cids"]
+                alias: (
+                    2
+                    if alias == "SAWM-000"
+                    else 7
+                    if alias == "SAWM-001"
+                    else 2
+                )
+                for alias in migration["prior_task_cids"]
             }
-            if status_by_alias != expected_statuses or revision_by_alias != expected_revisions:
-                raise MigrationRequired("M5 task-state recovery projection differs")
+            if (
+                status_by_alias != expected_statuses
+                or revision_by_alias != expected_revisions
+            ):
+                raise MigrationRequired("M6 task-state recovery projection differs")
             expected_target_watermark = (
-                int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+                int(migration["prior_event_watermark"])
+                + _M6_EVENT_SUFFIX_LENGTH
             )
             if int(snap.event_cursor) != expected_target_watermark:
-                raise MigrationRequired("M5 materialization event watermark differs")
+                raise MigrationRequired("M6 materialization event watermark differs")
             plan = source.plans.get(str(population["plan_root_cid"]))
             if (
                 plan is None
                 or int(plan.get("revision") or 0)
                 != int(migration["target_plan_revision"])
             ):
-                raise MigrationRequired("append-only source migration plan revision is missing")
-            evidence = source.intent._connection(write=False)
-            with evidence as connection:
+                raise MigrationRequired(
+                    "append-only source migration plan revision is missing"
+                )
+
+            with source.intent._connection(write=False) as connection:
                 migration_rows = connection.execute(
                     "SELECT evidence_id, digest, body_json, created_at FROM evidence_nodes "
                     "WHERE task_cid = ? AND evidence_kind = ? ORDER BY created_at",
-                    [migration["prior_task_cids"]["SAWM-000"],
-                     "operator_control_plane_source_migration"],
+                    [
+                        migration["prior_task_cids"]["SAWM-000"],
+                        "operator_control_plane_source_migration",
+                    ],
                 ).fetchall()
                 history = tuple(migration["migration_history"])
                 if len(migration_rows) != len(history) + 1:
@@ -1412,7 +1802,8 @@ def _verify_store(
                 ]
                 for entry in history:
                     matched = [
-                        row for row in parsed_rows
+                        row
+                        for row in parsed_rows
                         if row["evidence_id"] == entry["migration_evidence_id"]
                     ]
                     if (
@@ -1423,27 +1814,29 @@ def _verify_store(
                     ):
                         raise MigrationRequired("prior source migration evidence differs")
                 current_rows = [
-                    row for row in parsed_rows
+                    row
+                    for row in parsed_rows
                     if row["body"].get("migration_revision")
                     == migration["migration_revision"]
                 ]
                 if len(current_rows) != 1:
-                    raise MigrationRequired("current source migration receipt is ambiguous")
+                    raise MigrationRequired(
+                        "current source migration receipt is ambiguous"
+                    )
                 current_row = current_rows[0]
                 migration_evidence_id = current_row["evidence_id"]
                 migration_digest = current_row["digest"]
                 migration_body = current_row["body"]
                 migration_created_at = current_row["created_at"]
                 expected_migration_body = _migration_body(
-                    population, migration_config, expected_validation_digest
+                    population,
+                    migration_config,
+                    expected_validation_digest,
                 )
                 if migration_body != expected_migration_body:
                     raise MigrationRequired("source migration receipt binding differs")
                 if migration_digest != _identity(migration_body):
                     raise MigrationRequired("source migration evidence digest differs")
-                from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
-                    content_identity,
-                )
                 expected_evidence_id = content_identity(
                     {
                         "task_cid": migration["prior_task_cids"]["SAWM-000"],
@@ -1460,21 +1853,24 @@ def _verify_store(
                     "WHERE plan_cid = ? AND revision <= ? ORDER BY revision",
                     [population["plan_root_cid"], migration["target_plan_revision"]],
                 ).fetchall()
-                expected_revisions = list(
+                if [int(row[0]) for row in revision_rows] != list(
                     range(1, int(migration["target_plan_revision"]) + 1)
-                )
-                if [int(row[0]) for row in revision_rows] != expected_revisions:
-                    raise MigrationRequired("exact source migration plan revisions are missing")
+                ):
+                    raise MigrationRequired(
+                        "exact source migration plan revisions are missing"
+                    )
                 prior_plan_body = json.loads(
                     str(revision_rows[int(migration["prior_plan_revision"]) - 1][1])
                 )
                 plan_delta = _migration_plan_delta(population)
                 expected_plan_body = {
                     **prior_plan_body,
-                    "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
                     "source_migration_revision": migration["migration_revision"],
                     "source_migration_digest": migration_digest,
-                    "supersession_mode": _M5_SUPERSESSION_MODE,
+                    "supersession_mode": _M6_SUPERSESSION_MODE,
                     "last_delta": plan_delta,
                 }
                 observed_plan_body = json.loads(str(revision_rows[-1][1]))
@@ -1483,19 +1879,20 @@ def _verify_store(
                     raise MigrationRequired("source migration plan revision body differs")
 
                 prefix_digest, prefix_count = _event_prefix_digest(
-                    connection, int(migration["prior_event_watermark"])
+                    connection,
+                    int(migration["prior_event_watermark"]),
                 )
                 if (
                     prefix_count != int(migration["prior_event_watermark"])
                     or prefix_digest != migration["prior_event_prefix_sha256"]
                 ):
-                    raise MigrationRequired("accepted event prefix changed during migration")
+                    raise MigrationRequired(
+                        "accepted event prefix changed during migration"
+                    )
                 suffix_sequences = list(
                     range(
                         int(migration["prior_event_watermark"]) + 1,
-                        int(migration["prior_event_watermark"])
-                        + _M5_EVENT_SUFFIX_LENGTH
-                        + 1,
+                        expected_target_watermark + 1,
                     )
                 )
                 placeholders = ",".join("?" for _ in suffix_sequences)
@@ -1506,7 +1903,7 @@ def _verify_store(
                     "ORDER BY global_sequence",
                     suffix_sequences,
                 ).fetchall()
-                if len(suffix_rows) != _M5_EVENT_SUFFIX_LENGTH:
+                if len(suffix_rows) != _M6_EVENT_SUFFIX_LENGTH:
                     raise MigrationRequired("migration event suffix differs")
                 events: list[dict[str, Any]] = []
                 for row in suffix_rows:
@@ -1523,19 +1920,26 @@ def _verify_store(
                         "body": json.loads(str(row[9])),
                     }
                     payload = event["body"]
-                    computed = content_identity(
-                        {
-                            "stream_id": event["stream_id"],
-                            "sequence": event["sequence"],
-                            "global_sequence": event["global_sequence"],
-                            "event_type": event["event_type"],
-                            "body": payload,
-                        }
-                    )
                     if (
-                        computed != event["event_id"]
+                        content_identity(
+                            {
+                                "stream_id": event["stream_id"],
+                                "sequence": event["sequence"],
+                                "global_sequence": event["global_sequence"],
+                                "event_type": event["event_type"],
+                                "body": payload,
+                            }
+                        )
+                        != event["event_id"]
                         or set(payload)
-                        != {"schema", "event_type", "subject_id", "body", "recorded_at", "owner_id"}
+                        != {
+                            "schema",
+                            "event_type",
+                            "subject_id",
+                            "body",
+                            "recorded_at",
+                            "owner_id",
+                        }
                         or payload.get("schema")
                         != "ipfs_accelerate_py/agent-supervisor/intent-event@1"
                         or payload.get("event_type") != event["event_type"]
@@ -1548,7 +1952,11 @@ def _verify_store(
                     ):
                         raise MigrationRequired("migration event identity differs")
                     events.append(event)
-                plan_event, evidence_event, recovery_event = events
+
+                plan_event = events[0]
+                evidence_event = events[1]
+                operational_events = events[2:-1]
+                recovery_event = events[-1]
                 expected_plan_event_body = {
                     "plan_cid": population["plan_root_cid"],
                     "goal_cid": migration["prior_goal_cids"][ROOT_GOAL],
@@ -1560,10 +1968,13 @@ def _verify_store(
                     "recorded_at": plan_recorded_at,
                 }
                 if (
-                    plan_event["event_type"] != "intent.plan_revision_appended"
+                    plan_event["event_type"]
+                    != "intent.plan_revision_appended"
                     or plan_event["task_cid"]
-                    or plan_event["body"].get("subject_id") != population["plan_root_cid"]
-                    or plan_event["body"].get("body") != expected_plan_event_body
+                    or plan_event["body"].get("subject_id")
+                    != population["plan_root_cid"]
+                    or plan_event["body"].get("body")
+                    != expected_plan_event_body
                 ):
                     raise MigrationRequired("source migration plan event differs")
                 expected_evidence_event_body = {
@@ -1578,30 +1989,183 @@ def _verify_store(
                 }
                 if (
                     evidence_event["event_type"] != "intent.evidence_recorded"
-                    or evidence_event["task_cid"] != migration["prior_task_cids"]["SAWM-000"]
-                    or evidence_event["body"].get("subject_id") != migration_evidence_id
-                    or evidence_event["body"].get("body") != expected_evidence_event_body
+                    or evidence_event["task_cid"]
+                    != migration["prior_task_cids"]["SAWM-000"]
+                    or evidence_event["body"].get("subject_id")
+                    != migration_evidence_id
+                    or evidence_event["body"].get("body")
+                    != expected_evidence_event_body
                 ):
                     raise MigrationRequired("source migration evidence event differs")
+
+                expected_by_alias = {
+                    str(item["task_id"]): item for item in expected_tasks
+                }
+                operational_event_ids: dict[str, str] = {}
+                if len(operational_events) != _M6_OPERATIONAL_TASK_COUNT:
+                    raise MigrationRequired(
+                        "operational validation event count differs"
+                    )
+                for event, alias in zip(
+                    operational_events,
+                    _operational_task_aliases(),
+                    strict=True,
+                ):
+                    expected = expected_by_alias[alias]
+                    task_cid = str(expected["task_cid"])
+                    prior_status = "blocked" if alias == "SAWM-001" else "todo"
+                    prior_revision = 5 if alias == "SAWM-001" else 1
+                    target_revision = prior_revision + 1
+                    prior_body_row = connection.execute(
+                        "SELECT body_json FROM task_revisions "
+                        "WHERE task_cid = ? AND revision = ?",
+                        [task_cid, prior_revision],
+                    ).fetchall()
+                    if len(prior_body_row) == 1:
+                        prior_body = json.loads(str(prior_body_row[0][0]))
+                    elif not prior_body_row and prior_revision == 1:
+                        # The original M1 projection predates per-task
+                        # revision rows for untouched todo tasks. Reconstruct
+                        # their immutable body from the sealed @1 population;
+                        # the definition CID and all relation tables were
+                        # independently checked above.
+                        prior_body = {
+                            key: value
+                            for key, value in expected.items()
+                            if key
+                            not in {
+                                "task_cid",
+                                "task_id",
+                                "task_alias",
+                                "cid",
+                                "goal_cid",
+                                "goal_id",
+                                "depends_on",
+                                "dependencies",
+                                "effects",
+                                "outputs",
+                                "acceptance_criteria",
+                                "acceptance",
+                                "validation_commands",
+                                "validations",
+                                "status",
+                                "priority",
+                                "ordinal",
+                                "plan_cid",
+                                "objective_id",
+                            }
+                        }
+                    else:
+                        raise MigrationRequired(
+                            f"historical task revision is ambiguous: {alias}"
+                        )
+                    expected_body = {
+                        **prior_body,
+                        "operational_validation_revision": operational_receipts[
+                            alias
+                        ],
+                    }
+                    target_revision_rows = connection.execute(
+                        "SELECT status, body_json, recorded_at FROM task_revisions "
+                        "WHERE task_cid = ? AND revision = ?",
+                        [task_cid, target_revision],
+                    ).fetchall()
+                    if len(target_revision_rows) != 1:
+                        raise MigrationRequired(
+                            f"operational task revision is ambiguous: {alias}"
+                        )
+                    target_revision_status = str(target_revision_rows[0][0])
+                    target_revision_body = json.loads(
+                        str(target_revision_rows[0][1])
+                    )
+                    target_recorded_at = str(target_revision_rows[0][2])
+                    if (
+                        target_revision_status != prior_status
+                        or target_revision_body != expected_body
+                        or not target_recorded_at
+                    ):
+                        raise MigrationRequired(
+                            f"operational task revision differs: {alias}"
+                        )
+                    operational_validations, _ = _operational_validation_commands(
+                        tuple(
+                            (str(command),)
+                            for command in expected["validation_commands"]
+                        ),
+                        task_alias=alias,
+                    )
+                    inner = event["body"].get("body") or {}
+                    expected_inner = {
+                        "task_cid": task_cid,
+                        "task_alias": alias,
+                        "goal_cid": str(expected["goal_cid"]),
+                        "plan_cid": str(expected["plan_cid"]),
+                        "objective_id": "",
+                        "ordinal": int(expected["ordinal"]),
+                        "status": prior_status,
+                        "priority": str(expected["priority"]),
+                        "revision": target_revision,
+                        "identity": {
+                            "task_cid": task_cid,
+                            "task_alias": alias,
+                            "repository_tree_id": migration[
+                                "definition_source_binding_cid"
+                            ],
+                        },
+                        "body": expected_body,
+                        # Task revision and event envelope timestamps are made
+                        # by two consecutive landed-authority calls.  Their
+                        # values may straddle a clock tick; bind the task-body
+                        # timestamp to the exact revision row rather than
+                        # incorrectly requiring equality with the envelope.
+                        "recorded_at": target_recorded_at,
+                        "dependencies": sorted(expected["depends_on"]),
+                        "outputs": [dict(item) for item in expected["outputs"]],
+                        "acceptance": [
+                            dict(item) for item in expected["acceptance_criteria"]
+                        ],
+                        "validations": [
+                            {"argv": list(argv)}
+                            for argv in operational_validations
+                        ],
+                    }
+                    if (
+                        event["event_type"] != "intent.task_upserted"
+                        or event["task_cid"] != task_cid
+                        or event["body"].get("subject_id") != task_cid
+                        or inner != expected_inner
+                    ):
+                        differing_keys = sorted(
+                            key
+                            for key in set(inner) | set(expected_inner)
+                            if inner.get(key) != expected_inner.get(key)
+                        )
+                        raise MigrationRequired(
+                            "operational validation event differs: "
+                            f"{alias}; fields={differing_keys}"
+                        )
+                    operational_event_ids[alias] = event["event_id"]
+
                 recovery_receipt = _task_recovery_receipt(population)
-                recovery_body = recovery_event["body"].get("body") or {}
                 expected_recovery_body = {
                     "task_cid": migration["prior_task_cids"]["SAWM-001"],
                     "task_alias": "SAWM-001",
                     "goal_cid": migration["prior_goal_cids"]["SAWM-G011"],
-                    "previous_status": "in_progress",
+                    "previous_status": "blocked",
                     "status": "todo",
-                    "revision": 3,
+                    "revision": 7,
                     "receipt": recovery_receipt,
                     "recorded_at": recovery_event["recorded_at"],
                 }
                 if (
-                    recovery_event["event_type"] != "intent.task_status_changed"
+                    recovery_event["event_type"]
+                    != "intent.task_status_changed"
                     or recovery_event["task_cid"]
                     != migration["prior_task_cids"]["SAWM-001"]
                     or recovery_event["body"].get("subject_id")
                     != migration["prior_task_cids"]["SAWM-001"]
-                    or recovery_body != expected_recovery_body
+                    or (recovery_event["body"].get("body") or {})
+                    != expected_recovery_body
                 ):
                     raise MigrationRequired("operator task-recovery event differs")
                 completion_rows = [
@@ -1617,42 +2181,76 @@ def _verify_store(
                         migration["prior_task_cids"]["SAWM-000"],
                     )
                 ]:
-                    raise MigrationRequired("task recovery changed completion evidence")
+                    raise MigrationRequired(
+                        "operational recovery changed completion evidence"
+                    )
                 migration_details = {
                     "migration_digest": migration_digest,
                     "migration_evidence_id": migration_evidence_id,
                     "plan_migration_event_id": plan_event["event_id"],
                     "migration_evidence_event_id": evidence_event["event_id"],
-                    "migration_event_watermark": int(migration["prior_event_watermark"]) + 2,
+                    "migration_event_watermark": int(
+                        migration["prior_event_watermark"]
+                    )
+                    + _M6_MIGRATION_EVENT_OFFSET,
+                    "operational_validation_receipts": operational_receipts,
+                    "operational_validation_event_ids": operational_event_ids,
+                    "operational_validation_first_event_watermark": int(
+                        migration["prior_event_watermark"]
+                    )
+                    + _M6_OPERATIONAL_FIRST_OFFSET,
+                    "operational_validation_last_event_watermark": int(
+                        migration["prior_event_watermark"]
+                    )
+                    + _M6_OPERATIONAL_LAST_OFFSET,
                     "task_recovery_receipt": recovery_receipt,
                     "task_recovery_event_id": recovery_event["event_id"],
-                    "target_event_watermark": int(migration["prior_event_watermark"]) + 3,
+                    "target_event_watermark": expected_target_watermark,
                     "accepted_definition_changes": 0,
                     "accepted_completion_changes": 0,
+                    "operational_validation_revision_changes": (
+                        _M6_OPERATIONAL_TASK_COUNT
+                    ),
                     "nonterminal_task_status_recovery_changes": 1,
                 }
 
         # Replay in a short private directory, never beside either accepted
         # authority. Rebuild itself is the landed deterministic verifier.
-        with tempfile.TemporaryDirectory(prefix="sawm-r2-replay-", dir="/tmp") as temp_dir:
+        with tempfile.TemporaryDirectory(
+            prefix="sawm-r2-replay-", dir="/tmp"
+        ) as temp_dir:
             replay_copy = Path(temp_dir) / "control.duckdb"
             shutil.copyfile(path, replay_copy)
-            replay = DatabaseTaskSource(replay_copy, install_schema=False,
-                                        repository_tree_id=str(population["repository_tree_id"]),
-                                        plan_root_cid=str(population["plan_root_cid"]))
+            replay = DatabaseTaskSource(
+                replay_copy,
+                install_schema=False,
+                repository_tree_id=str(population["repository_tree_id"]),
+                plan_root_cid=str(population["plan_root_cid"]),
+            )
             try:
                 projection_matches = replay.projection_matches_events()
             finally:
                 replay.close()
         if not projection_matches:
-            raise MigrationRequired("event replay projection differs from the accepted projection")
-        if require_migration and str(snap.projection_cid) != _M5_EXPECTED_PROJECTION_CID:
-            raise MigrationRequired("M5 deterministic projection identity differs")
-        return {"valid": True, "task_count": snap.task_count, "goal_count": snap.goal_count,
-                "projection_cid": snap.projection_cid, "event_watermark": snap.event_cursor,
-                "projection_matches_events": True, "statuses": status_by_alias,
-                "revisions": revision_by_alias,
-                **migration_details}
+            raise MigrationRequired(
+                "event replay projection differs from the accepted projection"
+            )
+        if (
+            require_migration
+            and str(snap.projection_cid) != _M6_EXPECTED_PROJECTION_CID
+        ):
+            raise MigrationRequired("M6 deterministic projection identity differs")
+        return {
+            "valid": True,
+            "task_count": snap.task_count,
+            "goal_count": snap.goal_count,
+            "projection_cid": snap.projection_cid,
+            "event_watermark": snap.event_cursor,
+            "projection_matches_events": True,
+            "statuses": status_by_alias,
+            "revisions": revision_by_alias,
+            **migration_details,
+        }
     finally:
         source.close()
 
@@ -1676,30 +2274,59 @@ def _validator_report(root: Path, script: str) -> dict[str, Any]:
 def _task_recovery_receipt(population: Mapping[str, Any]) -> dict[str, Any]:
     migration = population["migration_inventory"]
     failure = migration["preprovider_task_failure"]
+    task = next(
+        item for item in population["taskboard"] if item["task_id"] == "SAWM-001"
+    )
+    prior_validations = tuple(
+        (str(command),) for command in task["validation_commands"]
+    )
+    operational_validations, replacement_count = _operational_validation_commands(
+        prior_validations,
+        task_alias="SAWM-001",
+    )
+    operational_receipt = _operational_validation_receipt(
+        population,
+        task_alias="SAWM-001",
+        task_cid=str(failure["task_cid"]),
+        expected_status="blocked",
+        expected_revision=5,
+        prior_validations=prior_validations,
+        operational_validations=operational_validations,
+        replacement_count=replacement_count,
+    )
     return {
-        "schema": "sawm/operator-nonterminal-task-recovery@1",
-        "operation": "operator_preprovider_task_requeue",
+        "schema": "sawm/operator-settled-preprovider-task-recovery@1",
+        "operation": "operator_settled_preprovider_task_requeue",
         "authority_class": "operator_control_plane",
         "migration_revision": migration["migration_revision"],
         "task_cid": failure["task_cid"],
         "task_alias": failure["task_alias"],
         "task_definition_cid": migration["prior_task_cids"]["SAWM-001"],
-        "expected_status": "in_progress",
-        "expected_revision": int(failure["task_revision"]),
+        "expected_status": "blocked",
+        "expected_revision": 6,
         "status": "todo",
-        "target_revision": int(failure["task_revision"]) + 1,
-        "prior_event_id": failure["canonical_claim_event_id"],
+        "target_revision": 7,
+        "frozen_status": failure["canonical_task_status"],
+        "frozen_revision": int(failure["canonical_task_revision"]),
+        "prior_event_id": failure["canonical_settlement_event_id"],
         "prior_event_watermark": int(failure["canonical_event_watermark"]),
         "prior_projection_cid": failure["canonical_projection_cid"],
         "preprovider_failure_cid": _identity(failure),
         "failure_kind": failure["failure_kind"],
         "failure_reason": failure["failure_reason"],
+        "settlement_id": failure["settlement_id"],
+        "settlement_failure_kind": failure["settlement_failure_kind"],
+        "failure_payload_digest": failure["failure_payload_digest"],
         "attempt_id": failure["attempt_id"],
         "claim_id": failure["claim_id"],
         "lease_id": failure["lease_id"],
         "owner_session_id": failure["owner_session_id"],
         "fencing_token": int(failure["fencing_token"]),
         "fence_epoch": int(failure["fence_epoch"]),
+        "operational_validation_revision_receipt_cid": operational_receipt[
+            "receipt_cid"
+        ],
+        "settlement_verified": True,
         "historical_execution_sidecar_copied": False,
         "historical_coordination_sidecar_copied": False,
         "automatic_retry_admitted": False,
@@ -1721,8 +2348,34 @@ def _migration_body(
     validation_digest: str,
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
+    operational_receipts: dict[str, str] = {}
+    for task in population["taskboard"]:
+        alias = str(task["task_id"])
+        if alias not in _operational_task_aliases():
+            continue
+        prior_status = "blocked" if alias == "SAWM-001" else "todo"
+        prior_revision = 5 if alias == "SAWM-001" else 1
+        prior_validations = tuple(
+            (str(command),) for command in task["validation_commands"]
+        )
+        operational_validations, replacement_count = (
+            _operational_validation_commands(
+                prior_validations,
+                task_alias=alias,
+            )
+        )
+        operational_receipts[alias] = _operational_validation_receipt(
+            population,
+            task_alias=alias,
+            task_cid=str(task["task_cid"]),
+            expected_status=prior_status,
+            expected_revision=prior_revision,
+            prior_validations=prior_validations,
+            operational_validations=operational_validations,
+            replacement_count=replacement_count,
+        )["receipt_cid"]
     return {
-        "schema": "sawm/operator-control-plane-source-migration@2",
+        "schema": "sawm/operator-control-plane-source-migration@3",
         "migration_revision": migration["migration_revision"],
         "board_namespace": NAMESPACE,
         "plan_revision": REVISION,
@@ -1754,14 +2407,20 @@ def _migration_body(
         "quack_extension_pin": dict(config["quack_owner"]["pinned_extension"]),
         "preworker_launch_failure": dict(migration["preworker_launch_failure"]),
         "preprovider_task_failure": dict(migration["preprovider_task_failure"]),
+        "validation_runtime": dict(config["validation_runtime"]),
+        "operational_validation_requeue": dict(
+            config["prior_materialization"]["operational_validation_requeue"]
+        ),
+        "operational_validation_revision_receipt_cids": operational_receipts,
         "nonterminal_task_recovery_receipt": _task_recovery_receipt(population),
         "validator_digest": validation_digest,
         "supersession_reason": migration["supersession_reason"],
-        "supersession_mode": _M5_SUPERSESSION_MODE,
+        "supersession_mode": _M6_SUPERSESSION_MODE,
         "prior_authority_preserved": True,
         "accepted_task_definitions_rewritten": False,
         "accepted_goal_definitions_rewritten": False,
         "accepted_completion_changes": 0,
+        "operational_validation_revision_changes": _M6_OPERATIONAL_TASK_COUNT,
         "nonterminal_task_status_recovery_changes": 1,
         "operator_completion_replayed": False,
         "worker_self_approval": False,
@@ -1780,12 +2439,20 @@ def _migration_plan_delta(population: Mapping[str, Any]) -> dict[str, Any]:
         "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
         "accepted_definition_changes": 0,
         "accepted_completion_changes": 0,
+        "operational_validation_revision_changes": _M6_OPERATIONAL_TASK_COUNT,
+        "operational_validation_task_identity_manifest_cid": (
+            _M6_TASK_IDENTITY_MANIFEST_CID
+        ),
+        "operational_validation_token_from": _M6_VALIDATION_TOKEN_FROM,
+        "operational_validation_token_to": _M6_VALIDATION_TOKEN_TO,
         "nonterminal_task_status_recovery_changes": 1,
         "recovered_task_cid": migration["prior_task_cids"]["SAWM-001"],
-        "recovered_task_expected_status": "in_progress",
-        "recovered_task_expected_revision": 2,
+        "recovered_task_frozen_status": "blocked",
+        "recovered_task_frozen_revision": 5,
+        "recovered_task_expected_status": "blocked",
+        "recovered_task_expected_revision": 6,
         "recovered_task_status": "todo",
-        "recovered_task_revision": 3,
+        "recovered_task_revision": 7,
     }
 
 
@@ -1834,13 +2501,21 @@ def _expected_migration_receipt(
     validation_digest: str,
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
-    migration_watermark = int(migration["prior_event_watermark"]) + 2
+    migration_watermark = (
+        int(migration["prior_event_watermark"]) + _M6_MIGRATION_EVENT_OFFSET
+    )
+    operational_first_watermark = (
+        int(migration["prior_event_watermark"]) + _M6_OPERATIONAL_FIRST_OFFSET
+    )
+    operational_last_watermark = (
+        int(migration["prior_event_watermark"]) + _M6_OPERATIONAL_LAST_OFFSET
+    )
     target_watermark = (
-        int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+        int(migration["prior_event_watermark"]) + _M6_EVENT_SUFFIX_LENGTH
     )
     recovery_receipt = _task_recovery_receipt(population)
     receipt = {
-        "schema": "sawm/non-authoritative-migration-receipt@2",
+        "schema": "sawm/non-authoritative-migration-receipt@3",
         "authoritative": False,
         "database_is_authority": True,
         "migration_revision": migration["migration_revision"],
@@ -1849,6 +2524,23 @@ def _expected_migration_receipt(
             target, population, migration_watermark
         ),
         "migration_event_watermark": migration_watermark,
+        "operational_validation_projection_cid": _projection_at_watermark(
+            target, population, operational_last_watermark
+        ),
+        "operational_validation_first_event_watermark": (
+            operational_first_watermark
+        ),
+        "operational_validation_last_event_watermark": operational_last_watermark,
+        "operational_validation_revision_changes": _M6_OPERATIONAL_TASK_COUNT,
+        "operational_validation_receipt_cids": {
+            alias: receipt["receipt_cid"]
+            for alias, receipt in sorted(
+                verified["operational_validation_receipts"].items()
+            )
+        },
+        "operational_validation_event_ids": dict(
+            sorted(verified["operational_validation_event_ids"].items())
+        ),
         "projection_cid": verified["projection_cid"],
         "target_event_watermark": target_watermark,
         "validation_digest": validation_digest,
@@ -2093,7 +2785,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
-    # Preserve only the accepted canonical control store. M4 execution and
+    # Preserve only the accepted canonical control store. M5 execution and
     # coordination sidecars remain immutable historical evidence and are
     # deliberately never copied into the successor authority.
     shutil.copy2(prior_path, stage)
@@ -2117,7 +2809,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
                 "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
                 "source_migration_revision": migration["migration_revision"],
                 "source_migration_digest": migration_digest,
-                "supersession_mode": _M5_SUPERSESSION_MODE,
+                "supersession_mode": _M6_SUPERSESSION_MODE,
             },
             delta=plan_delta,
         )
@@ -2130,26 +2822,109 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
         unchanged = source.get_task(operator.task_cid)
         if unchanged is None or unchanged.status != "completed" or unchanged.revision != 2:
             raise MaterializationError("source migration changed accepted SAWM-000 state")
+        operational_event_ids: dict[str, str] = {}
+        operational_receipts: dict[str, dict[str, Any]] = {}
+        for alias in _operational_task_aliases():
+            prior_task = source.intent.get_task(alias)
+            if prior_task is None:
+                raise MaterializationError(
+                    f"preserved operational task is missing: {alias}"
+                )
+            expected_status = "blocked" if alias == "SAWM-001" else "todo"
+            expected_revision = 5 if alias == "SAWM-001" else 1
+            if (
+                prior_task["task_cid"] != migration["prior_task_cids"][alias]
+                or prior_task["status"] != expected_status
+                or int(prior_task["revision"]) != expected_revision
+            ):
+                raise MaterializationError(
+                    f"preserved operational task precondition differs: {alias}"
+                )
+            prior_validations = tuple(
+                tuple(str(part) for part in item.get("argv") or ())
+                for item in prior_task["validations"]
+            )
+            operational_validations, replacement_count = (
+                _operational_validation_commands(
+                    prior_validations,
+                    task_alias=alias,
+                )
+            )
+            operational_receipt = _operational_validation_receipt(
+                population,
+                task_alias=alias,
+                task_cid=str(prior_task["task_cid"]),
+                expected_status=expected_status,
+                expected_revision=expected_revision,
+                prior_validations=prior_validations,
+                operational_validations=operational_validations,
+                replacement_count=replacement_count,
+            )
+            upsert = source.intent.upsert_task(
+                task_cid=str(prior_task["task_cid"]),
+                task_alias=str(prior_task["task_alias"]),
+                goal_cid=str(prior_task["goal_cid"]),
+                ordinal=int(prior_task["ordinal"]),
+                status=str(prior_task["status"]),
+                priority=str(prior_task["priority"]),
+                plan_cid=str(prior_task["plan_cid"]),
+                objective_id=str(prior_task["objective_id"]),
+                body={
+                    **dict(prior_task["body"]),
+                    "operational_validation_revision": operational_receipt,
+                },
+                identity=dict(prior_task["identity"]),
+                expected_revision=expected_revision,
+                dependencies=list(prior_task["dependencies"]),
+                outputs=[dict(item["effect"]) for item in prior_task["outputs"]],
+                acceptance=[
+                    dict(item["evidence_policy"])
+                    for item in prior_task["acceptance"]
+                ],
+                validations=[
+                    {
+                        **dict(prior["policy"]),
+                        "argv": list(argv),
+                    }
+                    for prior, argv in zip(
+                        prior_task["validations"],
+                        operational_validations,
+                        strict=True,
+                    )
+                ],
+            )
+            if (
+                not upsert.changed
+                or upsert.event_type != "intent.task_upserted"
+                or int(upsert.revision) != expected_revision + 1
+            ):
+                raise MaterializationError(
+                    f"operational validation revision was not admitted: {alias}"
+                )
+            operational_event_ids[alias] = upsert.event_id
+            operational_receipts[alias] = operational_receipt
         candidate = source.get_task("SAWM-001")
         if (
             candidate is None
-            or candidate.status != "in_progress"
-            or candidate.revision != 2
+            or candidate.status != "blocked"
+            or candidate.revision != 6
             or candidate.task_cid != migration["prior_task_cids"]["SAWM-001"]
         ):
-            raise MaterializationError("preserved SAWM-001 recovery precondition differs")
+            raise MaterializationError(
+                "operationally revised SAWM-001 recovery precondition differs"
+            )
         recovery_receipt = _task_recovery_receipt(population)
         recovery = source.compare_and_set_status(
             candidate.task_cid,
-            expected_revision=2,
+            expected_revision=6,
             status="todo",
             receipt=recovery_receipt,
         )
         if (
             not recovery.changed
-            or recovery.previous_status != "in_progress"
+            or recovery.previous_status != "blocked"
             or recovery.task.status != "todo"
-            or recovery.task.revision != 3
+            or recovery.task.revision != 7
         ):
             raise MaterializationError("operator SAWM-001 recovery CAS was not admitted")
     finally:
@@ -2163,7 +2938,7 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
         expected_validation_digest=validation_digest,
     )
     expected_watermark = (
-        int(migration["prior_event_watermark"]) + _M5_EVENT_SUFFIX_LENGTH
+        int(migration["prior_event_watermark"]) + _M6_EVENT_SUFFIX_LENGTH
     )
     if int(verified["event_watermark"]) != expected_watermark:
         raise MaterializationError(
@@ -2194,6 +2969,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
             "validation_digest": validation_digest, "prior_authority": prior,
             "plan_migration_event_id": plan_receipt.event_id,
             "migration_evidence_event_id": evidence.event_id,
+            "operational_validation_event_ids": operational_event_ids,
+            "operational_validation_receipts": operational_receipts,
             "task_recovery_event_id": recovery.receipt_cid,
             "task_recovery_receipt": recovery_receipt,
             "migration_digest": migration_digest,

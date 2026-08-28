@@ -297,6 +297,19 @@ The operator sequence is:
 8. make only bounded repairs to genuine control-plane launch blockers, then resume;
 9. preserve typed blockers and every failed attempt.
 
+The first sealed M5 implementation launch is retained as immutable evidence,
+not erased or retried in place. It admitted the control capsule, claimed
+`SAWM-001`, created and removed its fenced worktree, and then settled the task
+to a typed pre-provider `blocked` state with zero provider calls, effects,
+commits, merges, or completion changes. M6 is an append-only operator
+successor: it binds the already present root-owned, read-only validation
+closure; reconciles the stale root `urllib3` constraint with the current 2.x
+package authority; appends operational validation-command revisions that use
+the sealed bare `python` launcher while preserving every historical task
+definition; and only then performs an explicit operator CAS requeue. M5's
+canonical database and execution, coordination, portal, owner, and log
+sidecars remain frozen and are never used as implementation source.
+
 DuckDB plus a live Quack exclusive state owner is the authoritative multi-writer control path. DuckLake is optional non-authoritative history/projection storage and cannot substitute for DuckDB/Quack. This plan does not assert either service live; preflight must prove current capability and fail closed.
 
 The strongest honest terminal is one of: all mandatory work independently accepted with final transitive root verification; an explicitly permitted typed external-capability terminal; or an observed control-plane blocker that cannot be safely repaired within bootstrap authority. There is no background-completion claim.

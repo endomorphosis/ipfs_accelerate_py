@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -69,6 +70,7 @@ INVENTORY_PATHS = tuple(
 
 CONTROL_RELATIVE_PATHS = (
     ".gitignore",
+    "requirements.txt",
     "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
     "docs/architecture/semantic_addressed_world_model.objectives.md",
     "docs/architecture/semantic_addressed_world_model.todo.md",
@@ -100,6 +102,7 @@ CONTROL_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
     "test/api/test_agent_supervisor_configured_board_extension_projection.py",
@@ -163,10 +166,16 @@ ALLOWED_GOAL_STATUSES = frozenset(
     {"open", "active", "reopened", "provisionally_complete", "analysis_inconclusive"}
 )
 ROLLOUT_ORDER = ("bootstrap", "shadow_write", "shadow_read", "guarded", "required")
-VALIDATION_PREFIX = (
+HISTORICAL_VALIDATION_PREFIX = (
     "PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. "
     "/home/barberb/.local/bin/python "
 )
+OPERATIONAL_VALIDATION_PREFIX = (
+    "PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. python "
+)
+# Kept as a compatibility alias for tests and callers that inspect the
+# immutable R2 Markdown definitions directly.
+VALIDATION_PREFIX = HISTORICAL_VALIDATION_PREFIX
 LEARNED_TASKS = frozenset(f"SAWM-{index:03d}" for index in range(25, 32))
 REQUIRED_MODE_TASKS = frozenset(f"SAWM-{index:03d}" for index in range(38, 45))
 
@@ -192,6 +201,34 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path.relative_to(REPO_ROOT)} must contain an object")
     return value
+
+
+def _dependency_validator_module(root: Path):
+    """Load the sibling seal validator without making ``scripts`` a package."""
+
+    path = root / "scripts/validate_semantic_addressed_world_model_dependencies.py"
+    name = "_sawm_dependency_validator_for_board"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError("unable to load the SAWM dependency validator")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _m6_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the one exact M6 migration contract across both static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(module._m6_source_migration_errors(scheduler, seal, migration))
+    except Exception as exc:
+        return [f"M6 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _normalize_field(value: str) -> str:
@@ -969,6 +1006,17 @@ def _configured_board_dependency_errors(
     for field, expected in expected_paths.items():
         if config.get(field) != expected:
             errors.append(f"scheduler {field} does not bind {expected}")
+    try:
+        dependency_validator = _dependency_validator_module(root)
+        _runtime, runtime_errors = (
+            dependency_validator._validation_runtime_contract_errors(config, seal)
+        )
+        errors.extend(runtime_errors)
+    except Exception as exc:
+        errors.append(
+            "validation runtime contract validator unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
     environment_policy = seal.get("environment_policy")
     fixed_environment = (
         environment_policy.get("fixed")
@@ -1431,13 +1479,19 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
 
     validation_errors: list[str] = []
     forbidden_validation = re.compile(r"(?:^|\s)(?:pip|pip3)\s+install\b|\bcurl\b|\bwget\b|git\s+clean|reset\s+--hard", re.I)
+    historical_commands: dict[str, list[str]] = {}
     for card in tasks:
         commands = _json_list(card, "validation commands json", validation_errors)
+        historical_commands[card.identifier] = [
+            command for command in commands if isinstance(command, str)
+        ]
         if not commands:
             validation_errors.append(f"{card.identifier}: validation command list is empty")
         for command in commands:
-            if not isinstance(command, str) or not command.startswith(VALIDATION_PREFIX):
-                validation_errors.append(f"{card.identifier}: validation is not bound to the current hermetic interpreter")
+            if not isinstance(command, str) or not command.startswith(HISTORICAL_VALIDATION_PREFIX):
+                validation_errors.append(
+                    f"{card.identifier}: immutable Markdown validation definition changed"
+                )
             elif forbidden_validation.search(command):
                 validation_errors.append(f"{card.identifier}: validation contains forbidden installer/network/destructive command")
         if not card.metadata.get("validation", "").strip():
@@ -1445,6 +1499,44 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         network = card.metadata.get("network policy", "").lower()
         if not any(term in network for term in ("no network", "network disabled", "offline", "deny")):
             validation_errors.append(f"{card.identifier}: ordinary validation must be network-disabled")
+    nonoperator_commands = [
+        command
+        for task_id in TASK_IDS[1:]
+        for command in historical_commands.get(task_id, ())
+    ]
+    replacement_count = sum(
+        command.count("/home/barberb/.local/bin/python")
+        for command in nonoperator_commands
+    )
+    operational_commands = [
+        command.replace("/home/barberb/.local/bin/python", "python")
+        for command in nonoperator_commands
+    ]
+    if (
+        len(operational_commands) != 46
+        or replacement_count != 46
+        or any(
+            not command.startswith(OPERATIONAL_VALIDATION_PREFIX)
+            or "/home/barberb/.local/bin/python" in command
+            for command in operational_commands
+        )
+    ):
+        validation_errors.append(
+            "44-task M6 operational validation command revision is not exact"
+        )
+    else:
+        try:
+            from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+                validation_shell_command,
+            )
+
+            for command in operational_commands:
+                validation_shell_command(command)
+        except (ImportError, ValueError) as exc:
+            validation_errors.append(
+                "M6 bare-python operational validation is not launchable: "
+                f"{type(exc).__name__}: {exc}"
+            )
     _append(checks, errors, "current_validation_commands", not validation_errors, validation_errors)
 
     ownership_errors: list[str] = []
@@ -1576,10 +1668,10 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     if (
         program.get("authority_mode") != "quack"
         or program.get("task_source_kind") != "duckdb"
-        or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:45248"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "7"
+        or program.get("store_generation") != "8"
         or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
@@ -1595,7 +1687,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         != "sha256:cf4d9fa1ba595286866f5406e61b2ac71e4ed3730af70a2b07f88d0c16905e5e"
     ):
         config_errors.append("append-only prior-SAWM migration binding mismatch")
-    config_errors.extend(_m5_migration_errors(config, seal, migration))
+    config_errors.extend(_m6_migration_errors(config, seal, migration))
     config_errors.extend(_configured_board_dependency_errors(root, config, seal))
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (

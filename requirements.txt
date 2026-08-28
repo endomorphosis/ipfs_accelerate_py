@@ -12,8 +12,10 @@ pyarrow>=14.0.0
 torch>=2.1
 transformers>=4.46
 
-# Compatibility: ipfshttpclient may still depend on urllib3<2
-urllib3<2
+# Shared HTTP compatibility window.  The admitted ipfshttpclient 0.8.0a2
+# metadata has no direct urllib3 constraint, while the exact datasets and
+# immutable validation closures require the urllib3 2.x line.
+urllib3>=2,<3
 
 # HTTP + auth helpers
 requests>=2.28.0

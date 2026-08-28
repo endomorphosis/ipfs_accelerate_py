@@ -19,6 +19,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -26,11 +27,58 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 SEAL_PATH = REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json"
 NAMESPACE = "semantic-addressed-world-model-v1"
 REVISION = "SAWM-PLAN-R2"
 SCHEMA = "semantic-addressed-world-model/dependency-seal-validation@1"
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
+_HISTORICAL_VALIDATION_PYTHON = "/home/barberb/.local/bin/python"
+_OPERATIONAL_VALIDATION_PYTHON = "python"
+_VALIDATION_RUNTIME_ROOTS = {
+    "delta_deployment": Path(
+        "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf"
+    ),
+    "base_deployment": Path(
+        "/opt/ipfs-accelerate-legal-validation-7ffe92439767"
+    ),
+}
+_VALIDATION_PYTHONPATH = (
+    "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/"
+    "site-packages-py-multihash",
+    "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages",
+    "/opt/ipfs-accelerate-legal-validation-7ffe92439767/site-packages",
+)
+_VALIDATION_RUNTIME_ARTIFACTS = {
+    "delta_deployment": (
+        ("BUILD_CONTRACT.json", "17e20a218f3934bf7b6dd6e80bcba8b76a2f42e85362c49a226547927f5b311e"),
+        ("CLOSURE.json", "3c26150daa5697e78405e2da0d9bffb1a91d030aff906811b4f93b4b133ef8e3"),
+        ("COLLISIONS.json", "8ad82936c0f6aa14be1066483b92500930ae5520acea9a6ea9652e5cac885fe5"),
+        ("DEPLOYMENT.json", "0d557e24f3254e958f8d37ec8d10299b9fdd34e7685621b09dddb84245932cf2"),
+        ("DIRECT_REQUIREMENTS.txt", "0842be6780f2cafb759087e506ca11a34ef20df68bbe2dd504a89522ce020633"),
+        ("IMPORT_CONTRACT.json", "de9ac3b168124f212df644f391626a6f16808e6aa7f5ab4652fdf7f86bef17ff"),
+        ("IMPORT_SMOKE.json", "92315ed765b6740af6baa84d319658c27f678287083e14c508b7edb47d8fb460"),
+        ("LOCK.txt", "d3db803570fc0d590187971dcbb6e22514c8b42be93c880993e6dd4c4e3deb86"),
+        ("PAYLOAD_MANIFEST.jsonl", "9b3ba6caebcff215c3de2ef00d5b588d059aff92ddc15cd4ffde8eb2dcd766b8"),
+        ("TREE_AUDIT.json", "22cf8eaad767eb65f74ddc2ea371086031afc11f47e25bc7cf8d9a3320cfd3e8"),
+        ("VERIFICATION_CONTRACT.json", "bf4e60384438f22c0eb43b6146d341667a23154ef6472a610249f81daf36c295"),
+        ("WHEELS.json", "d020ce204068f34678a1d5c5fc65860bc4b759370c3016ebf3c9463da8316d67"),
+        ("WHEEL_AUDIT.json", "c1928ca420025ce510d87db9a5cbadb6e97c7050c76b5f568189c0715ccc53c8"),
+    ),
+    "base_deployment": (
+        ("ASYNC_SMOKE.json", "ca2f2289f808cfbc66fbc7cdb5f9af6fddb9d6880417a136da6e3ec4f7e737c7"),
+        ("CLOSURE.json", "cf2cf2e6dc17dc5906c834aad3d42d4d123653b458ed290f73c3d9a11c43710a"),
+        ("COLLECTION.json", "eda31c90a7a7be79b38f257e926426de86733cf46028bb6ebe6c7e7c5b9d64f8"),
+        ("DEPLOYMENT.json", "654d64e130c9b8e748ea76c3947eb47cc52bea64adb40f2592f7204dfe503ad0"),
+        ("DIRECT_REQUIREMENTS.txt", "d84de7ee9fa44796973e3656680583d1e8a69142018d9b724b666a7d561ffa38"),
+        ("IMPORT_SMOKE.json", "45e856c88fbdf3d33b51bca2756284ddf5c0b00fda6f3b6dc737671501cbdfda"),
+        ("LOCK.txt", "cc6678e4a724136ae866392b36bf98aa274c28cd3a37ff1a29c2d917449f73a9"),
+        ("PAYLOAD_MANIFEST.jsonl", "7ffe92439767e99c849a4f7aad0ee5d64e19ab9f754b5f0915f00571ac51f85a"),
+        ("WHEELS.json", "771062b6a93d2e4feb41acf90982cf32009522cb69fb373deb4044b6f3ea6eda"),
+        ("WHEEL_AUDIT.json", "01e56d36c78b43f280d70dce8f8364536f448279d6be224df792e23ec64f6fcc"),
+    ),
+}
 _NATIVE_AUTHORIZATION_FIELDS = frozenset(
     {
         "schema",
@@ -54,6 +102,7 @@ _NATIVE_AUTHORIZATION_FIELDS = frozenset(
 CONTROL_PATHS = frozenset(
     {
         ".gitignore",
+        "requirements.txt",
         "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
         "docs/architecture/semantic_addressed_world_model.objectives.md",
         "docs/architecture/semantic_addressed_world_model.todo.md",
@@ -93,6 +142,7 @@ CONTROL_PATHS = frozenset(
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
         "test/api/test_agent_supervisor_configured_board_extension_projection.py",
@@ -510,6 +560,453 @@ def _m5_source_migration_errors(
     return errors
 
 
+def _m6_operational_validation_authorization() -> dict[str, Any]:
+    return {
+        "schema": "sawm/operational-validation-requeue-authorization@1",
+        "authorized": True,
+        "authority": "operator_source_migration",
+        "task_alias_first": "SAWM-001",
+        "task_alias_last": "SAWM-044",
+        "task_count": 44,
+        "task_identity_manifest_cid": (
+            "sha256:902037a87e711082e57c8dcf002eab669f0dc83c35e9f372ba197a18f8acf1d3"
+        ),
+        "validation_command_count": 46,
+        "validation_token_from": _HISTORICAL_VALIDATION_PYTHON,
+        "validation_token_to": _OPERATIONAL_VALIDATION_PYTHON,
+        "recovered_task_alias": "SAWM-001",
+        "recovered_task_cid": (
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+        "from_status": "blocked",
+        "from_revision": 5,
+        "operational_status": "blocked",
+        "operational_revision": 6,
+        "to_status": "todo",
+        "to_revision": 7,
+        "reason": "bounded_validation_runtime_and_operational_board_command_recovery",
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "implementation_commit_count": 0,
+        "merge_attempt_count": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "operational_validation_revision_changes": 44,
+        "expected_event_watermark": 168,
+        "worker_self_approval": False,
+    }
+
+
+def _m6_source_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Verify append-only M6 operational validation and settled requeue."""
+
+    errors: list[str] = []
+    prior_store = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m5/control.duckdb"
+    )
+    target_store = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m6/control.duckdb"
+    )
+    task_cid = (
+        "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+    )
+    prior_projection = (
+        "baguqeeram7gdldpraa6twhuvfbqbeou4gefgmj5szitgb6ij2nmwobx727wq"
+    )
+    target_projection = (
+        "baguqeeraztioh4pdrleiio2hzt2dtxh7o7ae2jk237fvcflktepffj6dpuya"
+    )
+    expected_authorization = _m6_operational_validation_authorization()
+    expected_common = {
+        "migration_revision": "SAWM-R2-M6",
+        "migration_kind": "bounded_validation_runtime_and_operational_board_command_recovery",
+        "supersession_reason": "source_authority_revision_and_settled_preprovider_task_requeue",
+        "prior_store_id": prior_store,
+        "prior_control_store_sha256": (
+            "e2b8e8a15abe9c2a5b53dd540e9621c11a85f63fcc3799da331bb55e3bfbc408"
+        ),
+        "prior_event_watermark": 121,
+        "prior_event_prefix_sha256": (
+            "f07bb22f380f30901d0ca16af4bf6bbc3b544f039fb1f43728828d92a95a3f9e"
+        ),
+        "prior_projection_cid": prior_projection,
+        "prior_source_binding_cid": (
+            "sha256:81d0fbd74e48c214b5334432cfa0f55e5d6b51a6f5096fa85e323512cf11fb77"
+        ),
+        "prior_source_head": "89fc7dcac140431f45d117ecf56bdbbd17f16be6",
+        "prior_source_tree": "ec160726a9c92436222071e8119730df81eba8a6",
+        "prior_generation": 7,
+        "prior_plan_revision": 6,
+        "target_store_id": target_store,
+        "target_generation": 8,
+        "target_plan_revision": 7,
+        "migration_event_watermark": 123,
+        "operational_validation_first_event_watermark": 124,
+        "operational_validation_last_event_watermark": 167,
+        "target_event_watermark": 168,
+        "target_projection_cid": target_projection,
+        "operational_validation_revision_changes": 44,
+    }
+
+    prior = scheduler.get("prior_materialization")
+    expected_prior = {
+        "program_definition_cid": "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72",
+        "plan_root_cid": "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914",
+        "operator_task_cid": "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6",
+        "store_id": prior_store,
+        "control_store_sha256": expected_common["prior_control_store_sha256"],
+        "event_watermark": 121,
+        "event_prefix_sha256": expected_common["prior_event_prefix_sha256"],
+        "projection_cid": prior_projection,
+        "source_binding_cid": expected_common["prior_source_binding_cid"],
+        "source_head": expected_common["prior_source_head"],
+        "source_tree": expected_common["prior_source_tree"],
+        "prior_generation": 7,
+        "prior_plan_revision": 6,
+        "prior_materialization_event_watermark": 119,
+        "prior_materialization_projection_cid": (
+            "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q"
+        ),
+        "prior_materialization_receipt_cid": (
+            "sha256:7a3800b6ba8cdf722d846bb2fd0bf505b78114cd659f806f7eafe7df81ec71b8"
+        ),
+        "prior_materialization_receipt_file_sha256": (
+            "37838a3153c6fa59d6a9a31d8c17fea3bf902f50fed517112ceac23932ad14ea"
+        ),
+        "prior_materialization_receipt_path": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m5/migration-receipt.json"
+        ),
+        "migration_revision": "SAWM-R2-M6",
+        "reason": expected_common["supersession_reason"],
+        "migration_history_count": 5,
+        "target_generation": 8,
+        "target_plan_revision": 7,
+        "migration_event_watermark": 123,
+        "operational_validation_first_event_watermark": 124,
+        "operational_validation_last_event_watermark": 167,
+        "target_event_watermark": 168,
+        "target_projection_cid": target_projection,
+        "operational_validation_revision_changes": 44,
+        "operational_validation_requeue": expected_authorization,
+        "preserve_append_only": True,
+        "inventory_path": (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+    }
+    if type(prior) is not dict or prior != expected_prior:
+        errors.append("scheduler M6 operational migration authorization is not exact")
+
+    sealed = seal.get("source_migration")
+    if not isinstance(sealed, Mapping):
+        errors.append("dependency seal M6 source migration is absent")
+        sealed = {}
+    expected_sealed_fields = {
+        "migration_revision",
+        "migration_kind",
+        "supersession_reason",
+        "supersession_mode",
+        "prior_store_id",
+        "target_store_id",
+        "prior_control_store_sha256",
+        "prior_event_watermark",
+        "prior_event_prefix_sha256",
+        "prior_projection_cid",
+        "prior_source_binding_cid",
+        "prior_source_head",
+        "prior_source_tree",
+        "prior_generation",
+        "prior_plan_revision",
+        "prior_materialization_event_watermark",
+        "prior_materialization_projection_cid",
+        "prior_materialization_receipt_cid",
+        "prior_materialization_receipt_path",
+        "prior_materialization_receipt_file_sha256",
+        "prior_migration_count",
+        "target_migration_count",
+        "target_generation",
+        "target_plan_revision",
+        "migration_event_watermark",
+        "operational_validation_first_event_watermark",
+        "operational_validation_last_event_watermark",
+        "target_event_watermark",
+        "target_projection_cid",
+        "operational_validation_revision_changes",
+        "operational_validation_requeue",
+        "program_definition_cid",
+        "plan_root_cid",
+        "operator_task_cid",
+        "bounded_control_plane_repair_paths",
+        "accepted_definition_rewrite_allowed",
+        "accepted_completion_replay_allowed",
+        "prior_authority_preserved",
+    }
+    if set(sealed) != expected_sealed_fields:
+        errors.append("dependency seal M6 source-migration fields are noncanonical")
+    for field, expected in expected_common.items():
+        if sealed.get(field) != expected:
+            errors.append(f"dependency seal M6 {field} is not exact")
+    expected_sealed_bindings = {
+        "program_definition_cid": expected_prior["program_definition_cid"],
+        "plan_root_cid": expected_prior["plan_root_cid"],
+        "operator_task_cid": expected_prior["operator_task_cid"],
+        "prior_materialization_event_watermark": expected_prior[
+            "prior_materialization_event_watermark"
+        ],
+        "prior_materialization_projection_cid": expected_prior[
+            "prior_materialization_projection_cid"
+        ],
+        "prior_materialization_receipt_cid": expected_prior[
+            "prior_materialization_receipt_cid"
+        ],
+        "prior_materialization_receipt_path": expected_prior[
+            "prior_materialization_receipt_path"
+        ],
+        "prior_materialization_receipt_file_sha256": expected_prior[
+            "prior_materialization_receipt_file_sha256"
+        ],
+    }
+    for field, expected in expected_sealed_bindings.items():
+        if sealed.get(field) != expected:
+            errors.append(f"dependency seal M6 {field} is not exact")
+    if (
+        sealed.get("operational_validation_requeue") != expected_authorization
+        or sealed.get("supersession_mode")
+        != "source_authority_revision_and_operational_validation_recovery"
+        or sealed.get("prior_migration_count") != 5
+        or sealed.get("target_migration_count") != 6
+        or sealed.get("accepted_definition_rewrite_allowed") is not False
+        or sealed.get("accepted_completion_replay_allowed") is not False
+        or sealed.get("prior_authority_preserved") is not True
+    ):
+        errors.append("dependency seal M6 closed authority policy is not exact")
+
+    inventory_expected = {
+        "schema": "sawm/prior-materialization-migration-inventory@3",
+        "migration_revision": expected_common["migration_revision"],
+        "migration_kind": expected_common["migration_kind"],
+        "supersession_reason": expected_common["supersession_reason"],
+        "prior_store_id": prior_store,
+        "prior_control_store_sha256": expected_common["prior_control_store_sha256"],
+        "prior_event_watermark": 121,
+        "prior_event_prefix_sha256": expected_common["prior_event_prefix_sha256"],
+        "prior_projection_cid": prior_projection,
+        "prior_source_binding_cid": expected_common["prior_source_binding_cid"],
+        "prior_source_head": expected_common["prior_source_head"],
+        "prior_source_tree": expected_common["prior_source_tree"],
+        "prior_generation": 7,
+        "prior_plan_revision": 6,
+        "target_store_id": target_store,
+        "target_generation": 8,
+        "target_plan_revision": 7,
+        "prior_authority_preserved": True,
+    }
+    for field, expected in inventory_expected.items():
+        if migration.get(field) != expected:
+            errors.append(f"M6 inventory {field} is not exact")
+    task_cids = migration.get("prior_task_cids")
+    if isinstance(task_cids, Mapping):
+        operational_manifest = [
+            {
+                "task_alias": f"SAWM-{index:03d}",
+                "task_cid": str(task_cids.get(f"SAWM-{index:03d}") or ""),
+            }
+            for index in range(1, 45)
+        ]
+        manifest_cid = "sha256:" + hashlib.sha256(
+            json.dumps(
+                operational_manifest,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        if manifest_cid != expected_authorization["task_identity_manifest_cid"]:
+            errors.append("M6 44-task operational identity manifest does not rehash")
+    else:
+        errors.append("M6 prior task identity map is absent")
+    if (
+        expected_authorization["task_alias_first"] != "SAWM-001"
+        or "SAWM-000" in {
+            f"SAWM-{index:03d}" for index in range(1, 45)
+        }
+        or expected_authorization["accepted_completion_changes"] != 0
+    ):
+        errors.append("M6 operational revision set could alter a completed task")
+
+    history = migration.get("migration_history")
+    if (
+        not isinstance(history, list)
+        or len(history) != 5
+        or any(not isinstance(entry, Mapping) for entry in history)
+    ):
+        errors.append("M1-through-M5 history must contain five typed entries")
+        history = []
+    if history:
+        if [entry.get("migration_revision") for entry in history] != [
+            f"SAWM-R2-M{index}" for index in range(1, 6)
+        ]:
+            errors.append("M1-through-M5 migration history is not contiguous")
+        if [entry.get("schema") for entry in history[:4]] != [
+            "sawm/source-migration-history-entry@1",
+            "sawm/source-migration-history-entry@1",
+            "sawm/source-migration-history-entry@1",
+            "sawm/source-migration-history-entry@2",
+        ]:
+            errors.append("M1-through-M4 history schemas changed")
+        for previous, current in zip(history, history[1:], strict=False):
+            if any(
+                current.get(prior_key) != previous.get(target_key)
+                for prior_key, target_key in (
+                    ("prior_store_id", "target_store_id"),
+                    ("prior_control_store_sha256", "target_control_store_sha256"),
+                    ("prior_event_watermark", "target_event_watermark"),
+                    ("prior_event_prefix_sha256", "target_event_prefix_sha256"),
+                    ("prior_source_binding_cid", "current_source_binding_cid"),
+                )
+            ):
+                errors.append("M1-through-M5 migration-history continuity is broken")
+                break
+        m5 = history[4]
+        expected_post_materialization = [
+            {
+                "global_sequence": 120,
+                "event_id": "baguqeeram2bg7rwq3hfl75gd7irlklgmcb365m4d6kdvvwm4icirtp6m5jna",
+                "event_type": "intent.task_status_changed",
+                "task_cid": task_cid,
+                "task_status": "in_progress",
+                "task_revision": 4,
+            },
+            {
+                "global_sequence": 121,
+                "event_id": "baguqeerahtwmflkih723eeb63svkcogqagmgyblkhrd4sycn7pvjcya7dgqq",
+                "event_type": "intent.task_status_changed",
+                "task_cid": task_cid,
+                "task_status": "blocked",
+                "task_revision": 5,
+            },
+        ]
+        if (
+            m5.get("schema") != "sawm/source-migration-history-entry@3"
+            or m5.get("prior_event_watermark") != 116
+            or m5.get("migration_event_watermark") != 118
+            or m5.get("materialization_event_watermark") != 119
+            or m5.get("target_event_watermark") != 121
+            or m5.get("migration_event_prefix_sha256")
+            != "f026f7b7180b652774fb22d318039f6ab6720caa51b8c89d5959e3b42541cb41"
+            or m5.get("materialization_event_prefix_sha256")
+            != "2a8e967ebfa966b8409b285133057788fc947727feda859ea190361b8d46b053"
+            or m5.get("target_control_store_sha256")
+            != expected_common["prior_control_store_sha256"]
+            or m5.get("target_event_prefix_sha256")
+            != expected_common["prior_event_prefix_sha256"]
+            or m5.get("projection_cid") != prior_projection
+            or m5.get("target_store_id") != prior_store
+            or m5.get("current_source_binding_cid")
+            != expected_common["prior_source_binding_cid"]
+            or m5.get("migration_projection_cid")
+            != "baguqeeralq7ohxikjp3ngml4ffevwniisq5uelo4gsuiclad2zdha2rwv5ta"
+            or m5.get("materialization_projection_cid")
+            != "baguqeerafx22x24mx7qrjjkfmyfdamtjkjd3ikrmhfqrp2gesqhe33l5467q"
+            or m5.get("post_materialization_events")
+            != expected_post_materialization
+        ):
+            errors.append("M5 @3 materialization/runtime history is not exact")
+
+    failure = migration.get("preprovider_task_failure")
+    if not isinstance(failure, Mapping):
+        errors.append("frozen M5 pre-provider failure is absent")
+        failure = {}
+    expected_failure_subset = {
+        "schema": "sawm/pre-provider-task-failure@2",
+        "authority_class": "operator_frozen_predecessor_observation",
+        "authoritative_completion_evidence": False,
+        "store_id": prior_store,
+        "control_store_sha256": expected_common["prior_control_store_sha256"],
+        "canonical_event_watermark": 121,
+        "canonical_event_prefix_sha256": expected_common["prior_event_prefix_sha256"],
+        "canonical_projection_cid": prior_projection,
+        "canonical_claim_event_id": (
+            "baguqeeram2bg7rwq3hfl75gd7irlklgmcb365m4d6kdvvwm4icirtp6m5jna"
+        ),
+        "canonical_claim_revision": 4,
+        "canonical_settlement_event_id": (
+            "baguqeerahtwmflkih723eeb63svkcogqagmgyblkhrd4sycn7pvjcya7dgqq"
+        ),
+        "canonical_task_status": "blocked",
+        "canonical_task_revision": 5,
+        "task_alias": "SAWM-001",
+        "task_cid": task_cid,
+        "task_status": "in_progress",
+        "task_revision": 4,
+        "failure_event_type": "validation_project_dependency_preflight_failed",
+        "failure_reason": "validation_project_dependency_preflight_failed",
+        "settlement_closed": True,
+        "settlement_failure_kind": "terminal_portal_bridge_error",
+        "retry_deferred": True,
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "provider_dispatch_attempted": False,
+        "provider_dispatched": False,
+        "provider_invocation_recorded": False,
+        "implementation_provider_invoked": False,
+        "effect_claim_recorded": False,
+        "implementation_commit_created": False,
+        "merge_attempted": False,
+        "task_completed": False,
+    }
+    for field, expected in expected_failure_subset.items():
+        if failure.get(field) != expected:
+            errors.append(f"frozen M5 pre-provider failure {field} is not exact")
+    if failure.get("canonical_authority_counts") != {
+        "completion_receipts": 1,
+        "effect_claims": 0,
+        "merge_attempts": 0,
+        "provider_calls": 0,
+        "provider_invocations": 0,
+        "provider_responses": 0,
+        "task_assignments": 0,
+        "task_attempts": 0,
+        "task_claims": 0,
+    }:
+        errors.append("frozen M5 canonical authority counts are not exact")
+
+    repair_paths = tuple(sealed.get("bounded_control_plane_repair_paths") or ())
+    required_paths = {
+        "requirements.txt",
+        "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+    protected_paths = set(scheduler.get("protected_paths") or ())
+    capsule = scheduler.get("configured_board_live_capsule")
+    capsule_paths = set(capsule.get("control_paths") or ()) if isinstance(capsule, Mapping) else set()
+    if (
+        set(repair_paths) != required_paths
+        or not required_paths.issubset(CONTROL_PATHS)
+        or not required_paths.issubset(protected_paths)
+        or not required_paths.issubset(capsule_paths)
+    ):
+        errors.append("M6 bounded validation-runtime repairs are not exact protected controls")
+    program = scheduler.get("database_program")
+    if not isinstance(program, Mapping) or (
+        program.get("store_id") != target_store
+        or program.get("store_generation") != "8"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:45248"
+        or any("run-r2-m5" in str(program.get(field) or "") for field in (
+            "store_id", "event_store_path", "runtime_registry_path", "worktree_root"
+        ))
+    ):
+        errors.append("scheduler M6 execution/coordination targets are not fresh")
+    return errors
+
+
 def _stable_regular_evidence(path: Path, *, maximum: int) -> dict[str, Any]:
     """Hash one no-follow regular file and reject identity changes mid-read."""
 
@@ -557,6 +1054,607 @@ def _stable_regular_evidence(path: Path, *, maximum: int) -> dict[str, Any]:
     return {
         "sha256": "sha256:" + digest.hexdigest(),
         "size": before.st_size,
+    }
+
+
+def _expected_validation_runtime() -> dict[str, Any]:
+    """Return the closed M6 validation image declaration.
+
+    The two scheduler/seal copies are intentionally insufficient on their own:
+    an operator editing both must not be able to redirect the launch gate to a
+    different root.  These exact external bytes were independently audited and
+    are immutable, root-owned bootstrap inputs rather than implementation
+    outputs or task-completion authority.
+    """
+
+    deployments: dict[str, dict[str, Any]] = {}
+    deployment_properties = {
+        "delta_deployment": (
+            "ipfs-accelerate-aseh-wheel-delta-deployment@1",
+            "sha256:c7d197d7cce26a2cd28a461220b7b7b848f77650265b84447cafb8e66505b18d",
+            4526,
+        ),
+        "base_deployment": (
+            "ipfs-accelerate-legal-validation-deployment@1",
+            "sha256:566c3806a52b07aa72ee3b6bb4e604e00cde502ac771d3b87fd1ce7fd84d949a",
+            28058,
+        ),
+    }
+    for name, root in _VALIDATION_RUNTIME_ROOTS.items():
+        schema, body_sha256, entry_count = deployment_properties[name]
+        deployments[name] = {
+            "root": str(root),
+            "schema": schema,
+            "deployment_body_sha256": body_sha256,
+            "manifest_entry_count": entry_count,
+            "artifacts": [
+                {
+                    "path": str(root / relative),
+                    "sha256": "sha256:" + digest,
+                }
+                for relative, digest in _VALIDATION_RUNTIME_ARTIFACTS[name]
+            ],
+        }
+    return {
+        "schema": "semantic-addressed-world-model/validation-runtime@1",
+        "python_executable": "/usr/bin/python3.12",
+        "python_executable_sha256": (
+            "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+        ),
+        "python_version": "3.12.3",
+        "pythonpath_entries": list(_VALIDATION_PYTHONPATH),
+        "ordered_pythonpath_sha256": (
+            "sha256:b33b316a356490f3f80be252ccc22ae94163c0c398a1f77548c4f0d10c5bc707"
+        ),
+        "required_modules": ["packaging", "pytest"],
+        **deployments,
+        "project_dependency_preflight_qualification": {
+            "scope": "all_nonoperator_operational_validations",
+            "task_alias_first": "SAWM-001",
+            "task_alias_last": "SAWM-044",
+            "validation_command_count": 46,
+            "requirements_count": 43,
+            "passed": True,
+            "reason": "approved_validation_environment_satisfies_project_dependencies",
+            "missing_count": 0,
+            "incompatible_count": 0,
+            "invalid_count": 0,
+            "source_receipt_id": (
+                "9f5beaff8aa5fefb28576d29d5cbc1b5332e8160f03f9cc7ac698edf9872ae10"
+            ),
+            "path_sensitive": True,
+            "runtime_authority": False,
+            "recompute_required": True,
+        },
+        "policy": {
+            "required_owner_uid": 0,
+            "writable_entries_allowed": False,
+            "symlinks_allowed": False,
+            "pyc_allowed": False,
+            "network_allowed": False,
+            "installer_allowed": False,
+            "ambient_user_site_allowed": False,
+            "automatic_install_allowed": False,
+        },
+    }
+
+
+def _validation_runtime_contract_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Validate the two closed declarations against independent constants."""
+
+    errors: list[str] = []
+    configured = scheduler.get("validation_runtime")
+    sealed = seal.get("validation_runtime")
+    expected = _expected_validation_runtime()
+    if type(configured) is not dict:
+        errors.append("scheduler validation_runtime is not an exact object")
+        configured = {}
+    if type(sealed) is not dict:
+        errors.append("dependency seal validation_runtime is not an exact object")
+        sealed = {}
+    if configured != sealed:
+        errors.append("scheduler validation_runtime differs from the dependency seal")
+    if configured != expected:
+        errors.append("validation_runtime differs from the exact M6 immutable closure")
+    return dict(configured), errors
+
+
+def _root_owned_regular_digest(
+    path: Path,
+    *,
+    expected_mode: int,
+    expected_size: int | None = None,
+) -> tuple[str, int]:
+    """Rehash one exact root-owned, no-follow immutable regular file."""
+
+    if not path.is_absolute() or path.resolve(strict=True) != path:
+        raise ValueError(f"{path} is not an exact absolute no-symlink path")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or before.st_gid != 0
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != expected_mode
+            or before.st_mode & 0o022
+            or (expected_size is not None and before.st_size != expected_size)
+        ):
+            raise ValueError(f"{path} ownership, mode, link, or size differs")
+        digest = hashlib.sha256()
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not block:
+                break
+            digest.update(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    def identity(item: os.stat_result) -> tuple[int, ...]:
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_gid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
+    if offset != before.st_size or identity(before) != identity(after):
+        raise ValueError(f"{path} changed while it was rehashed")
+    return digest.hexdigest(), before.st_size
+
+
+def _immutable_payload_errors(
+    name: str,
+    deployment: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Rehash one complete deployment manifest and its exact payload tree."""
+
+    errors: list[str] = []
+    root = _VALIDATION_RUNTIME_ROOTS[name]
+    try:
+        root_stat = root.lstat()
+        if (
+            root.resolve(strict=True) != root
+            or not stat.S_ISDIR(root_stat.st_mode)
+            or root_stat.st_uid != 0
+            or root_stat.st_gid != 0
+            or stat.S_IMODE(root_stat.st_mode) != 0o555
+            or root_stat.st_mode & 0o022
+        ):
+            raise ValueError("deployment root is not exact root-owned mode 0555")
+    except (OSError, ValueError) as exc:
+        return {}, [f"{name}: {type(exc).__name__}: {exc}"]
+
+    artifact_rows = deployment.get("artifacts")
+    if not isinstance(artifact_rows, list):
+        return {}, [f"{name}: artifact inventory is absent"]
+    artifact_digests: dict[str, str] = {}
+    for item in artifact_rows:
+        if type(item) is not dict or set(item) != {"path", "sha256"}:
+            errors.append(f"{name}: artifact fields are noncanonical")
+            continue
+        path = Path(str(item.get("path") or ""))
+        if path.parent != root:
+            errors.append(f"{name}: artifact escapes the exact deployment root")
+            continue
+        try:
+            digest, _size = _root_owned_regular_digest(path, expected_mode=0o444)
+        except (OSError, ValueError) as exc:
+            errors.append(f"{name}: {path.name}: {type(exc).__name__}: {exc}")
+            continue
+        artifact_digests[path.name] = digest
+        if item.get("sha256") != "sha256:" + digest:
+            errors.append(f"{name}: {path.name} differs from its artifact pin")
+
+    manifest_path = root / "PAYLOAD_MANIFEST.jsonl"
+    try:
+        manifest_raw = manifest_path.read_bytes()
+    except OSError as exc:
+        return {}, errors + [f"{name}: manifest unreadable: {type(exc).__name__}: {exc}"]
+    manifest_rows: list[dict[str, Any]] = []
+    manifest_paths: set[str] = set()
+    previous = ""
+    for ordinal, raw_line in enumerate(manifest_raw.splitlines(), 1):
+        try:
+            row = json.loads(raw_line, object_pairs_hook=_duplicates)
+        except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"{name}: manifest row {ordinal} is invalid: {exc}")
+            continue
+        if type(row) is not dict or row.get("type") not in {"file", "directory"}:
+            errors.append(f"{name}: manifest row {ordinal} has invalid type")
+            continue
+        expected_fields = (
+            {"bytes", "mode", "path", "sha256", "type"}
+            if row["type"] == "file"
+            else {"bytes", "mode", "path", "type"}
+        )
+        relative = str(row.get("path") or "")
+        pure = Path(relative)
+        canonical_line = _canonical_json(row)
+        if (
+            set(row) != expected_fields
+            or canonical_line != raw_line
+            or not relative
+            or pure.is_absolute()
+            or relative != pure.as_posix()
+            or any(part in {"", ".", ".."} for part in pure.parts)
+            or relative <= previous
+            or relative in manifest_paths
+        ):
+            errors.append(f"{name}: manifest row {ordinal} is noncanonical")
+            continue
+        previous = relative
+        manifest_paths.add(relative)
+        manifest_rows.append(row)
+
+    expected_count = deployment.get("manifest_entry_count")
+    if len(manifest_rows) != expected_count:
+        errors.append(
+            f"{name}: manifest entry count {len(manifest_rows)} != {expected_count}"
+        )
+
+    file_count = 0
+    total_bytes = 0
+    for row in manifest_rows:
+        relative = str(row["path"])
+        path = root / relative
+        mode_text = row.get("mode")
+        if mode_text not in {"0444", "0555"}:
+            errors.append(f"{name}: {relative} has a non-immutable manifest mode")
+            continue
+        expected_mode = int(str(mode_text), 8)
+        if row["type"] == "directory":
+            try:
+                observed = path.lstat()
+                if (
+                    path.resolve(strict=True) != path
+                    or not stat.S_ISDIR(observed.st_mode)
+                    or observed.st_uid != 0
+                    or observed.st_gid != 0
+                    or stat.S_IMODE(observed.st_mode) != expected_mode
+                    or observed.st_mode & 0o022
+                    or row.get("bytes") != 0
+                ):
+                    raise ValueError("directory identity differs")
+            except (OSError, ValueError) as exc:
+                errors.append(f"{name}: {relative}: {type(exc).__name__}: {exc}")
+            continue
+        if relative.endswith((".pyc", ".pyo")):
+            errors.append(f"{name}: compiled Python payload is forbidden: {relative}")
+        try:
+            expected_size = int(row.get("bytes"))
+            digest, observed_size = _root_owned_regular_digest(
+                path,
+                expected_mode=expected_mode,
+                expected_size=expected_size,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            errors.append(f"{name}: {relative}: {type(exc).__name__}: {exc}")
+            continue
+        if row.get("sha256") != digest:
+            errors.append(f"{name}: payload digest differs: {relative}")
+        file_count += 1
+        total_bytes += observed_size
+
+    actual_paths: set[str] = set()
+    try:
+        for directory, child_directories, filenames in os.walk(root, followlinks=False):
+            base = Path(directory)
+            for child in (*child_directories, *filenames):
+                actual_paths.add((base / child).relative_to(root).as_posix())
+    except OSError as exc:
+        errors.append(f"{name}: payload walk failed: {type(exc).__name__}: {exc}")
+    allowed_extras = {"DEPLOYMENT.json", "PAYLOAD_MANIFEST.jsonl"}
+    unexpected = sorted(actual_paths - manifest_paths - allowed_extras)
+    absent = sorted(manifest_paths - actual_paths)
+    if unexpected or absent:
+        errors.append(
+            f"{name}: payload inventory differs: unexpected={unexpected[:8]} "
+            f"absent={absent[:8]}"
+        )
+
+    return {
+        "root": str(root),
+        "manifest_sha256": "sha256:" + hashlib.sha256(manifest_raw).hexdigest(),
+        "manifest_entry_count": len(manifest_rows),
+        "file_count": file_count,
+        "bytes": total_bytes,
+        "artifact_count": len(artifact_digests),
+    }, errors
+
+
+def _validation_runtime_import_probe(runtime: Mapping[str, Any]) -> dict[str, Any]:
+    """Import the exact reviewed module contract under ``-I -S -B``."""
+
+    delta = Path(str(runtime["delta_deployment"]["root"]))
+    import_contract = _load(delta / "IMPORT_CONTRACT.json")
+    modules = import_contract.get("modules")
+    if (
+        import_contract.get("schema")
+        != "ipfs-accelerate-aseh-wheel-delta-import-contract@1"
+        or not isinstance(modules, list)
+        or len(modules) != 39
+        or len(set(modules)) != len(modules)
+        or any(type(item) is not str or not item for item in modules)
+    ):
+        return {"valid": False, "error": "sealed import contract is noncanonical"}
+    source = r'''
+import importlib, json, os, sys
+paths = json.loads(sys.argv.pop(1))
+modules = json.loads(sys.argv.pop(1))
+sys.path[:0] = paths
+observed = []
+for name in modules:
+    module = importlib.import_module(name)
+    origin = str(getattr(module, "__file__", "") or "")
+    if not origin:
+        spec = getattr(module, "__spec__", None)
+        origin = str(getattr(spec, "origin", "") or "")
+    if not origin or origin in {"built-in", "frozen"}:
+        raise RuntimeError("external module has no exact origin: " + name)
+    resolved = os.path.realpath(origin)
+    if not any(
+        resolved == root or resolved.startswith(root + os.sep)
+        for root in paths
+    ):
+        raise RuntimeError("module escaped ordered closure: " + name)
+    observed.append({"module": name, "origin_root": next(
+        index for index, root in enumerate(paths)
+        if resolved == root or resolved.startswith(root + os.sep)
+    )})
+print(json.dumps({"valid": True, "imports": observed}, sort_keys=True,
+                 separators=(",", ":")))
+'''
+    paths = list(runtime["pythonpath_entries"])
+    environment = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/nonexistent/ipfs-accelerate-sawm-validation",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PIP_NO_INDEX": "1",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    try:
+        completed = subprocess.run(
+            [
+                str(runtime["python_executable"]),
+                "-I",
+                "-S",
+                "-B",
+                "-c",
+                source,
+                json.dumps(paths, separators=(",", ":")),
+                json.dumps(modules, separators=(",", ":")),
+            ],
+            cwd="/",
+            env=environment,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+    except Exception as exc:
+        return {"valid": False, "error": f"{type(exc).__name__}: {exc}"}
+    if completed.returncode != 0:
+        return {
+            "valid": False,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout[-1000:],
+            "stderr": completed.stderr[-2000:],
+        }
+    try:
+        result = json.loads(completed.stdout, object_pairs_hook=_duplicates)
+    except (ValueError, json.JSONDecodeError) as exc:
+        return {"valid": False, "error": f"invalid import probe output: {exc}"}
+    if type(result) is not dict:
+        return {"valid": False, "error": "import probe output is not an object"}
+    result["stderr"] = completed.stderr[-1000:]
+    result["module_count"] = len(modules)
+    return result
+
+
+def _historical_and_operational_validation_commands(
+    root: Path,
+) -> tuple[list[str], list[str], list[str]]:
+    """Read immutable Markdown and derive the authorized M6 command view."""
+
+    errors: list[str] = []
+    text = (
+        root / "docs/architecture/semantic_addressed_world_model.todo.md"
+    ).read_text(encoding="utf-8")
+    raw_lists = re.findall(
+        r"^- Validation commands JSON:\s*(\[[^\n]*\])\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    historical: list[list[str]] = []
+    for ordinal, raw in enumerate(raw_lists):
+        try:
+            value = json.loads(raw, object_pairs_hook=_duplicates)
+        except (ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"historical validation {ordinal} is invalid JSON: {exc}")
+            continue
+        if not isinstance(value, list) or any(type(item) is not str for item in value):
+            errors.append(f"historical validation {ordinal} is not a string list")
+            continue
+        historical.append(value)
+    if len(historical) != 45:
+        errors.append(f"historical validation card count {len(historical)} != 45")
+        return [], [], errors
+    historical_flat = [command for commands in historical for command in commands]
+    historical_prefix = (
+        "PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. "
+        f"{_HISTORICAL_VALIDATION_PYTHON} "
+    )
+    if (
+        len(historical_flat) != 48
+        or any(not command.startswith(historical_prefix) for command in historical_flat)
+    ):
+        errors.append("immutable Markdown validation commands differ from M1 definitions")
+
+    nonoperator = [command for commands in historical[1:] for command in commands]
+    replacements = sum(command.count(_HISTORICAL_VALIDATION_PYTHON) for command in nonoperator)
+    operational = [
+        command.replace(
+            _HISTORICAL_VALIDATION_PYTHON,
+            _OPERATIONAL_VALIDATION_PYTHON,
+        )
+        for command in nonoperator
+    ]
+    operational_prefix = (
+        "PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. "
+        f"{_OPERATIONAL_VALIDATION_PYTHON} "
+    )
+    if (
+        len(operational) != 46
+        or replacements != 46
+        or any(not command.startswith(operational_prefix) for command in operational)
+        or any(_HISTORICAL_VALIDATION_PYTHON in command for command in operational)
+    ):
+        errors.append("M6 operational validation replacement is not exact")
+    return historical_flat, operational, errors
+
+
+def _validation_project_dependency_probe(
+    root: Path,
+    runtime: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute dependency admission for all 44 operational tasks."""
+
+    _historical, commands, command_errors = (
+        _historical_and_operational_validation_commands(root)
+    )
+    if command_errors:
+        return {"valid": False, "errors": command_errors}
+    environment = {
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON": runtime["python_executable"],
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH": os.pathsep.join(
+            runtime["pythonpath_entries"]
+        ),
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES": ",".join(
+            runtime["required_modules"]
+        ),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PIP_NO_INDEX": "1",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
+            preflight_validation_project_dependencies,
+        )
+
+        receipt = preflight_validation_project_dependencies(
+            root,
+            commands,
+            environment=environment,
+        )
+    except Exception as exc:
+        return {"valid": False, "error": f"{type(exc).__name__}: {exc}"}
+    projects = receipt.get("projects") if isinstance(receipt, Mapping) else None
+    project = projects[0] if isinstance(projects, list) and len(projects) == 1 else {}
+    valid = (
+        receipt.get("passed") is True
+        and receipt.get("reason")
+        == "approved_validation_environment_satisfies_project_dependencies"
+        and receipt.get("validation_command_count") == 46
+        and receipt.get("validation_roots") == [""]
+        and receipt.get("missing_requirements") == []
+        and receipt.get("incompatible_requirements") == []
+        and receipt.get("invalid_requirements") == []
+        and receipt.get("invalid_commands") == []
+        and isinstance(project, Mapping)
+        and project.get("requirement_count") == 43
+    )
+    return {
+        "valid": valid,
+        "passed": receipt.get("passed"),
+        "reason": receipt.get("reason"),
+        "receipt_id": receipt.get("receipt_id"),
+        "path_sensitive": True,
+        "validation_command_count": receipt.get("validation_command_count"),
+        "requirements_count": project.get("requirement_count")
+        if isinstance(project, Mapping)
+        else None,
+        "missing_count": len(receipt.get("missing_requirements") or ()),
+        "incompatible_count": len(receipt.get("incompatible_requirements") or ()),
+        "invalid_count": len(receipt.get("invalid_requirements") or ())
+        + len(receipt.get("invalid_commands") or ()),
+        "failure": None if valid else receipt,
+    }
+
+
+def _validation_runtime_closure(
+    root: Path,
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    *,
+    rehash_payloads: bool = True,
+    probe_imports: bool = True,
+    probe_dependencies: bool = True,
+) -> dict[str, Any]:
+    """Return a bounded fail-closed qualification of the exact M6 runtime."""
+
+    runtime, errors = _validation_runtime_contract_errors(scheduler, seal)
+    payloads: dict[str, Any] = {}
+    if not errors:
+        try:
+            python_digest, _python_size = _root_owned_regular_digest(
+                Path(runtime["python_executable"]),
+                expected_mode=0o755,
+            )
+            if runtime.get("python_executable_sha256") != "sha256:" + python_digest:
+                errors.append("validation interpreter differs from its exact pin")
+        except (OSError, ValueError) as exc:
+            errors.append(f"validation interpreter is invalid: {type(exc).__name__}: {exc}")
+    if not errors and rehash_payloads:
+        for name in ("delta_deployment", "base_deployment"):
+            summary, deployment_errors = _immutable_payload_errors(
+                name,
+                runtime[name],
+            )
+            payloads[name] = summary
+            errors.extend(deployment_errors)
+    import_probe: dict[str, Any] = {"valid": None, "skipped": True}
+    if not errors and probe_imports:
+        import_probe = _validation_runtime_import_probe(runtime)
+        if import_probe.get("valid") is not True:
+            errors.append("validation runtime import probe failed")
+    dependency_probe: dict[str, Any] = {"valid": None, "skipped": True}
+    if not errors and probe_dependencies:
+        dependency_probe = _validation_project_dependency_probe(root, runtime)
+        if dependency_probe.get("valid") is not True:
+            errors.append("validation project dependency preflight failed")
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "runtime_schema": runtime.get("schema"),
+        "python_executable": runtime.get("python_executable"),
+        "pythonpath_entries": runtime.get("pythonpath_entries"),
+        "payloads": payloads,
+        "import_probe": import_probe,
+        "project_dependency_preflight": dependency_probe,
     }
 
 
@@ -1619,6 +2717,20 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         scheduler = {}
         scheduler_error = f"{type(exc).__name__}: {exc}"
 
+    validation_runtime = (
+        _validation_runtime_closure(root, scheduler, seal)
+        if not scheduler_error
+        else {
+            "valid": False,
+            "errors": [f"scheduler unavailable: {scheduler_error}"],
+        }
+    )
+    check(
+        "exact_immutable_validation_runtime_closure",
+        validation_runtime.get("valid") is True,
+        validation_runtime,
+    )
+
     native, authorization, native_errors = _validate_native_authorization(
         root,
         seal,
@@ -1807,7 +2919,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         if configured_pin.get("unsigned_extension_allowed") is not False:
             protocol_errors.append("unsigned Quack extensions must remain forbidden")
 
-        protocol_errors.extend(_m5_source_migration_errors(scheduler, seal, migration))
+        protocol_errors.extend(_m6_source_migration_errors(scheduler, seal, migration))
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"

@@ -71,6 +71,7 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
     for name in (
         "sealed_launch_toolchain_declaration",
         "accepted_control_plane_mode_closure",
+        "exact_immutable_validation_runtime_closure",
         "independent_native_dependency_authorization",
         "quack_httpfs_projection_pins",
         "isolated_launch_toolchain",
@@ -106,6 +107,93 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
     )
     assert isolated["settings"] == [False, False, False, False]
     assert isolated["select_42"] == 42
+    runtime = checks["exact_immutable_validation_runtime_closure"]["detail"]
+    assert runtime["python_executable"] == "/usr/bin/python3.12"
+    assert runtime["pythonpath_entries"] == [
+        "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages-py-multihash",
+        "/opt/ipfs-accelerate-aseh-validation-9b3ba6caebcf/site-packages",
+        "/opt/ipfs-accelerate-legal-validation-7ffe92439767/site-packages",
+    ]
+    assert runtime["payloads"]["delta_deployment"]["manifest_entry_count"] == 4526
+    assert runtime["payloads"]["base_deployment"]["manifest_entry_count"] == 28058
+    assert runtime["import_probe"]["module_count"] == 39
+    dependency = runtime["project_dependency_preflight"]
+    assert dependency["valid"] is True
+    assert dependency["passed"] is True
+    assert dependency["reason"] == (
+        "approved_validation_environment_satisfies_project_dependencies"
+    )
+    assert dependency["path_sensitive"] is True
+    assert dependency["validation_command_count"] == 46
+    assert dependency["requirements_count"] == 43
+    assert dependency["missing_count"] == 0
+    assert dependency["incompatible_count"] == 0
+    assert dependency["invalid_count"] == 0
+    assert dependency["failure"] is None
+
+
+def test_m6_validation_runtime_tamper_and_absolute_launcher_fail_closed() -> None:
+    validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_validation_runtime_tamper_test",
+    )
+    config = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    exact = validator._validation_runtime_closure(
+        REPO_ROOT,
+        config,
+        seal,
+        rehash_payloads=False,
+        probe_imports=False,
+        probe_dependencies=False,
+    )
+    assert exact["valid"] is True, exact["errors"]
+
+    tampered = copy.deepcopy(config)
+    tampered["validation_runtime"]["delta_deployment"]["artifacts"][0][
+        "sha256"
+    ] = "sha256:" + ("00" * 32)
+    rejected = validator._validation_runtime_closure(
+        REPO_ROOT,
+        tampered,
+        seal,
+        rehash_payloads=False,
+        probe_imports=False,
+        probe_dependencies=False,
+    )
+    assert rejected["valid"] is False
+    assert any("validation_runtime" in error for error in rejected["errors"])
+
+    _historical, operational, command_errors = (
+        validator._historical_and_operational_validation_commands(REPO_ROOT)
+    )
+    assert command_errors == []
+    assert len(operational) == 46
+    assert all(
+        command.startswith("PYTHONPATH=ipfs_datasets_py:ipfs_kit_py:. python ")
+        for command in operational
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+        ValidationRuntimeError,
+        validation_shell_command,
+    )
+
+    validation_shell_command(operational[0])
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="sealed python or python3 launcher",
+    ):
+        validation_shell_command(
+            operational[0].replace(
+                " python ", " /home/barberb/.local/bin/python ", 1
+            )
+        )
 
 
 def test_dependency_gate_rejects_projection_identity_drift_from_native() -> None:
@@ -310,7 +398,7 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
                     ],
                     "source_migration_revision": migration["migration_revision"],
                     "source_migration_digest": migration_digest,
-                    "supersession_mode": materializer._M5_SUPERSESSION_MODE,
+                    "supersession_mode": materializer._M6_SUPERSESSION_MODE,
                 },
                 delta=materializer._migration_plan_delta(population),
             )
@@ -320,18 +408,81 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
                 digest=migration_digest,
                 body=migration_body,
             )
+            operational_event_ids = {}
+            for alias in materializer._operational_task_aliases():
+                prior_task = source.intent.get_task(alias)
+                assert prior_task is not None
+                expected_status = "blocked" if alias == "SAWM-001" else "todo"
+                expected_revision = 5 if alias == "SAWM-001" else 1
+                assert (prior_task["status"], prior_task["revision"]) == (
+                    expected_status,
+                    expected_revision,
+                )
+                prior_validations = tuple(
+                    tuple(str(part) for part in item.get("argv") or ())
+                    for item in prior_task["validations"]
+                )
+                operational_validations, replacement_count = (
+                    materializer._operational_validation_commands(
+                        prior_validations,
+                        task_alias=alias,
+                    )
+                )
+                operational_receipt = materializer._operational_validation_receipt(
+                    population,
+                    task_alias=alias,
+                    task_cid=prior_task["task_cid"],
+                    expected_status=expected_status,
+                    expected_revision=expected_revision,
+                    prior_validations=prior_validations,
+                    operational_validations=operational_validations,
+                    replacement_count=replacement_count,
+                )
+                upsert = source.intent.upsert_task(
+                    task_cid=prior_task["task_cid"],
+                    task_alias=prior_task["task_alias"],
+                    goal_cid=prior_task["goal_cid"],
+                    ordinal=prior_task["ordinal"],
+                    status=prior_task["status"],
+                    priority=prior_task["priority"],
+                    plan_cid=prior_task["plan_cid"],
+                    objective_id=prior_task["objective_id"],
+                    body={
+                        **dict(prior_task["body"]),
+                        "operational_validation_revision": operational_receipt,
+                    },
+                    identity=dict(prior_task["identity"]),
+                    expected_revision=expected_revision,
+                    dependencies=list(prior_task["dependencies"]),
+                    outputs=[
+                        dict(item["effect"]) for item in prior_task["outputs"]
+                    ],
+                    acceptance=[
+                        dict(item["evidence_policy"])
+                        for item in prior_task["acceptance"]
+                    ],
+                    validations=[
+                        {**dict(prior["policy"]), "argv": list(argv)}
+                        for prior, argv in zip(
+                            prior_task["validations"],
+                            operational_validations,
+                            strict=True,
+                        )
+                    ],
+                )
+                operational_event_ids[alias] = upsert.event_id
             candidate = source.get_task("SAWM-001")
             assert candidate is not None
-            assert (candidate.status, candidate.revision) == ("in_progress", 2)
+            assert (candidate.status, candidate.revision) == ("blocked", 6)
             recovery = source.compare_and_set_status(
                 candidate.task_cid,
-                expected_revision=2,
+                expected_revision=6,
                 status="todo",
                 receipt=recovery_receipt,
             )
             assert recovery.changed is True
-            assert recovery.previous_status == "in_progress"
-            assert (recovery.task.status, recovery.task.revision) == ("todo", 3)
+            assert recovery.previous_status == "blocked"
+            assert (recovery.task.status, recovery.task.revision) == ("todo", 7)
         finally:
             source.close()
 
@@ -343,12 +494,15 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
             migration_config=config,
             expected_validation_digest=validation_digest,
         )
-        assert verified["event_watermark"] == migration["prior_event_watermark"] + 3
-        assert verified["migration_event_watermark"] == 118
-        assert verified["target_event_watermark"] == 119
-        assert verified["projection_cid"] == materializer._M5_EXPECTED_PROJECTION_CID
+        assert verified["event_watermark"] == migration["prior_event_watermark"] + 47
+        assert verified["migration_event_watermark"] == 123
+        assert verified["operational_validation_first_event_watermark"] == 124
+        assert verified["operational_validation_last_event_watermark"] == 167
+        assert verified["target_event_watermark"] == 168
+        assert verified["projection_cid"] == materializer._M6_EXPECTED_PROJECTION_CID
         assert verified["statuses"]["SAWM-001"] == "todo"
-        assert verified["revisions"]["SAWM-001"] == 3
+        assert verified["revisions"]["SAWM-001"] == 7
+        assert all(verified["revisions"][f"SAWM-{index:03d}"] == 2 for index in range(2, 45))
         assert verified["accepted_definition_changes"] == 0
         assert verified["accepted_completion_changes"] == 0
         assert verified["nonterminal_task_status_recovery_changes"] == 1
@@ -364,11 +518,13 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
         )
         receipt_path = stage.parent / "migration-receipt.json"
         assert receipt_path.is_file()
-        assert receipt["schema"] == "sawm/non-authoritative-migration-receipt@2"
-        assert receipt["migration_event_watermark"] == 118
-        assert receipt["target_event_watermark"] == 119
+        assert receipt["schema"] == "sawm/non-authoritative-migration-receipt@3"
+        assert receipt["migration_event_watermark"] == 123
+        assert receipt["operational_validation_first_event_watermark"] == 124
+        assert receipt["operational_validation_last_event_watermark"] == 167
+        assert receipt["target_event_watermark"] == 168
         assert receipt["migration_projection_cid"] != receipt["projection_cid"]
-        assert receipt["projection_cid"] == materializer._M5_EXPECTED_PROJECTION_CID
+        assert receipt["projection_cid"] == materializer._M6_EXPECTED_PROJECTION_CID
         assert receipt["task_recovery_event_id"] == verified[
             "task_recovery_event_id"
         ]
@@ -401,7 +557,7 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["completion_prerequisite"] is False
 
 
-def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None:
+def test_m6_migration_preserves_m1_through_m5_and_preprovider_evidence() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_chain_test",
@@ -410,27 +566,30 @@ def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None
     migration = population["migration_inventory"]
     history = migration["migration_history"]
 
-    assert migration["migration_revision"] == "SAWM-R2-M5"
+    assert migration["migration_revision"] == "SAWM-R2-M6"
     assert migration["migration_kind"] == (
-        "bounded_preprovider_capsule_loader_and_attempt_settlement_recovery"
+        "bounded_validation_runtime_and_operational_board_command_recovery"
     )
     assert migration["supersession_reason"] == (
-        "source_authority_revision_and_preprovider_task_requeue"
+        "source_authority_revision_and_settled_preprovider_task_requeue"
     )
-    assert migration["prior_plan_revision"] == 5
-    assert migration["target_plan_revision"] == 6
-    assert migration["prior_event_watermark"] == 116
-    assert len(history) == 4
+    assert migration["prior_plan_revision"] == 6
+    assert migration["target_plan_revision"] == 7
+    assert migration["prior_event_watermark"] == 121
+    assert len(history) == 5
     m1 = history[0]
     m2 = history[1]
     m3 = history[2]
     m4 = history[3]
+    m5 = history[4]
     assert m1["migration_revision"] == "SAWM-R2-M1"
     assert m2["migration_revision"] == "SAWM-R2-M2"
     assert m3["migration_revision"] == "SAWM-R2-M3"
     assert m4["migration_revision"] == "SAWM-R2-M4"
+    assert m5["migration_revision"] == "SAWM-R2-M5"
     assert all(entry["schema"] == "sawm/source-migration-history-entry@1" for entry in history[:3])
     assert m4["schema"] == "sawm/source-migration-history-entry@2"
+    assert m5["schema"] == "sawm/source-migration-history-entry@3"
     assert materializer._store_sha256(REPO_ROOT / m1["prior_store_id"]) == m1[
         "prior_control_store_sha256"
     ]
@@ -446,20 +605,24 @@ def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None
     assert materializer._store_sha256(REPO_ROOT / m4["target_store_id"]) == m4[
         "target_control_store_sha256"
     ]
-    assert m4["target_control_store_sha256"] == migration[
+    assert materializer._store_sha256(REPO_ROOT / m5["target_store_id"]) == m5[
+        "target_control_store_sha256"
+    ]
+    assert m5["target_control_store_sha256"] == migration[
         "prior_control_store_sha256"
     ]
-    assert m4["target_event_prefix_sha256"] == migration[
+    assert m5["target_event_prefix_sha256"] == migration[
         "prior_event_prefix_sha256"
     ]
-    assert m4["prior_event_watermark"] == 113
-    assert m4["migration_event_watermark"] == 115
-    assert m4["target_event_watermark"] == 116
-    assert m4["migration_projection_cid"] == migration[
+    assert m5["prior_event_watermark"] == 116
+    assert m5["migration_event_watermark"] == 118
+    assert m5["materialization_event_watermark"] == 119
+    assert m5["target_event_watermark"] == 121
+    assert m5["materialization_projection_cid"] == migration[
         "prior_materialization_projection_cid"
     ]
-    assert m4["projection_cid"] == migration["prior_projection_cid"]
-    assert m4["migration_receipt_cid"] == migration[
+    assert m5["projection_cid"] == migration["prior_projection_cid"]
+    assert m5["migration_receipt_cid"] == migration[
         "prior_materialization_receipt_cid"
     ]
     for entry in history:
@@ -514,11 +677,13 @@ def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None
     assert failure["credential_handoff_retired"] is True
     assert failure["failure_time_authority"] == "unavailable"
     preprovider = migration["preprovider_task_failure"]
-    assert preprovider["schema"] == "sawm/pre-provider-task-failure@1"
+    assert preprovider["schema"] == "sawm/pre-provider-task-failure@2"
     assert preprovider["task_alias"] == "SAWM-001"
     assert preprovider["task_status"] == "in_progress"
-    assert preprovider["task_revision"] == 2
-    assert preprovider["canonical_event_watermark"] == 116
+    assert preprovider["canonical_task_status"] == "blocked"
+    assert preprovider["canonical_task_revision"] == 5
+    assert preprovider["canonical_event_watermark"] == 121
+    assert preprovider["settlement_closed"] is True
     assert preprovider["canonical_projection_cid"] == migration[
         "prior_projection_cid"
     ]
@@ -538,14 +703,14 @@ def test_m5_migration_preserves_m1_through_m4_and_preprovider_evidence() -> None
     assert verified_failure["effect_claim_count"] == 0
 
 
-def test_m5_recovery_paths_and_mixed_history_are_fail_closed() -> None:
+def test_m6_operational_revisions_and_requeue_are_fail_closed() -> None:
     validator = _load(
         "scripts/validate_semantic_addressed_world_model_board.py",
-        "sawm_board_m5_recovery_paths_test",
+        "sawm_board_m6_recovery_paths_test",
     )
     dependency_validator = _load(
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
-        "sawm_dependencies_m5_recovery_paths_test",
+        "sawm_dependencies_m6_recovery_paths_test",
     )
     config = json.loads(
         (
@@ -586,29 +751,38 @@ def test_m5_recovery_paths_and_mixed_history_are_fail_closed() -> None:
         config["configured_board_live_capsule"]["control_paths"]
     )
     assert recovery_controls.issubset(migration["bounded_control_plane_repair_paths"])
-    assert validator._m5_migration_errors(config, seal, migration) == []
-    assert dependency_validator._m5_source_migration_errors(
+    assert validator._m6_migration_errors(config, seal, migration) == []
+    assert dependency_validator._m6_source_migration_errors(
         config, seal, migration
     ) == []
 
-    collapsed_m4_watermarks = copy.deepcopy(migration)
-    collapsed_m4_watermarks["migration_history"][3][
-        "migration_event_watermark"
-    ] = 116
-    assert validator._m5_migration_errors(
-        config, seal, collapsed_m4_watermarks
+    collapsed_m5_watermarks = copy.deepcopy(migration)
+    collapsed_m5_watermarks["migration_history"][4][
+        "materialization_event_watermark"
+    ] = 121
+    assert validator._m6_migration_errors(
+        config, seal, collapsed_m5_watermarks
     )
-    assert dependency_validator._m5_source_migration_errors(
-        config, seal, collapsed_m4_watermarks
+    assert dependency_validator._m6_source_migration_errors(
+        config, seal, collapsed_m5_watermarks
     )
 
     definition_rewrite = copy.deepcopy(config)
-    definition_rewrite["prior_materialization"]["nonterminal_task_requeue"][
+    definition_rewrite["prior_materialization"]["operational_validation_requeue"][
         "accepted_definition_changes"
     ] = 1
-    assert validator._m5_migration_errors(definition_rewrite, seal, migration)
-    assert dependency_validator._m5_source_migration_errors(
+    assert validator._m6_migration_errors(definition_rewrite, seal, migration)
+    assert dependency_validator._m6_source_migration_errors(
         definition_rewrite, seal, migration
+    )
+
+    drifted_seal_binding = copy.deepcopy(seal)
+    drifted_seal_binding["source_migration"]["program_definition_cid"] = (
+        "sha256:" + "0" * 64
+    )
+    assert validator._m6_migration_errors(config, drifted_seal_binding, migration)
+    assert dependency_validator._m6_source_migration_errors(
+        config, drifted_seal_binding, migration
     )
 
 
