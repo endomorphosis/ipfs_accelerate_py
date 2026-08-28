@@ -90659,14 +90659,26 @@ TodoTaskState = PortalTaskState
 TodoImplementationDaemon = PortalImplementationDaemon
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(
+    argv: list[str] | None = None,
+    *,
+    native_dependency_preloaded: bool = False,
+) -> None:
     from ..runtime.multi_supervisor_runner import (
+        optional_active_sealed_native_dependency,
         preload_sealed_native_dependency_from_environment,
     )
     from ..runtime.process_security import harden_state_authority_process
 
     harden_state_authority_process()
-    preload_sealed_native_dependency_from_environment()
+    if native_dependency_preloaded:
+        # The ordinary supervisor bootstrap must preload before this very
+        # large module is imported.  Re-admit the exact active envelope here;
+        # the underlying native loader is intentionally terminal after one
+        # attempt, so a second preload would fail even for identical bytes.
+        optional_active_sealed_native_dependency(os.environ)
+    else:
+        preload_sealed_native_dependency_from_environment()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

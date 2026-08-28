@@ -27954,7 +27954,10 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
     source = inspect.getsource(
         aseh_operator._run_r19_historical_live_validation
     )
-    assert "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38}:" in source
+    assert (
+        "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39}:"
+        in source
+    )
     assert "if revision in {29, 30}:\n        evidence[" not in source
     assert "if revision in {29, 30, 31}:\n        evidence[" not in source
     assert "if revision in {30, 31, 32}:\n        evidence[" not in source
@@ -30075,6 +30078,365 @@ def test_aseh_r38_one_shot_requires_published_r36(
     )
     with pytest.raises(aseh_operator.OperatorError, match="published R36"):
         aseh_operator._assert_r38_failed_r37_one_shot_state(paths=paths)
+
+
+def test_aseh_r27_delegates_r39_before_r38() -> None:
+    source = inspect.getsource(
+        aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable
+    )
+    r39_call = source.index(
+        "_authorize_repair_implementation_supervisor_handoff_bootstrap_"
+        "transition_if_applicable("
+    )
+    r39_guard = source.index("if r39_result is not None:", r39_call)
+    r39_return = source.index("return r39_result", r39_guard)
+    r38_call = source.index(
+        "_authorize_repair_historical_live_policy_revision_transition_"
+        "if_applicable("
+    )
+    assert r39_call < r39_guard < r39_return < r38_call
+
+
+def test_aseh_r39_candidate_scope_and_validation_selectors_are_exact() -> None:
+    assert (
+        aseh_operator
+        .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_CHANGED_PATHS
+        == (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+            "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+            "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+            "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+            "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+            "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
+        )
+    )
+    matrix = (
+        aseh_operator
+        .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_VALIDATIONS
+    )
+    compile_argv = matrix[0]
+    pytest_argv = matrix[1]
+    selector = pytest_argv[pytest_argv.index("-k") + 1]
+    for path in (
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
+    ):
+        assert path in compile_argv
+    assert "ordinary_daemon" in selector
+    assert "daemon_main_verifies_preloaded" in selector
+
+
+def test_aseh_r39_failure_evidence_binds_observation_without_claiming_cause(
+) -> None:
+    evidence = aseh_operator._r39_expected_r38_launch_failure_evidence()
+    terminal = evidence["terminal_observation"]
+    record = terminal["terminal_record"]
+    control = evidence["control_failure_receipt"]
+
+    assert terminal["receipt_cid"] == (
+        aseh_operator.ASEH_R39_EXACT_R38_TERMINAL_OBSERVATION_CID
+    )
+    assert record["record_cid"] == (
+        aseh_operator.ASEH_R39_EXACT_R38_TERMINAL_RECORD_CID
+    )
+    assert control["receipt_cid"] == (
+        aseh_operator.ASEH_R39_EXACT_R38_CONTROL_FAILURE_CID
+    )
+    assert terminal["retry_authorized"] is False
+    assert record["retry_authorized"] is False
+    assert evidence["r38_retry_authorized"] is False
+    assert record["direct_cause_type"] is None
+    assert evidence["direct_cause_terminal_claim"] is None
+    assert evidence["direct_cause_inference"] == {
+        "classification": "StateAuthorityProcessIsolationError",
+        "message": "state-authority handoff child did not redeem",
+        "basis": "source_path_and_regression_validation_not_terminal_claim",
+        "synthetic_supervisor_exit_code": 127,
+        "synthetic_supervisor_reason": "launch_failed",
+        "validated_behavior": (
+            "inline implementation-supervisor bootstrap redeems before "
+            "implementation-daemon module import"
+        ),
+    }
+    assert evidence["database_effect"] == "not_measured"
+    assert evidence["database_observed_during_evidence_capture"] is False
+    assert evidence["database_mutated_during_evidence_capture"] is None
+    assert (
+        evidence["prior_repair_receipt_cid"]
+        == aseh_operator.ASEH_R39_PUBLISHED_R38_RECEIPT_CID
+    )
+    assert (
+        evidence["prior_authorization_attempt_cid"]
+        == aseh_operator.ASEH_R39_PUBLISHED_R38_AUTHORIZATION_ATTEMPT_CID
+    )
+    assert (
+        aseh_operator._validate_r39_r38_launch_failure_evidence(evidence)
+        == evidence
+    )
+
+    capture_source = inspect.getsource(
+        aseh_operator._r39_r38_launch_failure_evidence
+    )
+    for forbidden in (
+        "_read_only_database_task_source",
+        "_offline_database_guard",
+        "_safe_connect",
+    ):
+        assert forbidden not in capture_source
+
+
+def test_aseh_r39_one_shot_binds_published_r38_receipt_and_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = {
+        name: tmp_path / f"{name}.json"
+        for name in (
+            "repair_historical_live_policy_revision_transition_receipt",
+            "repair_historical_live_policy_revision_authorization_attempt",
+            "repair_implementation_supervisor_handoff_bootstrap_transition_receipt",
+            "repair_implementation_supervisor_handoff_bootstrap_authorization_attempt",
+        )
+    }
+    r38_attempt = {
+        "attempt_cid": (
+            aseh_operator.ASEH_R39_PUBLISHED_R38_AUTHORIZATION_ATTEMPT_CID
+        ),
+        "retry_authorized": False,
+    }
+    r38_receipt = {"authorization_attempt": r38_attempt}
+    observed = {"receipt": r38_receipt, "attempt": r38_attempt}
+    evidence = aseh_operator._r39_expected_r38_launch_failure_evidence()
+
+    def secure(path: Path, **_kwargs: object) -> dict[str, object]:
+        if path == paths[
+            "repair_historical_live_policy_revision_transition_receipt"
+        ]:
+            return dict(observed["receipt"])
+        if path == paths[
+            "repair_historical_live_policy_revision_authorization_attempt"
+        ]:
+            return dict(observed["attempt"])
+        raise AssertionError(path)
+
+    monkeypatch.setattr(aseh_operator, "_secure_runtime_json", secure)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_historical_live_policy_revision_transition_receipt_id",
+        lambda _value: aseh_operator.ASEH_R39_PUBLISHED_R38_RECEIPT_CID,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r39_r38_launch_failure_evidence",
+        lambda **_kwargs: evidence,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_receipt_name_is_absent",
+        lambda path, **_kwargs: path
+        == paths[
+            "repair_implementation_supervisor_handoff_bootstrap_transition_receipt"
+        ],
+    )
+
+    assert aseh_operator._assert_r39_one_shot_state(paths=paths) == evidence
+
+    observed["attempt"] = {
+        **r38_attempt,
+        "attempt_cid": "sha256:" + ("f" * 64),
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="R38 attempt"):
+        aseh_operator._assert_r39_one_shot_state(paths=paths)
+
+
+def test_aseh_r39_attempt_record_rejects_rehashed_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = {"head": head, "tree": tree}
+    guard = {"guard_cid": "sha256:" + ("c" * 64)}
+    durable = {
+        "authorization_v1_witness_cid": aseh_operator._identity(witness),
+        "authorization_guard_cid": guard["guard_cid"],
+        "witness_cid": "sha256:" + ("d" * 64),
+    }
+    failure = aseh_operator._r39_expected_r38_launch_failure_evidence()
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_durable_candidate_witness",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r30_candidate_git_guard_record",
+        lambda value, **_kwargs: dict(value),
+    )
+    attempt = aseh_operator._r39_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=guard,
+        r38_launch_failure_evidence=failure,
+        started_at=1.0,
+    )
+    assert (
+        aseh_operator._validate_r39_authorization_attempt_record(
+            attempt,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            durable_candidate_witness=durable,
+            candidate_git_guard=guard,
+            r38_launch_failure_evidence=failure,
+        )
+        == attempt
+    )
+    for field, forged_value in (
+        ("published_r38_receipt_cid", "sha256:" + ("e" * 64)),
+        (
+            "published_r38_authorization_attempt_cid",
+            "sha256:" + ("f" * 64),
+        ),
+        ("r38_launch_failure_evidence_cid", "sha256:" + ("0" * 64)),
+        ("retry_authorized", True),
+        ("database_effect", "observed"),
+        ("started_at", -1.0),
+    ):
+        forged = json.loads(json.dumps(attempt))
+        forged[field] = forged_value
+        unsigned = dict(forged)
+        unsigned.pop("attempt_cid")
+        forged["attempt_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(aseh_operator.OperatorError, match="R39"):
+            aseh_operator._validate_r39_authorization_attempt_record(
+                forged,
+                candidate_head=head,
+                candidate_tree=tree,
+                candidate_authorization_witness=witness,
+                durable_candidate_witness=durable,
+                candidate_git_guard=guard,
+                r38_launch_failure_evidence=failure,
+            )
+
+
+def test_aseh_r39_generic_revision_gates_contract_and_grok_scope() -> None:
+    assert aseh_operator._historical_live_policy_revision(
+        {"schema": aseh_operator.ASEH_R39_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA}
+    ) == 39
+    assert aseh_operator._r32_admit_grok_for_revision(39)
+    assert (
+        aseh_operator._receipt_validation_matrices()[-1]
+        == aseh_operator
+        .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_VALIDATIONS
+    )
+
+    contract = aseh_operator._r39_sealed_receipt_validation_executor_contract()
+    assert contract["policy_revision"] == 39
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            contract,
+            declared=tuple(
+                aseh_operator
+                .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_VALIDATIONS[0]
+            ),
+        )
+        == contract
+    )
+    for function in (
+        aseh_operator._run_repair_docker_create_readiness_vendor_resolver_transition_validations,
+        aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition,
+    ):
+        source = inspect.getsource(function)
+        assert "39" in source
+        assert "if _revision == 39:" in source
+        assert (
+            "REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION"
+            in source
+        )
+        assert "_r39_sealed_receipt_validation_executor_contract" in source
+
+    active_scope = inspect.getsource(aseh_operator._r19_active_policy_scope)
+    assert "39: _validate_r39_historical_live_policy_admission_record" in (
+        active_scope
+    )
+    assert "37, 38, 39" in active_scope
+
+
+def test_aseh_r39_materialized_launch_and_exact_admission_are_wired() -> None:
+    source = inspect.getsource(aseh_operator._admit_materialized_launch)
+    assert source.index("r39_prequalification") < source.index(
+        "r38_prequalification = ("
+    )
+    for token in (
+        "_prequalify_r39_historical_live_launch",
+        "_complete_r39_historical_live_prequalification",
+        "_admit_exact_r39_transition_chain",
+        "launch_bundle = r39_prequalification",
+        "_recheck_r39_owner_start_authority",
+        "published_r38_to_implementation_supervisor_handoff_bootstrap",
+    ):
+        assert token in source
+    assert source.count("_recheck_r39_owner_start_authority") >= 3
+
+    continuity = inspect.getsource(aseh_operator._read_continuity_state)
+    assert "r39_projection_recovery_prequalification" in continuity
+    continuity_priority = continuity.index("r26_projection_bundle = (")
+    assert continuity.index(
+        "r39_projection_recovery_prequalification", continuity_priority
+    ) < continuity.index(
+        "r38_projection_recovery_prequalification", continuity_priority
+    )
+    r30_descendant_gate = source.index("r30_descendant_is_active = any(")
+    assert source.index(
+        "r39_prequalification", r30_descendant_gate
+    ) < source.index("r31_prequalification", r30_descendant_gate)
+
+    completion = inspect.getsource(
+        aseh_operator._complete_r39_historical_live_prequalification
+    )
+    qualify = completion.index(
+        "_qualify_r39_pre_duckdb_historical_live_policy("
+    )
+    post_effect_witness = completion.index(
+        "_assert_candidate_authorization_witness(", qualify
+    )
+    one_shot = completion.index("_assert_r39_one_shot_state(", qualify)
+    assert qualify < post_effect_witness < one_shot
+
+    launch_assertion = inspect.getsource(
+        aseh_operator._assert_exact_run_launch_admission
+    )
+    for token in (
+        "_admit_exact_r39_transition_chain",
+        "current R39 candidate lacks its exact admitted validation seal",
+        "current descendant lacks its retained R39 validation seal",
+        "current descendant lacks its explicit R38-to-R39 edge",
+        "published_r38_to_implementation_supervisor_handoff_bootstrap",
+    ):
+        assert token in launch_assertion
+    assert launch_assertion.index(
+        "current R39 candidate lacks its exact admitted validation seal"
+    ) < launch_assertion.index(
+        "current R38 candidate lacks its exact admitted validation seal"
+    )
+
+    active_recheck = inspect.getsource(
+        aseh_operator._recheck_active_owner_start_authority
+    )
+    assert "_recheck_r39_owner_start_authority" in active_recheck
+    paths_source = inspect.getsource(aseh_operator._paths)
+    assert (
+        "repair_implementation_supervisor_handoff_bootstrap_transition_receipt"
+        in paths_source
+    )
+    assert (
+        "repair_implementation_supervisor_handoff_bootstrap_authorization_attempt"
+        in paths_source
+    )
 
 
 def test_aseh_r30_launch_guards_are_fresh_and_bounded_to_birth() -> None:

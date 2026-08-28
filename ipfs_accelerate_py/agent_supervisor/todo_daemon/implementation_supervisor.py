@@ -575,6 +575,35 @@ def _validated_plan_bound_authority_paths(
 PLAN_BOUND_DAEMON_CHILD_MARKER = "--run-plan-bound-daemon-child"
 
 
+# The module token remains a distinct argv sentinel in ordinary-daemon commands.
+# Besides making the bootstrap fail closed, this preserves an exact, stable
+# entrypoint token for owner-scope identity checks.
+IMPLEMENTATION_DAEMON_MODULE_SENTINEL = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+)
+
+
+# Redeem state authority before importing the native preload helper or the very
+# large daemon module.  A ``-c`` bootstrap is kept inline so the supervisor's
+# protected source remains the sole new control-plane dependency.
+ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP = (
+    "import sys;"
+    f"_EXPECTED_DAEMON_MODULE={IMPLEMENTATION_DAEMON_MODULE_SENTINEL!r};"
+    "sys.argv[1:2] == [_EXPECTED_DAEMON_MODULE] or sys.exit(78);"
+    "sys.argv.pop(1);"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+    "import harden_state_authority_process;"
+    "harden_state_authority_process();"
+    "from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner "
+    "import preload_sealed_native_dependency_from_environment;"
+    "preload_sealed_native_dependency_from_environment();"
+    "from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon "
+    "import main as implementation_daemon_main;"
+    "raise SystemExit(implementation_daemon_main("
+    "native_dependency_preloaded=True))"
+)
+
+
 # --- restored PLAN_BOUND_DAEMON_ENTRYPOINT ---
 
 PLAN_BOUND_DAEMON_ENTRYPOINT = (
@@ -19937,10 +19966,7 @@ class PortalImplementationSupervisor:
             daemon_entrypoint = (
                 str(Path(daemon_script_path).resolve(strict=False))
                 if daemon_script_path is not None
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_daemon"
-                )
+                else IMPLEMENTATION_DAEMON_MODULE_SENTINEL
             )
             scope = {
                 "repo_root": str(self.config.repo_root.resolve(strict=False)),
@@ -19971,13 +19997,20 @@ class PortalImplementationSupervisor:
             daemon_token = (
                 str(daemon_script_path)
                 if daemon_script_path is not None
-                else (
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                    "implementation_daemon"
-                )
+                else IMPLEMENTATION_DAEMON_MODULE_SENTINEL
             )
             if daemon_token not in tokens:
                 return False
+            if daemon_script_path is None and not self.config.plan_bound_dispatch:
+                expected_prefix = (
+                    sys.executable,
+                    "-P",
+                    "-c",
+                    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+                )
+                if tokens[: len(expected_prefix)] != expected_prefix:
+                    return False
 
             def exact_option(option: str, expected: str) -> bool:
                 values = [
@@ -20230,8 +20263,9 @@ class PortalImplementationSupervisor:
                 command = [
                     sys.executable,
                     "-P",
-                    "-m",
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+                    "-c",
+                    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
                 ]
             else:
                 command = [sys.executable, str(daemon_script_path)]
@@ -20745,6 +20779,13 @@ class PortalImplementationSupervisor:
     def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
         pid_path = self._managed_daemon_pid_path()
         repair = self.ensure_managed_daemon_pid_file()
+        if repair.get("blocked") is True:
+            raise RuntimeError(
+                str(
+                    repair.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
         if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
             return None
         try:
@@ -20761,6 +20802,8 @@ class PortalImplementationSupervisor:
             except OSError:
                 pass
             return None
+        if read_process_command_argv(pid) != tuple(self._build_daemon_command()):
+            raise RuntimeError("managed_daemon_ownership_scope_mismatch")
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
             try:

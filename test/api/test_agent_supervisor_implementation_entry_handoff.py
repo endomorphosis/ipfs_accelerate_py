@@ -12,6 +12,11 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
 PROCESS_SECURITY_MODULE = "ipfs_accelerate_py.agent_supervisor.runtime.process_security"
@@ -19,6 +24,108 @@ NATIVE_PRELOAD_MODULE = (
     "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner"
 )
 IMPLEMENTATION_MODULE = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
+
+
+def test_ordinary_daemon_bootstrap_hardens_before_cold_imports() -> None:
+    """Keep daemon imports outside the authority-redemption critical path."""
+
+    tree = ast.parse(ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP)
+    positions = {id(node): index for index, node in enumerate(tree.body)}
+    sentinel_guard = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.BoolOp)
+        and isinstance(node.value.op, ast.Or)
+    )
+    sentinel_pop = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and node.value.func.attr == "pop"
+    )
+    process_security_import = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == PROCESS_SECURITY_MODULE
+    )
+    harden_call = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "harden_state_authority_process"
+    )
+    native_preload_import = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == NATIVE_PRELOAD_MODULE
+    )
+    native_preload_call = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "preload_sealed_native_dependency_from_environment"
+    )
+    daemon_import = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == IMPLEMENTATION_DAEMON_MODULE_SENTINEL
+    )
+    daemon_exit = next(node for node in tree.body if isinstance(node, ast.Raise))
+
+    assert [
+        positions[id(node)]
+        for node in (
+            sentinel_guard,
+            sentinel_pop,
+            process_security_import,
+            harden_call,
+            native_preload_import,
+            native_preload_call,
+            daemon_import,
+            daemon_exit,
+        )
+    ] == sorted(
+        positions[id(node)]
+        for node in (
+            sentinel_guard,
+            sentinel_pop,
+            process_security_import,
+            harden_call,
+            native_preload_import,
+            native_preload_call,
+            daemon_import,
+            daemon_exit,
+        )
+    )
+
+
+def test_ordinary_daemon_bootstrap_rejects_wrong_module_sentinel() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-P",
+            "-c",
+            ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+            "wrong.daemon.module",
+        ],
+        cwd=ROOT,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=5.0,
+        check=False,
+    )
+
+    assert completed.returncode == 78
 
 
 def test_entry_hardens_before_importing_implementation_supervisor() -> None:
@@ -213,3 +320,137 @@ def test_entry_redeems_handoff_before_delayed_implementation_import() -> None:
         "descriptor_count": 1,
         "exit_code": 0,
     }
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_ordinary_daemon_bootstrap_redeems_before_delayed_daemon_import(
+    tmp_path: Path,
+) -> None:
+    """The exact ordinary command must redeem before a slow daemon import."""
+
+    import_hook_marker = tmp_path / "daemon-import-started"
+    sitecustomize = tmp_path / "sitecustomize.py"
+    sitecustomize.write_text(
+        "\n".join(
+            (
+                "import importlib.util, sys, time",
+                f"_TARGET = {IMPLEMENTATION_DAEMON_MODULE_SENTINEL!r}",
+                f"_MARKER = {str(import_hook_marker)!r}",
+                "class _DelayedDaemonLoader:",
+                "    def create_module(self, spec):",
+                "        return None",
+                "    def exec_module(self, module):",
+                "        with open(_MARKER, 'w', encoding='utf-8') as stream:",
+                "            stream.write('started')",
+                "        time.sleep(2.0)",
+                "        def main(*, native_dependency_preloaded=False):",
+                "            assert native_dependency_preloaded is True",
+                "            print(repr(sys.argv), flush=True)",
+                "            return 0",
+                "        module.main = main",
+                "class _DelayedDaemonFinder:",
+                "    def find_spec(self, fullname, path=None, target=None):",
+                "        if fullname == _TARGET:",
+                (
+                    "            return importlib.util.spec_from_loader("
+                    "fullname, _DelayedDaemonLoader())"
+                ),
+                "        return None",
+                "sys.meta_path.insert(0, _DelayedDaemonFinder())",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    parent_code = "\n".join(
+        (
+            "import fcntl, json, os, subprocess, sys",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import STATE_AUTHORITY_PARENT_LOSS_TERMINATE, "
+                "prepare_state_authority_child_handoff"
+            ),
+            (
+                "flags = int(getattr(os, 'MFD_CLOEXEC', 1)) | "
+                "int(getattr(os, 'MFD_ALLOW_SEALING', 2))"
+            ),
+            "descriptor = os.memfd_create('ordinary-daemon-handoff', flags=flags)",
+            "os.write(descriptor, b'x' * 64)",
+            (
+                "seals = int(getattr(fcntl, 'F_SEAL_SEAL', 1)) | "
+                "int(getattr(fcntl, 'F_SEAL_SHRINK', 2)) | "
+                "int(getattr(fcntl, 'F_SEAL_GROW', 4)) | "
+                "int(getattr(fcntl, 'F_SEAL_WRITE', 8))"
+            ),
+            (
+                "fcntl.fcntl(descriptor, "
+                "int(getattr(fcntl, 'F_ADD_SEALS', 1033)), seals)"
+            ),
+            (
+                "environment = {'PATH': '/usr/bin:/bin', "
+                f"'PYTHONPATH': {str(tmp_path)!r} + os.pathsep + {str(ROOT)!r}, "
+                "'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET': "
+                "'/tmp/ordinary-daemon-handoff.sock', "
+                "'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD': "
+                "str(descriptor)}"
+            ),
+            (
+                "handoff = prepare_state_authority_child_handoff("
+                "environment, parent_loss_policy="
+                "STATE_AUTHORITY_PARENT_LOSS_TERMINATE)"
+            ),
+            "process = None",
+            "try:",
+            "    process = subprocess.Popen(",
+            "        [",
+            "            sys.executable,",
+            "            '-P',",
+            "            '-c',",
+            f"            {ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP!r},",
+            f"            {IMPLEMENTATION_DAEMON_MODULE_SENTINEL!r},",
+            "            '--probe',",
+            "            'value',",
+            "        ],",
+            f"        cwd={str(ROOT)!r},",
+            "        env=environment,",
+            "        stdin=subprocess.DEVNULL,",
+            "        stdout=subprocess.PIPE,",
+            "        stderr=subprocess.PIPE,",
+            "    )",
+            "    handoff.deliver(process, timeout_seconds=1.0)",
+            "    stdout, stderr = process.communicate(timeout=8.0)",
+            (
+                "    if process.returncode != 0: "
+                "raise RuntimeError(stderr.decode(errors='replace'))"
+            ),
+            "    print(json.dumps({'argv': stdout.decode().strip()}))",
+            "finally:",
+            "    handoff.close()",
+            "    if process is not None and process.poll() is None:",
+            "        process.kill()",
+            "        process.wait(timeout=2.0)",
+            "    os.close(descriptor)",
+        )
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", parent_code],
+        cwd=ROOT,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=15.0,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert ast.literal_eval(json.loads(completed.stdout)["argv"]) == [
+        "-c",
+        "--probe",
+        "value",
+    ]
+    assert import_hook_marker.read_text(encoding="utf-8") == "started"

@@ -42,6 +42,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     task_declares_validation_config_change,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
     PortalImplementationSupervisor,
     parse_args as parse_supervisor_args,
     supervisor_config_from_args,
@@ -156,16 +158,136 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     )
 
     config = supervisor_config_from_args(parsed, repo_root=tmp_path)
-    command = PortalImplementationSupervisor(config)._build_daemon_command()
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
 
-    assert command[:4] == [
+    assert command[:5] == [
+        sys.executable,
+        "-P",
+        "-c",
+        ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+        IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+    ]
+    assert "\n" not in command[3]
+    assert command.count(IMPLEMENTATION_DAEMON_MODULE_SENTINEL) == 1
+    assert config.merge_target_branch == target_branch
+    assert command[command.index("--merge-target-branch") + 1] == target_branch
+
+
+def test_ordinary_daemon_scope_requires_exact_early_bootstrap(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(parsed, repo_root=tmp_path)
+    )
+    command = supervisor._build_daemon_command()
+
+    assert supervisor._managed_daemon_owner_scope()["daemon_entrypoint"] == (
+        IMPLEMENTATION_DAEMON_MODULE_SENTINEL
+    )
+    assert supervisor._managed_daemon_command_belongs_to_scope(command)
+
+    legacy_command = [
         sys.executable,
         "-P",
         "-m",
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+        *command[5:],
     ]
-    assert config.merge_target_branch == target_branch
-    assert command[command.index("--merge-target-branch") + 1] == target_branch
+    assert not supervisor._managed_daemon_command_belongs_to_scope(legacy_command)
+
+    missing_sentinel = [*command[:4], *command[5:]]
+    assert not supervisor._managed_daemon_command_belongs_to_scope(missing_sentinel)
+
+    altered_bootstrap = [*command]
+    altered_bootstrap[3] += "\n# altered"
+    assert not supervisor._managed_daemon_command_belongs_to_scope(altered_bootstrap)
+
+
+def test_ordinary_daemon_adoption_honors_blocked_exact_identity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(
+            parse_supervisor_args(
+                [
+                    "--todo-path",
+                    str(board),
+                    "--state-dir",
+                    str(tmp_path / "state"),
+                ]
+            ),
+            repo_root=tmp_path,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_managed_daemon_pid_file",
+        lambda: {
+            "blocked": True,
+            "reason": "managed_daemon_ownership_scope_mismatch",
+        },
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="managed_daemon_ownership_scope_mismatch",
+    ):
+        supervisor._adopt_existing_daemon()
+
+
+def test_daemon_main_verifies_preloaded_native_dependency_once(
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        multi_supervisor_runner,
+        process_security,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon as daemon_module,
+    )
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        process_security,
+        "harden_state_authority_process",
+        lambda: calls.append("harden"),
+    )
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "optional_active_sealed_native_dependency",
+        lambda _environment: calls.append("verify"),
+    )
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "preload_sealed_native_dependency_from_environment",
+        lambda: calls.append("preload"),
+    )
+
+    def stop_before_daemon_construction(_argv):
+        raise RuntimeError("parsed after native admission")
+
+    monkeypatch.setattr(daemon_module, "parse_args", stop_before_daemon_construction)
+
+    with pytest.raises(RuntimeError, match="parsed after native admission"):
+        daemon_module.main([], native_dependency_preloaded=True)
+
+    assert calls == ["harden", "verify"]
 
 
 def test_rescue_dirty_worktree_commits_failed_test_files_in_submodule(
@@ -477,7 +599,7 @@ def test_manual_completion_authority_revalidation_only_propagates_end_to_end(
         " ".join(command_without_mode)
     )
 
-    parsed_daemon = parse_args(command[4:])
+    parsed_daemon = parse_args(command[command.index("--interval") :])
     daemon, _context = build_portal_implementation_daemon_from_args(
         parsed_daemon,
         repo_root=tmp_path,
