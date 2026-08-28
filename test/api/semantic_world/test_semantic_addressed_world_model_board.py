@@ -563,6 +563,24 @@ def test_m7_source_only_migration_rehearsal_and_tamper_gates() -> None:
     prior_append_surface_digest = materializer._append_surface_digest(prior_path)
     assert prior_append_surface_digest == authority["prior_append_surface_digest"]
 
+    class AdapterRow:
+        def __init__(self, columns: tuple[str, ...], values: tuple[object, ...]):
+            self.columns = columns
+            self.values = values
+
+        def __getitem__(self, index: int) -> object:
+            return self.values[index]
+
+        def __iter__(self):
+            return iter(self.columns)
+
+    adapter_row = AdapterRow(("left", "right"), ("value-left", "value-right"))
+    assert tuple(adapter_row) == ("left", "right")
+    assert adapter_row != ("value-left", "value-right")
+    assert materializer._positional_rows([adapter_row], 2) == [
+        ("value-left", "value-right")
+    ]
+
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
@@ -590,6 +608,16 @@ def test_m7_source_only_migration_rehearsal_and_tamper_gates() -> None:
                 config,
                 validation_digest,
             )
+            failure = materializer._M7_PREPUBLICATION_MATERIALIZATION_FAILURE
+            assert body["schema"] == (
+                "sawm/operator-control-plane-source-migration@5"
+            )
+            assert body["prepublication_materialization_failure"] == failure
+            assert body["prepublication_materialization_failure_cid"] == (
+                materializer._identity(failure)
+            )
+            assert failure["target_published"] is False
+            assert failure["implementation_provider_invoked"] is False
             digest = materializer._identity(body)
             delta = materializer._m7_migration_plan_delta(population, config)
             source.plans.append_revision(

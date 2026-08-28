@@ -239,6 +239,56 @@ _M6_LIVE_PREFLIGHT_FAILURE: dict[str, Any] = {
     "failure_time_authority": "unavailable",
 }
 
+_M7_PREPUBLICATION_MATERIALIZATION_FAILURE: dict[str, Any] = {
+    "schema": "sawm/source-materialization-failure@1",
+    "attempt": "SAWM-R2-M7-A1",
+    "phase": "frozen_m6_authority_verification",
+    "command": (
+        "python scripts/materialize_semantic_addressed_world_model_program.py "
+        "materialize"
+    ),
+    "exit_code": 1,
+    "error_payload": {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "semantic-addressed-world-model-materialization@1"
+        ),
+        "valid": False,
+        "action": "migration_required",
+        "migration_required": True,
+        "error": "frozen M6 event/owner/completion evidence differs",
+    },
+    "failure_kind": "quack_row_value_projection_not_normalized",
+    "source_head": "434402ee0fd20d876bd6dd0e75ea122ec5bd1136",
+    "source_tree": "e23f272a52b8ffe56f4aa2bc94579479ea9a5777",
+    "prior_store_id": _M6_FROZEN_SUCCESSOR_BINDING["store_id"],
+    "prior_control_store_sha256": _M6_FROZEN_SUCCESSOR_BINDING[
+        "control_store_sha256"
+    ],
+    "prior_event_prefix_sha256": _M6_FROZEN_SUCCESSOR_BINDING[
+        "event_prefix_sha256"
+    ],
+    "diagnosis": {
+        "row_adapter_type": "DuckDBRow",
+        "direct_tuple_equality": False,
+        "positional_value_projection_matches": True,
+        "event_prefix_matches": True,
+        "event_count_matches": True,
+        "owner_values_match": True,
+        "completion_values_match": True,
+    },
+    "frozen_m6_bytes_preserved": True,
+    "target_store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m7/control.duckdb"
+    ),
+    "target_published": False,
+    "task_claimed": False,
+    "task_state_changed": False,
+    "implementation_provider_invoked": False,
+    "failure_time_authority": "unavailable",
+}
+
 
 class MaterializationError(RuntimeError):
     """Fail-closed SAWM bootstrap error."""
@@ -690,6 +740,14 @@ def _store_sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _positional_rows(rows: Sequence[Any], width: int) -> list[tuple[Any, ...]]:
+    """Project local tuples and Quack DuckDBRow values identically."""
+
+    if width < 1:
+        raise ValueError("row projection width must be positive")
+    return [tuple(row[index] for index in range(width)) for row in rows]
 
 
 def _m7_source_repair_authority(
@@ -2928,7 +2986,7 @@ def _expected_m7_migration_receipt(
     authority = _m7_source_repair_authority(population, config)
     _assert_m7_source_delta(root, population, authority)
     receipt = {
-        "schema": "sawm/non-authoritative-migration-receipt@4",
+        "schema": "sawm/non-authoritative-migration-receipt@5",
         "authoritative": False,
         "database_is_authority": True,
         "migration_revision": _M7_MIGRATION_REVISION,
@@ -2974,6 +3032,9 @@ def _expected_m7_migration_receipt(
             "source_binding_cid"
         ],
         "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "prepublication_materialization_failure_cid": _identity(
+            _M7_PREPUBLICATION_MATERIALIZATION_FAILURE
+        ),
         "prior_database_path": authority["prior_store_id"],
         "database_path": str(target.relative_to(root)),
         "worker_self_approval": False,
@@ -3397,15 +3458,21 @@ def _verify_frozen_m6_authority(
                     connection,
                     int(authority["prior_event_watermark"]),
                 )
-                owner = connection.execute(
-                    "SELECT server_id, process_birth_id, status "
-                    "FROM state_servers WHERE generation = ?",
-                    [int(authority["prior_generation"])],
-                ).fetchall()
-                completion = connection.execute(
-                    "SELECT receipt_cid, task_cid FROM completion_receipts "
-                    "ORDER BY receipt_cid"
-                ).fetchall()
+                owner = _positional_rows(
+                    connection.execute(
+                        "SELECT server_id, process_birth_id, status "
+                        "FROM state_servers WHERE generation = ?",
+                        [int(authority["prior_generation"])],
+                    ).fetchall(),
+                    3,
+                )
+                completion = _positional_rows(
+                    connection.execute(
+                        "SELECT receipt_cid, task_cid FROM completion_receipts "
+                        "ORDER BY receipt_cid"
+                    ).fetchall(),
+                    2,
+                )
                 if (
                     prefix != authority["prior_event_prefix_sha256"]
                     or count != int(authority["prior_event_watermark"])
@@ -3463,7 +3530,7 @@ def _m7_migration_body(
     authority = _m7_source_repair_authority(population, config)
     repair_paths = authority["bounded_control_plane_repair_paths"]
     return {
-        "schema": "sawm/operator-control-plane-source-migration@4",
+        "schema": "sawm/operator-control-plane-source-migration@5",
         "migration_revision": _M7_MIGRATION_REVISION,
         "board_namespace": NAMESPACE,
         "plan_revision": REVISION,
@@ -3497,6 +3564,12 @@ def _m7_migration_body(
         },
         "live_preflight_failure": authority["live_preflight_failure"],
         "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "prepublication_materialization_failure": dict(
+            _M7_PREPUBLICATION_MATERIALIZATION_FAILURE
+        ),
+        "prepublication_materialization_failure_cid": _identity(
+            _M7_PREPUBLICATION_MATERIALIZATION_FAILURE
+        ),
         "prior_materialization_receipt_cid": authority[
             "prior_materialization_receipt_cid"
         ],
@@ -3554,6 +3627,9 @@ def _m7_migration_plan_delta(
             "source_binding_cid"
         ],
         "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "prepublication_materialization_failure_cid": _identity(
+            _M7_PREPUBLICATION_MATERIALIZATION_FAILURE
+        ),
         "task_revision_changes": 0,
         "task_status_changes": 0,
         "accepted_definition_changes": 0,

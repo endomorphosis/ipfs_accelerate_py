@@ -324,6 +324,16 @@ store is required before launch resumes. Direct configured-scheduler launch is
 not an acceptable substitute because it bypasses the authenticated Quack,
 mutation-binding, provider-token retirement, and live task-contract gates.
 
+The first committed M7 materialization attempt is also preserved. It failed
+closed before target publication while verifying the frozen M6 owner and
+completion rows: the live-capable query adapter returned `DuckDBRow` records,
+whose direct tuple comparison is false even though their positional values
+matched the sealed M6 evidence exactly. M6 bytes remained unchanged, no M7
+store was published, and no provider, task, effect, commit, merge, or
+completion authority was reached. The bounded successor repair normalizes
+only those closed row projections by ordinal and records the typed failed
+attempt in M7's migration evidence before retrying materialization.
+
 DuckDB plus a live Quack exclusive state owner is the authoritative multi-writer control path. DuckLake is optional non-authoritative history/projection storage and cannot substitute for DuckDB/Quack. This plan does not assert either service live; preflight must prove current capability and fail closed.
 
 The strongest honest terminal is one of: all mandatory work independently accepted with final transitive root verification; an explicitly permitted typed external-capability terminal; or an observed control-plane blocker that cannot be safely repaired within bootstrap authority. There is no background-completion claim.
