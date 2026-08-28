@@ -2692,10 +2692,17 @@ def _create_grok_container_and_build_start_command(
         or len(created.stderr) > _DOCKER_INSPECTION_MAX_BYTES
     ):
         raise ValueError("Grok container could not be created")
-    created_fields = created.stdout.decode("ascii", errors="strict").split()
+    try:
+        created_fields = created.stdout.decode("ascii", errors="strict").split()
+        recorded_container_id = docker_lease.cidfile.read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Grok container identity is unavailable") from exc
     if (
         len(created_fields) != 1
         or re.fullmatch(r"[0-9a-f]{64}", created_fields[0]) is None
+        or recorded_container_id != created_fields[0]
     ):
         raise ValueError("Grok container identity is invalid")
     return [
@@ -6360,15 +6367,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
         try:
             if docker_lease is not None:
-                primary_returncode = (
-                    _run_created_grok_container_with_typed_failure_capture(
-                        cmd,
-                        docker_bin=docker_lease.docker_bin,
-                        docker_config=docker_lease.docker_config,
-                        cidfile=docker_lease.cidfile,
-                        workspace=workspace,
-                        env=grok_launch_env,
-                    )
+                # Container creation and stdout/cidfile identity verification
+                # already replaced ``cmd`` with the exact attached start.
+                primary_returncode = _run_grok_with_typed_failure_capture(
+                    cmd,
+                    env=grok_launch_env,
                 )
             else:
                 primary_returncode = _run_grok_with_typed_failure_capture(

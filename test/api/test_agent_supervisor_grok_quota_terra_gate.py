@@ -226,14 +226,19 @@ def _install_fake_grok_docker_primary(
 
     def fake_create_run(command, **kwargs):
         create_calls.append((list(command), dict(kwargs)))
+        stdout = (
+            (container_id + "\n").encode("ascii")
+            if create_stdout is None
+            else create_stdout
+        )
+        if create_returncode == 0 and stdout == (
+            container_id + "\n"
+        ).encode("ascii"):
+            FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             create_returncode,
-            stdout=(
-                (container_id + "\n").encode("ascii")
-                if create_stdout is None
-                else create_stdout
-            ),
+            stdout=stdout,
             stderr=(b"create failed" if create_returncode else b""),
         )
 
@@ -1979,9 +1984,11 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
     class FakeLease:
         docker_bin = "/usr/bin/docker"
         docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
 
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
+        FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             0,
@@ -2033,6 +2040,9 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
     class FakeLease:
         docker_bin = "/usr/bin/docker"
         docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
+
+    FakeLease.cidfile.write_text("d" * 64 + "\n", encoding="ascii")
 
     monkeypatch.setattr(
         grok_cli_runner.subprocess,
@@ -2041,6 +2051,38 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
             command,
             0,
             stdout=create_stdout,
+            stderr=b"",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="container identity is invalid"):
+        grok_cli_runner._create_grok_container_and_build_start_command(
+            ["/usr/bin/docker", "create", "sealed-grok"],
+            workspace=tmp_path,
+            docker_environment={},
+            docker_lease=FakeLease(),
+        )
+
+
+def test_grok_docker_create_rejects_cidfile_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container_id = "d" * 64
+
+    class FakeLease:
+        docker_bin = "/usr/bin/docker"
+        docker_config = tmp_path / "docker-config"
+        cidfile = tmp_path / "container.cid"
+
+    FakeLease.cidfile.write_text("e" * 64 + "\n", encoding="ascii")
+    monkeypatch.setattr(
+        grok_cli_runner.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(container_id + "\n").encode("ascii"),
             stderr=b"",
         ),
     )
