@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/task-efficiency-receipt@1",
+  "title": "Task efficiency receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "contract_version", "identity", "model", "compute", "cost", "work", "quality", "evidence", "terminal"],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/task-efficiency-receipt@1"},
+    "schema_version": {"const": 1},
+    "contract_version": {"const": 1},
+    "content_id": {"$ref": "#/$defs/text"},
+    "receipt_id": {"$ref": "#/$defs/text"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "model": {"$ref": "#/$defs/model"},
+    "compute": {"$ref": "#/$defs/compute"},
+    "cost": {"$ref": "#/$defs/cost"},
+    "work": {"$ref": "#/$defs/work"},
+    "quality": {"$ref": "#/$defs/quality"},
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "terminal": {"$ref": "#/$defs/terminal"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 512},
+    "truthState": {"enum": ["measured", "estimated", "simulated", "unavailable", "attempted", "observed", "verified"]},
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"$ref": "#/$defs/truthState"},
+        "value": {"type": ["string", "integer", "boolean", "null", "array", "object"]},
+        "unit": {"$ref": "#/$defs/text"},
+        "reason_code": {"$ref": "#/$defs/text"},
+        "basis_ref": {"$ref": "#/$defs/text"},
+        "evidence_ref": {"$ref": "#/$defs/text"},
+        "verifier_ref": {"$ref": "#/$defs/text"}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "attempt_id", "goal_id", "repository", "repository_commit", "repository_tree", "objective_revision", "policy_revision", "environment_id", "input_digest"],
+      "properties": {
+        "task_id": {"$ref": "#/$defs/text"}, "attempt_id": {"$ref": "#/$defs/text"}, "goal_id": {"$ref": "#/$defs/text"}, "repository": {"$ref": "#/$defs/text"}, "repository_commit": {"$ref": "#/$defs/text"}, "repository_tree": {"$ref": "#/$defs/text"}, "objective_revision": {"$ref": "#/$defs/text"}, "policy_revision": {"$ref": "#/$defs/text"}, "environment_id": {"$ref": "#/$defs/text"}, "input_digest": {"$ref": "#/$defs/text"}
+      }
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "model_id", "model_revision", "tokenizer_revision", "request_id", "input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens", "call_count"],
+      "properties": {
+        "provider": {"$ref": "#/$defs/fact"}, "model_id": {"$ref": "#/$defs/fact"}, "model_revision": {"$ref": "#/$defs/fact"}, "tokenizer_revision": {"$ref": "#/$defs/fact"}, "request_id": {"$ref": "#/$defs/fact"}, "input_tokens": {"$ref": "#/$defs/fact"}, "output_tokens": {"$ref": "#/$defs/fact"}, "cached_input_tokens": {"$ref": "#/$defs/fact"}, "reasoning_tokens": {"$ref": "#/$defs/fact"}, "call_count": {"$ref": "#/$defs/fact"}
+      }
+    },
+    "compute": {
+      "type": "object", "additionalProperties": false,
+      "required": ["wall_clock_ms", "cpu_ms", "peak_rss_bytes", "gpu_ms", "read_bytes", "write_bytes", "network_bytes"],
+      "properties": {"wall_clock_ms": {"$ref": "#/$defs/fact"}, "cpu_ms": {"$ref": "#/$defs/fact"}, "peak_rss_bytes": {"$ref": "#/$defs/fact"}, "gpu_ms": {"$ref": "#/$defs/fact"}, "read_bytes": {"$ref": "#/$defs/fact"}, "write_bytes": {"$ref": "#/$defs/fact"}, "network_bytes": {"$ref": "#/$defs/fact"}}
+    },
+    "cost": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reported_cost_microusd", "estimated_cost_microusd", "price_snapshot_id", "currency"],
+      "properties": {"reported_cost_microusd": {"$ref": "#/$defs/fact"}, "estimated_cost_microusd": {"$ref": "#/$defs/fact"}, "price_snapshot_id": {"$ref": "#/$defs/fact"}, "currency": {"$ref": "#/$defs/fact"}}
+    },
+    "work": {
+      "type": "object", "additionalProperties": false,
+      "required": ["deterministic_steps", "model_calls", "validation_runs", "proof_runs", "retries", "merge_attempts", "human_interventions", "changed_files"],
+      "properties": {"deterministic_steps": {"$ref": "#/$defs/fact"}, "model_calls": {"$ref": "#/$defs/fact"}, "validation_runs": {"$ref": "#/$defs/fact"}, "proof_runs": {"$ref": "#/$defs/fact"}, "retries": {"$ref": "#/$defs/fact"}, "merge_attempts": {"$ref": "#/$defs/fact"}, "human_interventions": {"$ref": "#/$defs/fact"}, "changed_files": {"$ref": "#/$defs/fact"}}
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["acceptance_criteria_total", "acceptance_criteria_passed", "acceptance_criteria_failed", "validation_verdict", "proof_verdict"],
+      "properties": {"acceptance_criteria_total": {"$ref": "#/$defs/fact"}, "acceptance_criteria_passed": {"$ref": "#/$defs/fact"}, "acceptance_criteria_failed": {"$ref": "#/$defs/fact"}, "validation_verdict": {"$ref": "#/$defs/fact"}, "proof_verdict": {"$ref": "#/$defs/fact"}}
+    },
+    "references": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "receipt_references", "raw_log_references", "validator", "verification"],
+      "properties": {"state": {"$ref": "#/$defs/truthState"}, "receipt_references": {"$ref": "#/$defs/references"}, "raw_log_references": {"$ref": "#/$defs/references"}, "validator": {"$ref": "#/$defs/fact"}, "verification": {"$ref": "#/$defs/fact"}}
+    },
+    "terminal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outcome", "state", "reason_code", "terminal_receipt_ref"],
+      "properties": {"outcome": {"enum": ["accepted", "rejected", "failed", "cancelled", "blocked", "unknown"]}, "state": {"$ref": "#/$defs/truthState"}, "reason_code": {"type": "string", "maxLength": 512}, "terminal_receipt_ref": {"type": "string", "maxLength": 512}}
+    }
+  }
+}

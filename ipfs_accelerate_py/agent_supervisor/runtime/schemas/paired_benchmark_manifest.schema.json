@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/paired-benchmark-manifest@1",
+  "title": "Paired benchmark manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "contract_version", "benchmark_id", "cohort_id", "input_digest", "gate_digest", "evidence_state", "arms"],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/paired-benchmark-manifest@1"},
+    "schema_version": {"const": 1}, "contract_version": {"const": 1},
+    "benchmark_id": {"$ref": "#/$defs/text"}, "cohort_id": {"$ref": "#/$defs/text"}, "input_digest": {"$ref": "#/$defs/text"}, "gate_digest": {"$ref": "#/$defs/text"},
+    "evidence_state": {"$ref": "#/$defs/truthState"}, "content_id": {"$ref": "#/$defs/text"}, "manifest_id": {"$ref": "#/$defs/text"},
+    "arms": {"type": "object", "additionalProperties": false, "required": ["direct", "sealed_current", "candidate"], "properties": {"direct": {"$ref": "#/$defs/arm"}, "sealed_current": {"$ref": "#/$defs/arm"}, "candidate": {"$ref": "#/$defs/arm"}}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 512},
+    "truthState": {"enum": ["measured", "estimated", "simulated", "unavailable", "attempted", "observed", "verified"]},
+    "arm": {"type": "object", "additionalProperties": false, "required": ["receipt_id", "input_digest", "gate_digest", "state"], "properties": {"receipt_id": {"$ref": "#/$defs/text"}, "input_digest": {"$ref": "#/$defs/text"}, "gate_digest": {"$ref": "#/$defs/text"}, "state": {"$ref": "#/$defs/truthState"}}}
+  }
+}
