@@ -7,6 +7,7 @@ import json
 import os
 import socket
 import stat
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -35,6 +36,89 @@ def _materializer():
     sys.modules[definition.name] = module
     definition.loader.exec_module(module)
     return module
+
+
+def _dependency_validator():
+    path = ROOT / "scripts/validate_semantic_preserving_remodularization_dependencies.py"
+    definition = importlib.util.spec_from_file_location(
+        "spar_dependency_validator_test",
+        path,
+    )
+    assert definition is not None and definition.loader is not None
+    module = importlib.util.module_from_spec(definition)
+    sys.modules[definition.name] = module
+    definition.loader.exec_module(module)
+    return module
+
+
+def _nested_source_fixture(
+    tmp_path: Path,
+    *,
+    relative: str = "ipfs_datasets_py",
+) -> dict[str, object]:
+    parent = tmp_path / "parent"
+    nested = parent / relative
+    nested.mkdir(parents=True)
+
+    def git(repository: Path, *arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    for repository in (parent, nested):
+        git(repository, "init", "-q", "-b", "main")
+        git(repository, "config", "user.name", "SPAR Source Test")
+        git(
+            repository,
+            "config",
+            "user.email",
+            "spar-source@example.invalid",
+        )
+    source = nested / "source.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    git(nested, "add", "source.py")
+    git(nested, "commit", "-qm", "planning source")
+    planning_commit = git(nested, "rev-parse", "HEAD")
+    planning_tree = git(nested, "rev-parse", "HEAD^{tree}")
+    git(
+        parent,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "160000",
+        planning_commit,
+        relative,
+    )
+    git(parent, "commit", "-qm", "planning gitlink")
+    outer_planning_commit = git(parent, "rev-parse", "HEAD")
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    git(nested, "add", "source.py")
+    git(nested, "commit", "-qm", "accepted descendant")
+    current_commit = git(nested, "rev-parse", "HEAD")
+    git(
+        parent,
+        "update-index",
+        "--cacheinfo",
+        "160000",
+        current_commit,
+        relative,
+    )
+    git(parent, "commit", "-qm", "accepted current gitlink")
+    return {
+        "parent": parent,
+        "nested": nested,
+        "git": git,
+        "planning_commit": planning_commit,
+        "planning_tree": planning_tree,
+        "outer_planning_commit": outer_planning_commit,
+        "current_commit": current_commit,
+        "relative": relative,
+    }
 
 
 def test_exact_goal_task_and_dependency_population() -> None:
@@ -86,6 +170,242 @@ def test_rendered_controls_are_deterministic_and_sealed() -> None:
         "ipfs_accelerate_py/agent_supervisor/validation/"
         "project_dependency_preflight.py",
     }.issubset(seal["bootstrap_runtime_file_sha256"])
+
+
+def test_dependency_binding_separates_planning_and_current_gitlinks(
+    tmp_path: Path,
+) -> None:
+    validator = _dependency_validator()
+    fixture = _nested_source_fixture(tmp_path)
+    parent = fixture["parent"]
+    nested = fixture["nested"]
+    git = fixture["git"]
+    assert isinstance(parent, Path)
+    assert isinstance(nested, Path)
+    assert callable(git)
+    binding = {
+        "commit": fixture["planning_commit"],
+        "tree": fixture["planning_tree"],
+    }
+
+    passed, detail = validator._validate_nested_source_binding(
+        root=parent,
+        outer_planning_commit=str(fixture["outer_planning_commit"]),
+        relative="ipfs_datasets_py",
+        binding=binding,
+    )
+    assert passed is True
+    assert detail["planning_gitlink"] is True
+    assert detail["planning_is_ancestor"] is True
+    assert detail["current_gitlink"] is True
+    assert detail["current_head"] == fixture["current_commit"]
+
+    wrong_tree, wrong_tree_detail = (
+        validator._validate_nested_source_binding(
+            root=parent,
+            outer_planning_commit=str(fixture["outer_planning_commit"]),
+            relative="ipfs_datasets_py",
+            binding={**binding, "tree": "0" * 40},
+        )
+    )
+    assert wrong_tree is False
+    assert wrong_tree_detail["planning_tree_exact"] is False
+
+    wrong_planning_link, wrong_planning_detail = (
+        validator._validate_nested_source_binding(
+            root=parent,
+            outer_planning_commit=git(parent, "rev-parse", "HEAD"),
+            relative="ipfs_datasets_py",
+            binding=binding,
+        )
+    )
+    assert wrong_planning_link is False
+    assert wrong_planning_detail["planning_gitlink"] is False
+
+    git(nested, "checkout", "-q", "--detach", str(fixture["planning_commit"]))
+    mismatched_checkout, mismatch_detail = (
+        validator._validate_nested_source_binding(
+            root=parent,
+            outer_planning_commit=str(fixture["outer_planning_commit"]),
+            relative="ipfs_datasets_py",
+            binding=binding,
+        )
+    )
+    assert mismatched_checkout is False
+    assert mismatch_detail["current_gitlink"] is False
+    git(nested, "checkout", "-q", "--detach", str(fixture["current_commit"]))
+
+    (nested / "untracked.txt").write_text("dirty\n", encoding="utf-8")
+    dirty, dirty_detail = validator._validate_nested_source_binding(
+        root=parent,
+        outer_planning_commit=str(fixture["outer_planning_commit"]),
+        relative="ipfs_datasets_py",
+        binding=binding,
+    )
+    assert dirty is False
+    assert dirty_detail["clean"] is False
+
+
+def test_dependency_binding_requires_current_outer_planning_ancestry(
+    tmp_path: Path,
+) -> None:
+    validator = _dependency_validator()
+    fixture = _nested_source_fixture(tmp_path)
+    parent = fixture["parent"]
+    git = fixture["git"]
+    assert isinstance(parent, Path)
+    assert callable(git)
+    planning_commit = str(fixture["outer_planning_commit"])
+    binding = {
+        "commit": planning_commit,
+        "tree": git(parent, "rev-parse", f"{planning_commit}^{{tree}}"),
+    }
+
+    passed, detail = validator._validate_outer_source_binding(
+        root=parent,
+        binding=binding,
+    )
+    assert passed is True
+    assert detail["planning_is_ancestor"] is True
+
+    git(parent, "checkout", "-q", "--orphan", "unrelated")
+    git(parent, "commit", "--allow-empty", "-qm", "unrelated root")
+    rejected, rejected_detail = validator._validate_outer_source_binding(
+        root=parent,
+        binding=binding,
+    )
+    assert rejected is False
+    assert rejected_detail["planning_is_ancestor"] is False
+
+
+def test_materializer_source_forest_admits_only_clean_descendant_gitlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    fixture = _nested_source_fixture(tmp_path)
+    parent = fixture["parent"]
+    nested = fixture["nested"]
+    git = fixture["git"]
+    assert isinstance(parent, Path)
+    assert isinstance(nested, Path)
+    assert callable(git)
+    monkeypatch.setattr(materializer, "ROOT", parent)
+    config = {
+        "source_binding": {
+            "datasets_submodule_path": "ipfs_datasets_py",
+            "datasets_planning_revision": fixture["planning_commit"],
+        }
+    }
+
+    forest = materializer._source_forest(
+        config,
+        head=git(parent, "rev-parse", "HEAD"),
+    )
+    assert forest["nested_repositories"] == [
+        {
+            "repository": "ipfs_datasets",
+            "path": "ipfs_datasets_py",
+            "head": fixture["current_commit"],
+            "tree": git(nested, "rev-parse", "HEAD^{tree}"),
+            "planning_revision": fixture["planning_commit"],
+            "planning_revision_is_ancestor": True,
+            "access": "read_only_contract_audit",
+        }
+    ]
+
+    git(nested, "checkout", "-q", "--detach", str(fixture["planning_commit"]))
+    with pytest.raises(materializer.OperatorError, match="gitlink differs"):
+        materializer._source_forest(
+            config,
+            head=git(parent, "rev-parse", "HEAD"),
+        )
+
+
+def test_materializer_source_forest_keeps_mcpplusplus_exactly_pinned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    relative = "ipfs_accelerate_py/mcplusplus"
+    fixture = _nested_source_fixture(tmp_path, relative=relative)
+    parent = fixture["parent"]
+    git = fixture["git"]
+    assert isinstance(parent, Path)
+    assert callable(git)
+    monkeypatch.setattr(materializer, "ROOT", parent)
+    config = {
+        "source_binding": {
+            "mcp_plus_plus_submodule_path": relative,
+            "mcp_plus_plus_planning_revision": fixture["planning_commit"],
+        }
+    }
+
+    with pytest.raises(materializer.OperatorError, match="exact read-only seal"):
+        materializer._source_forest(
+            config,
+            head=git(parent, "rev-parse", "HEAD"),
+        )
+
+    validator = _dependency_validator()
+    passed, detail = validator._validate_nested_source_binding(
+        root=parent,
+        outer_planning_commit=str(fixture["outer_planning_commit"]),
+        relative=relative,
+        binding={
+            "commit": fixture["planning_commit"],
+            "tree": fixture["planning_tree"],
+        },
+        permit_descendants=False,
+    )
+    assert passed is False
+    assert isinstance(detail, dict)
+    assert detail["advancement_policy"] == "exact_read_only_pin"
+    assert detail["current_is_exact_planning_revision"] is False
+
+
+def test_launch_source_forest_receipts_are_content_addressed_and_current(
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    receipt_dir = tmp_path / "launch" / "source-forest"
+    paths = {
+        "launch_source_forest_dir": receipt_dir,
+        "launch_source_forest_current": receipt_dir / "current.json",
+    }
+    forest = {
+        "source_head": "a" * 40,
+        "nested_repositories": [],
+        "cross_repository_writes": False,
+    }
+    forest["source_forest_root"] = materializer._identity(forest)
+
+    first = materializer._record_launch_source_forest(
+        paths,
+        source_head="a" * 40,
+        repository_tree="b" * 40,
+        source_forest=forest,
+    )
+    replay = materializer._record_launch_source_forest(
+        paths,
+        source_head="a" * 40,
+        repository_tree="b" * 40,
+        source_forest=forest,
+    )
+
+    assert replay == first
+    assert json.loads(
+        paths["launch_source_forest_current"].read_text(encoding="utf-8")
+    )["receipt_id"] == first["receipt_id"]
+    immutable = [
+        path
+        for path in receipt_dir.glob("*.json")
+        if path.name != "current.json"
+    ]
+    assert len(immutable) == 1
+    assert json.loads(immutable[0].read_text(encoding="utf-8"))[
+        "source_forest_root"
+    ] == forest["source_forest_root"]
 
 
 def test_scheduler_authority_and_rollout_are_fail_closed() -> None:
@@ -157,6 +477,9 @@ def test_quack_lane_runtime_directories_are_private(
         "bootstrap_receipt": runtime / "evidence/bootstrap/receipt.json",
         "ducklake_catalog": runtime / "ducklake/catalog.duckdb",
         "ducklake_data": runtime / "ducklake/data",
+        "launch_source_forest_dir": (
+            runtime / "evidence/launch/source-forest"
+        ),
     }
 
     materializer._harden_runtime_directories(board, paths)

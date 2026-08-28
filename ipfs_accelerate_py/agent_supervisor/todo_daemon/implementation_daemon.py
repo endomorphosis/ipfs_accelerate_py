@@ -86722,8 +86722,19 @@ DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON = (
 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON = (
+    "Portal callback reconciliation binding is invalid"
+)
 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON = (
     "post-merge completion recovery seed target generation changed"
+)
+_DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS = frozenset(
+    {
+        DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+        DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+        DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+    }
 )
 DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON = (
     "protected preservation merged result is not on the exact target branch"
@@ -86934,6 +86945,20 @@ _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS = frozenset(
         "coordination",
         "control_expected_status",
         "control_expected_revision",
+    }
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS = frozenset(
+    {
+        "virgin_task_transfer_request",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
     }
 )
 _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS = frozenset(
@@ -89937,7 +89962,6 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
         coordination = (
             terminal_receipt.get("coordination")
             if isinstance(terminal_receipt, Mapping)
@@ -89957,7 +89981,10 @@ class DatabaseImplementationDaemon:
             pass
         elif (
             not isinstance(terminal_receipt, Mapping)
-            or set(terminal_receipt) != terminal_fields
+            or not self._database_portal_terminal_failure_receipt_schema_valid(
+                terminal_receipt,
+                task=task,
+            )
             or terminal_receipt.get("operation")
             != "database_portal_terminal_failure"
             or terminal_receipt.get("attempt_id") != latest.attempt_id
@@ -96956,6 +96983,8 @@ class DatabaseImplementationDaemon:
             in reason
         ):
             return DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+        if reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON:
+            return DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON
         return reason[:1024]
 
     @classmethod
@@ -96982,7 +97011,115 @@ class DatabaseImplementationDaemon:
             == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
         ):
             return reason
+        if reason == DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON:
+            return reason
         return ""
+
+    def _database_portal_terminal_failure_receipt_schema_valid(
+        self,
+        receipt: Any,
+        *,
+        task: Any | None,
+    ) -> bool:
+        """Admit complete optional route/transfer lineages, never fragments."""
+
+        if not isinstance(receipt, Mapping):
+            return False
+        fields = set(receipt)
+        route_fields = fields & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        transfer_fields = (
+            fields & _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
+        expected_transfer_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        if (
+            route_fields
+            not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+            or transfer_fields not in (set(), expected_transfer_fields)
+            or fields
+            != (
+                set(_DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS)
+                | route_fields
+                | transfer_fields
+            )
+        ):
+            return False
+
+        if route_fields:
+            binding = receipt.get("execution_route_binding")
+            if not isinstance(binding, Mapping):
+                return False
+            if task is None:
+                if (
+                    receipt.get("execution_route_policy_id")
+                    != binding.get("policy_id")
+                    or receipt.get("execution_route_origin_revision")
+                    != binding.get("task_revision")
+                ):
+                    return False
+            else:
+                validate_route = getattr(
+                    self.task_source,
+                    "validate_execution_route_binding",
+                    None,
+                )
+                if not callable(validate_route):
+                    return False
+                try:
+                    normalized = dict(
+                        validate_route(
+                            binding,
+                            task=task,
+                            allow_claim_revision=True,
+                        )
+                    )
+                except Exception:
+                    return False
+                if (
+                    dict(binding) != normalized
+                    or receipt.get("execution_route_policy_id")
+                    != normalized.get("policy_id")
+                    or receipt.get("execution_route_origin_revision")
+                    != normalized.get("task_revision")
+                ):
+                    return False
+
+        if transfer_fields:
+            binding = receipt.get("virgin_task_transfer")
+            cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            if (
+                not isinstance(binding, Mapping)
+                or not isinstance(cursor, Mapping)
+                or not str(binding.get("binding_id") or "")
+                or cursor.get("binding_id") != binding.get("binding_id")
+            ):
+                return False
+            if task is not None:
+                try:
+                    expected_transfer = (
+                        self._database_virgin_transfer_lineage_for_transition(
+                            task
+                        )
+                    )
+                except DatabaseImplementationAuthorityError:
+                    return False
+                if (
+                    set(expected_transfer) != expected_transfer_fields
+                    or any(
+                        receipt.get(field) != value
+                        for field, value in expected_transfer.items()
+                    )
+                ):
+                    return False
+        elif task is not None:
+            try:
+                if self._database_virgin_transfer_lineage_for_transition(task):
+                    return False
+            except DatabaseImplementationAuthorityError:
+                return False
+        return True
 
     def _post_merge_source_matches_latest(
         self,
@@ -97622,11 +97759,7 @@ class DatabaseImplementationDaemon:
                 )
             )
             or value.get("terminal_reason")
-            not in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-            }
+            not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             or seed_id != self._database_portal_evidence_digest(value)
         ):
             raise DatabaseImplementationAuthorityError(
@@ -97693,8 +97826,10 @@ class DatabaseImplementationDaemon:
             set(entry) != {"revision", "status", "body"}
             or entry.get("status") != "blocked"
             or not isinstance(terminal_receipt, Mapping)
-            or set(terminal_receipt)
-            != _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
+            or not self._database_portal_terminal_failure_receipt_schema_valid(
+                terminal_receipt,
+                task=None,
+            )
             or terminal_receipt.get("operation")
             != "database_portal_terminal_failure"
             or terminal_receipt.get("attempt_id") != attempt.attempt_id
@@ -97714,11 +97849,7 @@ class DatabaseImplementationDaemon:
             != attempt.finished_at_ms
             or terminal_receipt.get("reason") != terminal_reason
             or terminal_reason
-            not in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-            }
+            not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             or terminal_receipt.get("retryable") is not False
             or not isinstance(terminal_receipt.get("coordination"), Mapping)
             or terminal_receipt.get("control_expected_status") != "in_progress"
@@ -98142,11 +98273,7 @@ class DatabaseImplementationDaemon:
                 or recovery_control_revision != control_revision
                 or not source_receipt_admitted
                 or seed.get("terminal_reason")
-                not in {
-                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                    DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-                }
+                not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
                 or set(recovery_receipt) != expected_recovery_fields
                 or recovery_receipt.get("operation")
                 != expected_recovery_operation
@@ -98870,11 +98997,7 @@ class DatabaseImplementationDaemon:
     ) -> str:
         """Return either closed terminal token bound to the source attempt."""
 
-        allowed = {
-            DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-            DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-            DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-        }
+        allowed = _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
         try:
             phase_reason = self._canonical_portal_failure_reason(
                 self._terminal_portal_failure_reason(attempt)
@@ -108796,6 +108919,7 @@ class DatabaseImplementationDaemon:
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
+            verifier.worktree_submodule_paths = self.worktree_submodule_paths
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,
@@ -109769,7 +109893,6 @@ class DatabaseImplementationDaemon:
             crash_task_cids.add(task_cid)
             task_cids.append(task_cid)
 
-        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
         for attempt in self._latest_failed_attempts():
             if attempt.task_cid in crash_task_cids:
                 continue
@@ -109798,9 +109921,12 @@ class DatabaseImplementationDaemon:
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
                 if generation_retry
                 else (
-                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    phase_reason
                     if phase_reason
-                    == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    in {
+                        DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+                    }
                     else DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
                 )
             )
@@ -109816,7 +109942,10 @@ class DatabaseImplementationDaemon:
                 or self._post_merge_completion_recovery_was_consumed(attempt)
                 or phase_reason != expected_reason
                 or not isinstance(receipt, Mapping)
-                or set(receipt) != terminal_fields
+                or not self._database_portal_terminal_failure_receipt_schema_valid(
+                    receipt,
+                    task=task,
+                )
                 or receipt.get("operation")
                 != "database_portal_terminal_failure"
                 or receipt.get("attempt_id") != attempt.attempt_id
@@ -111045,15 +111174,20 @@ class DatabaseImplementationDaemon:
                     "post-merge completion recovery target generation was "
                     "already consumed"
                 )
+        callback_integration_terminal = bool(
+            qualification_kind == "callback_integration"
+            and self._post_merge_completion_recovery_source_terminal_reason(
+                latest,
+                task,
+            )
+            in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
+            }
+        )
         if (
             not crash_source_admitted
-            and not (
-                qualification_kind == "callback_integration"
-                and self._is_portal_completion_evaluated_baseline_missing_terminal(
-                    latest,
-                    task,
-                )
-            )
+            and not callback_integration_terminal
             and not self._is_post_merge_declared_outputs_missing_terminal(
                 latest,
                 task,
@@ -111123,11 +111257,7 @@ class DatabaseImplementationDaemon:
                 terminal_reason=completion_terminal_reason,
             )
             if completion_terminal_reason
-            in {
-                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
-                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
-            }
+            in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
             else None
         )
 
@@ -115783,6 +115913,7 @@ class DatabaseImplementationDaemon:
                     in {
                         DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
                     }
                     and operation
                     in {

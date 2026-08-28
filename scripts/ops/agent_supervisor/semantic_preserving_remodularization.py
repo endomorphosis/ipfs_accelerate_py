@@ -530,7 +530,7 @@ def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
     )
     seal = {
         "schema": "spar/dependency-source-seal@1", "program": PROGRAM, "plan_revision": PLAN_REVISION,
-        "source_binding": {"accelerator": {"commit": BASE_REVISION, "tree": BASE_TREE}, "datasets": {"commit": "41bbe7ede20294944cccb77f22072351a29e6902", "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"}, "kit": {"commit": "80bbdc3443e560b9bf40339c864a32689ccad8ef", "tree": "543ccd2bd78994d4e3d55cd44993ae6ca65e4c28"}},
+        "source_binding": {"accelerator": {"commit": BASE_REVISION, "tree": BASE_TREE}, "datasets": {"commit": "41bbe7ede20294944cccb77f22072351a29e6902", "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"}, "kit": {"commit": "80bbdc3443e560b9bf40339c864a32689ccad8ef", "tree": "543ccd2bd78994d4e3d55cd44993ae6ca65e4c28"}, "mcp_plus_plus": {"commit": "31096be86103f29faef80a01e03d09b1ad7345c6", "tree": "61776431577f0c276546f25e4178a47a64007180"}},
         "control_file_sha256": {path: hashlib.sha256(data).hexdigest() for path, data in sorted(documents.items())},
         "bootstrap_runtime_file_sha256": {
             path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()

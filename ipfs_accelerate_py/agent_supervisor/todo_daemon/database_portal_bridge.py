@@ -85,6 +85,13 @@ _SPAR_PLAN_ROOT_CID: Final[str] = (
     "baguqeerap2rmrhmwizmpkijsg5se5am7i6btb4wzyop3ezqpfa5p3kxnbryq"
 )
 _SPAR_TASK_HEADER_PREFIX: Final[str] = "## SPAR-"
+_SPAR_WORKTREE_SUBMODULE_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        "ipfs_accelerate_py/mcplusplus",
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+    }
+)
 _VRIF_BENCHMARK_TASK_ALIAS: Final[str] = "VRIF-030"
 _VRIF_BENCHMARK_OUTPUT_PATHS: Final[frozenset[str]] = frozenset(
     {
@@ -303,6 +310,9 @@ DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON: Final[str] = (
 DATABASE_POST_MERGE_COMPLETION_EVALUATED_BASELINE_MISSING_REASON: Final[str] = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_POST_MERGE_COMPLETION_CALLBACK_BINDING_INVALID_REASON: Final[str] = (
+    "Portal callback reconciliation binding is invalid"
+)
 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON: Final[str] = (
     "post-merge completion recovery seed target generation changed"
 )
@@ -312,6 +322,7 @@ _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS: Final[
     {
         DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON,
         DATABASE_POST_MERGE_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+        DATABASE_POST_MERGE_COMPLETION_CALLBACK_BINDING_INVALID_REASON,
         DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
     }
 )
@@ -2328,6 +2339,49 @@ def _safe_repository_path(value: Any) -> str:
     return path.as_posix()
 
 
+def _exact_declared_output_repository_frame(
+    check: Mapping[str, Any],
+    *,
+    integration_commit: str,
+    board_namespace: str,
+    task_alias: str,
+    task_cid: str,
+    canonical_task_key: str,
+) -> tuple[str, str, str, str] | None:
+    """Resolve one exact root or sealed-SPAR nested output coordinate frame.
+
+    Historical callback consumers assumed every declared output lived in the
+    superproject.  The merge authority correctly records nested outputs with a
+    workspace-relative ``path``, owner-relative ``tracked_path``, and the
+    nested gitlink commit as ``repository_ref``.  Admit that second shape only
+    for the sealed SPAR board and its configured nested repositories; all
+    legacy root receipts retain their original strict equality requirements.
+    """
+
+    try:
+        path = _safe_output_path(check.get("path"))
+        repository = _safe_repository_path(check.get("repository"))
+        tracked_path = _safe_output_path(check.get("tracked_path"))
+    except DatabasePortalBridgeError:
+        return None
+    repository_ref = str(check.get("repository_ref") or "")
+    if repository == ".":
+        if tracked_path != path or repository_ref != integration_commit:
+            return None
+        return path, repository, tracked_path, repository_ref
+    if (
+        board_namespace != _SPAR_BOARD_NAMESPACE
+        or re.fullmatch(r"SPAR-[0-9]{3}", task_alias) is None
+        or not task_cid
+        or canonical_task_key != task_cid
+        or repository not in _SPAR_WORKTREE_SUBMODULE_PATHS
+        or path != f"{repository}/{tracked_path}"
+        or re.fullmatch(r"[0-9a-f]{40}", repository_ref) is None
+    ):
+        return None
+    return path, repository, tracked_path, repository_ref
+
+
 def _owning_repository(body: Mapping[str, Any]) -> str:
     """Read the owning-repository authority from consistent sealed fields."""
 
@@ -3345,6 +3399,303 @@ class DatabasePortalExecutionBridge:
                 "sealed SPAR validation target is outside declared owner outputs"
             )
         return [command]
+
+    def _exact_declared_output_entries_at_parent_commits(
+        self,
+        *,
+        outputs: Sequence[str],
+        checks: Sequence[Mapping[str, Any]],
+        candidate_commit: str,
+        integration_commit: str,
+        current_commit: str,
+        board_namespace: str,
+        task_alias: str,
+        task_cid: str,
+        canonical_task_key: str,
+    ) -> list[dict[str, str]] | None:
+        """Rehash declared blobs through exact root or nested Git identities."""
+
+        if (
+            self.repository_root is None
+            or not outputs
+            or len(outputs) != len(checks)
+            or len(set(outputs)) != len(outputs)
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", commit) is None
+                for commit in (
+                    candidate_commit,
+                    integration_commit,
+                    current_commit,
+                )
+            )
+        ):
+            return None
+        try:
+            root = self.repository_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+
+        frames: list[tuple[str, str, str, str]] = []
+        expected_check_fields = {
+            "exists",
+            "path",
+            "reason",
+            "repository",
+            "repository_ref",
+            "task_id",
+            "tracked",
+            "tracked_path",
+        }
+        for output, check in zip(outputs, checks, strict=True):
+            if (
+                not isinstance(check, Mapping)
+                or set(check) != expected_check_fields
+                or check.get("exists") is not True
+                or check.get("tracked") is not True
+                or check.get("reason") != "declared_output_tracked"
+                or check.get("task_id") != task_alias
+            ):
+                return None
+            frame = _exact_declared_output_repository_frame(
+                check,
+                integration_commit=integration_commit,
+                board_namespace=board_namespace,
+                task_alias=task_alias,
+                task_cid=task_cid,
+                canonical_task_key=canonical_task_key,
+            )
+            if frame is None or frame[0] != output:
+                return None
+            frames.append(frame)
+
+        def git(
+            repository_root: Path,
+            *arguments: str,
+        ) -> subprocess.CompletedProcess[Any]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=repository_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        def gitlink(parent_commit: str, repository: str) -> str:
+            literal = f":(top,literal){repository}"
+            try:
+                result = git(
+                    root,
+                    "ls-tree",
+                    "-z",
+                    parent_commit,
+                    "--",
+                    literal,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return ""
+            raw = result.stdout
+            if not isinstance(raw, bytes):
+                raw = str(raw).encode("utf-8")
+            match = re.fullmatch(
+                rb"160000 commit ([0-9a-f]{40})\t([^\0]+)\0",
+                raw,
+            )
+            try:
+                observed_repository = (
+                    match.group(2).decode("utf-8", errors="strict")
+                    if match is not None
+                    else ""
+                )
+            except UnicodeDecodeError:
+                return ""
+            if (
+                result.returncode != 0
+                or match is None
+                or observed_repository != repository
+            ):
+                return ""
+            return match.group(1).decode("ascii")
+
+        parent_commits = (
+            candidate_commit,
+            integration_commit,
+            current_commit,
+        )
+        entries: list[dict[str, str]] = []
+        for path, repository, tracked_path, repository_ref in frames:
+            if repository == ".":
+                checked_repository = root
+                checked_refs = parent_commits
+            else:
+                if repository not in getattr(
+                    self,
+                    "worktree_submodule_paths",
+                    (),
+                ):
+                    return None
+                try:
+                    checked_repository = (root / repository).resolve(strict=True)
+                    checked_repository.relative_to(root)
+                except (OSError, RuntimeError, ValueError):
+                    return None
+                if (
+                    not checked_repository.is_dir()
+                    or not (checked_repository / ".git").exists()
+                ):
+                    return None
+                checked_refs = tuple(
+                    gitlink(parent_commit, repository)
+                    for parent_commit in parent_commits
+                )
+                if (
+                    any(not ref for ref in checked_refs)
+                    or checked_refs[1] != repository_ref
+                ):
+                    return None
+
+            literal = f":(top,literal){tracked_path}"
+            try:
+                observed = [
+                    git(
+                        checked_repository,
+                        "ls-tree",
+                        "-z",
+                        ref,
+                        "--",
+                        literal,
+                    )
+                    for ref in checked_refs
+                ]
+            except (OSError, subprocess.SubprocessError):
+                return None
+            if any(result.returncode != 0 for result in observed):
+                return None
+            raw_entry = observed[0].stdout
+            if not isinstance(raw_entry, bytes):
+                raw_entry = str(raw_entry).encode("utf-8")
+            if not raw_entry or any(
+                result.stdout != observed[0].stdout for result in observed[1:]
+            ):
+                return None
+            match = re.fullmatch(
+                rb"(100644|100755) (blob) "
+                rb"([0-9a-f]{40}(?:[0-9a-f]{24})?)\t([^\0]+)\0",
+                raw_entry,
+            )
+            try:
+                observed_path = (
+                    match.group(4).decode("utf-8", errors="strict")
+                    if match is not None
+                    else ""
+                )
+            except UnicodeDecodeError:
+                return None
+            if match is None or observed_path != tracked_path:
+                return None
+            entries.append(
+                {
+                    "path": path,
+                    "mode": match.group(1).decode("ascii"),
+                    "object_type": "blob",
+                    "object_id": match.group(3).decode("ascii"),
+                }
+            )
+        return entries
+
+    def _exact_nested_callback_entries_for_completion(
+        self,
+        reconciliation: Mapping[str, Any],
+        source: Mapping[str, Any],
+        *,
+        alias: str,
+        task_cid: str,
+    ) -> bool:
+        """Rehash a nested callback frame through its exact outer lineage."""
+
+        invariant = reconciliation.get("post_merge_declared_output_invariant")
+        checks = invariant.get("checks") if isinstance(invariant, Mapping) else None
+        if (
+            self.repository_root is None
+            or not self.merge_target_branch
+            or not isinstance(checks, list)
+            or not checks
+            or not any(
+                isinstance(check, Mapping)
+                and str(check.get("repository") or "") != "."
+                for check in checks
+            )
+        ):
+            return False
+        outputs = [
+            str(check.get("path") or "")
+            for check in checks
+            if isinstance(check, Mapping)
+        ]
+        if len(outputs) != len(checks) or any(not output for output in outputs):
+            return False
+
+        candidate = str(source.get("implementation_commit") or "")
+        integration = str(reconciliation.get("merge_commit") or "")
+        source_merge = source.get("merge_result")
+        target_branch = (
+            str(source_merge.get("target_branch") or "")
+            if isinstance(source_merge, Mapping)
+            else ""
+        )
+        if (
+            target_branch != self.merge_target_branch
+            or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
+            or re.fullmatch(r"[0-9a-f]{40}", integration) is None
+        ):
+            return False
+
+        def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        try:
+            current_result = git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{self.merge_target_branch}^{{commit}}",
+            )
+            current = (
+                current_result.stdout.decode("ascii").strip()
+                if isinstance(current_result.stdout, bytes)
+                else str(current_result.stdout).strip()
+            )
+            candidate_integration = git(
+                "merge-base", "--is-ancestor", candidate, integration
+            )
+            integration_current = git(
+                "merge-base", "--is-ancestor", integration, current
+            )
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
+            return False
+        if (
+            current_result.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", current) is None
+            or candidate_integration.returncode != 0
+            or integration_current.returncode != 0
+        ):
+            return False
+
+        return self._exact_declared_output_entries_at_parent_commits(
+            outputs=outputs,
+            checks=checks,
+            candidate_commit=candidate,
+            integration_commit=integration,
+            current_commit=current,
+            board_namespace=str(source.get("board_namespace") or ""),
+            task_alias=alias,
+            task_cid=task_cid,
+            canonical_task_key=str(source.get("canonical_task_key") or ""),
+        ) is not None
 
     def _paths(self, attempt: Any) -> DatabasePortalAttemptPaths:
         attempt_key = hashlib.sha256(str(attempt.attempt_id).encode("utf-8")).hexdigest()[:24]
@@ -5359,39 +5710,19 @@ class DatabasePortalExecutionBridge:
             or integration_current.returncode != 0
         ):
             return None
-        entries: list[dict[str, Any]] = []
-        for output in outputs:
-            try:
-                safe_path = _safe_output_path(output)
-                observed = [
-                    git("ls-tree", "-z", commit, "--", safe_path)
-                    for commit in (candidate, integration, head_text)
-                ]
-            except (DatabasePortalBridgeError, OSError, subprocess.SubprocessError):
-                return None
-            if any(item.returncode != 0 for item in observed):
-                return None
-            raw_entry = observed[0].stdout
-            if not isinstance(raw_entry, bytes):
-                raw_entry = str(raw_entry).encode("utf-8")
-            if not raw_entry or any(
-                item.stdout != observed[0].stdout for item in observed[1:]
-            ):
-                return None
-            match = re.fullmatch(
-                rb"([0-9]{6}) (blob) ([0-9a-f]{40}(?:[0-9a-f]{24})?)\t([^\0]+)\0",
-                raw_entry,
-            )
-            if match is None or match.group(4).decode("utf-8") != safe_path:
-                return None
-            entries.append(
-                {
-                    "path": safe_path,
-                    "mode": match.group(1).decode("ascii"),
-                    "object_type": "blob",
-                    "object_id": match.group(3).decode("ascii"),
-                }
-            )
+        entries = self._exact_declared_output_entries_at_parent_commits(
+            outputs=outputs,
+            checks=(checks if isinstance(checks, list) else ()),
+            candidate_commit=candidate,
+            integration_commit=integration,
+            current_commit=head_text,
+            board_namespace=str(source_event.get("board_namespace") or ""),
+            task_alias=task_alias,
+            task_cid=task_cid,
+            canonical_task_key=task_key,
+        )
+        if entries is None:
+            return None
 
         canonical_settlement = _canonical_json(settlement)
         canonical_quarantine = _canonical_json(quarantine)
@@ -5705,10 +6036,20 @@ class DatabasePortalExecutionBridge:
                 or item.get("exists") is not True
                 or item.get("tracked") is not True
                 or item.get("reason") != "declared_output_tracked"
-                or item.get("repository") != "."
-                or item.get("repository_ref") != integration
                 or item.get("task_id") != task_alias
-                or item.get("tracked_path") != item.get("path")
+                or _exact_declared_output_repository_frame(
+                    item,
+                    integration_commit=integration,
+                    board_namespace=(
+                        str(member.get("board_namespace") or "")
+                        if isinstance(member, Mapping)
+                        else ""
+                    ),
+                    task_alias=task_alias,
+                    task_cid=task_cid,
+                    canonical_task_key=task_key,
+                )
+                is None
                 for item in (checks or ())
             )
             or not isinstance(todo, Mapping)
@@ -5851,6 +6192,9 @@ class DatabasePortalExecutionBridge:
                 projection.paths,
                 alias=task_alias,
                 task_cid=task_cid,
+                nested_callback_verifier=(
+                    self._exact_nested_callback_entries_for_completion
+                ),
             )
         except DatabasePortalBridgeError:
             exact_completion = None
@@ -5860,7 +6204,7 @@ class DatabasePortalExecutionBridge:
         # Admit only that missing-key shape; an explicit conflicting target
         # remains terminally invalid.
         reconciliation = reconciliations[0] if len(reconciliations) == 1 else {}
-        historical_zero_provider_confirmation = bool(
+        exact_callback_completion = bool(
             common_source_valid
             and isinstance(exact_completion, Mapping)
             and exact_completion.get("completion_source_event_type")
@@ -5873,6 +6217,13 @@ class DatabasePortalExecutionBridge:
             == source_attempt
             and exact_completion.get("baseline_commit") == baseline
             and exact_completion.get("implementation_commit") == candidate
+            and len(reconciliations) == 1
+            and reconciliation.get("request_id") == request_id
+            and reconciliation.get("merge_commit") == integration
+            and reconciliation.get("target_commit") == integration
+        )
+        historical_zero_provider_confirmation = bool(
+            exact_callback_completion
             and source_event.get("attempt_consumed") is True
             and source_event.get("provider_dispatched") is False
             and event_merge.get("attempted") is True
@@ -5890,12 +6241,53 @@ class DatabasePortalExecutionBridge:
                 "pending_merge": False,
                 "reason": "merged_into_target",
             }
-            and len(reconciliations) == 1
-            and reconciliation.get("request_id") == request_id
-            and reconciliation.get("merge_commit") == integration
-            and reconciliation.get("target_commit") == integration
         )
-        if not legacy_bare_completion and not historical_zero_provider_confirmation:
+        historical_provider_direct_merged_confirmation = bool(
+            exact_callback_completion
+            and source_event.get("attempt_consumed") is True
+            and source_event.get("provider_dispatched") is True
+            and event_merge.get("attempted") is True
+            and event_merge.get("queued") is False
+            and event_merge.get("merged") is True
+            and event_merge.get("reason") == "merged"
+            and event_merge.get("merge_commit") == integration
+            and event_merge.get("target_commit") == integration
+            and event_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and event_merge.get("target_branch") == self.merge_target_branch
+            and event_board
+            == {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "merged_into_target",
+            }
+        )
+        historical_provider_queued_callback_confirmation = bool(
+            exact_callback_completion
+            and source_event.get("attempt_consumed") is True
+            and source_event.get("provider_dispatched") is True
+            and event_merge.get("attempted") is False
+            and event_merge.get("queued") is True
+            and event_merge.get("merged") is False
+            and event_merge.get("reason") == "merge_queued"
+            and event_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and event_merge.get("target_branch") == self.merge_target_branch
+            and event_board
+            == {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+        )
+        if not any(
+            (
+                legacy_bare_completion,
+                historical_zero_provider_confirmation,
+                historical_provider_direct_merged_confirmation,
+                historical_provider_queued_callback_confirmation,
+            )
+        ):
             return None
 
         def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
@@ -5937,37 +6329,23 @@ class DatabasePortalExecutionBridge:
             or integration_current.returncode != 0
         ):
             return None
-        entries: list[dict[str, Any]] = []
-        for path in outputs:
-            try:
-                safe_path = _safe_output_path(path)
-                observed = [
-                    git("ls-tree", "-z", commit, "--", safe_path)
-                    for commit in (candidate, integration, head_text)
-                ]
-            except (DatabasePortalBridgeError, OSError, subprocess.SubprocessError):
-                return None
-            if any(item.returncode != 0 for item in observed):
-                return None
-            raw_entry = observed[0].stdout
-            if not isinstance(raw_entry, bytes):
-                raw_entry = str(raw_entry).encode("utf-8")
-            if not raw_entry or any(item.stdout != observed[0].stdout for item in observed[1:]):
-                return None
-            match = re.fullmatch(
-                rb"([0-9]{6}) (blob) ([0-9a-f]{40}(?:[0-9a-f]{24})?)\t([^\0]+)\0",
-                raw_entry,
-            )
-            if match is None or match.group(4).decode("utf-8") != safe_path:
-                return None
-            entries.append(
-                {
-                    "path": safe_path,
-                    "mode": match.group(1).decode("ascii"),
-                    "object_type": "blob",
-                    "object_id": match.group(3).decode("ascii"),
-                }
-            )
+        entries = self._exact_declared_output_entries_at_parent_commits(
+            outputs=outputs,
+            checks=(checks if isinstance(checks, list) else ()),
+            candidate_commit=candidate,
+            integration_commit=integration,
+            current_commit=head_text,
+            board_namespace=(
+                str(member.get("board_namespace") or "")
+                if isinstance(member, Mapping)
+                else ""
+            ),
+            task_alias=task_alias,
+            task_cid=task_cid,
+            canonical_task_key=task_key,
+        )
+        if entries is None:
+            return None
         canonical_train_receipt = _canonical_json(receipt)
         if len(canonical_train_receipt) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
             return None
@@ -6449,6 +6827,18 @@ class DatabasePortalExecutionBridge:
         task_cid = str(getattr(request, "canonical_task_id", "") or "")
         current_head = str(source.get("current_target_commit") or "")
         current_tree = str(source.get("current_target_tree") or "")
+        source_entries = source.get("entries")
+        nested_repositories = tuple(
+            repository
+            for repository in getattr(self, "worktree_submodule_paths", ())
+            if any(
+                isinstance(entry, Mapping)
+                and str(entry.get("path") or "").startswith(f"{repository}/")
+                for entry in (
+                    source_entries if isinstance(source_entries, list) else ()
+                )
+            )
+        )
         settled_source = isinstance(source.get("settled_integration_source"), Mapping)
         hygiene_eligible = (
             settled_source and task_alias == _VRIF_TERMINAL_TASK_ALIAS
@@ -6476,6 +6866,11 @@ class DatabasePortalExecutionBridge:
             load_tasks = getattr(portal, "_load_tasks", None)
             run_validation = getattr(portal, "_run_validation_commands", None)
             run_mutation = getattr(portal, "_run_checkout_mutation_transaction", None)
+            initialize_submodules = getattr(
+                portal,
+                "_initialize_worktree_submodules",
+                None,
+            )
             cleanup_workspace = getattr(portal, "_cleanup_main_merge_workspace", None)
             portal_root = getattr(portal, "repo_root", None)
             if (
@@ -6487,6 +6882,7 @@ class DatabasePortalExecutionBridge:
                 or not callable(load_tasks)
                 or not callable(run_validation)
                 or not callable(run_mutation)
+                or (nested_repositories and not callable(initialize_submodules))
                 or not callable(cleanup_workspace)
             ):
                 raise DatabasePortalBridgeError(
@@ -6530,6 +6926,13 @@ class DatabasePortalExecutionBridge:
                     if worktree.returncode != 0:
                         return result
                     added = True
+                    if nested_repositories:
+                        initialize_submodules(
+                            temporary,
+                            offline_local_only=True,
+                            task=tasks[0],
+                            submodule_paths=nested_repositories,
+                        )
                     pre_identities: list[dict[str, str]] | None = None
                     if hygiene_eligible:
                         initial_head = subprocess.run(
@@ -6833,7 +7236,7 @@ class DatabasePortalExecutionBridge:
                     if workspace_hygiene is not None:
                         result["workspace_hygiene"] = workspace_hygiene
                     return result
-                except (OSError, subprocess.SubprocessError):
+                except (OSError, RuntimeError, subprocess.SubprocessError):
                     return result
                 finally:
                     if added:
@@ -8206,6 +8609,7 @@ class DatabasePortalExecutionBridge:
         *,
         alias: str,
         task_cid: str,
+        nested_callback_verifier: Callable[..., bool] | None = None,
     ) -> bool:
         """Verify the complete callback handoff, not merely its landed SHA."""
 
@@ -8712,12 +9116,36 @@ class DatabasePortalExecutionBridge:
                 or check.get("exists") is not True
                 or check.get("tracked") is not True
                 or check.get("reason") != "declared_output_tracked"
-                or not str(check.get("path") or "")
-                or not str(check.get("repository") or "")
-                or check.get("tracked_path") != check.get("path")
-                or str(check.get("repository_ref") or "") != integration
                 or str(check.get("task_id") or "") not in expected_task_cids
+                or _exact_declared_output_repository_frame(
+                    check,
+                    integration_commit=integration,
+                    board_namespace=str(source.get("board_namespace") or ""),
+                    task_alias=alias,
+                    task_cid=task_cid,
+                    canonical_task_key=str(
+                        source.get("canonical_task_key") or ""
+                    ),
+                )
+                is None
             ):
+                return False
+        if any(
+            str(check.get("repository") or "") != "."
+            for check in invariant["checks"]
+        ):
+            if nested_callback_verifier is None:
+                return False
+            try:
+                nested_callback_valid = nested_callback_verifier(
+                    reconciliation,
+                    source,
+                    alias=alias,
+                    task_cid=task_cid,
+                )
+            except Exception:
+                return False
+            if nested_callback_valid is not True:
                 return False
 
         receipt_evidence = reconciliation.get("completion_receipt_evidence")
@@ -9749,6 +10177,7 @@ class DatabasePortalExecutionBridge:
         task_cid: str,
         verified_landed_completion_claim_seed: Mapping[str, Any] | None = None,
         validated_no_change_authority: Mapping[str, Any] | None = None,
+        nested_callback_verifier: Callable[..., bool] | None = None,
     ) -> Mapping[str, Any] | None:
         """Bind projected completion to one exact implementation commit.
 
@@ -10001,10 +10430,11 @@ class DatabasePortalExecutionBridge:
                     reconciliation_source["_source_event"],
                     alias=alias,
                     task_cid=task_cid,
+                    nested_callback_verifier=nested_callback_verifier,
                 )
             ):
                 raise DatabasePortalBridgeError(
-                    "Portal callback reconciliation binding is invalid"
+                    DATABASE_POST_MERGE_COMPLETION_CALLBACK_BINDING_INVALID_REASON
                 )
             if callback_reconciliation_indices.get(reconciliation_source_id):
                 raise DatabasePortalBridgeError(
@@ -17478,6 +17908,9 @@ class DatabasePortalExecutionBridge:
                 verified_landed_completion_claim_seed
             ),
             validated_no_change_authority=validated_no_change_authority,
+            nested_callback_verifier=(
+                self._exact_nested_callback_entries_for_completion
+            ),
         )
         if completion is None:
             raise DatabasePortalBridgeError(
@@ -19457,6 +19890,9 @@ class DatabasePortalExecutionBridge:
             task_cid=str(attempt.task_cid),
             verified_landed_completion_claim_seed=landed_seed,
             validated_no_change_authority=authority,
+            nested_callback_verifier=(
+                self._exact_nested_callback_entries_for_completion
+            ),
         )
         expected = {
             "baseline_commit": str(evidence.get("baseline_commit") or ""),
@@ -19953,6 +20389,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA",
+    "DATABASE_POST_MERGE_COMPLETION_CALLBACK_BINDING_INVALID_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",

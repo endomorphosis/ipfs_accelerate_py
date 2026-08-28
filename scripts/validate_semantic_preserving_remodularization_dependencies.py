@@ -76,6 +76,163 @@ def _acyclic(task_ids: tuple[str, ...], edges: tuple[tuple[str, str], ...]) -> b
     return len(observed) == len(task_ids)
 
 
+def _validate_outer_source_binding(
+    *,
+    root: Path,
+    binding: dict[str, Any],
+) -> tuple[bool, dict[str, Any]]:
+    """Bind the current superproject to the sealed planning ancestry."""
+
+    sealed_commit = str(binding.get("commit") or "")
+    sealed_tree = str(binding.get("tree") or "")
+    try:
+        current_commit = _git(root, "rev-parse", "HEAD")
+        object_is_commit = _git(root, "cat-file", "-t", sealed_commit) == "commit"
+        observed_tree = _git(root, "rev-parse", f"{sealed_commit}^{{tree}}")
+        ancestry = subprocess.run(
+            (
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                sealed_commit,
+                current_commit,
+            ),
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError, ValidationError):
+        return False, {
+            **binding,
+            "current_head": "",
+            "planning_object_is_commit": False,
+            "planning_tree_exact": False,
+            "planning_is_ancestor": False,
+        }
+    detail = {
+        **binding,
+        "current_head": current_commit,
+        "planning_object_is_commit": object_is_commit,
+        "planning_tree_exact": observed_tree == sealed_tree,
+        "planning_is_ancestor": ancestry.returncode == 0,
+    }
+    return bool(
+        detail["planning_object_is_commit"]
+        and detail["planning_tree_exact"]
+        and detail["planning_is_ancestor"]
+    ), detail
+
+
+def _validate_nested_source_binding(
+    *,
+    root: Path,
+    outer_planning_commit: str,
+    relative: str,
+    binding: dict[str, Any],
+    permit_descendants: bool = True,
+) -> tuple[bool, dict[str, Any] | str]:
+    """Verify immutable planning identity and the current descendant frame.
+
+    The dependency seal binds the SPAR-000 planning commit.  Accepted worker
+    merges may advance a nested gitlink, so the live checkout is a separate
+    frame: it must be clean, exactly recorded by the current superproject, and
+    descend from the sealed planning commit.  Advancing the seal itself would
+    silently rewrite the program's source lineage.
+    """
+
+    nested = root / relative
+    try:
+        planning_commit = str(binding.get("commit") or "")
+        planning_tree = str(binding.get("tree") or "")
+        planning_object_is_commit = (
+            _git(nested, "cat-file", "-t", planning_commit) == "commit"
+        )
+        observed_planning_tree = _git(
+            nested,
+            "rev-parse",
+            f"{planning_commit}^{{tree}}",
+        )
+        planning_row = _git(
+            root,
+            "ls-tree",
+            outer_planning_commit,
+            "--",
+            relative,
+        )
+        planning_gitlink = planning_row == (
+            f"160000 commit {planning_commit}\t{relative}"
+        )
+
+        clean = not _git(
+            nested,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        )
+        current_head = _git(nested, "rev-parse", "HEAD")
+        current_tree = _git(nested, "rev-parse", "HEAD^{tree}")
+        current_outer_head = _git(root, "rev-parse", "HEAD")
+        current_row = _git(
+            root,
+            "ls-tree",
+            current_outer_head,
+            "--",
+            relative,
+        )
+        current_gitlink = current_row == (
+            f"160000 commit {current_head}\t{relative}"
+        )
+        ancestry = subprocess.run(
+            (
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                planning_commit,
+                current_head,
+            ),
+            cwd=nested,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+        planning_is_ancestor = ancestry.returncode == 0
+        planning_tree_exact = observed_planning_tree == planning_tree
+        passed = bool(
+            planning_object_is_commit
+            and planning_tree_exact
+            and planning_gitlink
+            and clean
+            and current_head
+            and current_tree
+            and current_gitlink
+            and planning_is_ancestor
+            and (permit_descendants or current_head == planning_commit)
+        )
+        return passed, {
+            "clean": clean,
+            "planning_commit": planning_commit,
+            "planning_tree": observed_planning_tree,
+            "planning_tree_exact": planning_tree_exact,
+            "planning_gitlink": planning_gitlink,
+            "planning_is_ancestor": planning_is_ancestor,
+            "advancement_policy": (
+                "accepted_descendants"
+                if permit_descendants
+                else "exact_read_only_pin"
+            ),
+            "current_is_exact_planning_revision": (
+                current_head == planning_commit
+            ),
+            "current_head": current_head,
+            "current_tree": current_tree,
+            "current_gitlink": current_gitlink,
+        }
+    except (OSError, subprocess.SubprocessError, ValidationError) as exc:
+        return False, type(exc).__name__
+
+
 def validate() -> dict[str, Any]:
     spec = _load_spec()
     seal = _read_json(SEAL_PATH)
@@ -136,20 +293,27 @@ def validate() -> dict[str, Any]:
 
     bindings = seal.get("source_binding") if isinstance(seal.get("source_binding"), dict) else {}
     outer = bindings.get("accelerator") if isinstance(bindings.get("accelerator"), dict) else {}
-    check("accelerator_base_object", _git(ROOT, "cat-file", "-t", str(outer.get("commit") or "")) == "commit" and _git(ROOT, "rev-parse", f"{outer.get('commit')}^{{tree}}") == outer.get("tree"), outer)
-    for name, relative in (("datasets", "ipfs_datasets_py"), ("kit", "ipfs_kit_py")):
+    accelerator_base_valid, accelerator_base_detail = (
+        _validate_outer_source_binding(root=ROOT, binding=outer)
+    )
+    check(
+        "accelerator_base_object",
+        accelerator_base_valid,
+        accelerator_base_detail,
+    )
+    for name, relative, permit_descendants in (
+        ("datasets", "ipfs_datasets_py", True),
+        ("kit", "ipfs_kit_py", True),
+        ("mcp_plus_plus", "ipfs_accelerate_py/mcplusplus", False),
+    ):
         binding = bindings.get(name) if isinstance(bindings.get(name), dict) else {}
-        nested = ROOT / relative
-        try:
-            clean = not _git(nested, "status", "--porcelain=v1", "--untracked-files=all")
-            head = _git(nested, "rev-parse", "HEAD")
-            tree = _git(nested, "rev-parse", "HEAD^{tree}")
-            row = _git(ROOT, "ls-tree", str(outer.get("commit")), "--", relative).split()
-            gitlink = len(row) >= 3 and row[0] == "160000" and row[2] == head
-            passed = clean and head == binding.get("commit") and tree == binding.get("tree") and gitlink
-            detail = {"clean": clean, "head": head, "tree": tree, "gitlink": gitlink}
-        except ValidationError as exc:
-            passed, detail = False, type(exc).__name__
+        passed, detail = _validate_nested_source_binding(
+            root=ROOT,
+            outer_planning_commit=str(outer.get("commit") or ""),
+            relative=relative,
+            binding=binding,
+            permit_descendants=permit_descendants,
+        )
         check(f"{name}_binding", passed, detail)
 
     check("historical_reuse_is_conditional", all("current-store" in rule or "historical" not in rule for rule in seal.get("rules", ())), seal.get("rules"))

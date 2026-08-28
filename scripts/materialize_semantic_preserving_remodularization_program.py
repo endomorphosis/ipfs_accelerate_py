@@ -46,6 +46,7 @@ RUNTIME_RELATIVE: Final = Path(
 BOOTSTRAP_RECEIPT_NAME: Final = "bootstrap-materialization.json"
 SPAR000_QUALIFICATION_NAME: Final = "spar-000-qualification.json"
 DUCKLAKE_RECEIPT_NAME: Final = "ducklake-history-projection.json"
+LAUNCH_SOURCE_FOREST_CURRENT_NAME: Final = "current.json"
 OPERATOR_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "semantic-preserving-autonomous-remodularization-operator@1"
@@ -239,19 +240,27 @@ def _source_forest(config: Mapping[str, Any], *, head: str) -> dict[str, Any]:
             "ipfs_datasets",
             ("ipfs_datasets_submodule_path", "datasets_submodule_path"),
             ("ipfs_datasets_planning_revision", "datasets_planning_revision"),
+            True,
         ),
         (
             "ipfs_kit",
             ("ipfs_kit_submodule_path", "kit_submodule_path"),
             ("ipfs_kit_planning_revision", "kit_planning_revision"),
+            True,
         ),
         (
             "mcp_plus_plus",
             ("mcp_plus_plus_submodule_path",),
             ("mcp_plus_plus_planning_revision",),
+            False,
         ),
     )
-    for prefix, path_fields, revision_fields in configured_repositories:
+    for (
+        prefix,
+        path_fields,
+        revision_fields,
+        permit_accepted_descendants,
+    ) in configured_repositories:
         raw_path = next(
             (binding.get(field) for field in path_fields if binding.get(field)),
             None,
@@ -299,10 +308,51 @@ def _source_forest(config: Mapping[str, Any], *, head: str) -> dict[str, Any]:
         if (
             nested_head.returncode != 0
             or nested_tree.returncode != 0
-            or revision != str(raw_revision)
             or not tree
         ):
-            raise OperatorError(f"{prefix} nested revision differs from its seal")
+            raise OperatorError(f"{prefix} nested revision is unavailable")
+        planning_revision = str(raw_revision)
+        resolved_planning_revision = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{planning_revision}^{{commit}}",
+            ],
+            cwd=nested_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        planning_is_ancestor = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                planning_revision,
+                revision,
+            ],
+            cwd=nested_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if (
+            resolved_planning_revision.returncode != 0
+            or resolved_planning_revision.stdout.strip()
+            != planning_revision
+            or planning_is_ancestor.returncode != 0
+            or (
+                not permit_accepted_descendants
+                and revision != planning_revision
+            )
+        ):
+            policy = (
+                "does not descend from its seal"
+                if permit_accepted_descendants
+                else "differs from its exact read-only seal"
+            )
+            raise OperatorError(f"{prefix} nested revision {policy}")
         relative = nested_path.relative_to(ROOT).as_posix()
         tree_row = str(_git("ls-tree", head, "--", relative)).strip().split()
         if (
@@ -318,6 +368,8 @@ def _source_forest(config: Mapping[str, Any], *, head: str) -> dict[str, Any]:
                 "path": relative,
                 "head": revision,
                 "tree": tree,
+                "planning_revision": planning_revision,
+                "planning_revision_is_ancestor": True,
                 "access": "read_only_contract_audit",
             }
         )
@@ -655,6 +707,13 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         "ducklake_receipt": evidence / "bootstrap" / DUCKLAKE_RECEIPT_NAME,
         "ducklake_catalog": ducklake_catalog,
         "ducklake_data": ducklake_data,
+        "launch_source_forest_dir": evidence / "launch" / "source-forest",
+        "launch_source_forest_current": (
+            evidence
+            / "launch"
+            / "source-forest"
+            / LAUNCH_SOURCE_FOREST_CURRENT_NAME
+        ),
     }
 
 
@@ -675,6 +734,7 @@ def _harden_runtime_directories(
         paths["bootstrap_receipt"].parent,
         paths["ducklake_catalog"].parent,
         paths["ducklake_data"],
+        paths["launch_source_forest_dir"],
     }
     for key, value in raw_runtime.items():
         candidates.add(_safe_path(ROOT, value, field=f"runtime_paths.{key}"))
@@ -727,6 +787,50 @@ def _harden_runtime_directories(
         finally:
             if descriptor >= 0:
                 os.close(descriptor)
+
+
+def _record_launch_source_forest(
+    paths: Mapping[str, Path],
+    *,
+    source_head: str,
+    repository_tree: str,
+    source_forest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist an immutable launch forest and an atomic current pointer."""
+
+    receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "semantic-preserving-remodularization-launch-source-forest@1"
+        ),
+        "source_head": source_head,
+        "repository_tree": repository_tree,
+        "source_forest_root": source_forest.get("source_forest_root"),
+        "source_forest": dict(source_forest),
+    }
+    receipt["receipt_id"] = _identity(receipt)
+    receipt_path = paths["launch_source_forest_dir"] / (
+        str(receipt["receipt_id"]).removeprefix("sha256:") + ".json"
+    )
+    if receipt_path.exists():
+        if _json_object(receipt_path) != receipt:
+            raise OperatorError("launch source-forest receipt identity conflicts")
+    else:
+        _atomic_json(receipt_path, receipt)
+
+    current = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "semantic-preserving-remodularization-current-source-forest@1"
+        ),
+        "receipt_id": receipt["receipt_id"],
+        "source_forest_root": source_forest.get("source_forest_root"),
+        "source_head": source_head,
+        "repository_tree": repository_tree,
+    }
+    current["current_pointer_id"] = _identity(current)
+    _atomic_json(paths["launch_source_forest_current"], current)
+    return {**receipt, "current_pointer": current}
 
 
 def _ducklake_projection(
@@ -2142,7 +2246,9 @@ def supervise(
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
         main as multi_supervisor_main,
     )
-    board, _config = _load_config(config_path)
+    board, config = _load_config(config_path)
+    current_head, current_tree = _assert_clean_current_tree(config)
+    current_source_forest = _source_forest(config, head=current_head)
     preflight = preflight_configured_board(board)
     if preflight.get("valid") is not True:
         raise OperatorError("configured-board preflight rejected the sealed SPAR board")
@@ -2152,6 +2258,9 @@ def supervise(
         detach=False,
         duration_seconds=duration_seconds,
     )
+    plan["source_forest_root"] = current_source_forest[
+        "source_forest_root"
+    ]
     program = board.resolved_database_program()
     if dry_run:
         listener = _new_bootstrap_listener(lane_count=board.max_lanes)
@@ -2166,6 +2275,13 @@ def supervise(
             listener.close()
         return 0
     paths = _runtime_paths(board)
+    _harden_runtime_directories(board, paths)
+    launch_source_forest = _record_launch_source_forest(
+        paths,
+        source_head=current_head,
+        repository_tree=current_tree,
+        source_forest=current_source_forest,
+    )
     route_policy = _execution_route_policy(paths)
     server, paths, program, identity, ready = _start_state_owner(config_path)
     listener: socket.socket | None = None
@@ -2220,6 +2336,12 @@ def supervise(
                     "live": ready,
                     "lanes": board.max_lanes,
                     "execution_route_policy_id": route_policy.policy_id,
+                    "launch_source_forest_receipt_id": (
+                        launch_source_forest["receipt_id"]
+                    ),
+                    "source_forest_root": current_source_forest[
+                        "source_forest_root"
+                    ],
                     "credential_transport": "private_inherited_socket",
                     "credential_in_environment_argv_or_file": False,
                 },
