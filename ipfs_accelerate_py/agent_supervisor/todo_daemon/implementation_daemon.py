@@ -206,6 +206,7 @@ from .implementation_daemon_runner import (
     bounded_daemon_wait_timeout,
     daemon_pass_is_idle,
     log_daemon_pass_result,
+    resolve_database_implementation_paths,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -67788,14 +67789,7 @@ class DatabaseImplementationDaemon:
                         # Lease/completion bookkeeping stays on the local
                         # sidecar. The Quack-owned control file is the task
                         # board, not the coordinator DDL surface.
-                        coord_target = (
-                            self.database_path.with_name(
-                                f"{self.database_path.stem}.coordination.duckdb"
-                            )
-                            if self.database_path.suffix.lower()
-                            in {".duckdb", ".ddb"}
-                            else Path("control.coordination.duckdb")
-                        )
+                        coord_target = self.coordination_path
                     else:
                         coord_target = self.coordination_path
                     self._coordinator = open_database_coordinator(
@@ -67917,6 +67911,8 @@ class DatabaseImplementationDaemon:
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
+
+        return False
 
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
@@ -70772,7 +70768,11 @@ def main(argv: list[str] | None = None) -> None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
 
     program = database_program_from_daemon_namespace(args)
-    database_path = getattr(args, "database_path", None)
+    db_paths = resolve_database_implementation_paths(
+        args,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
+    database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
         if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
@@ -70810,7 +70810,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
-            coordination_path=getattr(args, "coordination_path", None),
+            coordination_path=db_paths["coordination_path"],
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -70823,6 +70823,9 @@ def main(argv: list[str] | None = None) -> None:
             events_path=None,
             pid_path=None,
             queue_path=None,
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
             require_real_execution=bool(args.implement),
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
         )
@@ -71439,4 +71442,3 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
-

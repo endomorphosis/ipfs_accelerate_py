@@ -17,6 +17,9 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
+    REPOSITORY_ROOT_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as multi_runner_module,
 )
@@ -214,6 +217,7 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(REPOSITORY_ROOT_ENV, str(tmp_path))
     program = _quack_program(worktree_root="")
     todo = tmp_path / "tasks.md"
     todo.write_text("# Tasks\n", encoding="utf-8")
@@ -241,11 +245,16 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
     assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
     assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
     assert child_env[STATE_ENDPOINT_SECRET_HANDLE_ENV] == "env://QUACK_TOKEN"
+    assert child_env[REPOSITORY_ROOT_ENV] == str(tmp_path)
     assert DATABASE_PROGRAM_JSON_ENV in child_env
     restored = DatabaseProgramConfig.from_mapping(
         json.loads(child_env[DATABASE_PROGRAM_JSON_ENV])
     )
     assert restored == program
+
+    loop_config = supervisor.build_supervisor_loop_config()
+    assert loop_config.spec.launch_env[REPOSITORY_ROOT_ENV] == str(tmp_path)
+    assert loop_config.child_env[REPOSITORY_ROOT_ENV] == str(tmp_path)
 
     provider_env = supervisor.provider_subprocess_environment(
         {

@@ -311,6 +311,16 @@ def test_supervisor_propagates_strict_task_sharding_to_managed_daemon(
     assert not supervisor._managed_daemon_matches_command_line(
         " ".join(part for part in command if part != "--strict-task-sharding")
     )
+    wrong_count = list(command)
+    wrong_count[wrong_count.index("--task-shard-count") + 1] = "3"
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(wrong_count)
+    )
+    wrong_index = list(command)
+    wrong_index[wrong_index.index("--task-shard-index") + 1] = "1"
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(wrong_index)
+    )
 
     default_config = supervisor_config_from_args(
         parse_supervisor_args(

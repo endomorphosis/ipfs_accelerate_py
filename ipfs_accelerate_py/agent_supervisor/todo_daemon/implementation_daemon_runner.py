@@ -1140,6 +1140,8 @@ def apply_merge_resolver_environment(parsed: argparse.Namespace) -> None:
 
 def resolve_database_implementation_paths(
     parsed: argparse.Namespace,
+    *,
+    authority_mode: str = "",
 ) -> dict[str, Path | None]:
     """Resolve control-plane database paths for database-authoritative execution.
 
@@ -1147,15 +1149,28 @@ def resolve_database_implementation_paths(
     be absent under database authority.
     """
 
-    database_path = getattr(parsed, "database_path", None)
+    mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
+    mode = mode.strip().lower().replace("-", "_")
+    if mode == "quack":
+        # Quack remains the one shared task/CAS authority.  The embedded
+        # execution journal is process-local, so bind its derivation to the
+        # supervisor's already fenced lane directory instead of the shared
+        # control-store identity.
+        state_dir = Path(getattr(parsed, "state_dir", Path("state")))
+        database_path: Path | None = state_dir / "quack-lane-control.duckdb"
+        coordination_path: Path | None = (
+            state_dir / "quack-lane-coordination.duckdb"
+        )
+    else:
+        database_path = getattr(parsed, "database_path", None)
+        coordination_path = getattr(parsed, "coordination_path", None)
     if database_path is not None:
         database_path = Path(database_path)
     todo_path = getattr(parsed, "todo_path", None)
-    if database_path is None and todo_path is not None:
+    if mode != "quack" and database_path is None and todo_path is not None:
         candidate = Path(todo_path)
         if candidate.suffix.lower() in {".duckdb", ".ddb"}:
             database_path = candidate
-    coordination_path = getattr(parsed, "coordination_path", None)
     if coordination_path is not None:
         coordination_path = Path(coordination_path)
     return {
@@ -1303,7 +1318,10 @@ def build_portal_implementation_daemon_from_args(
     apply_merge_resolver_environment(parsed)
     state_paths = implementation_state_paths(parsed)
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(parsed)
+    db_paths = resolve_database_implementation_paths(
+        parsed,
+        authority_mode=program.authority_mode if program is not None else "",
+    )
     database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
         candidate = Path(program.store_id)
@@ -1467,19 +1485,25 @@ def build_database_implementation_daemon_from_args(
     )
 
     program = database_program_from_daemon_namespace(parsed)
-    db_paths = resolve_database_implementation_paths(parsed)
-    resolved_db = Path(database_path) if database_path is not None else db_paths["database_path"]
+    authority_mode = program.authority_mode if program is not None else "quack"
+    task_source_kind = program.task_source_kind if program is not None else "duckdb"
+    db_paths = resolve_database_implementation_paths(
+        parsed,
+        authority_mode=authority_mode,
+    )
+    if str(authority_mode).strip().lower().replace("-", "_") == "quack":
+        resolved_db = db_paths["database_path"]
+    else:
+        resolved_db = (
+            Path(database_path)
+            if database_path is not None
+            else db_paths["database_path"]
+        )
     if resolved_db is None:
         raise ValueError(
             "database_path is required for DatabaseImplementationDaemon "
             "(pass --database-path or a .duckdb --todo-path)"
         )
-    authority_mode = (
-        program.authority_mode if program is not None else "quack"
-    )
-    task_source_kind = (
-        program.task_source_kind if program is not None else "duckdb"
-    )
     return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
@@ -1497,6 +1521,11 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        task_shard_count=int(getattr(parsed, "task_shard_count", 1) or 1),
+        task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
+        strict_task_sharding=bool(
+            getattr(parsed, "strict_task_sharding", False)
+        ),
     )
 
 

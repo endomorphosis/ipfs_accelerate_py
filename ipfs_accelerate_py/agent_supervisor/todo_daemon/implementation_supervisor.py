@@ -27,6 +27,7 @@ from ...llm_router import (
     AgentImplementationSealedControlPlane,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..control.lifecycle_orchestrator import REPOSITORY_ROOT_ENV
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -1344,6 +1345,9 @@ def _managed_daemon_child_environment(
     env: dict[str, str] = {}
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
+    repository_root = str(os.environ.get(REPOSITORY_ROOT_ENV, "") or "").strip()
+    if repository_root:
+        env[REPOSITORY_ROOT_ENV] = repository_root
     if database_program is not None:
         env.update(database_program.environment())
     return env
@@ -8337,6 +8341,9 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        managed_daemon_environment = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -8376,9 +8383,7 @@ class PortalImplementationSupervisor:
             latest_log_path=self.config.state_dir / f"{prefix}_managed_daemon.latest.log",
             daemon_process_match_all=command,
             worktree_root=self.config.worktree_root,
-            launch_env=_managed_daemon_child_environment(
-                database_program=self.config.database_program,
-            ),
+            launch_env=managed_daemon_environment,
         )
         return SupervisorLoopConfig(
             spec=spec,
@@ -8399,6 +8404,7 @@ class PortalImplementationSupervisor:
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
+            child_env=managed_daemon_environment,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -18660,12 +18666,25 @@ class PortalImplementationSupervisor:
             return False
         tokens = command_line.split()
 
+        has_strict_task_sharding = "--strict-task-sharding" in tokens
+        if self.config.strict_task_sharding != has_strict_task_sharding:
+            return False
+
         def option_values(option: str) -> set[str]:
             return {
                 tokens[index + 1]
                 for index, token in enumerate(tokens[:-1])
                 if token == option
             }
+
+        if option_values("--task-shard-count") != {
+            str(self.config.task_shard_count)
+        }:
+            return False
+        if option_values("--task-shard-index") != {
+            str(self.config.task_shard_index)
+        }:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids

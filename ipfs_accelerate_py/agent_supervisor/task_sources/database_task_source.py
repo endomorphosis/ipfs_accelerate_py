@@ -40,7 +40,10 @@ from .intent_repository import (
     IntentRepositoryConflictError,
     IntentRepositoryError,
     IntentRepositoryIntegrityError,
+    IntentRepositoryTransitionError,
+    IntentRepositoryUnknownOutcomeError,
     PlanRevisionRepository,
+    QueueEntry,
     open_intent_repository,
 )
 
@@ -81,6 +84,16 @@ class TaskSourceIntegrityError(DatabaseTaskSourceError, IntentRepositoryIntegrit
 
 class TaskSourceConflictError(DatabaseTaskSourceError, IntentRepositoryConflictError):
     """CAS head or expected-revision conflict."""
+
+
+class TaskSourceTransitionError(DatabaseTaskSourceError, IntentRepositoryTransitionError):
+    """Owner rejected a status transition outside the closed matrix."""
+
+
+class TaskSourceUnknownOutcomeError(
+    DatabaseTaskSourceError, IntentRepositoryUnknownOutcomeError
+):
+    """A remote owner effect requires exact post-restart reconciliation."""
 
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):
@@ -875,6 +888,10 @@ class DatabaseTaskSource:
             raise TaskSourceCompletionError(str(exc)) from exc
         except IntentRepositoryConflictError as exc:
             raise TaskSourceConflictError(str(exc)) from exc
+        except IntentRepositoryTransitionError as exc:
+            raise TaskSourceTransitionError(str(exc)) from exc
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
         updated = self._intent.get_task(str(prior["task_cid"]))
         if updated is None:
             raise TaskSourceIntegrityError("task disappeared after CAS")
@@ -895,6 +912,31 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def record_queue_backoff(
+        self,
+        *,
+        task_cid: str,
+        delay_ms: int,
+        reason: str = "backoff",
+        selection_penalty: int = 0,
+    ) -> IntentReceipt:
+        """Persist a task-selection cooldown through the intent authority."""
+
+        try:
+            return self._intent.record_queue_backoff(
+                task_cid=task_cid,
+                delay_ms=delay_ms,
+                reason=reason,
+                selection_penalty=selection_penalty,
+            )
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
+
+    def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
+        """Return canonical queue state without exposing raw SQL."""
+
+        return self._intent.get_queue_entry(task_cid)
 
     def record_evidence(
         self,
@@ -921,14 +963,17 @@ class DatabaseTaskSource:
         attempt_id: str = "",
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
-        return self._intent.record_validation_result(
-            task_cid=task_cid,
-            outcome=outcome,
-            evidence_digest=evidence_digest,
-            argv=argv,
-            attempt_id=attempt_id,
-            body=body,
-        )
+        try:
+            return self._intent.record_validation_result(
+                task_cid=task_cid,
+                outcome=outcome,
+                evidence_digest=evidence_digest,
+                argv=argv,
+                attempt_id=attempt_id,
+                body=body,
+            )
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
 
     def select_ready_tasks(self, *, limit: int = DEFAULT_QUERY_LIMIT) -> TaskPage:
         return self.ready_tasks(limit=limit)
@@ -954,6 +999,8 @@ __all__ = (
     "DatabaseTaskSourceError",
     "TaskSourceIntegrityError",
     "TaskSourceConflictError",
+    "TaskSourceTransitionError",
+    "TaskSourceUnknownOutcomeError",
     "TaskSourceBoundsError",
     "TaskSourceCompletionError",
     "TaskRecord",

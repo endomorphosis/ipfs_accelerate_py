@@ -1219,6 +1219,118 @@ def test_parse_args_accepts_database_authority_flags() -> None:
     assert paths["database_path"] == Path("/tmp/control.duckdb")
 
 
+def test_quack_runner_resolves_lane_private_database_paths(tmp_path: Path) -> None:
+    def lane_args(index: int):
+        return parse_args(
+            [
+                "--task-source-kind",
+                "duckdb",
+                "--authority-mode",
+                "quack",
+                "--database-path",
+                str(tmp_path / "shared-control.duckdb"),
+                "--coordination-path",
+                str(tmp_path / "shared-coordination.duckdb"),
+                "--quack-endpoint",
+                "quack:127.0.0.1:45671",
+                "--state-dir",
+                str(tmp_path / f"lane-{index}"),
+                "--state-prefix",
+                f"pctdd_lane_{index}",
+                "--once",
+            ]
+        )
+
+    first = resolve_database_implementation_paths(lane_args(0))
+    second = resolve_database_implementation_paths(lane_args(1))
+    assert first["database_path"] == (
+        tmp_path / "lane-0" / "quack-lane-control.duckdb"
+    )
+    assert second["database_path"] == (
+        tmp_path / "lane-1" / "quack-lane-control.duckdb"
+    )
+    assert first["database_path"] != second["database_path"]
+    assert first["coordination_path"] == (
+        tmp_path / "lane-0" / "quack-lane-coordination.duckdb"
+    )
+    assert second["coordination_path"] == (
+        tmp_path / "lane-1" / "quack-lane-coordination.duckdb"
+    )
+    assert first["coordination_path"] != second["coordination_path"]
+
+    daemons = [
+        DatabaseImplementationDaemon(
+            database_path=paths["database_path"],
+            coordination_path=paths["coordination_path"],
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri="quack:127.0.0.1:45671",
+            install_schema=False,
+        )
+        for paths in (first, second)
+    ]
+    try:
+        assert daemons[0].execution_path != daemons[1].execution_path
+        assert daemons[0].coordination_path != daemons[1].coordination_path
+        daemons[0]._acquire_embedded_writer_lock()
+        daemons[1]._acquire_embedded_writer_lock()
+    finally:
+        for daemon in daemons:
+            daemon.close()
+
+
+def test_quack_builder_ignores_shared_database_keyword_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon as daemon_module,
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_daemon(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(daemon_module, "DatabaseImplementationDaemon", fake_daemon)
+    state_dir = tmp_path / "lane-2"
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "quack",
+            "--database-path",
+            str(tmp_path / "shared-cli.duckdb"),
+            "--coordination-path",
+            str(tmp_path / "shared-coordination.duckdb"),
+            "--quack-endpoint",
+            "quack:127.0.0.1:45671",
+            "--endpoint-secret-handle",
+            "env://QUACK_TOKEN",
+            "--state-store-id",
+            "control.duckdb",
+            "--state-store-generation",
+            "generation-test",
+            "--state-schema-revision",
+            "schema-test",
+            "--state-dir",
+            str(state_dir),
+            "--once",
+        ]
+    )
+
+    build_database_implementation_daemon_from_args(
+        args,
+        database_path=tmp_path / "shared-keyword.duckdb",
+    )
+    assert captured["database_path"] == state_dir / "quack-lane-control.duckdb"
+    assert captured["coordination_path"] == (
+        state_dir / "quack-lane-coordination.duckdb"
+    )
+
+
 def test_runner_builds_database_daemon_without_json_projections(
     tmp_path: Path,
 ) -> None:
@@ -1273,6 +1385,8 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--task-prefix",
+            "DQP-",
             "--once",
         ]
     )
