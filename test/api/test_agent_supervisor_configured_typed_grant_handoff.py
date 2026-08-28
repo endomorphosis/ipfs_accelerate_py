@@ -12573,6 +12573,11 @@ def test_aseh_r14_sealed_receipt_validation_reuses_r11_native_authorization(
         lambda witness, **_kwargs: observed_witnesses.append(witness),
     )
     monkeypatch.setattr(
+        aseh_operator,
+        "_r42_native_bootstrap_dispatch_required",
+        lambda **_kwargs: False,
+    )
+    monkeypatch.setattr(
         aseh_operator.importlib.util,
         "find_spec",
         lambda _name: SimpleNamespace(origin="/sealed/_duckdb.so"),
@@ -27958,7 +27963,7 @@ def test_aseh_r29_active_policy_preserves_legacy_evidence_shape(
         aseh_operator._run_r19_historical_live_validation
     )
     assert (
-        "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}:"
+        "if revision in {30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42}:"
         in source
     )
     assert "if revision in {29, 30}:\n        evidence[" not in source
@@ -30332,7 +30337,7 @@ def test_aseh_r39_generic_revision_gates_contract_and_grok_scope() -> None:
     ) == 39
     assert aseh_operator._r32_admit_grok_for_revision(39)
     assert (
-        aseh_operator._receipt_validation_matrices()[-3]
+        aseh_operator._receipt_validation_matrices()[-4]
         == aseh_operator
         .REPAIR_IMPLEMENTATION_SUPERVISOR_HANDOFF_BOOTSTRAP_TRANSITION_VALIDATIONS
     )
@@ -30495,7 +30500,7 @@ def test_aseh_r40_candidate_scope_and_validation_matrix_are_exact() -> None:
         aseh_operator
         .REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_VALIDATIONS
     )
-    assert aseh_operator._receipt_validation_matrices()[-2] == matrix
+    assert aseh_operator._receipt_validation_matrices()[-3] == matrix
     compile_argv, pytest_argv = matrix[:2]
     assert "requirements.txt" not in compile_argv
     assert "-k" not in pytest_argv
@@ -30734,11 +30739,11 @@ def test_aseh_r40_materialized_launch_and_exact_admission_are_wired() -> None:
     generic_validator = inspect.getsource(
         aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition
     )
-    assert "_revision in {40, 41} and owner == \"ipfs_datasets_py\"" in (
+    assert "_revision in {40, 41, 42} and owner == \"ipfs_datasets_py\"" in (
         generic_validator
     )
     assert "ASEH_R40_DATASETS_REPAIR_TREE" in generic_validator
-    assert "38, 39, 40, 41" in generic_validator
+    assert "38, 39, 40, 41, 42" in generic_validator
 
     active_recheck = inspect.getsource(
         aseh_operator._recheck_active_owner_start_authority
@@ -30779,7 +30784,7 @@ def test_aseh_r41_candidate_matrix_and_unpublished_r40_chain_are_exact() -> None
         aseh_operator
         .REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_VALIDATIONS
     )
-    assert aseh_operator._receipt_validation_matrices()[-1] == matrix
+    assert aseh_operator._receipt_validation_matrices()[-2] == matrix
     compile_argv, pytest_argv = matrix[:2]
     assert compile_argv[-2:] == (
         "scripts/run_agent_supervisor_efficiency_state_hardening.py",
@@ -31320,3 +31325,736 @@ def test_aseh_r41_sealed_validation_imports_only_attested_approved_runtime(
     finally:
         os.close(interpreter.descriptor)
         os.close(native.descriptor.descriptor)
+
+
+def test_aseh_r42_r41_bootstrap_failure_evidence_is_conservative_and_closed(
+) -> None:
+    evidence = aseh_operator._r42_expected_r41_bootstrap_failure_evidence()
+    assert evidence["schema"] == (
+        aseh_operator.ASEH_R42_R41_BOOTSTRAP_FAILURE_EVIDENCE_SCHEMA
+    )
+    assert evidence["failed_candidate_head"] == (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_HEAD
+    )
+    assert evidence["failed_candidate_tree"] == (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_TREE
+    )
+    assert evidence["failed_source_blob_oid"] == (
+        aseh_operator.ASEH_R42_FAILED_R41_SOURCE_BLOB_OID
+    )
+    assert evidence["failed_source_sha256"] == (
+        aseh_operator.ASEH_R42_FAILED_R41_SOURCE_SHA256
+    )
+    assert evidence["failed_native_seal_source_sha256"] == (
+        aseh_operator.ASEH_R42_FAILED_R41_NATIVE_SEAL_SOURCE_SHA256
+    )
+    assert evidence["failed_validation_executor_contract_cid"] == (
+        aseh_operator.ASEH_R42_FAILED_R41_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert evidence["authorization_argv"] == list(
+        aseh_operator.ASEH_R42_FAILED_R41_AUTHORIZATION_ARGV
+    )
+    assert evidence["reported_payload"] == {
+        "command": "authorize-repair-transition",
+        "error": "installed DuckDB differs from the reviewed R11 pin",
+        "error_type": "OperatorError",
+        "ok": False,
+        "schema": aseh_operator.OPERATOR_SCHEMA,
+    }
+    assert evidence["process_returncode"] == 1
+    assert evidence["failure_stage"] == (
+        "outer_native_dependency_seal_before_authorization_dispatch"
+    )
+    for field in (
+        "authorization_dispatch_reached",
+        "sealed_executor_scope_entered",
+        "r41_authorization_attempt_published",
+        "r41_receipt_published",
+        "r41_retry_authorized",
+        "raw_stream_bytes_preserved",
+        "database_observed_during_evidence_capture",
+        "database_mutated_during_evidence_capture",
+    ):
+        assert evidence[field] is False
+    assert evidence["raw_stdout_digest"] is None
+    assert evidence["raw_stderr_digest"] is None
+    assert evidence["provider_effect"] == "none_observed"
+    assert evidence["database_effect"] == "none_observed"
+    assert evidence["ducklake_effect"] == "none_observed"
+    assert (
+        aseh_operator._validate_r42_r41_bootstrap_failure_evidence(evidence)
+        == evidence
+    )
+
+    for field, value in (
+        ("authorization_dispatch_reached", True),
+        ("r41_authorization_attempt_published", True),
+        ("r41_receipt_published", True),
+        ("r41_retry_authorized", True),
+        ("raw_stdout_digest", "sha256:" + ("f" * 64)),
+    ):
+        forged = json.loads(json.dumps(evidence))
+        forged[field] = value
+        unsigned = dict(forged)
+        unsigned.pop("evidence_cid")
+        forged["evidence_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(aseh_operator.OperatorError, match="R42"):
+            aseh_operator._validate_r42_r41_bootstrap_failure_evidence(
+                forged
+            )
+
+
+def test_aseh_r42_reviewed_r11_native_source_ignores_ambient_import_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_source = (
+        aseh_operator.ASEH_R42_REVIEWED_R11_NATIVE_DEPENDENCY_SOURCE
+    )
+    if not reviewed_source.is_file():
+        pytest.skip("reviewed R11 native source is unavailable")
+
+    contract = (
+        aseh_operator._r42_native_dependency_bootstrap_dispatch_contract()
+    )
+    assert contract["source_path"] == str(reviewed_source)
+    assert contract["native_dependency_pin"] == (
+        aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN
+    )
+    assert contract["native_dependency_pin_cid"] == aseh_operator._identity(
+        aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN
+    )
+    assert contract["native_dependency_authorization_id"] == (
+        aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
+    )
+    assert contract["source_resolution"] == (
+        "exact_reviewed_path_before_ambient_import_lookup"
+    )
+    assert contract["ambient_import_resolution_permitted"] is False
+    assert (
+        aseh_operator
+        ._validate_r42_native_dependency_bootstrap_dispatch_contract(contract)
+        == contract
+    )
+
+    ambient_lookups: list[str] = []
+
+    def fail_ambient_lookup(module_name: str) -> None:
+        ambient_lookups.append(module_name)
+        raise AssertionError("ambient import resolution was consulted")
+
+    monkeypatch.setattr(
+        aseh_operator.importlib.util,
+        "find_spec",
+        fail_ambient_lookup,
+    )
+    assert (
+        aseh_operator._r42_reviewed_r11_native_dependency_source()
+        == reviewed_source
+    )
+    assert ambient_lookups == []
+
+
+def test_aseh_r42_versioned_directory_and_executor_contracts_are_closed(
+) -> None:
+    r41_directories = (
+        aseh_operator._r41_validation_dependency_directories_contract()
+    )
+    directories = (
+        aseh_operator._r42_validation_dependency_directories_contract()
+    )
+    assert directories["schema"] == (
+        aseh_operator.ASEH_R42_VALIDATION_DEPENDENCY_DIRECTORIES_SCHEMA
+    )
+    assert directories["parent_contract_cid"] == r41_directories["contract_cid"]
+    for field in (
+        "approved_validation_runtime_deployment_cid",
+        "ordered_paths",
+        "directory_records_cid",
+        "directory_record_count",
+        "import_precedence",
+        "native_system_dependency_projection",
+        "native_system_dependency_paths",
+        "bootstrap_sha256",
+    ):
+        assert directories[field] == r41_directories[field]
+    assert directories["scope"] == "r42_sealed_python_validation_only"
+    unsigned_directories = dict(directories)
+    directories_cid = unsigned_directories.pop("contract_cid")
+    assert directories_cid == aseh_operator._identity(unsigned_directories)
+    assert (
+        aseh_operator._validate_r42_validation_dependency_directories_contract(
+            directories
+        )
+        == directories
+    )
+
+    for field, value in (
+        ("parent_contract_cid", "sha256:" + ("0" * 64)),
+        ("ordered_paths", list(reversed(directories["ordered_paths"]))),
+    ):
+        forged_directories = json.loads(json.dumps(directories))
+        forged_directories[field] = value
+        unsigned_forgery = dict(forged_directories)
+        unsigned_forgery.pop("contract_cid")
+        forged_directories["contract_cid"] = aseh_operator._identity(
+            unsigned_forgery
+        )
+        with pytest.raises(aseh_operator.OperatorError, match="R42"):
+            aseh_operator._validate_r42_validation_dependency_directories_contract(
+                forged_directories
+            )
+
+    r41_executor = (
+        aseh_operator._r41_sealed_receipt_validation_executor_contract()
+    )
+    executor = aseh_operator._r42_sealed_receipt_validation_executor_contract()
+    assert aseh_operator._identity(r41_executor) == (
+        aseh_operator.ASEH_R42_FAILED_R41_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert executor["policy_revision"] == 42
+    assert executor["parent_executor_contract_cid"] == aseh_operator._identity(
+        aseh_operator._r39_sealed_receipt_validation_executor_contract()
+    )
+    assert executor["bootstrap_sha256"] == (
+        aseh_operator.ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256
+    )
+    assert executor["unpublished_r41_executor_contract_cid"] == (
+        aseh_operator.ASEH_R42_FAILED_R41_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert executor["r41_bootstrap_failure_evidence_cid"] == (
+        aseh_operator._r42_expected_r41_bootstrap_failure_evidence()[
+            "evidence_cid"
+        ]
+    )
+    assert executor["native_dependency_bootstrap_dispatch_contract_cid"] == (
+        aseh_operator._r42_native_dependency_bootstrap_dispatch_contract()[
+            "contract_cid"
+        ]
+    )
+    assert executor["validation_dependency_directories_contract_cid"] == (
+        directories["contract_cid"]
+    )
+    assert aseh_operator._sealed_validation_bootstrap_for_contract(executor) == (
+        aseh_operator.ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP,
+        aseh_operator.ASEH_R41_RECEIPT_VALIDATION_BOOTSTRAP_SHA256,
+    )
+    compile_command = tuple(
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_VALIDATIONS[0]
+    )
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            executor,
+            declared=compile_command,
+        )
+        == executor
+    )
+
+    forged_executor = dict(executor)
+    forged_executor["unpublished_r41_executor_contract_cid"] = (
+        "sha256:" + ("0" * 64)
+    )
+    with pytest.raises(aseh_operator.OperatorError):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            forged_executor,
+            declared=compile_command,
+        )
+    forged_executor = dict(executor)
+    forged_executor["bootstrap_sha256"] = "sha256:" + ("0" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R42"):
+        aseh_operator._sealed_validation_bootstrap_for_contract(forged_executor)
+
+
+def test_aseh_r42_candidate_matrix_and_direct_r41_child_chain_are_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    changed_paths = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_CHANGED_PATHS
+    )
+    assert changed_paths == (
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    )
+    base_head = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_TREE
+    )
+    assert base_head == "9a058d63325816c867bd8f139a8ca6b906c3c516"
+    assert base_tree == "711e78352457edbcb946161331c6b24ebdae68d6"
+
+    matrix = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_VALIDATIONS
+    )
+    assert aseh_operator._receipt_validation_matrices()[-1] == matrix
+    compile_argv, pytest_argv = matrix[:2]
+    assert compile_argv[-2:] == changed_paths
+    assert "-k" not in pytest_argv
+    assert pytest_argv[4:] == (
+        "test/api/test_agent_supervisor_board_control_plane.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_project_dependency_preflight.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract.py",
+        "test/api/test_agent_supervisor_scoped_dependency_contract_v3.py",
+    )
+
+    schemas = aseh_operator.ASEH_R42_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    assert schemas == (
+        *aseh_operator.ASEH_R39_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_SCHEMA,
+    )
+    assert (
+        aseh_operator
+        .REPAIR_APPROVED_VALIDATION_RUNTIME_CONFIGURATION_TRANSITION_SCHEMA
+        not in schemas
+    )
+    assert (
+        aseh_operator.REPAIR_VALIDATION_RUNTIME_SEALED_DISPATCH_TRANSITION_SCHEMA
+        not in schemas
+    )
+    assert (
+        aseh_operator.ASEH_R42_EXACT_R1_R39_RECEIPT_CIDS
+        == aseh_operator.ASEH_R41_EXACT_R1_R39_RECEIPT_CIDS
+    )
+
+    prior_cids = aseh_operator.ASEH_R42_EXACT_R1_R39_RECEIPT_CIDS
+    last_index = len(schemas) - 1
+    r42_receipt_cid = "sha256:" + ("f" * 64)
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(schemas):
+        revision = (
+            None
+            if index == 0
+            else (
+                42
+                if index == last_index
+                else (
+                    39
+                    if index == last_index - 1
+                    else (
+                        38
+                        if index == last_index - 2
+                        else (
+                            36
+                            if index == last_index - 3
+                            else (
+                                30
+                                if index == last_index - 4
+                                else index + 1
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": revision,
+            "receipt_cid": (
+                prior_cids[index]
+                if index < last_index
+                else r42_receipt_cid
+            ),
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    assert chain[-1]["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R40_PUBLISHED_R39_RECEIPT_CID
+    )
+    assert aseh_operator._admit_exact_r42_transition_chain(chain) == chain
+    forged_chain = json.loads(json.dumps(chain))
+    forged_chain[-1]["previous_receipt_cid"] = "sha256:" + ("0" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R42"):
+        aseh_operator._admit_exact_r42_transition_chain(forged_chain)
+
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    parents = {"value": base_head}
+
+    def fake_git(*arguments: str) -> str:
+        if arguments == ("show", "-s", "--format=%P", candidate_head):
+            return parents["value"]
+        if arguments == ("rev-parse", f"{base_head}^{{tree}}"):
+            return base_tree
+        if arguments == ("rev-parse", f"{candidate_head}^{{tree}}"):
+            return candidate_tree
+        raise AssertionError(f"unexpected Git query: {arguments!r}")
+
+    def fake_changed_paths(start: str, end: str) -> tuple[str, ...]:
+        assert end == candidate_head
+        if start == base_head:
+            return changed_paths
+        if start == aseh_operator.ASEH_R30_PUBLISHED_R27_BASE_HEAD:
+            return aseh_operator.ASEH_R42_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        raise AssertionError(f"unexpected Git diff: {(start, end)!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        fake_changed_paths,
+    )
+    assert aseh_operator._r42_candidate_requires_policy(
+        head=candidate_head,
+        tree=candidate_tree,
+    )
+    parents["value"] = f"{base_head} {'c' * 40}"
+    assert not aseh_operator._r42_candidate_requires_policy(
+        head=candidate_head,
+        tree=candidate_tree,
+    )
+
+
+def test_aseh_r42_native_bootstrap_dispatch_gate_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_head = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_NATIVE_VALIDATION_BOOTSTRAP_DISPATCH_TRANSITION_BASE_TREE
+    )
+
+    def reject_candidate_check(**_kwargs: str) -> bool:
+        raise AssertionError("the failed R41 base must return before R42 admission")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r42_candidate_requires_policy",
+        reject_candidate_check,
+    )
+    assert not aseh_operator._r42_native_bootstrap_dispatch_required(
+        paths={},
+        head=base_head,
+        tree=base_tree,
+    )
+
+    direct_head = "a" * 40
+    direct_tree = "b" * 40
+    descendant_head = "c" * 40
+    descendant_tree = "d" * 40
+
+    def candidate_check(*, head: str, tree: str) -> bool:
+        return (head, tree) == (direct_head, direct_tree)
+
+    def reject_runtime_read(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the exact R42 child must not require a receipt")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r42_candidate_requires_policy",
+        candidate_check,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        reject_runtime_read,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r39_receipt_chain",
+        reject_runtime_read,
+    )
+    assert aseh_operator._r42_native_bootstrap_dispatch_required(
+        paths={},
+        head=direct_head,
+        tree=direct_tree,
+    )
+
+    ancestry_queries: list[tuple[str, ...]] = []
+
+    def fake_git(*arguments: str) -> str:
+        if arguments == ("rev-parse", f"{descendant_head}^{{tree}}"):
+            return descendant_tree
+        if arguments == (
+            "merge-base",
+            "--is-ancestor",
+            direct_head,
+            descendant_head,
+        ):
+            ancestry_queries.append(arguments)
+            return ""
+        raise AssertionError(f"unexpected Git query: {arguments!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    assert not aseh_operator._r42_native_bootstrap_dispatch_required(
+        paths={},
+        head=descendant_head,
+        tree=descendant_tree,
+    )
+
+    bootstrap_path = tmp_path / "bootstrap.json"
+    receipt_path = tmp_path / "r42-receipt.json"
+    paths = {
+        "bootstrap_receipt": bootstrap_path,
+        "repair_native_validation_bootstrap_dispatch_transition_receipt": (
+            receipt_path
+        ),
+    }
+    bootstrap_receipt = {"receipt": "bootstrap"}
+    receipt = {"receipt": "r42"}
+    previous = {"receipt": "r39"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_receipt_name_is_absent",
+        lambda path: path != receipt_path,
+    )
+
+    def runtime_read(path: Path, **_kwargs: object) -> dict[str, str]:
+        if path == bootstrap_path:
+            return bootstrap_receipt
+        if path == receipt_path:
+            return receipt
+        raise AssertionError(f"unexpected runtime read: {path}")
+
+    monkeypatch.setattr(aseh_operator, "_secure_runtime_json", runtime_read)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r39_receipt_chain",
+        lambda supplied_paths: [previous] if supplied_paths is paths else [],
+    )
+
+    def validate_receipt(
+        value: object,
+        *,
+        bootstrap: object,
+        previous_receipt: object,
+        rerun_validations: bool,
+    ) -> dict[str, str]:
+        assert value is receipt
+        assert bootstrap is bootstrap_receipt
+        assert previous_receipt is previous
+        assert rerun_validations is False
+        return {"repair_head": direct_head, "repair_tree": direct_tree}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_native_validation_bootstrap_dispatch_transition",
+        validate_receipt,
+    )
+    assert aseh_operator._r42_native_bootstrap_dispatch_required(
+        paths=paths,
+        head=descendant_head,
+        tree=descendant_tree,
+    )
+    assert ancestry_queries == [
+        (
+            "merge-base",
+            "--is-ancestor",
+            direct_head,
+            descendant_head,
+        )
+    ]
+
+
+def test_aseh_r42_one_shot_rejects_r41_artifacts_and_returns_seven_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r40_attempt_path = tmp_path / "r40-attempt.json"
+    r41_attempt_path = tmp_path / "r41-attempt.json"
+    r41_receipt_path = tmp_path / "r41-receipt.json"
+    r42_attempt_path = tmp_path / "r42-attempt.json"
+    r42_receipt_path = tmp_path / "r42-receipt.json"
+    paths = {
+        "repair_approved_validation_runtime_configuration_authorization_attempt": (
+            r40_attempt_path
+        ),
+        "repair_validation_runtime_sealed_dispatch_authorization_attempt": (
+            r41_attempt_path
+        ),
+        "repair_validation_runtime_sealed_dispatch_transition_receipt": (
+            r41_receipt_path
+        ),
+        "repair_native_validation_bootstrap_dispatch_authorization_attempt": (
+            r42_attempt_path
+        ),
+        "repair_native_validation_bootstrap_dispatch_transition_receipt": (
+            r42_receipt_path
+        ),
+    }
+    r39_failure = {"evidence": "r39-failure"}
+    deployment = {"deployment": "approved-runtime"}
+    failed_r40_attempt = {"attempt": "failed-r40"}
+    r40_failure = {"evidence": "r40-failure"}
+    r41_directories = {"contract": "r41-directories"}
+    directories = {"contract": "r42-directories"}
+    r41_failure = {"evidence": "r41-bootstrap-failure"}
+    native_dispatch = {"contract": "r42-native-dispatch"}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r41_expected_r40_authorization_attempt",
+        lambda: failed_r40_attempt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: (
+            failed_r40_attempt
+            if path == r40_attempt_path
+            else (_ for _ in ()).throw(
+                AssertionError(f"unexpected runtime read: {path}")
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r40_one_shot_state",
+        lambda **_kwargs: (r39_failure, deployment),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r41_expected_r40_authorization_failure_evidence",
+        lambda: r40_failure,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r41_r40_authorization_failure_evidence",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r41_validation_dependency_directories_contract",
+        lambda: r41_directories,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r41_validation_dependency_directories_contract",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r42_validation_dependency_directories_contract",
+        lambda: directories,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r42_validation_dependency_directories_contract",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r42_expected_r41_bootstrap_failure_evidence",
+        lambda: r41_failure,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r42_r41_bootstrap_failure_evidence",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r42_native_dependency_bootstrap_dispatch_contract",
+        lambda: native_dispatch,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r42_native_dependency_bootstrap_dispatch_contract",
+        lambda value: value,
+    )
+
+    assert aseh_operator._assert_r42_one_shot_state(paths=paths) == (
+        r39_failure,
+        deployment,
+        failed_r40_attempt,
+        r40_failure,
+        directories,
+        r41_failure,
+        native_dispatch,
+    )
+
+    r41_attempt_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(aseh_operator.OperatorError, match="R41.*retry"):
+        aseh_operator._assert_r42_one_shot_state(paths=paths)
+    r41_attempt_path.unlink()
+
+    r41_receipt_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(aseh_operator.OperatorError, match="R41.*receipt"):
+        aseh_operator._assert_r42_one_shot_state(paths=paths)
+
+
+def test_aseh_r42_authorization_and_materialized_launch_are_wired_first(
+) -> None:
+    dispatcher = inspect.getsource(
+        aseh_operator
+        ._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable
+    )
+    r42_call = dispatcher.index("r42_result = (")
+    r42_return = dispatcher.index("return r42_result", r42_call)
+    r41_call = dispatcher.index("r41_result = (")
+    assert r42_call < r42_return < r41_call
+
+    launch = inspect.getsource(aseh_operator._admit_materialized_launch)
+    assert launch.index("r42_prequalification =") < launch.index(
+        "r41_prequalification ="
+    )
+    for token in (
+        "_prequalify_r42_historical_live_launch",
+        "_complete_r42_historical_live_prequalification",
+        "_admit_exact_r42_transition_chain",
+        "launch_bundle = r42_prequalification",
+        "_recheck_r42_owner_start_authority",
+        "r42_projection_recovery_prequalification=r42_prequalification",
+    ):
+        assert token in launch
+    assert launch.count("_recheck_r42_owner_start_authority") >= 3
+
+    continuity = inspect.getsource(aseh_operator._read_continuity_state)
+    priority = continuity.index("r26_projection_bundle = (")
+    assert continuity.index(
+        "r42_projection_recovery_prequalification", priority
+    ) < continuity.index("r41_projection_recovery_prequalification", priority)
+
+    exact_launch = inspect.getsource(
+        aseh_operator._assert_exact_run_launch_admission
+    )
+    assert exact_launch.index(
+        "current R42 candidate lacks its exact admitted validation seal"
+    ) < exact_launch.index(
+        "current R41 candidate lacks its exact admitted validation seal"
+    )
+    assert "current descendant lacks its retained R42 validation seal" in (
+        exact_launch
+    )
+    assert "current descendant lacks its explicit R39-to-R42 edge" in (
+        exact_launch
+    )
+
+    active_recheck = inspect.getsource(
+        aseh_operator._recheck_active_owner_start_authority
+    )
+    assert active_recheck.index("_recheck_r42_owner_start_authority") < (
+        active_recheck.index("_recheck_r41_owner_start_authority")
+    )
+    paths_source = inspect.getsource(aseh_operator._paths)
+    assert "repair_native_validation_bootstrap_dispatch_transition_receipt" in (
+        paths_source
+    )
+    assert (
+        "repair_native_validation_bootstrap_dispatch_authorization_attempt"
+        in paths_source
+    )
+
+    native_seal = inspect.getsource(aseh_operator._seal_r11_native_dependency)
+    assert "_r42_reviewed_r11_native_dependency_source" in native_seal
+    assert aseh_operator._historical_live_policy_revision(
+        {
+            "schema": (
+                aseh_operator.ASEH_R42_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+            )
+        }
+    ) == 42
+    assert aseh_operator._r32_admit_grok_for_revision(42)
