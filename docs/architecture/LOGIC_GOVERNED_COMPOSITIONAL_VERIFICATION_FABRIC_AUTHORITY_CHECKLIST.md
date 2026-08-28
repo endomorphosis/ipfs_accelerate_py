@@ -1,5 +1,42 @@
 # LGCVF-121 and LGCVF-123 authority checklist
 
+## Single-user R&D disposition (2026-08-28)
+
+The sole user and operator, Benjamin Barber, explicitly designated himself as
+the verifier for this R&D-only project and accepted a self-signed key.  That
+authorization does **not** convert self-verification into independent external
+qualification and does **not** authorize release, public use, shared use, or
+production deployment.
+
+The append-only v2 path therefore records these exact terminal dispositions:
+
+- `LGCVF-S001`: `self_verified_r_and_d`
+- `LGCVF-S002`: `production_declined_r_and_d`
+- `LGCVF-S003`: `completed`
+
+The Ed25519 public key and closed trust manifest are pinned at
+`config/lgcvf_r_and_d_authority_public_key.pem` and
+`config/lgcvf_r_and_d_authority_trust.json`.  The private key is intentionally
+outside Git.  The append-only v2 receipts use distinct R&D-only paths and leave
+the historical v1 independent-qualification and production-authorization
+receipt files untouched.  They bind the current plan, qualification checkout
+fingerprint, benchmark, release report, accelerator commit/tree, and datasets
+commit/tree/gitlink.
+
+The versioned outputs are:
+
+- `data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_r_and_d_receipt.v2.json`
+- `data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_r_and_d_receipt.v2.json`
+
+`successor_resolution.json` binds those authenticated receipts and S003's
+protected qualification evidence to the original successor task CIDs.
+
+The resulting terminal state may set `task_implementation_complete=true`.
+It must keep `objective_complete=false`, `release_qualified=false`, and
+`production_authorized=false`.  The original v1 schemas and checklist below
+remain the historical independent/production authority contract; the R&D v2
+receipts do not satisfy or weaken that contract.
+
 This document is a **schema and checklist**. It is not
 `external_qualification_receipt.json`, not
 `production_authorization_receipt.json`, and not a grant of release or

@@ -1,0 +1,14 @@
+{
+  "algorithm": "Ed25519",
+  "authority_scope": "research_and_development_only",
+  "identity": "Benjamin Barber",
+  "key_id": "baguqeeraof5lqknosljjp2d26xqynxi2um53vtfq74dx6apttc3xxsapvslq",
+  "private_key_committed": false,
+  "public_key_base64url": "38lrIFjpu--NDavNq81kDeC7SaUADp6Shth9C5-t8g4",
+  "public_key_path": "config/lgcvf_r_and_d_authority_public_key.pem",
+  "public_key_raw_sha256": "sha256:8c3b0a628ca26fde650090269ab3653bc3fdb920536e9585e383a7e47041d0ce",
+  "role": "sole R&D verifier and operator",
+  "schema": "lgcvf-r-and-d-trust-policy@1",
+  "third_party_independence_claimed": false,
+  "trust_model": "self_signed_single_user_r_and_d"
+}
