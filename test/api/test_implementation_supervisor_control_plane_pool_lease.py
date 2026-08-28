@@ -1114,6 +1114,185 @@ def test_watchdog_checkout_repair_recycles_after_projection_clears(
     assert observed_task_ids == ["PCSM-027"]
 
 
+@pytest.mark.parametrize(
+    "case",
+    (
+        "missing",
+        "empty",
+        "malformed",
+        "type_invalid",
+        "symlink",
+        "hardlink",
+    ),
+)
+def test_watchdog_unverified_post_maintenance_state_cannot_override_stuck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    observed_task_ids: list[str] = []
+
+    def projected_is_stuck(
+        state: PortalTaskState,
+        **_kwargs: Any,
+    ) -> tuple[bool, str]:
+        observed_task_ids.append(state.active_task_id)
+        if state.active_task_id == "PCSM-027":
+            return True, "no progress on active task PCSM-027"
+        return False, ""
+
+    monkeypatch.setattr(supervisor, "is_stuck", projected_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def maintenance(_update: object) -> dict[str, Any]:
+        path = fixture["state_path"]
+        if case == "missing":
+            path.unlink()
+        elif case == "empty":
+            path.write_bytes(b"")
+        elif case == "malformed":
+            path.write_text("{", encoding="utf-8")
+        elif case == "type_invalid":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["active_task_id"] = []
+            _write_json(path, payload)
+        elif case == "symlink":
+            target = path.with_name("post-maintenance-state-target.json")
+            path.rename(target)
+            path.symlink_to(target.name)
+        elif case == "hardlink":
+            os.link(
+                path,
+                path.with_name("post-maintenance-state-hardlink.json"),
+            )
+        return {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": True,
+            "reason": "no progress on active task PCSM-027",
+            "active_task_id": "PCSM-027",
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task PCSM-027"
+    assert observed_task_ids == ["PCSM-027"]
+
+
+def test_watchdog_state_change_during_post_maintenance_load_cannot_override_stuck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    observed_task_ids: list[str] = []
+
+    def projected_is_stuck(
+        state: PortalTaskState,
+        **_kwargs: Any,
+    ) -> tuple[bool, str]:
+        observed_task_ids.append(state.active_task_id)
+        if state.active_task_id == "PCSM-027":
+            return True, "no progress on active task PCSM-027"
+        return False, ""
+
+    monkeypatch.setattr(supervisor, "is_stuck", projected_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": True,
+            "reason": "no progress on active task PCSM-027",
+            "active_task_id": "PCSM-027",
+        },
+    )
+    original_load = PortalTaskState.load
+    changed_load_count = 0
+    mutate_during_load = False
+
+    def changing_load(path: Path) -> PortalTaskState:
+        nonlocal changed_load_count, mutate_during_load
+        loaded = original_load(path)
+        if mutate_during_load and path == fixture["state_path"]:
+            mutate_during_load = False
+            changed_load_count += 1
+            PortalTaskState(completed_count=1).save(path)
+        return loaded
+
+    monkeypatch.setattr(
+        PortalTaskState,
+        "load",
+        staticmethod(changing_load),
+    )
+    original_verified_load = (
+        supervisor._verified_post_maintenance_state_for_stuck_override
+    )
+
+    def changing_verified_load() -> PortalTaskState | None:
+        nonlocal mutate_during_load
+        mutate_during_load = True
+        return original_verified_load()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_verified_post_maintenance_state_for_stuck_override",
+        changing_verified_load,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "no progress on active task PCSM-027"
+    assert observed_task_ids == ["PCSM-027"]
+    assert changed_load_count == 1
+
+
 def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -19,7 +19,7 @@ import time
 import threading
 from collections import Counter
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -11422,31 +11422,11 @@ class PortalImplementationSupervisor:
         instead of extending a stale attempt.
         """
 
-        def signature() -> tuple[int, ...] | None:
-            try:
-                observed = path.lstat()
-            except OSError:
-                return None
-            if (
-                not stat.S_ISREG(observed.st_mode)
-                or stat.S_ISLNK(observed.st_mode)
-                or int(observed.st_nlink) != 1
-            ):
-                return None
-            return (
-                int(observed.st_dev),
-                int(observed.st_ino),
-                int(observed.st_mode),
-                int(observed.st_nlink),
-                int(observed.st_size),
-                int(observed.st_mtime_ns),
-            )
-
-        before = signature()
+        before = cls._single_link_regular_file_signature(path)
         first = cls._load_single_link_json_object(path)
-        middle = signature()
+        middle = cls._single_link_regular_file_signature(path)
         second = cls._load_single_link_json_object(path)
-        after = signature()
+        after = cls._single_link_regular_file_signature(path)
         if (
             before is None
             or first is None
@@ -11456,6 +11436,97 @@ class PortalImplementationSupervisor:
         ):
             return None
         return first, before
+
+    @staticmethod
+    def _single_link_regular_file_signature(
+        path: Path,
+    ) -> tuple[int, ...] | None:
+        try:
+            observed = path.lstat()
+        except OSError:
+            return None
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or int(observed.st_nlink) != 1
+        ):
+            return None
+        return (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_mode),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_mtime_ns),
+        )
+
+    def _verified_post_maintenance_state_for_stuck_override(
+        self,
+    ) -> PortalTaskState | None:
+        """Load exact durable state that may negate a stale stuck result."""
+
+        path = self.config.state_path
+        before_signature = self._single_link_regular_file_signature(path)
+        if before_signature is None:
+            return None
+        try:
+            before_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            not before_bytes
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+            or state_file_repair_reason(path)
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+        ):
+            return None
+
+        state = PortalTaskState.load(path)
+        after_load_signature = self._single_link_regular_file_signature(path)
+        try:
+            after_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            after_load_signature != before_signature
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+            or after_bytes != before_bytes
+        ):
+            return None
+        try:
+            payload = json.loads(before_bytes.decode("utf-8"))
+            canonical_payload = json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                allow_nan=False,
+            )
+            canonical_state = json.dumps(
+                asdict(state),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                allow_nan=False,
+            )
+        except (TypeError, UnicodeDecodeError, ValueError):
+            return None
+        if not isinstance(payload, dict) or canonical_payload != canonical_state:
+            return None
+        try:
+            final_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            final_bytes != before_bytes
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+        ):
+            return None
+        return state
 
     @staticmethod
     def _stable_process_birth_identity(
@@ -12512,16 +12583,21 @@ class PortalImplementationSupervisor:
         if result.get("stuck"):
             # Maintenance may repair the stale outer compatibility projection
             # that produced ``result["stuck"]``.  Re-evaluate durable state
-            # before using that pre-repair result as recycle authority.
-            post_maintenance_state = PortalTaskState.load(
-                self.config.state_path
+            # before using that pre-repair result as recycle authority, but
+            # grant the override only from exact stable state evidence.
+            post_maintenance_state = (
+                self._verified_post_maintenance_state_for_stuck_override()
             )
-            post_maintenance_stuck, post_maintenance_reason = self.is_stuck(
-                post_maintenance_state,
-                now_ts=time.time(),
-            )
-            if not post_maintenance_stuck:
-                return SupervisorLoopDecision.keep_running()
+            post_maintenance_reason = ""
+            if post_maintenance_state is not None:
+                post_maintenance_stuck, post_maintenance_reason = (
+                    self.is_stuck(
+                        post_maintenance_state,
+                        now_ts=time.time(),
+                    )
+                )
+                if not post_maintenance_stuck:
+                    return SupervisorLoopDecision.keep_running()
             return SupervisorLoopDecision.recycle(
                 str(
                     post_maintenance_reason
@@ -12530,7 +12606,11 @@ class PortalImplementationSupervisor:
                 ),
                 detail={
                     "active_task_id": (
-                        post_maintenance_state.active_task_id
+                        (
+                            post_maintenance_state.active_task_id
+                            if post_maintenance_state is not None
+                            else ""
+                        )
                         or result.get("active_task_id")
                         or ""
                     )
