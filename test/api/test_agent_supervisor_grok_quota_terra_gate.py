@@ -226,6 +226,8 @@ def _install_fake_grok_docker_primary(
 
     def fake_create_run(command, **kwargs):
         create_calls.append((list(command), dict(kwargs)))
+        if create_returncode == 0:
+            FakeLease.cidfile.write_text(container_id + "\n", encoding="ascii")
         return subprocess.CompletedProcess(
             command,
             create_returncode,
@@ -1774,6 +1776,9 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
     assert observed["create_command"] == create_command
     assert observed["create_kwargs"]["cwd"] == workspace
     assert observed["create_kwargs"]["stdin"] is subprocess.DEVNULL
+    assert observed["create_kwargs"]["timeout"] == 120.0
+    # The provider-bearing attached start is delegated without the bounded
+    # create timeout.  ``fake_start`` intentionally accepts only ``env``.
     assert observed["start_command"] == [
         "/usr/bin/docker",
         "--host=unix:///var/run/docker.sock",
@@ -2109,7 +2114,11 @@ def test_grok_docker_primary_parses_attached_start_not_create_output(
     assert isinstance(create_calls, list)
     assert len(create_calls) == 1
     assert "create" in create_calls[0][0]
+    assert "start" not in create_calls[0][0]
+    assert create_calls[0][1]["timeout"] == 120.0
     assert len(provider_calls) == 1
+    # ``fake_typed``/``fake_bounded`` accept no timeout keyword: the 120-second
+    # pre-effect create bound must never constrain the attached provider run.
     assert provider_calls[0][0] == [
         "/usr/bin/docker",
         "--host=unix:///var/run/docker.sock",
@@ -2176,7 +2185,8 @@ def test_grok_docker_create_failure_cleans_without_provider_or_fallback(
         ]
     )
 
-    assert result == 2
+    assert result == 127
+    assert len(harness["create_calls"]) == 1
     assert harness["close_calls"] == [False]
 
 
@@ -2225,9 +2235,63 @@ def test_grok_docker_start_failure_cleans_without_fallback(
     )
 
     assert result == 127
+    assert len(harness["create_calls"]) == 1
     assert len(start_calls) == 1
     assert "start" in start_calls[0]
     assert "create" not in start_calls[0]
+    assert harness["close_calls"] == [False]
+
+
+def test_grok_docker_create_timeout_is_pre_effect_and_never_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_fake_grok_docker_primary(tmp_path, monkeypatch)
+    create_calls: list[list[str]] = []
+
+    def timeout_create(command, **_kwargs):
+        create_calls.append(list(command))
+        raise subprocess.TimeoutExpired(command, 120.0)
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", timeout_create)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_grok_with_typed_failure_capture",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a timed-out create must never start the provider"
+        ),
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_run_codex_quota_fallback_in_docker",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a timed-out create cannot authorize cross-provider fallback"
+        ),
+    )
+
+    result = grok_cli_runner.main(
+        [
+            "--workspace",
+            str(harness["workspace"]),
+            "--grok-bin",
+            str(harness["grok"]),
+            "--model",
+            "grok-4.6",
+            "--codex-fallback-command-json",
+            json.dumps(
+                _terra_fallback_command(
+                    str(harness["codex"]),
+                    harness["workspace"],
+                    reasoning_effort="medium",
+                )
+            ),
+        ]
+    )
+
+    assert result == 127
+    assert len(create_calls) == 1
+    assert "create" in create_calls[0]
+    assert "start" not in create_calls[0]
     assert harness["close_calls"] == [False]
 
 

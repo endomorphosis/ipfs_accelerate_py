@@ -528,6 +528,7 @@
   "source_repair_successor_materialization_cid": "sha256:01935058ca682411743904513524b3eab41369b057151db529af14d46c5c0963",
   "live_recovery_successor_materialization_cid": "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9",
   "live_projection_successor_materialization_cid": "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10",
+  "live_provider_retry_successor_materialization_cid": "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e",
   "optional_capability_policy": {
     "external_provers": "probe_then_typed_unavailable",
     "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",

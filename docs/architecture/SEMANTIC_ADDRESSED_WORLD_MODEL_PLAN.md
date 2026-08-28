@@ -497,7 +497,128 @@ explicit target digest above. It does not weaken definition, receipt, proof,
 validation, provider, or completion authority. The Grok-primary route and the
 independently verified quota condition on the Codex fallback remain unchanged.
 
-## 19. Current limitations at seal time
+## 19. M11 provider-launch repair and exact retry successor
+
+M10 materialized generation 12 and its receipt-last pair marker verified. The
+live owner authenticated, preflight passed, and the scheduler dispatched
+`SAWM-001`. The task advanced from `retrying` revision 10 to `in_progress`
+revision 11 under the exact claim and then settled `blocked` revision 12 with
+settlement
+`baguqeera7cwinhpjgl2etuitwiuhs4ts6lix5txyb2pjtsbfz2npfyryznma`.
+The terminal portal payload reports return code 127 after the Grok container
+lifecycle timed out. It records `provider_invocation_count=0` and
+`effect_claim_count=0`; no implementation commit, merge, accepted definition,
+accepted completion, or worker self-approval occurred. The retry policy
+correctly denied automatic retry, and the claim, lease, attempt, task
+revisions 10 through 12, failure payload, settlement, and complete failure
+receipt remain immutable history. That canonical zero invocation counter must
+not be misread as proof that no provider process ran: the pre-created
+container's attached Grok execution did start, but it produced no admitted
+provider result or repository effect before the lifecycle failure settled.
+
+Read-only diagnosis found one bounded integration defect in the authenticated
+Grok Docker route. The caller first invoked
+`_create_grok_container_and_build_start_command`, then passed the returned
+`docker start` command to
+`_run_created_grok_container_with_typed_failure_capture`, whose contract owns
+and executes `docker create` before exact cidfile/identity verification and an
+attached start. That made the typed route process the attached start as a
+creation-phase command under the 120-second creation timeout. It did not issue
+a second `docker create`; it ran `docker start --attach` in the wrong phase.
+M11 changes the runner so the typed fallback-capable route owns exactly one
+create/identity/start sequence; the historical bounded-stderr route retains
+its pre-create behavior. The focused gate proves a create timeout is a
+pre-effect terminal, is attempted once, never starts either provider, and
+never authorizes cross-provider fallback.
+
+The exact M11 source/control capsule contains the nine M10 control paths plus
+only these two implementation repair paths:
+
+```text
+ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
+test/api/test_agent_supervisor_grok_quota_terra_gate.py
+```
+
+M11 is not a fallback-policy change. Grok 4.6 remains primary; Codex remains
+eligible only after independently verified Grok quota exhaustion; the current
+capability probe is still mandatory; and provider output remains proposal-only
+and cannot establish completion. The failed M10 attempt created neither
+an admitted provider-result authority nor a model-invocation receipt, although
+the attached Grok process did execute as described above. M11 is therefore a
+zero-admitted-invocation transient launch repair followed by one
+operator-authorized rearm, not a replay, provider substitution, or fabricated
+completion.
+
+The exact stopped M10 control authority is cursor 181, projection
+`baguqeeramqb56wqvzegrmmuchnldydvhtu3o3takpwgzh2lyd55k4lxtzboa`, and semantic
+digest
+`sha256:7dcdccefb3a54d4604716427bed164e36032429477612d9c92f3bf75fc4f9d46`.
+The stopped control file is SHA-256
+`c38a6477e4e87aecea1c50f68d75e7c5c7cbe1ac0f50f543a9a8c2ace55c2467`;
+its original M10 publication digest
+`f0106a98b390e7933ff55f3f0f5326dbb8a6951adaa84721c13beff65e0a01ec`
+remains separate history. The coordination base digest is
+`e69a4c22a1a1a8bd38ccf210803a02ecb040d0ee9d4cc776165a4570425d6862`,
+its required WAL digest is
+`938dbc7028ec438889019c352b5a2529cc8c0f0fd18a11f0eb157a6772fc5321`,
+and deterministic WAL replay yields predecessor coordination root
+`sha256:25b8bd03cfe9a684a2626a6c5e6c955b295ba6073248c7a1cf2cd83d7550576d`
+at 55 events. The required offline checkpoint does not rewrite task or event
+meaning. Independent rehearsals produced the same logical replay root and
+count but different post-replay DuckDB file layout bytes. Therefore M11 seals
+the exact predecessor base and WAL bytes plus the logical replay root/count;
+it deliberately omits any post-replay physical digest or size. The earlier
+draft authority CID
+`sha256:f9c059facc33c5a7aa61d137eb5175e1412cf074d715bd3a02cabefd2494f7ee`
+is superseded before publication and is not launch authority. M11
+copies the exact stopped control store and the complete coordination database
+including its WAL-replayed failed-completion barrier. It does not copy the
+execution sidecar. Under the board-scoped pair lock it appends plan revision
+12, one typed repair-evidence event, and one exact task CAS from
+`blocked@12` to `retrying@13`; the coordinator is rearmed once with the same
+settlement and preserves all 55 predecessor coordination events before
+appending event 56.
+
+M11 targets generation 13 and the exact pair:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m11/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m11/control.coordination.duckdb
+Quack port    45255
+plan revision 12
+event cursor  184
+projection    baguqeeratdygaminyfax543hh5bik3kj5admm5filgtu37a3jfnyc6snwnxa
+SAWM-001      retrying revision 13
+coord events  56
+coord root    sha256:3b9ce361244387492da0156888cf6cb7377a020ca1f988b37509050975205ae7
+semantic      sha256:d9a1f5bd53884346a847cb9e440b5e8e37c7e4e7a87ea52e173d719f2933821c
+```
+
+Key presence selects
+`live_provider_retry_successor_materialization` before M10 and every earlier
+authority. A null, incomplete, or malformed M11 declaration fails closed and
+cannot reactivate a predecessor. The operator's current-head comparator must
+verify `SAWM-000=completed@2`, `SAWM-001=retrying@13`, every remaining task at
+`todo@2`, the one accepted completion receipt, and the exact four-entry
+`SAWM-001` revision history: M9 rearm at 10, M10 claim at 11, preserved failure
+at 12, and M11 rearm at 13. It compares the current semantic digest to M11's
+target, never to the M8 or pre-failure M10 digest.
+
+Materialization uses store-before-reference ordering, stable no-follow byte
+checks, the board-scoped pair lock, staging-alias removal, no execution
+sidecar, and published-pair revalidation. It writes
+`sawm/non-authoritative-migration-receipt@9` last. That receipt is the sole
+final pair commit marker and binds the authority CID, both store paths and
+physical digests, cursor 184, projection, semantic digest, coordination event
+count/root, exact failure and rearm lineage, source capsule, and zero-authority
+claims above. A partial pair, pre-existing/orphan marker, pending alias,
+changed source capsule, missing failure history, second rearm, changed provider
+route, or receipt written before cleanup fails closed. Offline start and every
+live preflight must verify the materializer/check result and the exact final
+marker before generation 13 can launch. This control update does not itself
+publish or launch M11.
+
+## 20. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

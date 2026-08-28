@@ -933,10 +933,11 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation.  The active M10 and
-    # M9 keys intentionally have precedence, including fail-closed malformed
+    # Exercise the historical M8 selector in isolation.  M11, M10, and M9
+    # keys intentionally have precedence, including fail-closed malformed
     # handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("live_provider_retry_successor_materialization")
     malformed_successor.pop("live_projection_successor_materialization")
     malformed_successor.pop("live_recovery_successor_materialization")
     malformed_successor["source_repair_successor_materialization"] = []
@@ -2011,7 +2012,15 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         seal,
         migration,
     ) == []
-    assert operator._active_source_repair_materialization(config) == authority
+    historical_config = copy.deepcopy(config)
+    historical_config.pop("live_provider_retry_successor_materialization")
+    historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("live_provider_retry_successor_materialization")
+    historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("live_provider_retry_successor_materialization_cid")
+    assert operator._active_source_repair_materialization(
+        historical_config
+    ) == authority
 
     assert authority["live_task_projection"] == {
         "schema": "sawm/live-task-projection-expectation@1",
@@ -2045,7 +2054,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     assert not any("todo_daemon" in path for path in repair_paths)
     assert "test/api/test_agent_supervisor_database_portal_bridge.py" not in repair_paths
 
-    malformed = copy.deepcopy(config)
+    malformed = copy.deepcopy(historical_config)
     malformed[key] = []
     with pytest.raises(
         operator.OperatorError,
@@ -2077,12 +2086,12 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         seal,
         changed_migration,
     )
-    changed_config = copy.deepcopy(config)
+    changed_config = copy.deepcopy(historical_config)
     changed_config["provider"]["fallback_model_id"] = "changed"
     assert dependency_validator._m10_live_projection_errors(
         changed_config,
-        seal,
-        migration,
+        historical_seal,
+        historical_migration,
     )
 
     operator_source = Path(operator.__file__).read_text(encoding="utf-8")
@@ -2716,3 +2725,835 @@ def test_m9_receipt_is_last_single_link_pair_marker(
         )
     assert not receipt_path.exists()
     assert len(list(target.glob(".migration-receipt.json.*.tmp"))) == 1
+
+
+def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m11_provider_retry_test",
+    )
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m11_provider_retry_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m11_provider_retry_test",
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m11_provider_retry_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "live_provider_retry_successor_materialization"
+    cid_key = "live_provider_retry_successor_materialization_cid"
+    expected_cid = (
+        "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e"
+    )
+    failure_cid = (
+        "sha256:a1fae6ef892b02a19b1155a0a5ed7c0eefa8f8255f3949e25d5a8b8b9d721676"
+    )
+    authority = config[key]
+
+    assert authority == migration[key]
+    assert "sha256:" + hashlib.sha256(
+        json.dumps(
+            authority,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest() == expected_cid
+    assert seal[cid_key] == expected_cid
+    assert materializer._expected_m11_live_provider_retry_authority() == authority
+    assert materializer._identity(authority) == expected_cid
+    population = materializer.build_population(REPO_ROOT)
+    assert materializer._m11_live_provider_retry_authority(
+        population,
+        config,
+    ) == authority
+    assert materializer._m11_successor_configured(config) is True
+    assert dependency_validator._m11_provider_retry_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert board_validator._m11_migration_errors(config, seal, migration) == []
+    assert board_validator._active_successor_migration_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert dependency_validator._m10_live_projection_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert operator._active_source_repair_materialization(config) == authority
+
+    assert authority["schema"] == "sawm/provider-launch-repair-authorization@1"
+    assert authority["migration_revision"] == "SAWM-R2-M11"
+    assert authority["prior_event_watermark"] == 181
+    assert authority["target_plan_revision"] == 12
+    assert authority["target_event_watermark"] == 184
+    assert authority["target_generation"] == 13
+    assert authority["target_projection_cid"] == (
+        "baguqeeratdygaminyfax543hh5bik3kj5admm5filgtu37a3jfnyc6snwnxa"
+    )
+    assert authority["prior_coordination_wal_sha256"] == (
+        "938dbc7028ec438889019c352b5a2529cc8c0f0fd18a11f0eb157a6772fc5321"
+    )
+    assert authority["prior_coordination_wal_size"] == 24_746
+    assert authority["prior_coordination_event_count"] == 55
+    assert authority["target_coordination_event_count"] == 56
+    assert authority["coordination_wal_replayed_on_copy"] is True
+    assert authority["prior_coordination_store_mutated"] is False
+    assert authority["task_rearm"]["from_status"] == "blocked"
+    assert authority["task_rearm"]["from_revision"] == 12
+    assert authority["task_rearm"]["to_status"] == "retrying"
+    assert authority["task_rearm"]["to_revision"] == 13
+    assert authority["task_rearm"]["settlement_id"] == (
+        "baguqeera7cwinhpjgl2etuitwiuhs4ts6lix5txyb2pjtsbfz2npfyryznma"
+    )
+    failure = authority["live_implementation_failure"]
+    assert authority["live_implementation_failure_cid"] == failure_cid
+    assert materializer._identity(failure) == failure_cid
+    assert failure["provider_execution_observed"] is True
+    assert failure["provider_execution_accounting_mismatch"] is True
+    assert failure["settlement_provider_invocation_count"] == 0
+    assert authority["implementation_provider_invocations_observed"] == 1
+    assert authority["settlement_provider_invocation_count"] == 0
+    for field in (
+        "effect_claim_changes",
+        "implementation_commit_changes",
+        "merge_attempt_changes",
+        "accepted_definition_changes",
+        "accepted_completion_changes",
+    ):
+        assert authority[field] == 0
+    assert authority["execution_sidecar_copied"] is False
+    assert authority["worker_self_approval"] is False
+    assert authority["provider_strategy"] == {
+        "capability_probe_required": True,
+        "prior_route": "grok-4.6_then_codex_on_independently_verified_quota",
+        "provider_result_is_completion_authority": False,
+        "route_changed": False,
+        "target_route": "grok-4.6_then_codex_on_independently_verified_quota",
+    }
+
+    repair_paths = set(authority["bounded_control_plane_repair_paths"])
+    assert len(repair_paths) == 11
+    assert authority["runner_repair"]["runner_path"] in repair_paths
+    assert authority["runner_repair"]["focused_test_path"] in repair_paths
+    assert repair_paths.issubset(dependency_validator.CONTROL_PATHS)
+    assert repair_paths.issubset(board_validator.CONTROL_RELATIVE_PATHS)
+    assert repair_paths.issubset(
+        set(population["source_binding"]["control_sha256"])
+    )
+    assert repair_paths.issubset(set(config["protected_paths"]))
+    assert repair_paths.issubset(
+        set(config["configured_board_live_capsule"]["control_paths"])
+    )
+
+    malformed = copy.deepcopy(config)
+    malformed[key] = []
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M11 provider-retry successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M11 live provider retry authority is invalid",
+    ):
+        materializer._m11_successor_configured(malformed)
+    assert any(
+        "M11" in error
+        for error in board_validator._active_successor_migration_errors(
+            malformed,
+            seal,
+            migration,
+        )
+    )
+
+    partial_inventory = copy.deepcopy(migration)
+    partial_inventory.pop(key)
+    assert any(
+        "M11" in error
+        for error in board_validator._active_successor_migration_errors(
+            config,
+            seal,
+            partial_inventory,
+        )
+    )
+    partial_seal = copy.deepcopy(seal)
+    partial_seal.pop(cid_key)
+    assert any(
+        "M11" in error
+        for error in board_validator._active_successor_migration_errors(
+            config,
+            partial_seal,
+            migration,
+        )
+    )
+
+    def rejected(mutator: object) -> None:
+        changed_config = copy.deepcopy(config)
+        changed_migration = copy.deepcopy(migration)
+        mutator(changed_config[key])
+        mutator(changed_migration[key])
+        assert dependency_validator._m11_provider_retry_errors(
+            changed_config,
+            seal,
+            changed_migration,
+        )
+
+    mutators = (
+        lambda item: item.__setitem__("prior_coordination_wal_size", 24_745),
+        lambda item: item.__setitem__("target_event_watermark", 183),
+        lambda item: item["task_rearm"].__setitem__("to_revision", 14),
+        lambda item: item["runner_repair"].__setitem__(
+            "provider_execution_observed", False
+        ),
+        lambda item: item.__setitem__(
+            "implementation_provider_invocations_observed", 0
+        ),
+        lambda item: item.__setitem__("execution_sidecar_copied", True),
+        lambda item: item["provider_strategy"].__setitem__(
+            "route_changed", True
+        ),
+        lambda item: item.__setitem__("worker_self_approval", True),
+        lambda item: item["bounded_control_plane_repair_paths"].pop(),
+    )
+    for mutator in mutators:
+        rejected(mutator)
+
+    operator_source = Path(operator.__file__).read_text(encoding="utf-8")
+    materializer_source = Path(materializer.__file__).read_text(encoding="utf-8")
+    assert operator_source.index(key) < operator_source.index(
+        "live_projection_successor_materialization"
+    )
+    assert "_verify_m11_head_task_projection" in operator_source
+    assert "_require_m11_final_pair_marker" in operator_source
+    assert materializer_source.index("def _m11_successor_configured") < (
+        materializer_source.index("def _m10_target_paths")
+    )
+    assert "def _assert_m11_source_delta" in materializer_source
+
+
+def test_m11_live_task_comparator_requires_exact_append_only_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m11_comparator_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m11_comparator_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    candidate_cid = (
+        "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+    )
+    tasks: dict[str, SimpleNamespace] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        body: dict[str, object] = {}
+        if alias == "SAWM-001":
+            body["completion_receipt"] = dict(operator._M11_REARM_RECEIPT)
+        tasks[str(expected["task_cid"])] = SimpleNamespace(
+            status=(
+                "completed"
+                if alias == "SAWM-000"
+                else "retrying"
+                if alias == "SAWM-001"
+                else "todo"
+            ),
+            revision=(
+                2
+                if alias == "SAWM-000"
+                else 13
+                if alias == "SAWM-001"
+                else 2
+            ),
+            body=body,
+        )
+    history = [
+        (candidate_cid, 10, "retrying", operator._M9_REARM_RECEIPT),
+        (candidate_cid, 11, "in_progress", operator._M10_CLAIM_RECEIPT),
+        (candidate_cid, 12, "blocked", operator._M10_FAILURE_RECEIPT),
+        (candidate_cid, 13, "retrying", operator._M11_REARM_RECEIPT),
+    ]
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self.rows
+
+        def fetchone(self) -> tuple[object, ...]:
+            return self.rows[0]
+
+    class Connection:
+        def execute(self, statement: str) -> Result:
+            if "FROM task_revisions" in statement:
+                return Result(
+                    [
+                        (task_cid, revision, status, json.dumps({
+                            "completion_receipt": dict(receipt)
+                        }))
+                        for task_cid, revision, status, receipt in history
+                    ]
+                )
+            if "FROM completion_receipts" in statement:
+                return Result([(1,)])
+            raise AssertionError(f"unexpected comparator query: {statement}")
+
+    class ConnectionContext:
+        def __enter__(self) -> Connection:
+            return Connection()
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    source = SimpleNamespace(
+        get_task=lambda task_cid: tasks.get(task_cid),
+        intent=SimpleNamespace(
+            _connection=lambda *, write=False: ConnectionContext()
+        ),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m6_task_projection",
+        lambda *_args, **_kwargs: ({}, {}, {}),
+    )
+    statuses, revisions, _receipts = operator._verify_m11_head_task_projection(
+        source,
+        population,
+        materializer,
+    )
+    assert statuses["SAWM-001"] == "retrying"
+    assert revisions["SAWM-001"] == 13
+
+    history.pop(1)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M11-head task revision/completion history differs",
+    ):
+        operator._verify_m11_head_task_projection(
+            source,
+            population,
+            materializer,
+        )
+    history.insert(
+        1,
+        (candidate_cid, 11, "in_progress", operator._M10_CLAIM_RECEIPT),
+    )
+    tasks[candidate_cid].revision = 12
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M11-head task status/revision differs: SAWM-001",
+    ):
+        operator._verify_m11_head_task_projection(
+            source,
+            population,
+            materializer,
+        )
+
+
+def test_m11_prior_base_wal_replay_is_disposable_and_tamper_closed(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m11_wal_replay_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._m11_live_provider_retry_authority(
+        population,
+        config,
+    )
+    copied_root = tmp_path / "disposable-authority"
+    copied_paths: list[Path] = []
+    for field in (
+        "prior_store_id",
+        "prior_coordination_store_id",
+        "prior_coordination_wal_id",
+        "prior_materialization_receipt_path",
+        "prior_owner_status_path",
+    ):
+        relative = Path(authority[field])
+        source = REPO_ROOT / relative
+        target = copied_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        copied_paths.append(target)
+    source_hashes = {
+        field: materializer._store_sha256(REPO_ROOT / authority[field])
+        for field in (
+            "prior_store_id",
+            "prior_coordination_store_id",
+            "prior_coordination_wal_id",
+        )
+    }
+
+    _control, _coordination, _wal, report = (
+        materializer._assert_m11_prior_publication_anchor(
+            copied_root,
+            authority,
+            population,
+        )
+    )
+    assert report["coordination_event_count"] == 55
+    assert report["coordination_projection_digest"] == (
+        "sha256:25b8bd03cfe9a684a2626a6c5e6c955b295ba6073248c7a1cf2cd83d7550576d"
+    )
+    assert {
+        field: materializer._store_sha256(REPO_ROOT / authority[field])
+        for field in source_hashes
+    } == source_hashes
+    assert all(path.is_file() for path in copied_paths)
+
+    copied_wal = copied_root / authority["prior_coordination_wal_id"]
+    copied_wal.write_bytes(copied_wal.read_bytes() + b"tamper")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="control/coordination/WAL bytes differ",
+    ):
+        materializer._assert_m11_prior_publication_anchor(
+            copied_root,
+            authority,
+            population,
+        )
+
+
+def _build_m11_rehearsal_pair(
+    materializer: ModuleType,
+    *,
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: dict[str, object],
+    config: dict[str, object],
+    validation_digest: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Build the exact M11 append and rearm only on disposable stores."""
+
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinator,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    monkeypatch.setattr(
+        intent_repository,
+        "_utc_iso",
+        lambda _moment=None: materializer._M11_CONTROL_RECORDED_AT,
+    )
+    control.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(prior_control, control)
+    shutil.copyfile(prior_coordination, coordination)
+    prior_wal = prior_coordination.with_name(prior_coordination.name + ".wal")
+    target_wal = coordination.with_name(coordination.name + ".wal")
+    shutil.copyfile(prior_wal, target_wal)
+
+    source = DatabaseTaskSource(
+        control,
+        install_schema=False,
+        repository_tree_id=str(population["repository_tree_id"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+        owner_id="sawm-r2-provider-retry-migrator",
+    )
+    try:
+        operator = source.get_task("SAWM-000")
+        assert operator is not None
+        body = materializer._m11_migration_body(
+            population,
+            config,
+            validation_digest,
+        )
+        digest = materializer._identity(body)
+        source.plans.append_revision(
+            plan_cid=str(population["plan_root_cid"]),
+            expected_revision=11,
+            body={
+                "current_source_binding_cid": population["source_binding"][
+                    "source_binding_cid"
+                ],
+                "source_migration_revision": materializer._M11_MIGRATION_REVISION,
+                "source_migration_digest": digest,
+                "supersession_mode": materializer._M11_SUPERSESSION_MODE,
+            },
+            delta=materializer._m11_migration_plan_delta(population, config),
+        )
+        source.record_evidence(
+            task_cid=operator.task_cid,
+            evidence_kind="operator_control_plane_source_migration",
+            digest=digest,
+            body=body,
+        )
+        task_cas = source.compare_and_set_status(
+            materializer._M10_LIVE_FAILURE_RECEIPT["task_cid"],
+            12,
+            "retrying",
+            materializer._m11_task_rearm_receipt(),
+        )
+    finally:
+        source.close()
+
+    coordinator = DatabaseCoordinator(coordination).open()
+    try:
+        rearm = coordinator.rearm_failed_task(
+            failure_receipt=materializer._M10_LIVE_FAILURE_RECEIPT,
+            control_task_observation=task_cas.to_dict(),
+            now_ms=materializer._M11_COORDINATION_REARM_OBSERVED_AT_MS,
+        )
+    finally:
+        coordinator.close()
+    assert rearm["ready"] is True
+    assert rearm["replayed"] is False
+
+    # Seal the disposable target's replayed coordination state into its base;
+    # the frozen predecessor base+WAL remain byte-for-byte untouched.
+    checkpoint = duckdb.connect(str(coordination))
+    try:
+        checkpoint.execute("CHECKPOINT")
+    finally:
+        checkpoint.close()
+    assert not os.path.lexists(target_wal)
+
+
+def test_m11_pair_receipt_last_rehearsal_is_idempotent_and_tamper_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m11_pair_receipt_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._m11_live_provider_retry_authority(
+        population,
+        config,
+    )
+    validation_digest = "sha256:m11-disposable-pair-receipt"
+
+    # Recreate the exact predecessor publication layout under a disposable
+    # root so every anchor and receipt path is exercised without a live write.
+    for field in (
+        "prior_store_id",
+        "prior_coordination_store_id",
+        "prior_coordination_wal_id",
+        "prior_materialization_receipt_path",
+        "prior_owner_status_path",
+    ):
+        source_path = REPO_ROOT / authority[field]
+        copied_path = tmp_path / authority[field]
+        copied_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, copied_path)
+    prior_control = tmp_path / authority["prior_store_id"]
+    prior_coordination = tmp_path / authority["prior_coordination_store_id"]
+    control = tmp_path / authority["target_store_id"]
+    coordination = tmp_path / authority["target_coordination_store_id"]
+    original_paths = tuple(
+        REPO_ROOT / authority[field]
+        for field in (
+            "prior_store_id",
+            "prior_coordination_store_id",
+            "prior_coordination_wal_id",
+            "prior_materialization_receipt_path",
+            "prior_owner_status_path",
+        )
+    )
+    original_hashes = {
+        path: materializer._store_sha256(path) for path in original_paths
+    }
+
+    _build_m11_rehearsal_pair(
+        materializer,
+        control=control,
+        coordination=coordination,
+        prior_control=prior_control,
+        prior_coordination=prior_coordination,
+        population=population,
+        config=config,
+        validation_digest=validation_digest,
+        monkeypatch=monkeypatch,
+    )
+    target_hashes = (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )
+    verified = materializer._verify_m11_store_pair(
+        tmp_path,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    assert verified["projection_cid"] == materializer._M11_EXPECTED_PROJECTION_CID
+    assert verified["event_watermark"] == 184
+    assert verified["coordination_event_count"] == 56
+    assert verified["task_revision_changes"] == 1
+    assert verified["task_status_changes"] == 1
+    assert target_hashes == (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )
+    assert materializer._verify_m11_store_pair(
+        tmp_path,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    ) == verified
+    anchored = materializer._assert_m11_prior_publication_anchor(
+        tmp_path,
+        authority,
+        population,
+    )
+
+    # The pair and predecessor were each checked above through their real
+    # disposable replay paths. Receipt-only fault cases should exercise the
+    # linearization protocol without repeating that expensive replay.
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m11_store_pair",
+        lambda *_args, **_kwargs: dict(verified),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m11_prior_publication_anchor",
+        lambda *_args, **_kwargs: anchored,
+    )
+
+    # Exercise the exact committed source-delta closure independently of the
+    # dirty test checkout, then retain that fail-closed fake for receipt work.
+    changed_paths = list(authority["bounded_control_plane_repair_paths"])
+
+    def exact_git(_root: Path, *args: str, **_kwargs: object) -> str:
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            return ""
+        if args and args[0] == "diff":
+            return "\n".join(f"M\t{path}" for path in changed_paths)
+        raise AssertionError(f"unexpected M11 source-delta git call: {args}")
+
+    monkeypatch.setattr(materializer, "_git", exact_git)
+    delta_population = copy.deepcopy(population)
+    delta_population["source_binding"]["head"] = "1" * 40
+    materializer._assert_m11_source_delta(
+        tmp_path,
+        delta_population,
+        authority,
+    )
+    changed_paths.append("unexpected.py")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="exact repair paths",
+    ):
+        materializer._assert_m11_source_delta(
+            tmp_path,
+            delta_population,
+            authority,
+        )
+    changed_paths.pop()
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m11_source_delta",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_committed_clean_source",
+        lambda *_args, **_kwargs: None,
+    )
+
+    receipt_path = control.parent / "migration-receipt.json"
+    expected = materializer._expected_m11_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    malformed_pending = control.parent / ".migration-receipt.json.bad.tmp"
+    malformed_pending.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="pending M11 receipt temporary differs",
+    ):
+        materializer._ensure_m11_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    assert not receipt_path.exists()
+    malformed_pending.unlink()
+
+    # An exact orphan from a crash before hardlink publication is recovered;
+    # an ambiguous or unrelated hardlink is never accepted.
+    pending = control.parent / ".migration-receipt.json.999999.tmp"
+    pending.write_bytes(materializer._canonical(expected) + b"\n")
+    receipt = materializer._ensure_m11_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    assert receipt == expected
+    assert receipt["schema"] == "sawm/non-authoritative-migration-receipt@9"
+    assert receipt["receipt_is_final_pair_commit_marker"] is True
+    assert receipt_path.stat().st_nlink == 1
+    assert not pending.exists()
+    assert not list(control.parent.glob(".migration-receipt.json.*.tmp"))
+    assert target_hashes == (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )
+    assert materializer._ensure_m11_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    ) == receipt
+    assert materializer._verify_existing_m11_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    ) == receipt
+
+    crash_alias = control.parent / ".migration-receipt.json.123.tmp"
+    os.link(receipt_path, crash_alias)
+    assert receipt_path.stat().st_nlink == 2
+    assert materializer._ensure_m11_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    ) == receipt
+    assert receipt_path.stat().st_nlink == 1
+    assert not crash_alias.exists()
+
+    unrelated_alias = control.parent / "unrelated-receipt-hardlink.json"
+    os.link(receipt_path, unrelated_alias)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="ambiguous pending hardlink",
+    ):
+        materializer._ensure_m11_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    unrelated_alias.unlink()
+
+    execution_sidecar = control.with_name("control.execution.duckdb")
+    execution_sidecar.write_bytes(b"forbidden")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="mutable sidecar appeared before final receipt",
+    ):
+        materializer._ensure_m11_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    execution_sidecar.unlink()
+
+    pristine_receipt = receipt_path.read_bytes()
+    tampered = json.loads(pristine_receipt)
+    tampered["worker_self_approval"] = True
+    receipt_path.write_bytes(materializer._canonical(tampered) + b"\n")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="final pair marker differs",
+    ):
+        materializer._verify_existing_m11_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    receipt_path.write_bytes(pristine_receipt)
+
+    assert original_hashes == {
+        path: materializer._store_sha256(path) for path in original_paths
+    }
+    assert target_hashes == (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )

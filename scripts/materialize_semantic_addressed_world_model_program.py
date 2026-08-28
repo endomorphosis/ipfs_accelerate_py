@@ -402,6 +402,193 @@ _M10_LIVE_PROJECTION_AUTHORITY_CID = (
     "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10"
 )
 
+_M11_EXPECTED_PROJECTION_CID = (
+    "baguqeeratdygaminyfax543hh5bik3kj5admm5filgtu37a3jfnyc6snwnxa"
+)
+_M11_EVENT_SUFFIX_LENGTH = 3
+_M11_TARGET_EVENT_WATERMARK = 184
+_M11_TARGET_PLAN_REVISION = 12
+_M11_TARGET_GENERATION = 13
+_M11_MIGRATION_REVISION = "SAWM-R2-M11"
+_M11_SUPERSESSION_MODE = "source_only_grok_container_lifecycle_and_retry_rearm"
+_M11_SUPERSESSION_REASON = "authenticated_grok_container_lifecycle_repair"
+_M11_CONTROL_RECORDED_AT = "2026-08-28T20:35:23Z"
+_M11_COORDINATION_REARM_OBSERVED_AT_MS = 1_787_949_321_963
+_M11_PRIOR_COORDINATION_PROJECTION_DIGEST = (
+    "sha256:25b8bd03cfe9a684a2626a6c5e6c955b295ba6073248c7a1cf2cd83d7550576d"
+)
+_M11_TARGET_COORDINATION_PROJECTION_DIGEST = (
+    "sha256:3b9ce361244387492da0156888cf6cb7377a020ca1f988b37509050975205ae7"
+)
+_M11_TARGET_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:d9a1f5bd53884346a847cb9e440b5e8e37c7e4e7a87ea52e173d719f2933821c"
+)
+_M11_TARGET_FROZEN_BASE_AUTHORITY_DIGEST = (
+    "sha256:f07f9836f6442ce4b8ba0db2a8ee2142d2f33141cbd65ff47ff1b07e412baa1a"
+)
+# Filled from the canonical object returned by
+# ``_expected_m11_live_provider_retry_authority`` below.  This is deliberately
+# a closed constant rather than accepting a scheduler-provided identity.
+_M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID = (
+    "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e"
+)
+
+_M11_FROZEN_LIVE_BINDING: dict[str, Any] = {
+    "store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m10/control.duckdb"
+    ),
+    "publication_control_store_sha256": (
+        "f0106a98b390e7933ff55f3f0f5326dbb8a6951adaa84721c13beff65e0a01ec"
+    ),
+    "control_store_sha256": (
+        "c38a6477e4e87aecea1c50f68d75e7c5c7cbe1ac0f50f543a9a8c2ace55c2467"
+    ),
+    "control_store_size": 45_101_056,
+    "coordination_store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m10/control.coordination.duckdb"
+    ),
+    "coordination_store_sha256": (
+        "e69a4c22a1a1a8bd38ccf210803a02ecb040d0ee9d4cc776165a4570425d6862"
+    ),
+    "coordination_store_size": 9_711_616,
+    "coordination_wal_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m10/control.coordination.duckdb.wal"
+    ),
+    "coordination_wal_sha256": (
+        "938dbc7028ec438889019c352b5a2529cc8c0f0fd18a11f0eb157a6772fc5321"
+    ),
+    "coordination_wal_size": 24_746,
+    "coordination_event_count": 55,
+    "coordination_projection_digest": _M11_PRIOR_COORDINATION_PROJECTION_DIGEST,
+    "event_watermark": 181,
+    "event_prefix_sha256": (
+        "279fab4757fbc5bcd2966af48ee26172591ef18f32a36b184d7d981521722f11"
+    ),
+    "projection_cid": (
+        "baguqeeramqb56wqvzegrmmuchnldydvhtu3o3takpwgzh2lyd55k4lxtzboa"
+    ),
+    "source_head": "64a7a2a8ea535f6c0adcd99fc2a3717241c9b81e",
+    "source_tree": "7203a523d32fc1661c70caa4b4e7329fd676c34b",
+    "source_binding_cid": (
+        "sha256:815f0ee9029f340875aa2c605f262ba6475dfe19329d9c436837b4a53ec3b855"
+    ),
+    "database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+    "generation": 12,
+    "plan_revision": 11,
+    "process_birth_id": "birth:c461fb92e92eb447b54242c92bd92bc6",
+    "server_id": "server:bfc6757f-4243-4558-87d0-9eab167a72d8",
+    "migration_receipt_path": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m10/migration-receipt.json"
+    ),
+    "migration_receipt_cid": (
+        "sha256:e83d457e93ba922a66ed586f84556e4c282f295db4a24188fc2378a18791a93d"
+    ),
+    "migration_receipt_file_sha256": (
+        "781a48edd7d4ff18e48965be68f483c04c2bffea6c7fc01dac86fcd95d8c5774"
+    ),
+    "owner_status_path": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m10/quack-owner/quack-state-server.status.json"
+    ),
+    "owner_status_sha256": (
+        "82aa9dcff5f3645200ef2ad6580655f79f7176b0dad1859d18fad1d839861d51"
+    ),
+    "semantic_authority_digest": (
+        "sha256:7dcdccefb3a54d4604716427bed164e36032429477612d9c92f3bf75fc4f9d46"
+    ),
+    "frozen_base_authority_digest": (
+        "sha256:86830295dfa9b17c0c15053c1caf9fa9c993137d0f198e5c61c64f8a23e6a1f6"
+    ),
+    "append_surface_digest": (
+        "sha256:342b08f9687b3511eced01e9febcb81517dccc57f3d41114eabe5819c9c7072e"
+    ),
+    "catalog_digest": (
+        "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7"
+    ),
+}
+
+_M10_LIVE_FAILURE_RECEIPT: dict[str, Any] = {
+    "schema": "ipfs_accelerate_py/agent-supervisor/task-claim-failure-settlement@1",
+    "operation": "database_task_claim_failure",
+    "failure_kind": "terminal_portal_bridge_error",
+    "failure_payload_digest": (
+        "sha256:ae39b0949ee96383a51692123359a59a787c355a6736db3ff332852d98144fcd"
+    ),
+    "task_cid": (
+        "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+    ),
+    "attempt_id": "attempt:5a657254c0b84063911e8292ef21a538",
+    "attempt_number": 2,
+    "claim_id": "claim:5fe583ac0e04406d8c975e8ddd2dcb3d",
+    "lease_id": "lease:6110decfef434aa39f16244d717c752d",
+    "owner_session_id": "embedded-store:5e8dddfdd778e8774949a4dea37110af",
+    "fencing_token": 2,
+    "fence_epoch": 2,
+    "provider_invocation_count": 0,
+    "effect_claim_count": 0,
+    "automatic_retry_admitted": False,
+    "control_expected_status": "in_progress",
+    "control_expected_revision": 11,
+    "settlement_id": (
+        "baguqeera7cwinhpjgl2etuitwiuhs4ts6lix5txyb2pjtsbfz2npfyryznma"
+    ),
+}
+
+_M10_LIVE_IMPLEMENTATION_FAILURE: dict[str, Any] = {
+    "schema": "sawm/live-control-implementation-failure@2",
+    "attempt": "SAWM-R2-M10-LIVE-A1",
+    "phase": "implementation_execution",
+    "failure_kind": (
+        "attached_provider_execution_misclassified_as_container_create_timeout"
+    ),
+    "task_alias": "SAWM-001",
+    "task_cid": _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+    "attempt_id": _M10_LIVE_FAILURE_RECEIPT["attempt_id"],
+    "claim_id": _M10_LIVE_FAILURE_RECEIPT["claim_id"],
+    "lease_id": _M10_LIVE_FAILURE_RECEIPT["lease_id"],
+    "settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+    "claim_event_id": (
+        "baguqeerau4vult3hr4j436wbs4eebz42viuwhcn5nhw7el5cshpaz2f6nn6q"
+    ),
+    "settlement_event_id": (
+        "baguqeerauj36ncst4jhan2yolvbq3u7icnf7ac5qmhcamkrvw43khhchdlrq"
+    ),
+    "from_status": "retrying",
+    "claim_status": "in_progress",
+    "terminal_status": "blocked",
+    "from_revision": 10,
+    "claim_revision": 11,
+    "terminal_revision": 12,
+    "portal_return_code": 127,
+    "terminal_error": "unable to launch Grok CLI: Grok container creation timed out",
+    "diagnosis": {
+        "kind": "attached_start_executed_in_typed_create_phase",
+        "create_helper": "_create_grok_container_and_build_start_command",
+        "run_helper": "_run_created_grok_container_with_typed_failure_capture",
+        "observed_fault": (
+            "pre-created docker start --attach command executed under the "
+            "120-second container-create timeout; provider execution timed out "
+            "before the subsequent identity-parse path"
+        ),
+        "required_repair": (
+            "typed route owns create, exact identity verification, and attached start"
+        ),
+    },
+    "provider_execution_observed": True,
+    "provider_execution_accounting_mismatch": True,
+    "settlement_provider_invocation_count": 0,
+    "effect_claim_count": 0,
+    "implementation_commit_count": 0,
+    "merge_attempt_count": 0,
+    "validation_run_count": 0,
+    "worker_self_approval": False,
+    "failure_receipt": _M10_LIVE_FAILURE_RECEIPT,
+}
+
 _M9_FROZEN_LIVE_BINDING: dict[str, Any] = {
     "store_id": (
         "data/agent_supervisor/semantic_addressed_world_model/"
@@ -970,6 +1157,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
@@ -994,6 +1182,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "test/api/test_agent_supervisor_database_coordination.py",
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
         "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
         "test/api/test_agent_supervisor_native_dependency_pin.py",
         "test/api/test_agent_supervisor_project_dependency_preflight.py",
         "test/api/test_agent_supervisor_provider_command_binding.py",
@@ -2017,6 +2206,257 @@ def _m10_live_projection_authority(
     return expected
 
 
+def _expected_m11_live_provider_retry_authority() -> dict[str, Any]:
+    """Return the closed M11 provider-lifecycle repair/rearm authority."""
+
+    repair_paths = [
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+    ]
+    return {
+        "schema": "sawm/provider-launch-repair-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M11_MIGRATION_REVISION,
+        "migration_kind": _M11_SUPERSESSION_REASON,
+        "supersession_mode": _M11_SUPERSESSION_MODE,
+        "prior_store_id": _M11_FROZEN_LIVE_BINDING["store_id"],
+        "prior_publication_control_store_sha256": _M11_FROZEN_LIVE_BINDING[
+            "publication_control_store_sha256"
+        ],
+        "prior_control_store_sha256": _M11_FROZEN_LIVE_BINDING[
+            "control_store_sha256"
+        ],
+        "prior_control_store_size": _M11_FROZEN_LIVE_BINDING[
+            "control_store_size"
+        ],
+        "prior_coordination_store_id": _M11_FROZEN_LIVE_BINDING[
+            "coordination_store_id"
+        ],
+        "prior_coordination_store_sha256": _M11_FROZEN_LIVE_BINDING[
+            "coordination_store_sha256"
+        ],
+        "prior_coordination_store_size": _M11_FROZEN_LIVE_BINDING[
+            "coordination_store_size"
+        ],
+        "prior_coordination_wal_id": _M11_FROZEN_LIVE_BINDING[
+            "coordination_wal_id"
+        ],
+        "prior_coordination_wal_sha256": _M11_FROZEN_LIVE_BINDING[
+            "coordination_wal_sha256"
+        ],
+        "prior_coordination_wal_size": _M11_FROZEN_LIVE_BINDING[
+            "coordination_wal_size"
+        ],
+        "prior_coordination_event_count": _M11_FROZEN_LIVE_BINDING[
+            "coordination_event_count"
+        ],
+        "prior_coordination_projection_digest": (
+            _M11_PRIOR_COORDINATION_PROJECTION_DIGEST
+        ),
+        "prior_event_watermark": _M11_FROZEN_LIVE_BINDING["event_watermark"],
+        "prior_event_prefix_sha256": _M11_FROZEN_LIVE_BINDING[
+            "event_prefix_sha256"
+        ],
+        "prior_projection_cid": _M11_FROZEN_LIVE_BINDING["projection_cid"],
+        "prior_source_head": _M11_FROZEN_LIVE_BINDING["source_head"],
+        "prior_source_tree": _M11_FROZEN_LIVE_BINDING["source_tree"],
+        "prior_source_binding_cid": _M11_FROZEN_LIVE_BINDING[
+            "source_binding_cid"
+        ],
+        "prior_database_uuid": _M11_FROZEN_LIVE_BINDING["database_uuid"],
+        "prior_generation": _M11_FROZEN_LIVE_BINDING["generation"],
+        "prior_plan_revision": _M11_FROZEN_LIVE_BINDING["plan_revision"],
+        "prior_process_birth_id": _M11_FROZEN_LIVE_BINDING[
+            "process_birth_id"
+        ],
+        "prior_server_id": _M11_FROZEN_LIVE_BINDING["server_id"],
+        "prior_materialization_receipt_path": _M11_FROZEN_LIVE_BINDING[
+            "migration_receipt_path"
+        ],
+        "prior_materialization_receipt_cid": _M11_FROZEN_LIVE_BINDING[
+            "migration_receipt_cid"
+        ],
+        "prior_materialization_receipt_file_sha256": _M11_FROZEN_LIVE_BINDING[
+            "migration_receipt_file_sha256"
+        ],
+        "prior_owner_status_path": _M11_FROZEN_LIVE_BINDING[
+            "owner_status_path"
+        ],
+        "prior_owner_status_sha256": _M11_FROZEN_LIVE_BINDING[
+            "owner_status_sha256"
+        ],
+        "prior_semantic_authority_digest": _M11_FROZEN_LIVE_BINDING[
+            "semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": _M11_FROZEN_LIVE_BINDING[
+            "frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": _M11_FROZEN_LIVE_BINDING[
+            "append_surface_digest"
+        ],
+        "prior_catalog_digest": _M11_FROZEN_LIVE_BINDING["catalog_digest"],
+        "target_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m11/control.duckdb"
+        ),
+        "target_coordination_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m11/control.coordination.duckdb"
+        ),
+        "target_generation": _M11_TARGET_GENERATION,
+        "target_plan_revision": _M11_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M11_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M11_EXPECTED_PROJECTION_CID,
+        "target_coordination_projection_digest": (
+            _M11_TARGET_COORDINATION_PROJECTION_DIGEST
+        ),
+        "target_coordination_event_count": 56,
+        "target_semantic_authority_digest": (
+            _M11_TARGET_SEMANTIC_AUTHORITY_DIGEST
+        ),
+        "target_frozen_base_authority_digest": (
+            _M11_TARGET_FROZEN_BASE_AUTHORITY_DIGEST
+        ),
+        "event_suffix_length": _M11_EVENT_SUFFIX_LENGTH,
+        "control_recorded_at": _M11_CONTROL_RECORDED_AT,
+        "coordination_rearm_observed_at_ms": (
+            _M11_COORDINATION_REARM_OBSERVED_AT_MS
+        ),
+        "bounded_control_plane_repair_paths": repair_paths,
+        "runner_repair": {
+            "runner_path": (
+                "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+            ),
+            "focused_test_path": (
+                "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+            ),
+            "failure_root": "attached_start_executed_in_typed_create_phase",
+            "expected_lifecycle": (
+                "typed_route_owns_create_identity_verification_and_attached_start"
+            ),
+            "provider_route_changed": False,
+            "provider_execution_observed": True,
+            "provider_execution_accounting_mismatch": True,
+            "settlement_provider_invocation_count": 0,
+            "effect_claim_count": 0,
+        },
+        "live_implementation_failure": _M10_LIVE_IMPLEMENTATION_FAILURE,
+        "live_implementation_failure_cid": _identity(
+            _M10_LIVE_IMPLEMENTATION_FAILURE
+        ),
+        "task_rearm": {
+            "schema": "sawm/control-plane-task-rearm-authorization@1",
+            "operation": "operator_control_plane_repair",
+            "task_alias": "SAWM-001",
+            "task_cid": _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+            "settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+            "from_status": "blocked",
+            "from_revision": 12,
+            "to_status": "retrying",
+            "to_revision": 13,
+            "automatic_retry_admitted": False,
+            "coordination_rearm_required": True,
+            "coordination_rearm_observed_at_ms": (
+                _M11_COORDINATION_REARM_OBSERVED_AT_MS
+            ),
+            "prior_coordination_event_count": 55,
+            "target_coordination_event_count": 56,
+            "historical_settlement_preserved": True,
+            # This counter is copied from the canonical failure settlement.  It
+            # is not asserted as an observation that the attached provider did
+            # not execute; that mismatch is explicit in runner_repair/failure.
+            "provider_invocation_count": 0,
+            "effect_claim_count": 0,
+            "implementation_commit_count": 0,
+            "merge_attempt_count": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "live_task_projection": {
+            "schema": "sawm/live-task-projection-expectation@1",
+            "task_count": 45,
+            "task_revision_count": 1,
+            "operator_task_alias": "SAWM-000",
+            "operator_status": "completed",
+            "operator_revision": 2,
+            "candidate_task_alias": "SAWM-001",
+            "candidate_task_cid": _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+            "prior_candidate_status": "blocked",
+            "prior_candidate_revision": 12,
+            "target_candidate_status": "retrying",
+            "target_candidate_revision": 13,
+            "target_candidate_completion_receipt": {
+                "operation": "operator_control_plane_repair",
+                "settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+            },
+            "remaining_task_status": "todo",
+            "remaining_task_revision": 2,
+        },
+        "provider_strategy": {
+            "prior_route": (
+                "grok-4.6_then_codex_on_independently_verified_quota"
+            ),
+            "target_route": (
+                "grok-4.6_then_codex_on_independently_verified_quota"
+            ),
+            "route_changed": False,
+            "capability_probe_required": True,
+            "provider_result_is_completion_authority": False,
+        },
+        "coordination_base_and_wal_copied": True,
+        "coordination_wal_replayed_on_copy": True,
+        "prior_coordination_store_mutated": False,
+        "coordination_semantic_changes": 1,
+        "execution_sidecar_copied": False,
+        "task_revision_changes": 1,
+        "task_status_changes": 1,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations_observed": 1,
+        "settlement_provider_invocation_count": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _m11_live_provider_retry_authority(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconcile the exact M11 authority across scheduler and inventory."""
+
+    expected = _expected_m11_live_provider_retry_authority()
+    configured = config.get("live_provider_retry_successor_materialization")
+    inventoried = population["migration_inventory"].get(
+        "live_provider_retry_successor_materialization"
+    )
+    if (
+        configured != expected
+        or inventoried != expected
+        or _identity(expected) != _M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID
+    ):
+        raise MaterializationError(
+            "M11 live provider retry authority differs across scheduler and inventory"
+        )
+    return expected
+
+
 def _assert_m8_source_delta(
     root: Path,
     population: Mapping[str, Any],
@@ -2147,6 +2587,53 @@ def _assert_m10_source_delta(
     if changed != authorized:
         raise MaterializationError(
             "M10 committed source delta differs from the exact projection repair paths: "
+            + json.dumps(
+                {
+                    "missing": sorted(authorized - changed),
+                    "unexpected": sorted(changed - authorized),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
+
+def _assert_m11_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Prove the committed M10-to-M11 repair is exactly confined."""
+
+    prior_head = str(authority["prior_source_head"])
+    current_head = str(population["source_binding"]["head"])
+    if current_head == prior_head:
+        raise MaterializationError("M11 provider repair has no successor commit")
+    _git(root, "merge-base", "--is-ancestor", prior_head, current_head)
+    changed: set[str] = set()
+    output = _git(
+        root,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        prior_head,
+        current_head,
+        "--",
+    )
+    for line in output.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 2 or fields[0] != "M":
+            raise MaterializationError(
+                f"M11 source delta contains a non-modification entry: {line}"
+            )
+        path = fields[1]
+        if not path or Path(path).is_absolute() or ".." in Path(path).parts:
+            raise MaterializationError("M11 source delta path is not confined")
+        changed.add(path)
+    authorized = set(authority["bounded_control_plane_repair_paths"])
+    if changed != authorized:
+        raise MaterializationError(
+            "M11 committed source delta differs from the exact repair paths: "
             + json.dumps(
                 {
                     "missing": sorted(authorized - changed),
@@ -2563,6 +3050,17 @@ def _m10_successor_configured(config: Mapping[str, Any]) -> bool:
     return True
 
 
+def _m11_successor_configured(config: Mapping[str, Any]) -> bool:
+    """Select M11 first by key presence and reject malformed authority."""
+
+    key = "live_provider_retry_successor_materialization"
+    if key not in config:
+        return False
+    if not isinstance(config.get(key), Mapping):
+        raise MaterializationError("M11 live provider retry authority is invalid")
+    return True
+
+
 def _m9_target_paths(
     root: Path,
     config: Mapping[str, Any],
@@ -2632,6 +3130,45 @@ def _m10_target_paths(
         or not coordination.is_relative_to(root)
     ):
         raise MaterializationError("scheduler M10 store pair is not confined")
+    return control, coordination
+
+
+def _m11_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Resolve and validate the closed M11 store-pair binding."""
+
+    target_id = str(authority["target_store_id"])
+    coordination_id = str(authority["target_coordination_store_id"])
+    program = config.get("database_program")
+    quack_owner = config.get("quack_owner")
+    if not isinstance(program, Mapping) or not isinstance(quack_owner, Mapping):
+        raise MaterializationError("scheduler M11 database authority is missing")
+    if (
+        str(program.get("store_id") or "") != target_id
+        or int(program.get("store_generation") or 0) != _M11_TARGET_GENERATION
+        or str(program.get("quack_endpoint") or "") != "quack:127.0.0.1:45255"
+        or str(quack_owner.get("database_path") or "") != target_id
+        or str(quack_owner.get("store_id") or "") != target_id
+        or int(quack_owner.get("port") or 0) != 45255
+    ):
+        raise MaterializationError("scheduler M11 target/generation/port binding differs")
+    control = _confined_leaf(root, target_id, noun="M11 control store")
+    coordination = _confined_leaf(
+        root,
+        coordination_id,
+        noun="M11 coordination store",
+    )
+    if (
+        control == coordination
+        or control.parent != coordination.parent
+        or not control.is_relative_to(root)
+        or not coordination.is_relative_to(root)
+        or coordination != control.with_name("control.coordination.duckdb")
+    ):
+        raise MaterializationError("scheduler M11 store pair is not confined")
     return control, coordination
 
 
@@ -6752,6 +7289,15 @@ def _m9_task_rearm_receipt() -> dict[str, Any]:
     }
 
 
+def _m11_task_rearm_receipt() -> dict[str, Any]:
+    """Return the exact M10-settlement receipt used by M11's control CAS."""
+
+    return {
+        "operation": "operator_control_plane_repair",
+        "settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+    }
+
+
 def _m9_migration_body(
     population: Mapping[str, Any],
     config: Mapping[str, Any],
@@ -7054,6 +7600,184 @@ def _m10_migration_plan_delta(
         "accepted_definition_changes": 0,
         "accepted_completion_changes": 0,
         "coordination_semantic_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _m11_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M11's exact provider repair and failed-task rearm evidence."""
+
+    authority = _m11_live_provider_retry_authority(population, config)
+    repair_paths = authority["bounded_control_plane_repair_paths"]
+    return {
+        "schema": "sawm/operator-control-plane-source-migration@8",
+        "migration_revision": _M11_MIGRATION_REVISION,
+        "board_namespace": NAMESPACE,
+        "plan_revision": REVISION,
+        "program_definition_cid": population["program_definition_cid"],
+        "plan_root_cid": population["plan_root_cid"],
+        "operator_task_cid": population["migration_inventory"][
+            "prior_task_cids"
+        ]["SAWM-000"],
+        "rearmed_task_cid": _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+        "prior_store_id": authority["prior_store_id"],
+        "prior_coordination_store_id": authority[
+            "prior_coordination_store_id"
+        ],
+        "prior_coordination_wal_id": authority["prior_coordination_wal_id"],
+        "target_store_id": authority["target_store_id"],
+        "target_coordination_store_id": authority[
+            "target_coordination_store_id"
+        ],
+        "prior_publication_control_store_sha256": authority[
+            "prior_publication_control_store_sha256"
+        ],
+        "prior_control_store_sha256": authority["prior_control_store_sha256"],
+        "prior_coordination_store_sha256": authority[
+            "prior_coordination_store_sha256"
+        ],
+        "prior_coordination_wal_sha256": authority[
+            "prior_coordination_wal_sha256"
+        ],
+        "prior_coordination_projection_digest": authority[
+            "prior_coordination_projection_digest"
+        ],
+        "target_coordination_projection_digest": authority[
+            "target_coordination_projection_digest"
+        ],
+        "prior_coordination_event_count": authority[
+            "prior_coordination_event_count"
+        ],
+        "target_coordination_event_count": authority[
+            "target_coordination_event_count"
+        ],
+        "prior_event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "prior_event_watermark": authority["prior_event_watermark"],
+        "prior_projection_cid": authority["prior_projection_cid"],
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_head": authority["prior_source_head"],
+        "prior_tree": authority["prior_source_tree"],
+        "prior_plan_revision": authority["prior_plan_revision"],
+        "target_plan_revision": authority["target_plan_revision"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "current_head": population["source_binding"]["head"],
+        "current_tree": population["source_binding"]["tree"],
+        "bounded_control_plane_repair_paths": list(repair_paths),
+        "bounded_control_plane_repair_sha256": {
+            path: population["source_binding"]["control_sha256"][path]
+            for path in repair_paths
+        },
+        "runner_repair": authority["runner_repair"],
+        "live_implementation_failure": authority[
+            "live_implementation_failure"
+        ],
+        "live_implementation_failure_cid": authority[
+            "live_implementation_failure_cid"
+        ],
+        "task_rearm": authority["task_rearm"],
+        "live_task_projection": authority["live_task_projection"],
+        "prior_materialization_receipt_cid": authority[
+            "prior_materialization_receipt_cid"
+        ],
+        "prior_materialization_receipt_file_sha256": authority[
+            "prior_materialization_receipt_file_sha256"
+        ],
+        "prior_owner_status_sha256": authority["prior_owner_status_sha256"],
+        "prior_semantic_authority_digest": authority[
+            "prior_semantic_authority_digest"
+        ],
+        "target_semantic_authority_digest": authority[
+            "target_semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": authority[
+            "prior_frozen_base_authority_digest"
+        ],
+        "target_frozen_base_authority_digest": authority[
+            "target_frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": authority[
+            "prior_append_surface_digest"
+        ],
+        "prior_catalog_digest": authority["prior_catalog_digest"],
+        "live_projection_successor_materialization_cid": (
+            _M10_LIVE_PROJECTION_AUTHORITY_CID
+        ),
+        "live_provider_retry_successor_materialization_cid": (
+            _M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID
+        ),
+        "validation_runtime": dict(config["validation_runtime"]),
+        "validator_digest": validation_digest,
+        "supersession_reason": _M11_SUPERSESSION_REASON,
+        "supersession_mode": _M11_SUPERSESSION_MODE,
+        "prior_authority_preserved": True,
+        "prior_coordination_base_and_wal_preserved": True,
+        "coordination_wal_replayed_on_copy": True,
+        "failed_attempt_history_preserved": True,
+        "failed_completion_barrier_rearmed": True,
+        "execution_sidecar_copied": False,
+        "accepted_task_definitions_rewritten": False,
+        "accepted_goal_definitions_rewritten": False,
+        "task_revision_changes": 1,
+        "task_status_changes": 1,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations_observed": 1,
+        "settlement_provider_invocation_count": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "operator_completion_replayed": False,
+        "worker_self_approval": False,
+    }
+
+
+def _m11_migration_plan_delta(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _m11_live_provider_retry_authority(population, config)
+    return {
+        "kind": _M11_SUPERSESSION_REASON,
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_materialization_receipt_cid": authority[
+            "prior_materialization_receipt_cid"
+        ],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "live_implementation_failure_cid": authority[
+            "live_implementation_failure_cid"
+        ],
+        "failure_settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+        "live_projection_successor_materialization_cid": (
+            _M10_LIVE_PROJECTION_AUTHORITY_CID
+        ),
+        "live_provider_retry_successor_materialization_cid": (
+            _M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID
+        ),
+        "prior_coordination_projection_digest": authority[
+            "prior_coordination_projection_digest"
+        ],
+        "target_coordination_projection_digest": authority[
+            "target_coordination_projection_digest"
+        ],
+        "target_semantic_authority_digest": authority[
+            "target_semantic_authority_digest"
+        ],
+        "rearmed_task_cid": _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+        "rearmed_task_status": "retrying",
+        "rearmed_task_revision": 13,
+        "task_revision_changes": 1,
+        "task_status_changes": 1,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "coordination_semantic_changes": 1,
         "worker_self_approval": False,
     }
 
@@ -7806,6 +8530,300 @@ def _assert_m10_prior_publication_anchor(
     ):
         raise MigrationRequired("stopped M9 owner evidence changed")
     return control, coordination
+
+
+def _assert_m11_prior_publication_anchor(
+    root: Path,
+    authority: Mapping[str, Any],
+    population: Mapping[str, Any] | None = None,
+) -> tuple[Path, Path, Path, dict[str, Any]]:
+    """Verify stopped M10 control plus its exact coordination base/WAL pair."""
+
+    control = _confined_leaf(
+        root,
+        str(authority["prior_store_id"]),
+        noun="frozen M10 control store",
+    )
+    coordination = _confined_leaf(
+        root,
+        str(authority["prior_coordination_store_id"]),
+        noun="frozen M10 coordination base",
+    )
+    coordination_wal = _confined_leaf(
+        root,
+        str(authority["prior_coordination_wal_id"]),
+        noun="frozen M10 coordination WAL",
+    )
+    if (
+        control.parent != coordination.parent
+        or coordination_wal.parent != coordination.parent
+        or coordination_wal != coordination.with_name(coordination.name + ".wal")
+    ):
+        raise MigrationRequired("frozen M10 control/coordination/WAL paths differ")
+    control_anchor = _stable_regular_sha256(
+        control,
+        root=root,
+        noun="frozen M10 control store",
+        required_link_count=1,
+    )
+    coordination_anchor = _stable_regular_sha256(
+        coordination,
+        root=root,
+        noun="frozen M10 coordination base",
+        required_link_count=1,
+    )
+    wal_anchor = _stable_regular_sha256(
+        coordination_wal,
+        root=root,
+        noun="frozen M10 coordination WAL",
+        required_link_count=1,
+    )
+    if (
+        control_anchor
+        != (
+            authority["prior_control_store_sha256"],
+            int(authority["prior_control_store_size"]),
+        )
+        or coordination_anchor
+        != (
+            authority["prior_coordination_store_sha256"],
+            int(authority["prior_coordination_store_size"]),
+        )
+        or wal_anchor
+        != (
+            authority["prior_coordination_wal_sha256"],
+            int(authority["prior_coordination_wal_size"]),
+        )
+    ):
+        raise MigrationRequired("frozen M10 control/coordination/WAL bytes differ")
+    _assert_offline(control)
+
+    receipt_path = _confined_leaf(
+        root,
+        str(authority["prior_materialization_receipt_path"]),
+        noun="frozen M10 final pair marker",
+    )
+    receipt, receipt_sha256 = _load_nofollow_json(
+        receipt_path,
+        root=root,
+        noun="frozen M10 final pair marker",
+    )
+    unhashed = dict(receipt)
+    receipt_cid = str(unhashed.pop("receipt_cid", ""))
+    if (
+        receipt_sha256 != authority["prior_materialization_receipt_file_sha256"]
+        or receipt_cid != authority["prior_materialization_receipt_cid"]
+        or receipt_cid != _identity(unhashed)
+        or receipt.get("schema") != "sawm/non-authoritative-migration-receipt@8"
+        or receipt.get("receipt_is_final_pair_commit_marker") is not True
+        or receipt.get("control_store_sha256")
+        != authority["prior_publication_control_store_sha256"]
+        or receipt.get("coordination_store_sha256")
+        != authority["prior_coordination_store_sha256"]
+    ):
+        raise MigrationRequired("frozen M10 final pair marker changed")
+
+    owner_path = _confined_leaf(
+        root,
+        str(authority["prior_owner_status_path"]),
+        noun="stopped M10 Quack owner status",
+    )
+    owner, owner_sha256 = _load_nofollow_json(
+        owner_path,
+        root=root,
+        noun="stopped M10 Quack owner status",
+    )
+    owner_identity = owner.get("identity")
+    if (
+        owner_sha256 != authority["prior_owner_status_sha256"]
+        or owner.get("lifecycle") != "stopped"
+        or not isinstance(owner_identity, Mapping)
+        or owner_identity.get("status") != "stopped"
+        or int(owner_identity.get("generation") or 0)
+        != int(authority["prior_generation"])
+        or owner_identity.get("database_uuid") != authority["prior_database_uuid"]
+        or owner_identity.get("server_id") != authority["prior_server_id"]
+        or owner_identity.get("process_birth_id")
+        != authority["prior_process_birth_id"]
+        or owner_identity.get("store_id") != authority["prior_store_id"]
+    ):
+        raise MigrationRequired("stopped M10 Quack owner status changed")
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        read_coordination_registry_projection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        verify_datasets_authoritative_operational_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    import duckdb
+
+    with tempfile.TemporaryDirectory(
+        prefix="sawm-r2-m11-prior-verify-",
+        dir="/tmp",
+    ) as temp_dir:
+        temp_root = Path(temp_dir)
+        control_copy = temp_root / "control.duckdb"
+        coordination_copy = temp_root / "control.coordination.duckdb"
+        wal_copy = temp_root / "control.coordination.duckdb.wal"
+        shutil.copyfile(control, control_copy)
+        shutil.copyfile(coordination, coordination_copy)
+        shutil.copyfile(coordination_wal, wal_copy)
+        if (
+            _store_sha256(control_copy) != control_anchor[0]
+            or _store_sha256(coordination_copy) != coordination_anchor[0]
+            or _store_sha256(wal_copy) != wal_anchor[0]
+        ):
+            raise MigrationRequired("disposable M10 base/WAL copy differs")
+
+        schema = verify_datasets_authoritative_operational_schema(control_copy)
+        if schema.get("valid") is not True:
+            raise MigrationRequired("M10 operational schema does not verify")
+        connection = duckdb.connect(str(control_copy), read_only=True)
+        try:
+            prefix_digest, prefix_count = _event_prefix_digest(
+                connection,
+                int(authority["prior_event_watermark"]),
+            )
+            counts = {
+                table: int(_table_count(connection, table))
+                for table in (
+                    "tasks",
+                    "goals",
+                    "plans",
+                    "plan_revisions",
+                    "evidence_nodes",
+                    "domain_events",
+                    "task_revisions",
+                    "completion_receipts",
+                    "provider_calls",
+                    "provider_invocations",
+                    "effect_claims",
+                    "merge_attempts",
+                )
+            }
+            catalog_digest = _main_catalog_digest_on(connection)
+        finally:
+            connection.close()
+        if (
+            prefix_digest != authority["prior_event_prefix_sha256"]
+            or prefix_count != int(authority["prior_event_watermark"])
+            or counts
+            != {
+                "tasks": 45,
+                "goals": 29,
+                "plans": 1,
+                "plan_revisions": 11,
+                "evidence_nodes": 12,
+                "domain_events": 181,
+                "task_revisions": 3,
+                "completion_receipts": 1,
+                "provider_calls": 0,
+                "provider_invocations": 0,
+                "effect_claims": 0,
+                "merge_attempts": 0,
+            }
+            or catalog_digest != authority["prior_catalog_digest"]
+            or _semantic_authority_digest(control_copy)
+            != authority["prior_semantic_authority_digest"]
+            or _frozen_base_authority_digest(control_copy)
+            != authority["prior_frozen_base_authority_digest"]
+            or _append_surface_digest(control_copy)
+            != authority["prior_append_surface_digest"]
+        ):
+            raise MigrationRequired("stopped M10 control authority differs")
+
+        source = DatabaseTaskSource(control_copy, install_schema=False)
+        try:
+            snapshot = source.snapshot()
+            operator = source.get_task("SAWM-000")
+            candidate = source.get_task("SAWM-001")
+            plan = source.get_plan(
+                "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914"
+            )
+            if (
+                int(snapshot.event_cursor) != int(authority["prior_event_watermark"])
+                or snapshot.projection_cid != authority["prior_projection_cid"]
+                or int(snapshot.task_count) != 45
+                or int(snapshot.goal_count) != 29
+                or operator is None
+                or operator.status != "completed"
+                or operator.revision != 2
+                or candidate is None
+                or candidate.status != "blocked"
+                or candidate.revision != 12
+                or dict(candidate.body).get("completion_receipt")
+                != _M10_LIVE_FAILURE_RECEIPT
+                or plan is None
+                or int(plan.get("revision") or 0)
+                != int(authority["prior_plan_revision"])
+                or not source.projection_matches_events()
+            ):
+                raise MigrationRequired("stopped M10 task projection differs")
+        finally:
+            source.close()
+
+        # Opening the disposable base with its copied WAL performs the only
+        # admitted replay.  The original base and WAL are never opened.
+        coordination_projection = read_coordination_registry_projection(
+            coordination_copy
+        )
+        coordination_connection = duckdb.connect(
+            str(coordination_copy),
+            read_only=True,
+        )
+        try:
+            coordination_event_count = int(
+                coordination_connection.execute(
+                    "SELECT COUNT(*) FROM lease_events"
+                ).fetchone()[0]
+            )
+        finally:
+            coordination_connection.close()
+        if (
+            coordination_projection.get("projection_root")
+            != authority["prior_coordination_projection_digest"]
+            or coordination_event_count
+            != int(authority["prior_coordination_event_count"])
+        ):
+            raise MigrationRequired("stopped M10 copied-WAL projection differs")
+
+    if (
+        _stable_regular_sha256(
+            control,
+            root=root,
+            noun="frozen M10 control store after verification",
+            required_link_count=1,
+        )
+        != control_anchor
+        or _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="frozen M10 coordination base after verification",
+            required_link_count=1,
+        )
+        != coordination_anchor
+        or _stable_regular_sha256(
+            coordination_wal,
+            root=root,
+            noun="frozen M10 coordination WAL after verification",
+            required_link_count=1,
+        )
+        != wal_anchor
+    ):
+        raise MigrationRequired("M10 authority changed during copied-WAL verification")
+    return control, coordination, coordination_wal, {
+        "valid": True,
+        "event_watermark": int(authority["prior_event_watermark"]),
+        "projection_cid": authority["prior_projection_cid"],
+        "coordination_event_count": coordination_event_count,
+        "coordination_projection_digest": coordination_projection[
+            "projection_root"
+        ],
+        "receipt": receipt,
+    }
 
 
 def _assert_m9_prior_publication_anchor(
@@ -8941,6 +9959,951 @@ def _verify_m10_store_pair(
         "control_store_sha256": initial_control[0],
         "coordination_store_sha256": initial_coordination[0],
     }
+
+
+def _verify_m11_store_pair_copy(
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify M11's closed control append and exact copied-WAL rearm."""
+
+    hashes = {
+        "control": _store_sha256(control),
+        "coordination": _store_sha256(coordination),
+        "prior_control": _store_sha256(prior_control),
+        "prior_coordination": _store_sha256(prior_coordination),
+        "prior_coordination_wal": _store_sha256(
+            prior_coordination.with_name(prior_coordination.name + ".wal")
+        ),
+    }
+    authority = _m11_live_provider_retry_authority(population, config)
+    expected_body = _m11_migration_body(population, config, validation_digest)
+    expected_digest = _identity(expected_body)
+    expected_delta = _m11_migration_plan_delta(population, config)
+    if (
+        hashes["prior_control"] != authority["prior_control_store_sha256"]
+        or hashes["prior_coordination"]
+        != authority["prior_coordination_store_sha256"]
+        or hashes["prior_coordination_wal"]
+        != authority["prior_coordination_wal_sha256"]
+    ):
+        raise MigrationRequired("M11 staged predecessor bytes differ")
+    if any(
+        os.path.lexists(path)
+        for path in (
+            control.with_name(control.name + ".wal"),
+            coordination.with_name(coordination.name + ".wal"),
+        )
+    ):
+        raise MigrationRequired("M11 staged target retained a mutable WAL")
+
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        TASK_CLAIM_FAILURE_REARMED_EVENT,
+        read_coordination_registry_projection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        verify_datasets_authoritative_operational_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+        canonical_content_cid,
+    )
+
+    prior = duckdb.connect(str(prior_control), read_only=True)
+    target = duckdb.connect(str(control), read_only=True)
+    try:
+        changed = {
+            "plans", "plan_revisions", "evidence_nodes", "domain_events",
+            "tasks", "task_revisions",
+        }
+        prior_tables = _main_table_names(prior)
+        target_tables = _main_table_names(target)
+        if (
+            prior_tables != target_tables
+            or not changed.issubset(prior_tables)
+            or _main_catalog_digest_on(prior) != _main_catalog_digest_on(target)
+            or _main_catalog_digest_on(prior) != authority["prior_catalog_digest"]
+        ):
+            raise MigrationRequired("M11 changed the control catalog")
+        stable = tuple(table for table in prior_tables if table not in changed)
+        if _authority_table_digest_on(prior, stable) != _authority_table_digest_on(
+            target, stable
+        ):
+            raise MigrationRequired("M11 changed a non-authorized control table")
+        rows: dict[str, tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]] = {}
+        for table, width, order in (
+            ("plans", 8, "1,2"),
+            ("plan_revisions", 4, "1,2,3,4"),
+            ("evidence_nodes", 7, "1,2,3,4,5,6,7"),
+            ("tasks", 15, "1"),
+            ("task_revisions", 5, "1,2"),
+        ):
+            rows[table] = (
+                _positional_rows(
+                    prior.execute(f"SELECT * FROM {table} ORDER BY {order}").fetchall(),
+                    width,
+                ),
+                _positional_rows(
+                    target.execute(f"SELECT * FROM {table} ORDER BY {order}").fetchall(),
+                    width,
+                ),
+            )
+        event_sql = (
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,"
+            "task_cid,attempt_id,session_id,recorded_at,body_json "
+            "FROM domain_events ORDER BY global_sequence"
+        )
+        prior_events = _positional_rows(prior.execute(event_sql).fetchall(), 10)
+        target_events = _positional_rows(target.execute(event_sql).fetchall(), 10)
+    finally:
+        target.close()
+        prior.close()
+
+    prior_plans, target_plans = rows["plans"]
+    prior_revisions, target_revisions = rows["plan_revisions"]
+    prior_evidence, target_evidence = rows["evidence_nodes"]
+    prior_tasks, target_tasks = rows["tasks"]
+    prior_task_revisions, target_task_revisions = rows["task_revisions"]
+    if (
+        len(prior_plans) != len(target_plans) != 0
+        or len(prior_plans) != 1
+        or len(target_revisions) != len(prior_revisions) + 1
+        or target_revisions[:-1] != prior_revisions
+        or len(target_evidence) != len(prior_evidence) + 1
+        or len(prior_events) != 181
+        or len(target_events) != 184
+        or target_events[:181] != prior_events
+        or len(target_task_revisions) != len(prior_task_revisions) + 1
+        or target_task_revisions[:-1] != prior_task_revisions
+    ):
+        raise MigrationRequired("M11 append-only surface counts differ")
+
+    prior_plan, target_plan = prior_plans[0], target_plans[0]
+    expected_plan_body = {
+        **json.loads(str(prior_plan[7])),
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_migration_revision": _M11_MIGRATION_REVISION,
+        "source_migration_digest": expected_digest,
+        "supersession_mode": _M11_SUPERSESSION_MODE,
+        "last_delta": expected_delta,
+    }
+    expected_evidence_id = content_identity(
+        {
+            "task_cid": population["migration_inventory"]["prior_task_cids"][
+                "SAWM-000"
+            ],
+            "evidence_kind": "operator_control_plane_source_migration",
+            "digest": expected_digest,
+            "body": expected_body,
+        }
+    )
+    prior_evidence_map = {str(row[0]): row for row in prior_evidence}
+    target_evidence_map = {str(row[0]): row for row in target_evidence}
+    new_evidence = target_evidence_map.get(expected_evidence_id)
+    if (
+        any(target_evidence_map.get(key) != row for key, row in prior_evidence_map.items())
+        or set(target_evidence_map) - set(prior_evidence_map) != {expected_evidence_id}
+        or new_evidence is None
+        or prior_plan[:5] != target_plan[:5]
+        or int(prior_plan[6]) != 11
+        or int(target_plan[6]) != 12
+        or json.loads(str(target_plan[7])) != expected_plan_body
+        or target_revisions[-1]
+        != (
+            str(population["plan_root_cid"]), 12,
+            _canonical(expected_plan_body).decode("utf-8"), str(target_plan[5]),
+        )
+        or str(new_evidence[2])
+        != population["migration_inventory"]["prior_task_cids"]["SAWM-000"]
+        or str(new_evidence[3]) != "operator_control_plane_source_migration"
+        or str(new_evidence[4]) != expected_digest
+        or str(new_evidence[5]) != _M11_CONTROL_RECORDED_AT
+        or json.loads(str(new_evidence[6])) != expected_body
+    ):
+        raise MigrationRequired("M11 plan/evidence append differs")
+
+    task_cid = _M10_LIVE_FAILURE_RECEIPT["task_cid"]
+    prior_task_map = {str(row[0]): row for row in prior_tasks}
+    target_task_map = {str(row[0]): row for row in target_tasks}
+    before = prior_task_map.get(task_cid)
+    after = target_task_map.get(task_cid)
+    if (
+        set(prior_task_map) != set(target_task_map)
+        or any(
+            target_task_map[cid] != row
+            for cid, row in prior_task_map.items()
+            if cid != task_cid
+        )
+        or before is None or after is None
+        or before[:6] != after[:6]
+        or (str(before[6]), int(before[7])) != ("blocked", 12)
+        or (str(after[6]), int(after[7])) != ("retrying", 13)
+        or before[8:10] != after[8:10]
+        or str(after[10]) != _M11_CONTROL_RECORDED_AT
+        or before[11] != after[11]
+        or before[13:] != after[13:]
+        or json.loads(str(before[12])).get("completion_receipt")
+        != _M10_LIVE_FAILURE_RECEIPT
+        or json.loads(str(after[12])).get("completion_receipt")
+        != _m11_task_rearm_receipt()
+        or target_task_revisions[-1]
+        != (task_cid, 13, "retrying", str(after[12]), _M11_CONTROL_RECORDED_AT)
+    ):
+        raise MigrationRequired("M11 task CAS differs")
+
+    events: list[dict[str, Any]] = []
+    for row in target_events[-3:]:
+        envelope = json.loads(str(row[9]))
+        event = {
+            "id": str(row[0]), "stream": str(row[1]), "sequence": int(row[2]),
+            "global": int(row[3]), "type": str(row[4]), "task": str(row[5]),
+            "attempt": str(row[6]), "session": str(row[7]),
+            "recorded_at": str(row[8]), "body": envelope,
+        }
+        if (
+            content_identity(
+                {
+                    "stream_id": event["stream"], "sequence": event["sequence"],
+                    "global_sequence": event["global"], "event_type": event["type"],
+                    "body": envelope,
+                }
+            ) != event["id"]
+            or event["stream"] != "stream:intent"
+            or event["sequence"] != event["global"]
+            or event["attempt"] or event["session"] != "session:intent"
+            or event["recorded_at"] != _M11_CONTROL_RECORDED_AT
+            or envelope.get("owner_id") != "sawm-r2-provider-retry-migrator"
+        ):
+            raise MigrationRequired("M11 event identity differs")
+        events.append(event)
+    if (
+        [event["type"] for event in events]
+        != ["intent.plan_revision_appended", "intent.evidence_recorded", "intent.task_status_changed"]
+        or [event["global"] for event in events] != [182, 183, 184]
+        or events[0]["body"].get("body", {}).get("body") != expected_plan_body
+        or events[1]["body"].get("subject_id") != expected_evidence_id
+        or events[1]["body"].get("body", {}).get("body") != expected_body
+        or events[2]["task"] != task_cid
+        or events[2]["body"].get("body", {}).get("receipt")
+        != _m11_task_rearm_receipt()
+        or events[2]["body"].get("body", {}).get("previous_status") != "blocked"
+        or events[2]["body"].get("body", {}).get("status") != "retrying"
+        or int(events[2]["body"].get("body", {}).get("revision") or 0) != 13
+    ):
+        raise MigrationRequired("M11 event bodies differ")
+
+    semantic = _semantic_authority_digest(control)
+    frozen = _frozen_base_authority_digest(control)
+    append = _append_surface_digest(control)
+    if (
+        semantic != authority["target_semantic_authority_digest"]
+        or frozen != authority["target_frozen_base_authority_digest"]
+    ):
+        raise MigrationRequired("M11 semantic authority digest differs")
+    # DatabaseTaskSource opens DuckDB read/write and may checkpoint even when
+    # callers only ask it to replay a projection.  Exercise that replay on a
+    # disposable clone so this verifier remains byte-preserving for both a
+    # staged candidate and an already-published authority.
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m11-control-replay-", dir="/tmp") as td:
+        replay_control = Path(td) / "control.duckdb"
+        shutil.copyfile(control, replay_control)
+        schema = verify_datasets_authoritative_operational_schema(replay_control)
+        source = DatabaseTaskSource(replay_control, install_schema=False)
+        try:
+            snapshot = source.snapshot()
+            task = source.get_task("SAWM-001")
+            plan = source.get_plan(str(population["plan_root_cid"]))
+            if (
+                schema.get("valid") is not True
+                or snapshot.event_cursor != 184
+                or snapshot.projection_cid != _M11_EXPECTED_PROJECTION_CID
+                or task is None or task.status != "retrying" or task.revision != 13
+                or dict(task.body).get("completion_receipt")
+                != _m11_task_rearm_receipt()
+                or plan is None or int(plan.get("revision") or 0) != 12
+                or plan.get("body") != expected_plan_body
+                or not source.projection_matches_events()
+            ):
+                raise MigrationRequired("M11 replay projection differs")
+        finally:
+            source.close()
+
+    prior_projection = read_coordination_registry_projection(prior_coordination)
+    target_projection = read_coordination_registry_projection(coordination)
+    if (
+        prior_projection.get("projection_root")
+        != authority["prior_coordination_projection_digest"]
+        or target_projection.get("projection_root")
+        != authority["target_coordination_projection_digest"]
+    ):
+        raise MigrationRequired("M11 coordination projection differs")
+    prior_db = duckdb.connect(str(prior_coordination), read_only=True)
+    target_db = duckdb.connect(str(coordination), read_only=True)
+    try:
+        changed_coord = {"coordination_tasks", "task_completions", "lease_events"}
+        prior_coord_tables = _main_table_names(prior_db)
+        target_coord_tables = _main_table_names(target_db)
+        stable_coord = tuple(t for t in prior_coord_tables if t not in changed_coord)
+        if (
+            prior_coord_tables != target_coord_tables
+            or _main_catalog_digest_on(prior_db) != _main_catalog_digest_on(target_db)
+            or _authority_table_digest_on(prior_db, stable_coord)
+            != _authority_table_digest_on(target_db, stable_coord)
+        ):
+            raise MigrationRequired("M11 changed frozen coordination history")
+        prior_coord_events = prior_db.execute("SELECT * FROM lease_events ORDER BY event_id").fetchall()
+        retained_events = target_db.execute(
+            "SELECT * FROM lease_events WHERE NOT (event_type=? AND lease_id=? "
+            "AND fencing_token=2 AND fence_epoch=2) ORDER BY event_id",
+            [TASK_CLAIM_FAILURE_REARMED_EVENT, _M10_LIVE_FAILURE_RECEIPT["lease_id"]],
+        ).fetchall()
+        rearm_rows = target_db.execute(
+            "SELECT * FROM lease_events WHERE event_type=? AND lease_id=? "
+            "AND fencing_token=2 AND fence_epoch=2",
+            [TASK_CLAIM_FAILURE_REARMED_EVENT, _M10_LIVE_FAILURE_RECEIPT["lease_id"]],
+        ).fetchall()
+        prior_coord_tasks = prior_db.execute("SELECT * FROM coordination_tasks ORDER BY task_cid").fetchall()
+        target_coord_tasks = target_db.execute("SELECT * FROM coordination_tasks ORDER BY task_cid").fetchall()
+        prior_completions = prior_db.execute("SELECT * FROM task_completions ORDER BY task_cid").fetchall()
+        target_completions = target_db.execute("SELECT * FROM task_completions ORDER BY task_cid").fetchall()
+    finally:
+        target_db.close(); prior_db.close()
+    expected_rearm = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/task-claim-failure-rearm@1",
+        "operation": "operator_control_plane_repair", "task_cid": task_cid,
+        "failure_settlement_id": _M10_LIVE_FAILURE_RECEIPT["settlement_id"],
+        "control_status": "retrying", "control_revision": 13,
+        "control_receipt_id": canonical_content_cid(_m11_task_rearm_receipt()),
+    }
+    expected_rearm["rearm_id"] = canonical_content_cid(expected_rearm)
+    if (
+        len(prior_coord_events) != 55 or retained_events != prior_coord_events
+        or len(rearm_rows) != 1 or len(prior_coord_tasks) != 1
+        or len(target_coord_tasks) != 1
+        or prior_coord_tasks[0][:4] != target_coord_tasks[0][:4]
+        or prior_coord_tasks[0][4] is not False or target_coord_tasks[0][4] is not True
+        or prior_coord_tasks[0][5:] != target_coord_tasks[0][5:]
+        or len(prior_completions) != 1 or target_completions
+        or json.loads(str(prior_completions[0][3])) != _M10_LIVE_FAILURE_RECEIPT
+        or json.loads(str(rearm_rows[0][7])) != expected_rearm
+        or int(rearm_rows[0][6]) != _M11_COORDINATION_REARM_OBSERVED_AT_MS
+    ):
+        raise MigrationRequired("M11 coordination rearm differs")
+    if any(
+        _store_sha256(path) != hashes[name]
+        for name, path in (
+            ("control", control), ("coordination", coordination),
+            ("prior_control", prior_control), ("prior_coordination", prior_coordination),
+            (
+                "prior_coordination_wal",
+                prior_coordination.with_name(prior_coordination.name + ".wal"),
+            ),
+        )
+    ):
+        raise MaterializationError("M11 verifier mutated a store")
+    return {
+        "valid": True, "task_count": 45, "goal_count": 29,
+        "projection_cid": _M11_EXPECTED_PROJECTION_CID,
+        "event_watermark": 184, "projection_matches_events": True,
+        "migration_digest": expected_digest,
+        "migration_evidence_id": expected_evidence_id,
+        "plan_migration_event_id": events[0]["id"],
+        "migration_evidence_event_id": events[1]["id"],
+        "task_rearm_event_id": events[2]["id"],
+        "task_rearm_receipt_cid": content_identity(_m11_task_rearm_receipt()),
+        "coordination_rearm_event_id": str(rearm_rows[0][0]),
+        "coordination_rearm_id": expected_rearm["rearm_id"],
+        "semantic_authority_digest": semantic,
+        "frozen_base_authority_digest": frozen,
+        "append_surface_digest": append,
+        "coordination_projection_digest": target_projection["projection_root"],
+        "coordination_event_count": 56,
+        "control_store_sha256": hashes["control"],
+        "coordination_store_sha256": hashes["coordination"],
+        "task_revision_changes": 1, "task_status_changes": 1,
+        "accepted_definition_changes": 0, "accepted_completion_changes": 0,
+        "coordination_semantic_changes": 1,
+    }
+
+
+def _verify_m11_store_pair(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify published M11 stores only through disposable exact copies."""
+
+    _assert_offline(control)
+    initial_control = _stable_regular_sha256(
+        control, root=root, noun="published M11 control store", required_link_count=1
+    )
+    initial_coordination = _stable_regular_sha256(
+        coordination, root=root, noun="published M11 coordination store", required_link_count=1
+    )
+    initial_prior_control = _stable_regular_sha256(
+        prior_control,
+        root=root,
+        noun="frozen M10 control store",
+        required_link_count=1,
+    )
+    initial_prior_coordination = _stable_regular_sha256(
+        prior_coordination,
+        root=root,
+        noun="frozen M10 coordination base store",
+        required_link_count=1,
+    )
+    prior_coordination_wal = prior_coordination.with_name(
+        prior_coordination.name + ".wal"
+    )
+    prior_wal_anchor = _stable_regular_sha256(
+        prior_coordination_wal,
+        root=root,
+        noun="frozen M10 coordination WAL",
+        required_link_count=1,
+    )
+    authority = _m11_live_provider_retry_authority(population, config)
+    if (
+        initial_prior_control
+        != (
+            authority["prior_control_store_sha256"],
+            int(authority["prior_control_store_size"]),
+        )
+        or initial_prior_coordination
+        != (
+            authority["prior_coordination_store_sha256"],
+            int(authority["prior_coordination_store_size"]),
+        )
+        or prior_wal_anchor
+        != (
+            authority["prior_coordination_wal_sha256"],
+            int(authority["prior_coordination_wal_size"]),
+        )
+    ):
+        raise MigrationRequired("M11 frozen predecessor bytes differ")
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m11-verify-", dir="/tmp") as td:
+        base = Path(td)
+        copies = [base / name for name in (
+            "control.duckdb", "control.coordination.duckdb",
+            "prior-control.duckdb", "prior-control.coordination.duckdb",
+        )]
+        for source_path, copy_path in zip(
+            (control, coordination, prior_control, prior_coordination), copies
+        ):
+            shutil.copyfile(source_path, copy_path)
+        prior_wal_copy = copies[3].with_name(copies[3].name + ".wal")
+        shutil.copyfile(prior_coordination_wal, prior_wal_copy)
+        report = _verify_m11_store_pair_copy(
+            *copies, population, config, validation_digest
+        )
+    if (
+        _stable_regular_sha256(control, root=root, noun="published M11 control store", required_link_count=1)
+        != initial_control
+        or _stable_regular_sha256(coordination, root=root, noun="published M11 coordination store", required_link_count=1)
+        != initial_coordination
+        or _stable_regular_sha256(
+            prior_control,
+            root=root,
+            noun="frozen M10 control store after verification",
+            required_link_count=1,
+        )
+        != initial_prior_control
+        or _stable_regular_sha256(
+            prior_coordination,
+            root=root,
+            noun="frozen M10 coordination base after verification",
+            required_link_count=1,
+        )
+        != initial_prior_coordination
+        or _stable_regular_sha256(
+            prior_coordination_wal,
+            root=root,
+            noun="frozen M10 coordination WAL after verification",
+            required_link_count=1,
+        )
+        != prior_wal_anchor
+    ):
+        raise MaterializationError("M11 verification changed published bytes")
+    return {**report, "control_store_sha256": initial_control[0],
+            "coordination_store_sha256": initial_coordination[0]}
+
+
+def _expected_m11_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M11's receipt-last, non-authoritative pair marker."""
+
+    authority = _m11_live_provider_retry_authority(population, config)
+    _assert_m11_source_delta(root, population, authority)
+    control_hash = _stable_regular_sha256(
+        control, root=root, noun="published M11 control store", required_link_count=1
+    )
+    coordination_hash = _stable_regular_sha256(
+        coordination, root=root, noun="published M11 coordination store", required_link_count=1
+    )
+    if (
+        control_hash[0] != verified.get("control_store_sha256")
+        or coordination_hash[0] != verified.get("coordination_store_sha256")
+        or verified.get("projection_cid") != _M11_EXPECTED_PROJECTION_CID
+        or int(verified.get("event_watermark") or 0) != 184
+        or verified.get("semantic_authority_digest")
+        != authority["target_semantic_authority_digest"]
+        or verified.get("coordination_projection_digest")
+        != authority["target_coordination_projection_digest"]
+        or int(verified.get("coordination_event_count") or 0) != 56
+    ):
+        raise MigrationRequired("M11 pair changed before receipt construction")
+    receipt = {
+        "schema": "sawm/non-authoritative-migration-receipt@9",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "coordination_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": _M11_MIGRATION_REVISION,
+        "program_definition_cid": population["program_definition_cid"],
+        "plan_projection_cid": _projection_at_watermark(control, population, 181),
+        "migration_projection_cid": verified["projection_cid"],
+        "migration_event_watermark": 184,
+        "projection_cid": verified["projection_cid"],
+        "target_event_watermark": 184,
+        "validation_digest": validation_digest,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "plan_migration_event_id": verified["plan_migration_event_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "task_rearm_event_id": verified["task_rearm_event_id"],
+        "task_rearm_receipt_cid": verified["task_rearm_receipt_cid"],
+        "coordination_rearm_event_id": verified["coordination_rearm_event_id"],
+        "coordination_rearm_id": verified["coordination_rearm_id"],
+        "coordination_projection_digest": verified[
+            "coordination_projection_digest"
+        ],
+        "coordination_event_count": 56,
+        "control_store_sha256": control_hash[0],
+        "control_store_size": control_hash[1],
+        "coordination_store_sha256": coordination_hash[0],
+        "coordination_store_size": coordination_hash[1],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "frozen_base_authority_digest": verified[
+            "frozen_base_authority_digest"
+        ],
+        "append_surface_digest": verified["append_surface_digest"],
+        "prior_database_path": authority["prior_store_id"],
+        "prior_coordination_path": authority["prior_coordination_store_id"],
+        "prior_coordination_wal_path": authority["prior_coordination_wal_id"],
+        "database_path": str(control.relative_to(root)),
+        "coordination_path": str(coordination.relative_to(root)),
+        "prior_control_store_sha256": authority["prior_control_store_sha256"],
+        "prior_coordination_store_sha256": authority[
+            "prior_coordination_store_sha256"
+        ],
+        "prior_coordination_wal_sha256": authority[
+            "prior_coordination_wal_sha256"
+        ],
+        "prior_coordination_wal_size": authority["prior_coordination_wal_size"],
+        "prior_event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_materialization_receipt_cid": authority[
+            "prior_materialization_receipt_cid"
+        ],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "live_implementation_failure_cid": authority[
+            "live_implementation_failure_cid"
+        ],
+        "live_provider_retry_successor_materialization_cid": (
+            _M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID
+        ),
+        "coordination_base_and_wal_copied": True,
+        "coordination_wal_replayed_on_copy": True,
+        "prior_coordination_store_mutated": False,
+        "failed_attempt_history_preserved": True,
+        "failed_completion_barrier_rearmed": True,
+        "coordination_semantic_changes": 1,
+        "execution_sidecar_copied": False,
+        "task_revision_changes": 1,
+        "task_status_changes": 1,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations_observed": 1,
+        "settlement_provider_invocation_count": 0,
+        "provider_execution_accounting_mismatch": True,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    return {**receipt, "receipt_cid": _identity(receipt)}
+
+
+def _assert_m11_receipt_commit_inputs(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    expected: Mapping[str, Any],
+) -> None:
+    """Rehash every M11 commit input at the receipt linearization point."""
+
+    if _stable_regular_sha256(
+        control, root=root, noun="M11 receipt control store", required_link_count=1
+    ) != (expected["control_store_sha256"], int(expected["control_store_size"])):
+        raise MigrationRequired("M11 control changed before final receipt")
+    if _stable_regular_sha256(
+        coordination, root=root, noun="M11 receipt coordination store", required_link_count=1
+    ) != (
+        expected["coordination_store_sha256"],
+        int(expected["coordination_store_size"]),
+    ):
+        raise MigrationRequired("M11 coordination changed before final receipt")
+    if any(
+        os.path.lexists(path)
+        for path in (
+            control.with_name("control.execution.duckdb"),
+            control.with_name("control.execution.duckdb.wal"),
+            control.with_name("control.read-replica.duckdb"),
+            control.with_name(control.name + ".wal"),
+            coordination.with_name(coordination.name + ".wal"),
+        )
+    ):
+        raise MigrationRequired("M11 mutable sidecar appeared before final receipt")
+
+
+def _ensure_m11_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    pair_lock_held: bool = False,
+) -> dict[str, Any]:
+    """Publish M11's final marker last, with crash-state recovery."""
+
+    if not pair_lock_held:
+        pair_lock = control.parent / ".m11-store-pair.publish.lock"
+        pair_descriptor = os.open(
+            pair_lock,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            lock_stat = os.fstat(pair_descriptor)
+            if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+                raise MaterializationError("M11 bundle lock is not a regular file")
+            deadline = time.monotonic() + 10.0
+            while True:
+                try:
+                    fcntl.flock(
+                        pair_descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    break
+                except BlockingIOError as exc:
+                    if time.monotonic() >= deadline:
+                        raise MaterializationError(
+                            "timed out acquiring the M11 pair publication lock"
+                        ) from exc
+                    time.sleep(0.02)
+            return _ensure_m11_migration_receipt(
+                root,
+                control,
+                coordination,
+                population,
+                config,
+                verified,
+                validation_digest,
+                pair_lock_held=True,
+            )
+        finally:
+            try:
+                fcntl.flock(pair_descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(pair_descriptor)
+
+    authority = _m11_live_provider_retry_authority(population, config)
+    _assert_committed_clean_source(root, population)
+    _assert_m11_source_delta(root, population, authority)
+    prior_control, prior_coordination, _prior_wal, _prior = (
+        _assert_m11_prior_publication_anchor(root, authority, population)
+    )
+    current_verified = _verify_m11_store_pair(
+        root,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    if dict(current_verified) != dict(verified):
+        raise MigrationRequired("M11 pair changed before receipt publication")
+    expected = _expected_m11_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        config,
+        current_verified,
+        validation_digest,
+    )
+    receipt_path = control.parent / "migration-receipt.json"
+    lock = receipt_path.with_name(f".{receipt_path.name}.publish.lock")
+    descriptor = os.open(
+        lock,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        lock_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise MaterializationError("M11 receipt lock is not a regular file")
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the M11 receipt publication lock"
+                    ) from exc
+                time.sleep(0.02)
+        directory = os.open(
+            receipt_path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            _assert_m11_receipt_commit_inputs(
+                root,
+                control,
+                coordination,
+                expected,
+            )
+            pending = sorted(
+                receipt_path.parent.glob(f".{receipt_path.name}.*.tmp")
+            )
+            if os.path.lexists(receipt_path):
+                receipt_stat = os.lstat(receipt_path)
+                if not stat.S_ISREG(receipt_stat.st_mode):
+                    raise MigrationRequired("M11 receipt leaf is not regular")
+                if receipt_stat.st_nlink == 2:
+                    aliases: list[Path] = []
+                    for candidate in pending:
+                        candidate_stat = os.lstat(candidate)
+                        if (
+                            stat.S_ISREG(candidate_stat.st_mode)
+                            and candidate_stat.st_dev == receipt_stat.st_dev
+                            and candidate_stat.st_ino == receipt_stat.st_ino
+                        ):
+                            aliases.append(candidate)
+                    if len(aliases) != 1 or len(pending) != 1:
+                        raise MigrationRequired(
+                            "M11 receipt has an ambiguous pending hardlink"
+                        )
+                    observed, _ = _load_nofollow_json(
+                        receipt_path,
+                        root=root,
+                        noun="pending M11 migration receipt",
+                        required_link_count=2,
+                    )
+                    if observed != expected:
+                        raise MigrationRequired("pending M11 receipt differs")
+                    _assert_m11_receipt_commit_inputs(
+                        root,
+                        control,
+                        coordination,
+                        expected,
+                    )
+                    os.unlink(aliases[0])
+                    os.fsync(directory)
+                    pending = []
+                elif receipt_stat.st_nlink != 1 or pending:
+                    raise MigrationRequired(
+                        "M11 receipt or pending alias population differs"
+                    )
+                observed, _ = _load_nofollow_json(
+                    receipt_path,
+                    root=root,
+                    noun="external M11 migration receipt",
+                )
+                unhashed = dict(observed)
+                claimed = str(unhashed.pop("receipt_cid", ""))
+                if observed != expected or claimed != _identity(unhashed):
+                    raise MigrationRequired("external M11 migration receipt differs")
+                _assert_m11_receipt_commit_inputs(
+                    root,
+                    control,
+                    coordination,
+                    expected,
+                )
+                return observed
+
+            if len(pending) > 1:
+                raise MigrationRequired("M11 has ambiguous pending receipt files")
+            if pending:
+                temporary = pending[0]
+                observed, _ = _load_nofollow_json(
+                    temporary,
+                    root=root,
+                    noun="pending M11 receipt temporary",
+                )
+                if observed != expected:
+                    raise MigrationRequired("pending M11 receipt temporary differs")
+            else:
+                temporary = receipt_path.with_name(
+                    f".{receipt_path.name}.{os.getpid()}.tmp"
+                )
+                out = os.open(
+                    temporary,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                )
+                try:
+                    payload = _canonical(expected) + b"\n"
+                    view = memoryview(payload)
+                    while view:
+                        view = view[os.write(out, view) :]
+                    os.fsync(out)
+                finally:
+                    os.close(out)
+            _assert_m11_receipt_commit_inputs(
+                root,
+                control,
+                coordination,
+                expected,
+            )
+            try:
+                os.link(temporary, receipt_path, follow_symlinks=False)
+            except FileExistsError as exc:
+                raise MigrationRequired(
+                    "M11 receipt target appeared during publication"
+                ) from exc
+            linked, _ = _load_nofollow_json(
+                receipt_path,
+                root=root,
+                noun="new M11 migration receipt",
+                required_link_count=2,
+            )
+            if linked != expected:
+                raise MigrationRequired("new M11 receipt differs before commit")
+            linked_stat = os.lstat(receipt_path)
+            try:
+                _assert_m11_receipt_commit_inputs(
+                    root,
+                    control,
+                    coordination,
+                    expected,
+                )
+            except Exception:
+                try:
+                    current_stat = os.lstat(receipt_path)
+                except FileNotFoundError:
+                    current_stat = None
+                if (
+                    current_stat is not None
+                    and current_stat.st_dev == linked_stat.st_dev
+                    and current_stat.st_ino == linked_stat.st_ino
+                ):
+                    os.unlink(receipt_path)
+                    os.fsync(directory)
+                raise
+            os.unlink(temporary)
+            os.fsync(directory)
+            observed, _ = _load_nofollow_json(
+                receipt_path,
+                root=root,
+                noun="committed M11 migration receipt",
+            )
+            if observed != expected:
+                raise MigrationRequired("committed M11 receipt differs")
+            try:
+                _assert_m11_receipt_commit_inputs(
+                    root,
+                    control,
+                    coordination,
+                    expected,
+                )
+            except Exception:
+                try:
+                    current_stat = os.lstat(receipt_path)
+                except FileNotFoundError:
+                    current_stat = None
+                if (
+                    current_stat is not None
+                    and current_stat.st_dev == linked_stat.st_dev
+                    and current_stat.st_ino == linked_stat.st_ino
+                ):
+                    os.unlink(receipt_path)
+                    os.fsync(directory)
+                raise
+            return observed
+        finally:
+            os.close(directory)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+
+def _verify_existing_m11_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    expected = _expected_m11_migration_receipt(
+        root, control, coordination, population, config, verified, validation_digest
+    )
+    _assert_m11_receipt_commit_inputs(root, control, coordination, expected)
+    observed, _ = _load_nofollow_json(
+        control.parent / "migration-receipt.json",
+        root=root,
+        noun="M11 final pair marker",
+    )
+    if observed != expected:
+        raise MigrationRequired("M11 final pair marker differs")
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if claimed != _identity(unhashed):
+        raise MigrationRequired("M11 final pair marker CID does not rehash")
+    _assert_m11_receipt_commit_inputs(root, control, coordination, expected)
+    return observed
 
 
 def _verify_m7_store_copy(
@@ -10219,6 +12182,75 @@ def _check_m10_materialized(
     }
 
 
+def _check_m11_materialized(
+    repo_root: Path | str = REPO_ROOT,
+    config_path: Path | str = CONFIG_PATH,
+) -> dict[str, Any]:
+    """Verify M11 and its receipt-last marker without mutating authority."""
+
+    root = Path(repo_root).resolve()
+    config_file = Path(config_path)
+    if not config_file.is_absolute():
+        config_file = root / config_file
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m11_live_provider_retry_authority(population, config)
+    _assert_m11_source_delta(root, population, authority)
+    control, coordination = _m11_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    if (
+        not os.path.lexists(control)
+        or not os.path.lexists(coordination)
+        or not os.path.lexists(receipt_path)
+    ):
+        raise MigrationRequired("M11 materialized pair or final marker is missing")
+    if any(
+        os.path.lexists(path)
+        for path in (
+            control.with_name("control.execution.duckdb"),
+            control.with_name("control.read-replica.duckdb"),
+            coordination.with_name(coordination.name + ".wal"),
+        )
+    ):
+        raise MigrationRequired("M11 materialized authority has a forbidden sidecar")
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination, _prior_wal, prior = (
+        _assert_m11_prior_publication_anchor(root, authority, population)
+    )
+    verified = _verify_m11_store_pair(
+        root,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    receipt = _verify_existing_m11_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": prior,
+        "receipt": receipt,
+        **verified,
+    }
+
+
 def check_materialized(
     repo_root: Path | str = REPO_ROOT,
     config_path: Path | str = CONFIG_PATH,
@@ -10230,6 +12262,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m11_successor_configured(config):
+        return _check_m11_materialized(root, config_file)
     if _m10_successor_configured(config):
         return _check_m10_materialized(root, config_file)
     if _m9_successor_configured(config):
@@ -10453,6 +12487,530 @@ def _materialize_m7(
         **verified,
     }
     return report
+
+
+def _stage_m11_store_pair(
+    root: Path,
+    stage_dir: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    prior_coordination_wal: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M11 only in a private directory from exact M10 base/WAL bytes."""
+
+    authority = _m11_live_provider_retry_authority(population, config)
+    stage_control = stage_dir / "control.duckdb"
+    stage_coordination = stage_dir / "control.coordination.duckdb"
+    stage_coordination_wal = stage_coordination.with_name(
+        stage_coordination.name + ".wal"
+    )
+    stage_prior_control = stage_dir / "prior-control.duckdb"
+    stage_prior_coordination = stage_dir / "prior-control.coordination.duckdb"
+    stage_prior_coordination_wal = stage_prior_coordination.with_name(
+        stage_prior_coordination.name + ".wal"
+    )
+    for source_path, target_path in (
+        (prior_control, stage_control),
+        (prior_coordination, stage_coordination),
+        (prior_coordination_wal, stage_coordination_wal),
+        (prior_control, stage_prior_control),
+        (prior_coordination, stage_prior_coordination),
+        (prior_coordination_wal, stage_prior_coordination_wal),
+    ):
+        shutil.copyfile(source_path, target_path)
+    if (
+        _store_sha256(stage_control) != authority["prior_control_store_sha256"]
+        or stage_control.stat().st_size
+        != int(authority["prior_control_store_size"])
+        or _store_sha256(stage_coordination)
+        != authority["prior_coordination_store_sha256"]
+        or stage_coordination.stat().st_size
+        != int(authority["prior_coordination_store_size"])
+        or _store_sha256(stage_coordination_wal)
+        != authority["prior_coordination_wal_sha256"]
+        or stage_coordination_wal.stat().st_size
+        != int(authority["prior_coordination_wal_size"])
+        or _store_sha256(stage_prior_control)
+        != authority["prior_control_store_sha256"]
+        or _store_sha256(stage_prior_coordination)
+        != authority["prior_coordination_store_sha256"]
+        or _store_sha256(stage_prior_coordination_wal)
+        != authority["prior_coordination_wal_sha256"]
+    ):
+        raise MaterializationError("staged M10 base/WAL copies differ")
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinator,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        intent_repository as intent_repository_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    original_utc_iso = intent_repository_module._utc_iso
+
+    def fixed_m11_utc_iso(_moment: Any = None) -> str:
+        return _M11_CONTROL_RECORDED_AT
+
+    intent_repository_module._utc_iso = fixed_m11_utc_iso
+    source: Any | None = None
+    clock_interference = False
+    try:
+        source = DatabaseTaskSource(
+            stage_control,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-provider-retry-migrator",
+        )
+        operator = source.get_task("SAWM-000")
+        candidate = source.get_task("SAWM-001")
+        if (
+            operator is None
+            or operator.status != "completed"
+            or operator.revision != 2
+            or candidate is None
+            or candidate.status != "blocked"
+            or candidate.revision != 12
+            or dict(candidate.body).get("completion_receipt")
+            != _M10_LIVE_FAILURE_RECEIPT
+        ):
+            raise MaterializationError("staged M10 task authority differs")
+        migration_body = _m11_migration_body(
+            population,
+            config,
+            validation_digest,
+        )
+        migration_digest = _identity(migration_body)
+        plan_receipt = source.plans.append_revision(
+            plan_cid=str(population["plan_root_cid"]),
+            expected_revision=int(authority["prior_plan_revision"]),
+            body={
+                "current_source_binding_cid": population["source_binding"][
+                    "source_binding_cid"
+                ],
+                "source_migration_revision": _M11_MIGRATION_REVISION,
+                "source_migration_digest": migration_digest,
+                "supersession_mode": _M11_SUPERSESSION_MODE,
+            },
+            delta=_m11_migration_plan_delta(population, config),
+        )
+        evidence = source.record_evidence(
+            task_cid=operator.task_cid,
+            evidence_kind="operator_control_plane_source_migration",
+            digest=migration_digest,
+            body=migration_body,
+        )
+        task_cas = source.compare_and_set_status(
+            _M10_LIVE_FAILURE_RECEIPT["task_cid"],
+            12,
+            "retrying",
+            _m11_task_rearm_receipt(),
+        )
+        if (
+            task_cas.changed is not True
+            or task_cas.previous_status != "blocked"
+            or task_cas.revision != 13
+            or task_cas.event_cursor != _M11_TARGET_EVENT_WATERMARK
+        ):
+            raise MaterializationError("M11 operator task rearm CAS differs")
+    finally:
+        try:
+            if source is not None:
+                source.close()
+        finally:
+            clock_interference = (
+                intent_repository_module._utc_iso is not fixed_m11_utc_iso
+            )
+            intent_repository_module._utc_iso = original_utc_iso
+    if clock_interference or intent_repository_module._utc_iso is not original_utc_iso:
+        raise MaterializationError("M11 deterministic control clock binding drifted")
+
+    coordinator = DatabaseCoordinator(stage_coordination).open()
+    try:
+        coordination_rearm = coordinator.rearm_failed_task(
+            failure_receipt=_M10_LIVE_FAILURE_RECEIPT,
+            control_task_observation=task_cas.to_dict(),
+            now_ms=_M11_COORDINATION_REARM_OBSERVED_AT_MS,
+        )
+    finally:
+        coordinator.close()
+    if (
+        coordination_rearm.get("ready") is not True
+        or coordination_rearm.get("replayed") is not False
+        or not str(coordination_rearm.get("rearm_id") or "")
+    ):
+        raise MaterializationError("M11 coordinator rearm result differs")
+    # The copied predecessor WAL is input evidence, but the M11 target is
+    # published as one self-contained base file.  Checkpoint only the staged
+    # target; the original and staged predecessor base/WAL remain untouched.
+    import duckdb
+
+    checkpoint = duckdb.connect(str(stage_coordination))
+    try:
+        checkpoint.execute("CHECKPOINT")
+    finally:
+        checkpoint.close()
+    if os.path.lexists(stage_control.with_name(stage_control.name + ".wal")):
+        raise MaterializationError("M11 control mutation retained a WAL")
+    if os.path.lexists(stage_coordination_wal):
+        raise MaterializationError("M11 coordination mutation retained a WAL")
+
+    verified = _verify_m11_store_pair_copy(
+        stage_control,
+        stage_coordination,
+        stage_prior_control,
+        stage_prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    if (
+        verified["projection_cid"] != authority["target_projection_cid"]
+        or verified["coordination_projection_digest"]
+        != authority["target_coordination_projection_digest"]
+        or int(verified["coordination_event_count"])
+        != int(authority["target_coordination_event_count"])
+    ):
+        raise MaterializationError("M11 staged pair has unexpected projections")
+    return {
+        "stage_control": stage_control,
+        "stage_coordination": stage_coordination,
+        "stage_prior_control": stage_prior_control,
+        "stage_prior_coordination": stage_prior_coordination,
+        "stage_prior_coordination_wal": stage_prior_coordination_wal,
+        "plan_receipt": plan_receipt,
+        "evidence": evidence,
+        "task_cas": task_cas,
+        "coordination_rearm": coordination_rearm,
+        "migration_digest": migration_digest,
+        "verified": verified,
+    }
+
+
+def _materialize_m11(
+    root: Path,
+    config_file: Path,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Append the bounded provider repair/rearm and publish M11 atomically."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m11_live_provider_retry_authority(population, config)
+    _assert_m11_source_delta(root, population, authority)
+    control, coordination = _m11_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination, prior_coordination_wal, prior = (
+        _assert_m11_prior_publication_anchor(root, authority, population)
+    )
+
+    control_present = os.path.lexists(control)
+    coordination_present = os.path.lexists(coordination)
+    receipt_present = os.path.lexists(receipt_path)
+    if control_present != coordination_present:
+        raise MigrationRequired(
+            "M11 has a partial published store pair without a final marker"
+        )
+    if receipt_present and not control_present:
+        raise MigrationRequired("M11 has an orphaned pair commit marker")
+    if control_present:
+        verified = _verify_m11_store_pair(
+            root,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+        receipt = _ensure_m11_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+        return {
+            "schema": SCHEMA,
+            "valid": True,
+            "action": "verified_existing_noop",
+            "migration_required": False,
+            "database_path": str(control),
+            "coordination_path": str(coordination),
+            "program_definition_cid": population["program_definition_cid"],
+            "validation_digest": validation_digest,
+            "prior_authority": prior,
+            "receipt": receipt,
+            **verified,
+        }
+
+    prohibited = (
+        control,
+        coordination,
+        receipt_path,
+        control.with_name(control.name + ".wal"),
+        coordination.with_name(coordination.name + ".wal"),
+        control.with_name("control.execution.duckdb"),
+        control.with_name("control.execution.duckdb.wal"),
+        control.with_name("control.read-replica.duckdb"),
+        control.with_name(f".{control.name}.state-owner.json"),
+        control.parent / "state",
+        control.parent / "events",
+        control.parent / "registry",
+        control.parent / "worktrees",
+        control.parent / "merge-queue",
+        control.parent / "quack-owner",
+    )
+    present = [str(path) for path in prohibited if os.path.lexists(path)]
+    if present:
+        raise MaterializationError(
+            "M11 successor operational authority is not fresh: "
+            + json.dumps(present, sort_keys=True, separators=(",", ":"))
+        )
+    control.parent.mkdir(parents=True, exist_ok=True)
+    preserved_stages = sorted(control.parent.glob(".m11-installing.*"))
+    pending_receipts = sorted(
+        control.parent.glob(f".{receipt_path.name}.*.tmp")
+    )
+    if preserved_stages or pending_receipts:
+        raise MaterializationError(
+            "preserved M11 staging/receipt attempt requires inspection: "
+            + ", ".join(
+                str(item) for item in (*preserved_stages, *pending_receipts)
+            )
+        )
+    stage_dir = control.parent / (
+        f".m11-installing.{os.getpid()}.{validation_digest[-12:]}"
+    )
+    os.mkdir(stage_dir, 0o700)
+    staged = _stage_m11_store_pair(
+        root,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        prior_coordination_wal,
+        population,
+        config,
+        validation_digest,
+    )
+    stage_control = staged["stage_control"]
+    stage_coordination = staged["stage_coordination"]
+    staged_verified = staged["verified"]
+
+    _assert_committed_clean_source(root, population)
+    _assert_m11_source_delta(root, population, authority)
+    _assert_m11_prior_publication_anchor(root, authority, population)
+    for stage_path in (stage_control, stage_coordination):
+        with stage_path.open("rb") as staged_file:
+            os.fsync(staged_file.fileno())
+
+    bundle_lock = control.parent / ".m11-store-pair.publish.lock"
+    descriptor = os.open(
+        bundle_lock,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    created: list[tuple[Path, int, int]] = []
+    stage_aliases_removed = False
+    committed = False
+    receipt: dict[str, Any] | None = None
+    published_verified: dict[str, Any] | None = None
+    try:
+        lock_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise MaterializationError("M11 bundle lock is not a regular file")
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the M11 pair publication lock"
+                    ) from exc
+                time.sleep(0.02)
+        if any(
+            os.path.lexists(path)
+            for path in (control, coordination, receipt_path)
+        ):
+            raise MigrationRequired(
+                "another writer published part of the M11 store pair"
+            )
+        _assert_committed_clean_source(root, population)
+        _assert_m11_source_delta(root, population, authority)
+        _assert_m11_prior_publication_anchor(root, authority, population)
+        directory = os.open(
+            control.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            stage_control_stat = os.lstat(stage_control)
+            os.link(stage_control, control, follow_symlinks=False)
+            created.append(
+                (control, stage_control_stat.st_dev, stage_control_stat.st_ino)
+            )
+            os.fsync(directory)
+            stage_coordination_stat = os.lstat(stage_coordination)
+            os.link(stage_coordination, coordination, follow_symlinks=False)
+            created.append(
+                (
+                    coordination,
+                    stage_coordination_stat.st_dev,
+                    stage_coordination_stat.st_ino,
+                )
+            )
+            os.fsync(directory)
+            _assert_committed_clean_source(root, population)
+            _assert_m11_source_delta(root, population, authority)
+            _assert_m11_prior_publication_anchor(root, authority, population)
+
+            removable_names = {
+                "control.duckdb",
+                "control.coordination.duckdb",
+                "prior-control.duckdb",
+                "prior-control.coordination.duckdb",
+                "prior-control.coordination.duckdb.wal",
+                ".control.duckdb.intent.lock",
+                ".control.duckdb.lock",
+                ".control.coordination.duckdb.lock",
+            }
+            stage_entries = tuple(stage_dir.iterdir())
+            unexpected = sorted(
+                path.name
+                for path in stage_entries
+                if path.name not in removable_names
+            )
+            if unexpected:
+                raise MaterializationError(
+                    "M11 staging directory has unexpected leaves: "
+                    + ", ".join(unexpected)
+                )
+            for path in stage_entries:
+                leaf_stat = os.lstat(path)
+                if not stat.S_ISREG(leaf_stat.st_mode):
+                    raise MaterializationError(
+                        "M11 staging leaf changed before alias removal"
+                    )
+            for path in stage_entries:
+                os.unlink(path)
+            stage_dir.rmdir()
+            os.fsync(directory)
+            stage_aliases_removed = True
+            if any(
+                os.path.lexists(path)
+                for path in (
+                    control.with_name("control.execution.duckdb"),
+                    control.with_name("control.execution.duckdb.wal"),
+                    control.with_name("control.read-replica.duckdb"),
+                    control.with_name(control.name + ".wal"),
+                    coordination.with_name(coordination.name + ".wal"),
+                )
+            ):
+                raise MigrationRequired(
+                    "M11 mutable sidecar appeared before pair admission"
+                )
+            published_verified = _verify_m11_store_pair(
+                root,
+                control,
+                coordination,
+                prior_control,
+                prior_coordination,
+                population,
+                config,
+                validation_digest,
+            )
+            for key in (
+                "control_store_sha256",
+                "coordination_store_sha256",
+                "migration_evidence_id",
+                "task_rearm_event_id",
+                "coordination_rearm_event_id",
+                "coordination_projection_digest",
+            ):
+                if published_verified.get(key) != staged_verified.get(key):
+                    raise MaterializationError(
+                        f"published M11 pair differs from staging: {key}"
+                    )
+            receipt = _ensure_m11_migration_receipt(
+                root,
+                control,
+                coordination,
+                population,
+                config,
+                published_verified,
+                validation_digest,
+                pair_lock_held=True,
+            )
+            committed = True
+        finally:
+            os.close(directory)
+    except Exception:
+        if (
+            not committed
+            and not stage_aliases_removed
+            and not os.path.lexists(receipt_path)
+        ):
+            rollback_directory = os.open(
+                control.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                for published, expected_device, expected_inode in reversed(created):
+                    if not os.path.lexists(published):
+                        continue
+                    published_stat = os.lstat(published)
+                    if (
+                        published_stat.st_dev == expected_device
+                        and published_stat.st_ino == expected_inode
+                    ):
+                        os.unlink(published)
+                os.fsync(rollback_directory)
+            finally:
+                os.close(rollback_directory)
+        raise
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+    if not committed or receipt is None or published_verified is None:
+        raise MaterializationError("M11 pair publication lacked its final marker")
+    if not stage_aliases_removed:
+        raise MaterializationError("M11 receipt preceded staging-alias removal")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "migrated_append_only_control_and_coordination",
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": prior,
+        "plan_migration_event_id": staged["plan_receipt"].event_id,
+        "migration_evidence_event_id": staged["evidence"].event_id,
+        "task_rearm_event_id": published_verified["task_rearm_event_id"],
+        "coordination_rearm_event_id": published_verified[
+            "coordination_rearm_event_id"
+        ],
+        "migration_digest": staged["migration_digest"],
+        "stage_cleanup_complete": True,
+        "receipt": receipt,
+        **published_verified,
+    }
 
 
 def _materialize_m10(
@@ -11543,6 +14101,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m11_successor_configured(config):
+        return _materialize_m11(root, config_file, config)
     if _m10_successor_configured(config):
         return _materialize_m10(root, config_file, config)
     if _m9_successor_configured(config):

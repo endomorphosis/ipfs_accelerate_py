@@ -6290,12 +6290,22 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 # runner-owned config. Only explicitly named sanitized
                 # variables cross into Grok via ``--env NAME`` arguments.
                 grok_launch_env = _docker_control_env(env)
-                cmd = _create_grok_container_and_build_start_command(
-                    cmd,
-                    workspace=workspace,
-                    docker_environment=grok_launch_env,
-                    docker_lease=docker_lease,
-                )
+                # The bounded-stderr route consumes an already-created attached
+                # start command.  The typed fallback route instead owns the
+                # complete create -> exact-ID/cidfile verification -> attached
+                # start sequence in
+                # ``_run_created_grok_container_with_typed_failure_capture``.
+                # Do not pre-create for that route: passing a ``docker start``
+                # command to the typed helper would execute the provider under
+                # the 120-second *creation* timeout and then parse provider
+                # output as a container identity.
+                if not codex_fallback_command:
+                    cmd = _create_grok_container_and_build_start_command(
+                        cmd,
+                        workspace=workspace,
+                        docker_environment=grok_launch_env,
+                        docker_lease=docker_lease,
+                    )
         except (
             LLMRouterError,
             ProviderCommandEnvironmentError,

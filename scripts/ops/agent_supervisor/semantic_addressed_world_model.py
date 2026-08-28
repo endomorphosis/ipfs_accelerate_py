@@ -29,6 +29,93 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M11_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m11/control.duckdb"
+)
+_M11_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m11/control.coordination.duckdb"
+)
+_M11_GENERATION = 13
+_M11_TARGET_PLAN_REVISION = 12
+_M11_TARGET_EVENT_WATERMARK = 184
+_M11_TARGET_PROJECTION_CID = (
+    "baguqeeratdygaminyfax543hh5bik3kj5admm5filgtu37a3jfnyc6snwnxa"
+)
+_M11_TARGET_COORDINATION_PROJECTION_DIGEST = (
+    "sha256:3b9ce361244387492da0156888cf6cb7377a020ca1f988b37509050975205ae7"
+)
+_M11_TARGET_COORDINATION_EVENT_COUNT = 56
+_M11_TARGET_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:d9a1f5bd53884346a847cb9e440b5e8e37c7e4e7a87ea52e173d719f2933821c"
+)
+_M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID = (
+    "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e"
+)
+_M11_PRIOR_COORDINATION_STORE_SHA256 = (
+    "e69a4c22a1a1a8bd38ccf210803a02ecb040d0ee9d4cc776165a4570425d6862"
+)
+_M11_PRIOR_COORDINATION_STORE_SIZE = 9_711_616
+_M11_PRIOR_COORDINATION_WAL_SHA256 = (
+    "938dbc7028ec438889019c352b5a2529cc8c0f0fd18a11f0eb157a6772fc5321"
+)
+_M11_PRIOR_COORDINATION_WAL_SIZE = 24_746
+_M10_FAILED_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:7dcdccefb3a54d4604716427bed164e36032429477612d9c92f3bf75fc4f9d46"
+)
+_M10_LIVE_FAILURE_CID = (
+    "sha256:a1fae6ef892b02a19b1155a0a5ed7c0eefa8f8255f3949e25d5a8b8b9d721676"
+)
+_M10_FAILURE_RECEIPT = MappingProxyType(
+    {
+        "attempt_id": "attempt:5a657254c0b84063911e8292ef21a538",
+        "attempt_number": 2,
+        "automatic_retry_admitted": False,
+        "claim_id": "claim:5fe583ac0e04406d8c975e8ddd2dcb3d",
+        "control_expected_revision": 11,
+        "control_expected_status": "in_progress",
+        "effect_claim_count": 0,
+        "failure_kind": "terminal_portal_bridge_error",
+        "failure_payload_digest": (
+            "sha256:ae39b0949ee96383a51692123359a59a787c355a6736db3ff332852d98144fcd"
+        ),
+        "fence_epoch": 2,
+        "fencing_token": 2,
+        "lease_id": "lease:6110decfef434aa39f16244d717c752d",
+        "operation": "database_task_claim_failure",
+        "owner_session_id": "embedded-store:5e8dddfdd778e8774949a4dea37110af",
+        "provider_invocation_count": 0,
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "task-claim-failure-settlement@1"
+        ),
+        "settlement_id": (
+            "baguqeera7cwinhpjgl2etuitwiuhs4ts6lix5txyb2pjtsbfz2npfyryznma"
+        ),
+        "task_cid": (
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+    }
+)
+_M10_CLAIM_RECEIPT = MappingProxyType(
+    {
+        "attempt_id": "attempt:5a657254c0b84063911e8292ef21a538",
+        "attempt_number": 2,
+        "claim_id": "claim:5fe583ac0e04406d8c975e8ddd2dcb3d",
+        "fence_epoch": 2,
+        "fencing_token": 2,
+        "lease_id": "lease:6110decfef434aa39f16244d717c752d",
+        "operation": "database_claim",
+        "owner_session_id": "embedded-store:5e8dddfdd778e8774949a4dea37110af",
+    }
+)
+_M11_REARM_RECEIPT = MappingProxyType(
+    {
+        "operation": "operator_control_plane_repair",
+        "settlement_id": _M10_FAILURE_RECEIPT["settlement_id"],
+    }
+)
 _M10_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m10/control.duckdb"
@@ -101,15 +188,49 @@ def _active_source_repair_materialization(
 ) -> Mapping[str, Any]:
     """Return the newest sealed successor authority by key presence.
 
-    M10 is the append-only live-projection successor to M9.  Every newer key
-    is selected by presence and a malformed value fails closed rather than
-    silently selecting older evidence.
+    M11 is the append-only provider-lifecycle repair and exact failed-task
+    rearm successor to M10.  Every newer key is selected by presence and a
+    malformed value fails closed rather than silently selecting older
+    evidence.
     """
 
+    provider_retry_key = "live_provider_retry_successor_materialization"
     projection_key = "live_projection_successor_materialization"
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if provider_retry_key in config:
+        provider_retry = config.get(provider_retry_key)
+        required = {
+            "migration_revision",
+            "target_store_id",
+            "target_coordination_store_id",
+            "target_generation",
+            "target_plan_revision",
+            "target_event_watermark",
+            "target_projection_cid",
+            "target_coordination_projection_digest",
+            "target_semantic_authority_digest",
+            "provider_strategy",
+            "task_rearm",
+            "runner_repair",
+            "live_implementation_failure",
+            "live_implementation_failure_cid",
+        }
+        if (
+            not isinstance(provider_retry, Mapping)
+            or any(provider_retry.get(key) in (None, "") for key in required)
+            or not isinstance(provider_retry.get("provider_strategy"), Mapping)
+            or not isinstance(provider_retry.get("task_rearm"), Mapping)
+            or not isinstance(provider_retry.get("runner_repair"), Mapping)
+            or not isinstance(
+                provider_retry.get("live_implementation_failure"), Mapping
+            )
+        ):
+            raise OperatorError(
+                "active M11 provider-retry successor authority is invalid"
+            )
+        return provider_retry
     if projection_key in config:
         projection = config.get(projection_key)
         required = {
@@ -176,12 +297,149 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "live_provider_retry_successor_materialization",
             "live_projection_successor_materialization",
             "live_recovery_successor_materialization",
             "source_repair_successor_materialization",
             "source_repair_materialization",
         )
     )
+
+
+def _validate_m11_runtime_binding(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Bind M11 to its exact pair, rearm, runner repair, and prior route."""
+
+    if "live_provider_retry_successor_materialization" not in config:
+        return
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    provider = config.get("provider")
+    strategy = authority.get("provider_strategy")
+    rearm = authority.get("task_rearm")
+    runner_repair = authority.get("runner_repair")
+    failure = authority.get("live_implementation_failure")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            program,
+            owner,
+            provider,
+            strategy,
+            rearm,
+            runner_repair,
+            failure,
+        )
+    ):
+        raise OperatorError("M11 runtime authority binding is incomplete")
+    authority_cid = "sha256:" + hashlib.sha256(
+        json.dumps(
+            dict(authority),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    prior_route = str(strategy.get("prior_route") or "")
+    if (
+        authority_cid != _M11_LIVE_PROVIDER_RETRY_AUTHORITY_CID
+        or "prior_coordination_replayed_store_sha256" in authority
+        or "prior_coordination_replayed_store_size" in authority
+        or authority.get("prior_coordination_store_sha256")
+        != _M11_PRIOR_COORDINATION_STORE_SHA256
+        or int(authority.get("prior_coordination_store_size") or 0)
+        != _M11_PRIOR_COORDINATION_STORE_SIZE
+        or authority.get("prior_coordination_wal_sha256")
+        != _M11_PRIOR_COORDINATION_WAL_SHA256
+        or int(authority.get("prior_coordination_wal_size") or 0)
+        != _M11_PRIOR_COORDINATION_WAL_SIZE
+        or authority.get("schema")
+        != "sawm/provider-launch-repair-authorization@1"
+        or authority.get("migration_revision") != "SAWM-R2-M11"
+        or authority.get("target_store_id") != _M11_STORE_ID
+        or authority.get("target_coordination_store_id")
+        != _M11_COORDINATION_STORE_ID
+        or int(authority.get("target_generation") or 0) != _M11_GENERATION
+        or int(authority.get("target_plan_revision") or 0)
+        != _M11_TARGET_PLAN_REVISION
+        or int(authority.get("target_event_watermark") or 0)
+        != _M11_TARGET_EVENT_WATERMARK
+        or authority.get("target_projection_cid")
+        != _M11_TARGET_PROJECTION_CID
+        or authority.get("target_coordination_projection_digest")
+        != _M11_TARGET_COORDINATION_PROJECTION_DIGEST
+        or int(authority.get("target_coordination_event_count") or 0)
+        != _M11_TARGET_COORDINATION_EVENT_COUNT
+        or authority.get("target_semantic_authority_digest")
+        != _M11_TARGET_SEMANTIC_AUTHORITY_DIGEST
+        or authority.get("prior_semantic_authority_digest")
+        != _M10_FAILED_SEMANTIC_AUTHORITY_DIGEST
+        or authority.get("live_implementation_failure_cid")
+        != _M10_LIVE_FAILURE_CID
+        or program.get("store_id") != _M11_STORE_ID
+        or int(program.get("store_generation") or 0) != _M11_GENERATION
+        or program.get("quack_endpoint") != "quack:127.0.0.1:45255"
+        or owner.get("database_path") != _M11_STORE_ID
+        or owner.get("store_id") != _M11_STORE_ID
+        or int(owner.get("port") or 0) != 45255
+        or not prior_route
+        or strategy.get("target_route") != prior_route
+        or strategy.get("route_changed") is not False
+        or strategy.get("capability_probe_required") is not True
+        or strategy.get("provider_result_is_completion_authority") is not False
+        or not str(provider.get("primary_provider_id") or "")
+        or not str(provider.get("primary_model_id") or "")
+        or not str(provider.get("fallback_provider_id") or "")
+        or not str(provider.get("fallback_model_id") or "")
+        or provider.get("fallback_trigger") != "primary_quota_exhausted"
+        or provider.get("provider_results_are_completion_authority") is not False
+        or rearm.get("settlement_id")
+        != _M10_FAILURE_RECEIPT["settlement_id"]
+        or rearm.get("from_status") != "blocked"
+        or int(rearm.get("from_revision") or 0) != 12
+        or rearm.get("to_status") != "retrying"
+        or int(rearm.get("to_revision") or 0) != 13
+        or rearm.get("automatic_retry_admitted") is not False
+        or rearm.get("coordination_rearm_required") is not True
+        or rearm.get("historical_settlement_preserved") is not True
+        or rearm.get("provider_invocation_count") != 0
+        or authority.get("coordination_base_and_wal_copied") is not True
+        or authority.get("coordination_wal_replayed_on_copy") is not True
+        or authority.get("prior_coordination_store_mutated") is not False
+        or authority.get("coordination_semantic_changes") != 1
+        or authority.get("implementation_provider_invocations_observed") != 1
+        or authority.get("settlement_provider_invocation_count") != 0
+        or runner_repair.get("provider_route_changed") is not False
+        or runner_repair.get("failure_root")
+        != "attached_start_executed_in_typed_create_phase"
+        or runner_repair.get("expected_lifecycle")
+        != "typed_route_owns_create_identity_verification_and_attached_start"
+        or runner_repair.get("provider_execution_observed") is not True
+        or runner_repair.get("provider_execution_accounting_mismatch") is not True
+        or runner_repair.get("settlement_provider_invocation_count") != 0
+        or runner_repair.get("effect_claim_count") != 0
+        or runner_repair.get("runner_path")
+        != "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+        or runner_repair.get("focused_test_path")
+        != "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+        or failure.get("settlement_id")
+        != _M10_FAILURE_RECEIPT["settlement_id"]
+        or failure.get("schema")
+        != "sawm/live-control-implementation-failure@2"
+        or failure.get("failure_kind")
+        != "attached_provider_execution_misclassified_as_container_create_timeout"
+        or failure.get("terminal_status") != "blocked"
+        or int(failure.get("terminal_revision") or 0) != 12
+        or failure.get("provider_execution_observed") is not True
+        or failure.get("provider_execution_accounting_mismatch") is not True
+        or failure.get("settlement_provider_invocation_count") != 0
+        or failure.get("failure_receipt") != dict(_M10_FAILURE_RECEIPT)
+    ):
+        raise OperatorError(
+            "M11 runtime store, rearm, runner repair, or provider binding differs"
+        )
 
 
 def _validate_m10_runtime_binding(
@@ -455,6 +713,113 @@ def _require_m10_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m11_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M11's receipt-last marker for its repaired/rearmed pair."""
+
+    if "live_provider_retry_successor_materialization" not in config:
+        return MappingProxyType({})
+    _validate_m11_runtime_binding(config, authority)
+    receipt_path = (
+        REPO_ROOT / Path(_M11_STORE_ID).parent / "migration-receipt.json"
+    )
+    try:
+        observed, _receipt_sha256 = materializer._load_nofollow_json(
+            receipt_path,
+            root=REPO_ROOT,
+            noun="M11 final pair commit marker",
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M11 materialized final pair marker is unavailable"
+        ) from exc
+    if not isinstance(observed, Mapping):
+        raise OperatorError("M11 materialized final pair marker is invalid")
+    coordination_path = (REPO_ROOT / _M11_COORDINATION_STORE_ID).resolve()
+    try:
+        coordination_sha256, coordination_size = (
+            materializer._stable_regular_sha256(
+                coordination_path,
+                root=REPO_ROOT,
+                noun="materialized M11 coordination store",
+                required_link_count=1,
+            )
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M11 materialized coordination store is unavailable"
+        ) from exc
+    unhashed = dict(observed)
+    claimed_cid = str(unhashed.pop("receipt_cid", ""))
+    rearm = authority["task_rearm"]
+    if (
+        claimed_cid != materializer._identity(unhashed)
+        or observed.get("schema") != "sawm/non-authoritative-migration-receipt@9"
+        or observed.get("receipt_is_final_pair_commit_marker") is not True
+        or observed.get("migration_revision") != authority["migration_revision"]
+        or observed.get("database_path") != _M11_STORE_ID
+        or observed.get("coordination_path") != _M11_COORDINATION_STORE_ID
+        or observed.get("coordination_store_sha256") != coordination_sha256
+        or int(observed.get("coordination_store_size") or 0)
+        != coordination_size
+        or observed.get("migration_projection_cid")
+        != authority["target_projection_cid"]
+        or observed.get("coordination_projection_digest")
+        != authority["target_coordination_projection_digest"]
+        or observed.get("semantic_authority_digest")
+        != authority["target_semantic_authority_digest"]
+        or observed.get("live_provider_retry_successor_materialization_cid")
+        != materializer._identity(dict(authority))
+        or observed.get("live_implementation_failure_cid")
+        != authority["live_implementation_failure_cid"]
+        or int(observed.get("migration_event_watermark") or 0)
+        != int(authority["target_event_watermark"])
+        or int(observed.get("coordination_event_count") or 0)
+        != int(rearm["target_coordination_event_count"])
+        or observed.get("coordination_base_and_wal_copied") is not True
+        or observed.get("coordination_wal_replayed_on_copy") is not True
+        or observed.get("prior_coordination_store_mutated") is not False
+        or observed.get("coordination_semantic_changes") != 1
+        or observed.get("failed_attempt_history_preserved") is not True
+        or observed.get("failed_completion_barrier_rearmed") is not True
+        or observed.get("task_revision_changes") != 1
+        or observed.get("task_status_changes") != 1
+        or observed.get("accepted_definition_changes") != 0
+        or observed.get("accepted_completion_changes") != 0
+        or observed.get("implementation_provider_invocations_observed") != 1
+        or observed.get("settlement_provider_invocation_count") != 0
+        or observed.get("provider_execution_accounting_mismatch") is not True
+        or observed.get("effect_claim_changes") != 0
+        or observed.get("implementation_commit_changes") != 0
+        or observed.get("merge_attempt_changes") != 0
+        or observed.get("execution_sidecar_copied") is not False
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M11 materialized final pair marker differs")
+    if checked is not None:
+        expected_control = str((REPO_ROOT / _M11_STORE_ID).resolve())
+        if (
+            checked.get("valid") is not True
+            or checked.get("database_path") != expected_control
+            or checked.get("coordination_path") != str(coordination_path)
+            or checked.get("projection_cid") != authority["target_projection_cid"]
+            or checked.get("coordination_projection_digest")
+            != authority["target_coordination_projection_digest"]
+            or int(checked.get("event_watermark") or 0)
+            != int(authority["target_event_watermark"])
+            or checked.get("receipt") != observed
+        ):
+            raise OperatorError(
+                "M11 materializer check differs from its final pair marker"
+            )
+    return MappingProxyType(dict(observed))
+
+
 def _require_active_final_pair_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -464,6 +829,13 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "live_provider_retry_successor_materialization" in config:
+        return _require_m11_final_pair_marker(
+            config,
+            authority,
+            materializer,
+            checked=checked,
+        )
     if "live_projection_successor_materialization" in config:
         return _require_m10_final_pair_marker(
             config,
@@ -1452,6 +1824,99 @@ def _verify_m9_head_task_projection(
     return statuses, revisions, receipt_cids
 
 
+def _verify_m11_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M11's rearmed head and the complete immutable M9/M10 history."""
+
+    try:
+        materializer._verify_m6_task_projection(source, population)
+    except materializer.MigrationRequired as exc:
+        if str(exc) != "frozen M6 task status/revision projection differs":
+            raise
+
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_status = (
+            "completed"
+            if alias == "SAWM-000"
+            else "retrying"
+            if alias == "SAWM-001"
+            else "todo"
+        )
+        expected_revision = (
+            2 if alias == "SAWM-000" else 13 if alias == "SAWM-001" else 2
+        )
+        if (
+            observed is None
+            or observed.status != expected_status
+            or int(observed.revision) != expected_revision
+        ):
+            raise materializer.MigrationRequired(
+                f"M11-head task status/revision differs: {alias}"
+            )
+        completion_receipt = observed.body.get("completion_receipt")
+        if alias == "SAWM-001":
+            if completion_receipt != dict(_M11_REARM_RECEIPT):
+                raise materializer.MigrationRequired(
+                    "M11-head SAWM-001 rearm receipt differs"
+                )
+        elif alias != "SAWM-000" and completion_receipt is not None:
+            raise materializer.MigrationRequired(
+                f"M11-head unaccepted completion receipt exists: {alias}"
+            )
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+
+    with source.intent._connection(write=False) as connection:
+        task_revision_rows = connection.execute(
+            "SELECT task_cid, revision, status, body_json "
+            "FROM task_revisions ORDER BY task_cid, revision"
+        ).fetchall()
+        completion_receipt_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM completion_receipts"
+            ).fetchone()[0]
+        )
+    expected_task_cid = (
+        "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+    )
+    expected_history = (
+        (10, "retrying", dict(_M9_REARM_RECEIPT)),
+        (11, "in_progress", dict(_M10_CLAIM_RECEIPT)),
+        (12, "blocked", dict(_M10_FAILURE_RECEIPT)),
+        (13, "retrying", dict(_M11_REARM_RECEIPT)),
+    )
+    observed_history = tuple(
+        (
+            int(row[1]),
+            str(row[2]),
+            json.loads(str(row[3])).get("completion_receipt"),
+        )
+        for row in task_revision_rows
+        if str(row[0]) == expected_task_cid
+    )
+    if (
+        len(task_revision_rows) != len(expected_history)
+        or any(str(row[0]) != expected_task_cid for row in task_revision_rows)
+        or observed_history != expected_history
+        or completion_receipt_count != 1
+    ):
+        raise materializer.MigrationRequired(
+            "M11-head task revision/completion history differs"
+        )
+    return statuses, revisions, receipt_cids
+
+
 def _live_preflight(
     config: Mapping[str, Any],
     *,
@@ -1557,7 +2022,15 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "live_projection_successor_materialization" in config:
+            if "live_provider_retry_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m11_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                    )
+                )
+            elif "live_projection_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m9_head_task_projection(
                         live,
@@ -1582,7 +2055,10 @@ def _live_preflight(
             ) from exc
         expected_semantic_authority_digest = (
             active_source_repair["target_semantic_authority_digest"]
-            if "live_projection_successor_materialization" in config
+            if (
+                "live_provider_retry_successor_materialization" in config
+                or "live_projection_successor_materialization" in config
+            )
             else active_source_repair["prior_semantic_authority_digest"]
         )
         if semantic_authority_digest != expected_semantic_authority_digest:

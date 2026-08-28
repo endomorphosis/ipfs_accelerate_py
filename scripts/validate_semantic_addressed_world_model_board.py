@@ -88,6 +88,7 @@ CONTROL_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
@@ -112,6 +113,7 @@ CONTROL_RELATIVE_PATHS = (
     "test/api/test_agent_supervisor_database_coordination.py",
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
     "test/api/test_agent_supervisor_database_portal_bridge.py",
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
     "test/api/test_agent_supervisor_native_dependency_pin.py",
     "test/api/test_agent_supervisor_project_dependency_preflight.py",
     "test/api/test_agent_supervisor_provider_command_binding.py",
@@ -290,6 +292,22 @@ def _m10_migration_errors(
         return [f"M10 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m11_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M11 provider-launch repair contract across static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m11_provider_retry_errors(scheduler, seal, migration)
+        )
+    except Exception as exc:
+        return [f"M11 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -297,11 +315,27 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M10 before M9 and M8.  Consequently an empty, null,
+    Key presence selects M11 before M10, M9, and M8.  Consequently an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m11_key = "live_provider_retry_successor_materialization"
+    m11_seal_key = "live_provider_retry_successor_materialization_cid"
+    m11_presence = (
+        m11_key in scheduler,
+        m11_key in migration,
+        m11_seal_key in seal,
+    )
+    if any(m11_presence):
+        errors = _m11_migration_errors(scheduler, seal, migration)
+        if not all(m11_presence):
+            errors.append("M11 provider-retry authority is only partially declared")
+        errors.extend(_m10_migration_errors(scheduler, seal, migration))
+        errors.extend(_m9_migration_errors(scheduler, seal, migration))
+        errors.extend(_m8_migration_errors(scheduler, seal, migration))
+        return errors
 
     m10_key = "live_projection_successor_materialization"
     m10_seal_key = "live_projection_successor_materialization_cid"
@@ -346,7 +380,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9/M10 successor authority is absent"]
+    return ["active M8/M9/M10/M11 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1792,8 +1826,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m11_key = "live_provider_retry_successor_materialization"
+    m11_selected = any(
+        (
+            m11_key in config,
+            m11_key in migration,
+            "live_provider_retry_successor_materialization_cid" in seal,
+        )
+    )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = any(
+    m10_selected = not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -1809,10 +1851,20 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m10" if m10_selected else "run-r2-m9" if m9_selected else "run-r2-m8"
+        "run-r2-m11"
+        if m11_selected
+        else "run-r2-m10"
+        if m10_selected
+        else "run-r2-m9"
+        if m9_selected
+        else "run-r2-m8"
     )
-    active_generation = "12" if m10_selected else "11" if m9_selected else "10"
-    active_port = 45253 if m10_selected else 45251 if m9_selected else 45250
+    active_generation = (
+        "13" if m11_selected else "12" if m10_selected else "11" if m9_selected else "10"
+    )
+    active_port = (
+        45255 if m11_selected else 45253 if m10_selected else 45251 if m9_selected else 45250
+    )
     active_store = (
         "data/agent_supervisor/semantic_addressed_world_model/"
         f"{active_run}/control.duckdb"
@@ -1828,7 +1880,52 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m10_selected:
+    if m11_selected:
+        provider_retry = config.get(m11_key)
+        expected_m11_fields = {
+            "schema": "sawm/provider-launch-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M11",
+            "migration_kind": "authenticated_grok_container_lifecycle_repair",
+            "supersession_mode": (
+                "source_only_grok_container_lifecycle_and_retry_rearm"
+            ),
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m11/control.coordination.duckdb"
+            ),
+            "target_generation": 13,
+            "target_plan_revision": 12,
+            "implementation_provider_invocations_observed": 1,
+            "settlement_provider_invocation_count": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "execution_sidecar_copied": False,
+            "worker_self_approval": False,
+        }
+        if type(provider_retry) is not dict or any(
+            provider_retry.get(field) != expected
+            for field, expected in expected_m11_fields.items()
+        ):
+            config_errors.append("M11 active provider-retry authority is not exact")
+        elif (
+            provider_retry != migration.get(m11_key)
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    provider_retry,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            != "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e"
+            or seal.get("live_provider_retry_successor_materialization_cid")
+            != "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e"
+        ):
+            config_errors.append("M11 provider-retry authority/CID differs")
+    elif m10_selected:
         live_projection = config.get(m10_key)
         expected_m10_cid = (
             "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10"
