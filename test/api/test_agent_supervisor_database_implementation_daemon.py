@@ -2973,10 +2973,73 @@ def test_reopened_quarantine_retires_stale_blocked_attempt(
         stale = first.get_attempt(blocked.attempt_id)
         assert stale is not None
         assert stale.status == "failed"
+        assert stale.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert not any(
+            phase["phase"] == ATTEMPT_PHASE_FAILED
+            for phase in first.phase_history(stale.attempt_id)
+        )
+        assert first._latest_failed_attempts() == []
+        assert first.reconcile_terminal_retry_states() == []
+        assert first.reconcile_terminal_portal_failures() == []
+        assert first.provider_invocation_recorded(
+            stale.attempt_id,
+            idempotency_key=f"provider:{stale.attempt_id}",
+        ) is not None
         current = first.task_source.get(blocked.task_cid)
         assert current is not None
         assert current.status == "todo"
         assert first.list_running_attempts() == []
+
+        blocked_phase = next(
+            phase
+            for phase in first.phase_history(stale.attempt_id)
+            if phase["phase"] == ATTEMPT_PHASE_BLOCKED
+        )
+        malformed_body = dict(blocked_phase["body"])
+        malformed_body["provider_effect_state"] = "known_not_started"
+        first._require_connection().execute(
+            """
+            UPDATE attempt_phases
+               SET body_json = ?
+             WHERE attempt_id = ? AND phase = ?
+            """,
+            [
+                json.dumps(
+                    malformed_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                stale.attempt_id,
+                ATTEMPT_PHASE_BLOCKED,
+            ],
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="canonical blocked-neutral phase",
+        ):
+            first._latest_failed_attempts()
+
+        first._require_connection().execute(
+            """
+            UPDATE attempt_phases
+               SET body_json = ?, fencing_token = fencing_token + 1
+             WHERE attempt_id = ? AND phase = ?
+            """,
+            [
+                json.dumps(
+                    blocked_phase["body"],
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                stale.attempt_id,
+                ATTEMPT_PHASE_BLOCKED,
+            ],
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="terminal phase metadata or retirement cursor",
+        ):
+            first._latest_failed_attempts()
     finally:
         first.close()
 
@@ -3923,6 +3986,7 @@ def test_provider_callback_hard_crash_abstains_after_cold_restart(
 
     control_path = tmp_path / "control.duckdb"
     lane_path = tmp_path / "lane"
+    repo = _git_repo(tmp_path)
     provider_calls: list[str] = []
 
     def crash_after_callback_started(
@@ -3937,9 +4001,14 @@ def test_provider_callback_hard_crash_abstains_after_cold_restart(
         session="session:callback-hard-crash",
         provider_fn=crash_after_callback_started,
         strict_task_sharding=True,
+        repo_root=repo,
     )
     try:
-        first.materialize_population(_population(1))
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        first.materialize_population(population)
         attempt = first.claim_next()
         assert attempt is not None
 
@@ -3973,6 +4042,7 @@ def test_provider_callback_hard_crash_abstains_after_cold_restart(
         session="session:callback-hard-crash",
         provider_fn=crash_after_callback_started,
         strict_task_sharding=True,
+        repo_root=repo,
     )
     try:
         replay = restarted.run_once()
@@ -4001,6 +4071,33 @@ def test_provider_callback_hard_crash_abstains_after_cold_restart(
             if row["claim_id"] == attempt.claim_id
         ]
         assert len(claims) == 1 and claims[0]["state"] == "released"
+
+        reopened = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(reopened) == 1
+        assert reopened[0]["task_cid"] == attempt.task_cid
+        retired = restarted.reconcile_expired_running_attempts()
+        assert any(
+            item.get("attempt_id") == attempt.attempt_id
+            and item.get("reason") == "control_task_left_quarantine"
+            for item in retired
+        )
+        stale = restarted.get_attempt(attempt.attempt_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        assert stale.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert restarted._latest_failed_attempts() == []
+        assert restarted.reconcile_terminal_retry_states() == []
+        assert restarted.reconcile_terminal_portal_failures() == []
+        assert provider_calls == [attempt.attempt_id]
+
+        successor = restarted.claim_next()
+        assert successor is not None
+        assert successor.attempt_id != attempt.attempt_id
+        assert successor.attempt_number == attempt.attempt_number + 1
+        assert successor.fencing_token > attempt.fencing_token
+        assert provider_calls == [attempt.attempt_id]
     finally:
         restarted.close()
 

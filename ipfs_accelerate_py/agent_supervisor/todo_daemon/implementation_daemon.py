@@ -88605,6 +88605,7 @@ class DatabaseImplementationDaemon:
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
         self._merge_portal_attempt_root: Path | None = None
+        self._merge_worktree_submodule_paths: tuple[str, ...] = ()
         self._quack_attach_blocked_until = 0.0
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
@@ -90597,6 +90598,7 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str,
         merge_target_branch: str,
         portal_attempt_root: Path | str | None = None,
+        worktree_submodule_paths: Sequence[str] = (),
     ) -> None:
         """Bind the shared merge queue for invalid-metadata quarantine settlement.
 
@@ -90611,6 +90613,22 @@ class DatabaseImplementationDaemon:
         if merge_queue is None or not branch:
             raise DatabaseImplementationAuthorityError(
                 "merge-train recovery requires a bound queue and target branch"
+            )
+        try:
+            supplied_submodule_paths = tuple(worktree_submodule_paths)
+        except TypeError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery submodule scope is invalid"
+            ) from exc
+        configured_submodule_paths = normalize_relative_path_list(
+            supplied_submodule_paths
+        )
+        if (
+            any(type(path) is not str for path in supplied_submodule_paths)
+            or supplied_submodule_paths != configured_submodule_paths
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery submodule scope is invalid"
             )
         configured_attempt_root: Path | None = None
         if portal_attempt_root is not None:
@@ -90634,6 +90652,7 @@ class DatabaseImplementationDaemon:
             self._merge_repo_root = Path(repo_root)
             self._merge_target_branch = branch
             self._merge_portal_attempt_root = configured_attempt_root
+            self._merge_worktree_submodule_paths = configured_submodule_paths
 
     def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
         """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
@@ -108919,7 +108938,9 @@ class DatabaseImplementationDaemon:
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
-            verifier.worktree_submodule_paths = self.worktree_submodule_paths
+            verifier.worktree_submodule_paths = (
+                self._merge_worktree_submodule_paths
+            )
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,
@@ -114564,7 +114585,169 @@ class DatabaseImplementationDaemon:
             """,
             [TASK_SOURCE_QUERY_LIMIT],
         ).fetchall()
-        return [self._attempt_from_row(row) for row in rows]
+        attempts = [self._attempt_from_row(row) for row in rows]
+        failed_phase_attempts: list[DatabaseTaskAttempt] = []
+        for attempt in attempts:
+            if attempt.committed_phase == ATTEMPT_PHASE_FAILED:
+                failed_phase_attempts.append(attempt)
+                continue
+            if self._is_admitted_retired_blocked_neutral_attempt(attempt):
+                # ``_retire_stale_blocked_neutral_attempt`` deliberately
+                # changes only the cursor status after control leaves the
+                # quarantine.  Its immutable terminal evidence remains the
+                # exact BLOCKED receipt; it is not a failed-phase retry or
+                # terminal-Portal candidate and must never be redispatched.
+                continue
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has committed phase "
+                f"{attempt.committed_phase!r} without an admitted retired "
+                "blocked-neutral receipt"
+            )
+        return failed_phase_attempts
+
+    def _is_admitted_retired_blocked_neutral_attempt(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Verify the failed-status cursor that intentionally retains BLOCKED."""
+
+        if (
+            attempt.status != "failed"
+            or attempt.committed_phase != ATTEMPT_PHASE_BLOCKED
+        ):
+            return False
+        history = self.phase_history(attempt.attempt_id)
+        blocked_phases = [
+            phase
+            for phase in history
+            if phase.get("phase") == ATTEMPT_PHASE_BLOCKED
+        ]
+        failed_phases = [
+            phase
+            for phase in history
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if len(blocked_phases) != 1 or failed_phases:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has invalid "
+                "terminal phase history"
+            )
+        blocked_phase = blocked_phases[0]
+        blocked_committed_at_ms = int(
+            blocked_phase.get("committed_at_ms") or 0
+        )
+        if (
+            blocked_phase.get("fencing_token") != int(attempt.fencing_token)
+            or blocked_phase.get("fence_epoch") != int(attempt.fence_epoch)
+            or blocked_phase.get("revision") + 1 != int(attempt.revision)
+            or blocked_committed_at_ms < 1
+            or attempt.finished_at_ms is None
+            or int(attempt.finished_at_ms) < blocked_committed_at_ms
+        ):
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has invalid "
+                "terminal phase metadata or retirement cursor"
+            )
+        blocked_body = blocked_phase.get("body")
+        raw_evidence = (
+            blocked_body.get("failure_evidence")
+            if isinstance(blocked_body, Mapping)
+            else None
+        )
+        try:
+            evidence = _sealed_database_neutral_failure_evidence(
+                raw_evidence if isinstance(raw_evidence, Mapping) else {}
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has malformed "
+                "neutral failure evidence"
+            ) from exc
+        if not self._blocked_neutral_portal_phase_matches(attempt, evidence):
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} does not have "
+                "the canonical blocked-neutral phase"
+            )
+
+        provider_key = f"provider:{attempt.attempt_id}"
+        raw_intent = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=provider_key,
+        )
+        try:
+            provider_intent = (
+                _sealed_database_provider_callback_unknown_evidence(
+                    raw_intent if isinstance(raw_intent, Mapping) else {}
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"retired blocked attempt {attempt.attempt_id} has no exact "
+                "durable callback-start intent"
+            ) from exc
+        expected_intent_identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+            "idempotency_key": provider_key,
+        }
+        intent_mismatches = [
+            name
+            for name, expected in expected_intent_identity.items()
+            if provider_intent.get(name) != expected
+        ]
+        if intent_mismatches:
+            raise DatabaseImplementationConflictError(
+                "retired blocked callback intent is stale or rebound: "
+                + ", ".join(intent_mismatches)
+            )
+
+        if evidence.get("schema") == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA:
+            if evidence != provider_intent:
+                raise DatabaseImplementationConflictError(
+                    "retired blocked callback evidence differs from its "
+                    "durable callback-start intent"
+                )
+            return True
+
+        consumed_identity = {
+            "database_attempt_id": attempt.attempt_id,
+            "database_claim_id": attempt.claim_id,
+            "database_lease_id": attempt.lease_id,
+            "database_fencing_token": int(attempt.fencing_token),
+            "database_fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+        }
+        consumed_mismatches = [
+            name
+            for name, expected in consumed_identity.items()
+            if evidence.get(name) != expected
+        ]
+        if (
+            consumed_mismatches
+            or provider_intent.get("task_contract_digest")
+            != evidence.get("task_contract_digest")
+            or provider_intent.get("repository_tree_id")
+            != evidence.get("control_repository_tree_id")
+            or provider_intent.get("database_binding_id")
+            != evidence.get("database_binding_id")
+            or provider_intent.get("portal_failure_fingerprint")
+            != evidence.get("failure_fingerprint")
+        ):
+            raise DatabaseImplementationConflictError(
+                "retired blocked consumed failure is not bound to its exact "
+                "attempt and callback intent"
+                + (
+                    ": " + ", ".join(consumed_mismatches)
+                    if consumed_mismatches
+                    else ""
+                )
+            )
+        return True
 
     def _terminal_retry_evidence(
         self,

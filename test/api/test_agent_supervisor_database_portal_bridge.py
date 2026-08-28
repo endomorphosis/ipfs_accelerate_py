@@ -9567,6 +9567,7 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
     daemon._merge_repo_root = None
     daemon._merge_target_branch = ""
     daemon._merge_portal_attempt_root = None
+    daemon._merge_worktree_submodule_paths = ()
     attempt_root = tmp_path.joinpath(*parts)
 
     if not accepted:
@@ -9589,9 +9590,34 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
         repo_root=tmp_path,
         merge_target_branch="main",
         portal_attempt_root=attempt_root,
+        worktree_submodule_paths=("ipfs_datasets_py", "ipfs_kit_py"),
     )
     assert daemon._merge_queue is queue
     assert daemon._merge_portal_attempt_root == attempt_root
+    assert daemon._merge_worktree_submodule_paths == (
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+    )
+
+    duplicate = object.__new__(DatabaseImplementationDaemon)
+    duplicate.require_real_execution = True
+    duplicate._lock = threading.RLock()
+    duplicate._merge_queue = None
+    duplicate._merge_repo_root = None
+    duplicate._merge_target_branch = ""
+    duplicate._merge_portal_attempt_root = None
+    duplicate._merge_worktree_submodule_paths = ()
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="submodule scope is invalid",
+    ):
+        duplicate.bind_merge_train_recovery(
+            merge_queue=object(),
+            repo_root=tmp_path,
+            merge_target_branch="main",
+            portal_attempt_root=attempt_root,
+            worktree_submodule_paths=("ipfs_datasets_py", "ipfs_datasets_py"),
+        )
 
 
 def _callback_integration_authority_fixture(
@@ -9968,7 +9994,7 @@ def _callback_integration_authority_fixture(
     daemon._merge_repo_root = repo
     daemon._merge_target_branch = "main"
     daemon._merge_portal_attempt_root = projection_bridge.attempt_root
-    daemon.worktree_submodule_paths = ()
+    daemon._merge_worktree_submodule_paths = ()
     return daemon, qualification, evidence, train_path, repo
 
 
@@ -9996,7 +10022,7 @@ def test_callback_integration_authority_propagates_nested_repository_scope(
     daemon, qualification, evidence, _train_path, _repo = (
         _callback_integration_authority_fixture(tmp_path)
     )
-    daemon.worktree_submodule_paths = ("ipfs_datasets_py",)
+    daemon._merge_worktree_submodule_paths = ("ipfs_datasets_py",)
     observed: list[tuple[str, ...]] = []
     original = (
         DatabasePortalExecutionBridge._callback_integration_source_evidence
