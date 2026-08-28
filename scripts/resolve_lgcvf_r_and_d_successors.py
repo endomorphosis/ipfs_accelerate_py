@@ -290,9 +290,11 @@ def _bindings(
     source_revisions: LgcvfSourceRevisions,
 ) -> LgcvfAuthorityBindings:
     plan = _load_object(PLAN_PATH, label="formal plan")
-    plan_cid = plan.get("plan_cid")
-    if not isinstance(plan_cid, str):
-        raise ResolutionCommandError("formal plan CID is absent")
+    plan_cid = content_identity(plan)
+    if qualification.get("plan_cid") != plan_cid:
+        raise ResolutionCommandError(
+            "qualification does not bind the current formal plan"
+        )
     return LgcvfAuthorityBindings(
         plan_cid=plan_cid,
         qualification_result_cid=str(qualification.get("result_cid") or ""),

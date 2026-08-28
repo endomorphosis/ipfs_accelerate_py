@@ -75,6 +75,31 @@ def test_issuer_emits_valid_false_only_signed_receipt_chain() -> None:
     assert production["production_authorized"] is False
 
 
+def test_bindings_hash_the_selfless_formal_plan_and_require_qualification_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = {"schema": "formal-plan@1", "tasks": []}
+    plan_cid = content_identity(plan)
+    qualification = {
+        "plan_cid": plan_cid,
+        "result_cid": _cid("qualification"),
+        "checkout_fingerprint_cid": _cid("checkout"),
+    }
+    benchmark = {"report_cid": _cid("benchmark")}
+    monkeypatch.setattr(issuer, "_load_object", lambda *args, **kwargs: plan)
+    monkeypatch.setattr(issuer, "_sha256_file", lambda path: "sha256:" + "a" * 64)
+
+    observed = issuer._bindings(qualification, benchmark, _bindings().source_revisions)
+
+    assert observed.plan_cid == plan_cid
+    with pytest.raises(issuer.ResolutionCommandError, match="current formal plan"):
+        issuer._bindings(
+            {**qualification, "plan_cid": _cid("stale-plan")},
+            benchmark,
+            _bindings().source_revisions,
+        )
+
+
 def test_outputs_are_strictly_append_only(tmp_path: Path) -> None:
     path = tmp_path / "receipt.json"
     first = {"schema": "receipt@2", "value": "first"}
