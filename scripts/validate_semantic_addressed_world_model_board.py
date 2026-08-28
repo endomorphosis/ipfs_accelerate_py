@@ -308,6 +308,26 @@ def _m11_migration_errors(
         return [f"M11 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m12_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M12 declared-output repair contract across static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m12_declared_output_retry_errors(
+                scheduler,
+                seal,
+                migration,
+            )
+        )
+    except Exception as exc:
+        return [f"M12 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -315,11 +335,30 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M11 before M10, M9, and M8.  Consequently an empty, null,
+    Key presence selects M12 before M11, M10, M9, and M8.  Consequently an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m12_key = "declared_output_retry_successor_materialization"
+    m12_seal_key = "declared_output_retry_successor_materialization_cid"
+    m12_presence = (
+        m12_key in scheduler,
+        m12_key in migration,
+        m12_seal_key in seal,
+    )
+    if any(m12_presence):
+        errors = _m12_migration_errors(scheduler, seal, migration)
+        if not all(m12_presence):
+            errors.append(
+                "M12 declared-output retry authority is only partially declared"
+            )
+        errors.extend(_m11_migration_errors(scheduler, seal, migration))
+        errors.extend(_m10_migration_errors(scheduler, seal, migration))
+        errors.extend(_m9_migration_errors(scheduler, seal, migration))
+        errors.extend(_m8_migration_errors(scheduler, seal, migration))
+        return errors
 
     m11_key = "live_provider_retry_successor_materialization"
     m11_seal_key = "live_provider_retry_successor_materialization_cid"
@@ -380,7 +419,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9/M10/M11 successor authority is absent"]
+    return ["active M8/M9/M10/M11/M12 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1826,8 +1865,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m12_key = "declared_output_retry_successor_materialization"
+    m12_selected = any(
+        (
+            m12_key in config,
+            m12_key in migration,
+            "declared_output_retry_successor_materialization_cid" in seal,
+        )
+    )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = any(
+    m11_selected = not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -1835,7 +1882,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m11_selected and any(
+    m10_selected = not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -1843,7 +1890,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m10_selected and any(
+    m9_selected = not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -1851,7 +1898,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m11"
+        "run-r2-m12"
+        if m12_selected
+        else "run-r2-m11"
         if m11_selected
         else "run-r2-m10"
         if m10_selected
@@ -1860,10 +1909,26 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "13" if m11_selected else "12" if m10_selected else "11" if m9_selected else "10"
+        "14"
+        if m12_selected
+        else "13"
+        if m11_selected
+        else "12"
+        if m10_selected
+        else "11"
+        if m9_selected
+        else "10"
     )
     active_port = (
-        45255 if m11_selected else 45253 if m10_selected else 45251 if m9_selected else 45250
+        45256
+        if m12_selected
+        else 45255
+        if m11_selected
+        else 45253
+        if m10_selected
+        else 45251
+        if m9_selected
+        else 45250
     )
     active_store = (
         "data/agent_supervisor/semantic_addressed_world_model/"
@@ -1880,7 +1945,64 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m11_selected:
+    if m12_selected:
+        declared_output_retry = config.get(m12_key)
+        expected_m12_fields = {
+            "schema": "sawm/portal-declared-output-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M12",
+            "migration_kind": "database_portal_declared_path_projection_repair",
+            "supersession_mode": (
+                "source_only_database_portal_declared_path_adapter_and_retry_rearm"
+            ),
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m12/control.coordination.duckdb"
+            ),
+            "target_generation": 14,
+            "target_quack_port": 45256,
+            "target_plan_revision": 13,
+            "target_event_watermark": 189,
+            "implementation_provider_invocations_observed": 2,
+            "implementation_provider_model_calls_observed": 92,
+            "implementation_provider_tokens_observed": 11_202_083,
+            "implementation_provider_cost_usd_observed": "1.23726850",
+            "settlement_provider_invocation_count": 0,
+            "provider_execution_accounting_mismatch": True,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "execution_sidecar_copied": False,
+            "read_replica_sidecar_copied": False,
+            "worker_self_approval": False,
+        }
+        expected_m12_cid = (
+            "sha256:786dde1f1728b907c3e28e5a09c746842c0a4a5ac0333f3ccb25f5290e8227a8"
+        )
+        if type(declared_output_retry) is not dict or any(
+            declared_output_retry.get(field) != expected
+            for field, expected in expected_m12_fields.items()
+        ):
+            config_errors.append(
+                "M12 active declared-output retry authority is not exact"
+            )
+        elif (
+            declared_output_retry != migration.get(m12_key)
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    declared_output_retry,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            != expected_m12_cid
+            or seal.get("declared_output_retry_successor_materialization_cid")
+            != expected_m12_cid
+        ):
+            config_errors.append("M12 declared-output retry authority/CID differs")
+    elif m11_selected:
         provider_retry = config.get(m11_key)
         expected_m11_fields = {
             "schema": "sawm/provider-launch-repair-authorization@1",

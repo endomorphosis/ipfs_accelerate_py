@@ -618,7 +618,113 @@ live preflight must verify the materializer/check result and the exact final
 marker before generation 13 can launch. This control update does not itself
 publish or launch M11.
 
-## 20. Current limitations at seal time
+## 20. M12 declared-output projection repair and exact retry successor
+
+The stopped M11 run reached the implementation-output admission boundary for
+`SAWM-001`. Both the initial provider execution and the automatic inline rescue
+created the requested repository files, but the disposable Portal projection
+declared their content-addressed effect identities as output paths. The scope
+gate consequently restored the real files as out of scope, the ignored JSON
+receipt was not staged, and both proposal paths terminated with an empty
+patch. This is a generic database-to-Portal projection defect: the outer
+IntentRepository `path` is the durable effect identity, while the closed
+canonical nested `effect.declared_path` is the exact repository-relative
+output path.
+
+M12 changes only that adapter boundary. A closed nested record with exactly
+`effect_id`, `declared_path`, and `effect=declared_output` may project its
+canonical repository-relative declared path only when the outer and nested
+effect identities agree. Malformed, open, unsafe, noncanonical, direct, or
+conflicting declarations fail closed. Ordinary legacy outer `path` records
+retain their existing behavior. The provider envelope, proposal gate,
+acceptance authority, and completion authority are unchanged.
+
+The exact M12 source/control capsule is:
+
+```text
+config/agent_supervisor_semantic_addressed_world_model_scheduler.json
+config/semantic_addressed_world_model_dependencies.seal.json
+docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md
+docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json
+ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py
+scripts/materialize_semantic_addressed_world_model_program.py
+scripts/ops/agent_supervisor/semantic_addressed_world_model.py
+scripts/validate_semantic_addressed_world_model_board.py
+scripts/validate_semantic_addressed_world_model_dependencies.py
+test/api/semantic_world/test_semantic_addressed_world_model_board.py
+test/api/test_agent_supervisor_database_portal_bridge.py
+```
+
+M12 does not change provider policy. Grok 4.6 remains primary; Codex remains
+eligible only after independently verified Grok quota exhaustion; the current
+capability probe remains mandatory; and provider results remain proposal-only.
+Read-only audit observed two provider executions, 92 model calls, 11,202,083
+tokens, and USD 1.23726850 across the initial and automatic-rescue routes. The
+canonical failure settlement records `provider_invocation_count=0`, so M12
+explicitly records `provider_execution_accounting_mismatch=true` rather than
+rewriting either observation. Neither route produced an admitted effect claim,
+implementation commit, merge attempt, validation run, accepted definition,
+accepted completion, or worker self-approval.
+
+The exact stopped M11 control base is SHA-256
+`d32a30bf320a07b2ebf9ebd1ee66012651346b51247a2fbec983a91772f4ee48`
+at 45,101,056 bytes. Its M11 publication-marker control hash
+`5accfe02488f9216b3f110a35f672cce98b24762cfeca1d8918cc1c182d7a3d7`
+remains separate immutable history. The stopped coordination base is SHA-256
+`0c7335f3e9545859ad2da7ebc384eedee2302fd9a69b38e8e4df459b4930a0d5`
+at 12,857,344 bytes; its publication-marker hash
+`c7d2fdce85eb9f7003feff0205a7dd3fbccfeffb5c3da7c821c0de658dc06af0`
+also remains separate. Both stopped bases have no WAL. Their logical authority
+is cursor 186, projection
+`baguqeeraj42oauw2k2dqekni2dsdgh6sfgbewkqpyintvry4sfzxmiu3pkfa`,
+semantic digest
+`sha256:44bf091895a4bc1fb2c5f0ecb95949dd01a4c5bcd1d5b4c909b49a3806978086`,
+frozen-base digest
+`sha256:23e1e957dea4674abbfd0b6278872aef3c7be51f4d2bfcd6bc06c758b900c732`,
+append-surface digest
+`sha256:9f8670c078b905833a5f0cb0cc8fba00732ca60989f23862b12d1770da135660`,
+and coordination root
+`sha256:b27edbdc376ccab7a167a65e13967738a30f79b42affebeb1c94710db869d963`
+at 223 events.
+
+M12 copies the exact control and coordination bases under the board-scoped
+pair lock, verifies both WAL absences, and copies neither the execution nor
+read-replica sidecar. It preserves the M11 publication receipt and all live
+claim/failure history, then appends plan revision 13, one typed repair-evidence
+event, and one task CAS from `blocked@15` to `retrying@16`. The coordinator is
+rearmed once against settlement
+`baguqeerafg6ci2g5mrq7ilfpa2qvinghhjqq2hdzmfprut4sbdiqosoxi5pq`,
+preserving the 223 predecessor events before appending event 224. No other task
+or coordination status changes.
+
+M12 targets generation 14 and the exact pair:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m12/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m12/control.coordination.duckdb
+Quack port    45256
+plan revision 13
+event cursor  189
+projection    baguqeeragb5uufggmw6glss2ttbubyb2aixhfio6cmmit6w4njiuozj3csmq
+SAWM-001      retrying revision 16
+coord events  224
+coord root    sha256:358cd0667be10fb125476ac090db3cda9aec9b8d0876a2654de1ce5aa531c59f
+semantic      sha256:239db939a5e7af260f334b325c4ec075a2faf18f01b683448625647e0962d36c
+frozen base   sha256:12b25f50a7c5d3b1020b7c1f86412fa863a6c00027ee780ecd1f78c88dfa7a95
+```
+
+Key presence selects `declared_output_retry_successor_materialization` before
+M11 and every earlier authority. A null, incomplete, or malformed M12 object
+fails closed and cannot reactivate a predecessor. Scheduler and inventory must
+carry the same closed object, whose canonical authority CID is
+`sha256:786dde1f1728b907c3e28e5a09c746842c0a4a5ac0333f3ccb25f5290e8227a8`.
+Materialization must preserve the exact attempt, claim, lease, fencing,
+settlement, failure, provider-observation, and task-revision lineage and write
+the final pair marker last. Offline start and every live preflight must verify
+the materialized pair and final marker before generation 14 can launch. This
+control update does not itself publish or launch M12.
+
+## 21. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

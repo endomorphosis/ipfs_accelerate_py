@@ -24,7 +24,7 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
@@ -39,6 +39,15 @@ _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
 )
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
+_OUTPUT_PATH_FIELDS: Final[tuple[str, ...]] = (
+    "path",
+    "output",
+    "artifact_id",
+    "fluent_id",
+)
+_DECLARED_OUTPUT_EFFECT_FIELDS: Final[frozenset[str]] = frozenset(
+    {"effect_id", "declared_path", "effect"}
+)
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -119,14 +128,138 @@ def _line_value(value: Any) -> str:
     return " ".join(selected.replace("\x00", "").splitlines()).strip()
 
 
-def _mapping_path(value: Mapping[str, Any]) -> str:
-    return _line_value(
-        value.get("path")
-        or value.get("output")
-        or value.get("artifact_id")
-        or value.get("fluent_id")
-        or value
+def _canonical_declared_output_path(value: Any) -> str:
+    """Return one exact repository-relative path or fail closed.
+
+    This stricter profile applies only to the typed declared-output envelope.
+    Legacy projected output strings retain their existing normalization in
+    :func:`_mapping_path`.
+    """
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or value.splitlines() != [value]
+        or value.lower() in {"none", "n/a"}
+    ):
+        raise DatabasePortalBridgeError(
+            "database task declared-output path is malformed"
+        )
+    if "," in value or "\\" in value or any(
+        ord(character) < 32 or ord(character) == 127 for character in value
+    ):
+        raise DatabasePortalBridgeError(
+            "database task declared-output path is malformed"
+        )
+    candidate = PurePosixPath(value)
+    if (
+        value.startswith("/")
+        or candidate.is_absolute()
+        or not candidate.parts
+        or "." in candidate.parts
+        or ".." in candidate.parts
+        or candidate.as_posix() != value
+        or (candidate.parts and candidate.parts[0].endswith(":"))
+    ):
+        raise DatabasePortalBridgeError(
+            "database task declared-output path is not canonical and repo-relative"
+        )
+    return value
+
+
+def _nested_declared_output_path(value: Mapping[str, Any]) -> str | None:
+    """Resolve the closed IntentRepository declared-output envelope.
+
+    IntentRepository deliberately stores the effect identity in the outer
+    ``path`` column and the exact repository path in the canonical nested
+    effect.  The nested path may replace that storage identity in a disposable
+    Portal projection only when the whole typed declaration is exact and the
+    two identity copies agree.
+    """
+
+    if (
+        "declared_path" in value
+        or value.get("effect") == "declared_output"
+    ):
+        raise DatabasePortalBridgeError(
+            "database task declared-output declaration must be nested"
+        )
+
+    effect = value.get("effect")
+    if not isinstance(effect, Mapping):
+        return None
+    is_declared_output = (
+        "declared_path" in effect
+        or effect.get("effect") == "declared_output"
     )
+    if not is_declared_output:
+        return None
+    if set(effect) != _DECLARED_OUTPUT_EFFECT_FIELDS:
+        raise DatabasePortalBridgeError(
+            "database task declared-output effect is not a closed record"
+        )
+    if effect.get("effect") != "declared_output":
+        raise DatabasePortalBridgeError(
+            "database task declared-output effect kind is invalid"
+        )
+    effect_id = effect.get("effect_id")
+    if (
+        not isinstance(effect_id, str)
+        or not effect_id
+        or effect_id != effect_id.strip()
+        or any(character.isspace() for character in effect_id)
+    ):
+        raise DatabasePortalBridgeError(
+            "database task declared-output effect identity is malformed"
+        )
+
+    outer_identities: list[str] = []
+    for field in _OUTPUT_PATH_FIELDS:
+        if field not in value:
+            continue
+        identity = value[field]
+        if (
+            not isinstance(identity, str)
+            or not identity
+            or identity != identity.strip()
+            or any(character.isspace() for character in identity)
+        ):
+            raise DatabasePortalBridgeError(
+                "database task declared-output outer identity is malformed"
+            )
+        outer_identities.append(identity)
+    if not outer_identities:
+        raise DatabasePortalBridgeError(
+            "database task declared-output outer identity is missing"
+        )
+    if len(set(outer_identities)) != 1:
+        raise DatabasePortalBridgeError(
+            "database task declared-output outer identities conflict"
+        )
+    if outer_identities[0] != effect_id:
+        raise DatabasePortalBridgeError(
+            "database task declared-output effect identity conflicts with its outer identity"
+        )
+    return _canonical_declared_output_path(effect.get("declared_path"))
+
+
+def _mapping_path(value: Mapping[str, Any]) -> str:
+    declared_path = _nested_declared_output_path(value)
+    if declared_path is not None:
+        return declared_path
+
+    selected = [
+        _line_value(value[field])
+        for field in _OUTPUT_PATH_FIELDS
+        if value.get(field)
+    ]
+    selected = [item for item in selected if item]
+    if len(set(selected)) > 1:
+        raise DatabasePortalBridgeError(
+            "database task output path declarations conflict"
+        )
+    return selected[0] if selected else _line_value(value)
 
 
 def _output_values(record: Any, body: Mapping[str, Any]) -> list[str]:

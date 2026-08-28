@@ -25,6 +25,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
     parse_args,
+    parse_task_text,
+    task_declared_output_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
@@ -71,6 +73,195 @@ def _record() -> SimpleNamespace:
     )
 
 
+def _bridge_for_projection(tmp_path: Path) -> DatabasePortalExecutionBridge:
+    return DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+
+
+def _content_addressed_output(
+    *,
+    effect_id: str = "sha256:effect-001",
+    declared_path: object = "inventory/result.json",
+) -> dict[str, object]:
+    return {
+        "ordinal": 0,
+        "path": effect_id,
+        "effect": {
+            "effect_id": effect_id,
+            "declared_path": declared_path,
+            "effect": "declared_output",
+        },
+    }
+
+
+def test_projection_prefers_exact_nested_declared_output_path(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.outputs = (_content_addressed_output(),)
+
+    projection = _bridge_for_projection(tmp_path)._render_projection(
+        _attempt(), record
+    )
+
+    assert "- Outputs: inventory/result.json" in projection
+    assert "- Outputs: sha256:effect-001" not in projection
+    tasks = parse_task_text(
+        projection,
+        path=tmp_path / "task-projection.md",
+        task_header_prefix="## LGSWF-",
+    )
+    assert len(tasks) == 1
+    assert task_declared_output_paths(tasks[0]) == ("inventory/result.json",)
+
+
+def test_projection_preserves_legacy_outer_output_path(tmp_path: Path) -> None:
+    projection = _bridge_for_projection(tmp_path)._render_projection(
+        _attempt(), _record()
+    )
+
+    assert "- Outputs: inventory/result.json" in projection
+
+
+@pytest.mark.parametrize(
+    "effect",
+    (
+        {
+            "path": "outputs/LGSWF-006.json",
+            "effect_id": "effect:LGSWF-006",
+        },
+        {
+            "path": "outputs/LGSWF-006.json",
+            "effect_id": "effect:LGSWF-006",
+            "effect": "create",
+        },
+    ),
+)
+def test_projection_preserves_generic_nested_effect_id_output(
+    tmp_path: Path,
+    effect: dict[str, object],
+) -> None:
+    record = _record()
+    record.outputs = (
+        {
+            "ordinal": 0,
+            "path": "outputs/LGSWF-006.json",
+            "effect": effect,
+        },
+    )
+
+    projection = _bridge_for_projection(tmp_path)._render_projection(
+        _attempt(), record
+    )
+
+    assert "- Outputs: outputs/LGSWF-006.json" in projection
+    tasks = parse_task_text(
+        projection,
+        path=tmp_path / "task-projection.md",
+        task_header_prefix="## LGSWF-",
+    )
+    assert len(tasks) == 1
+    assert task_declared_output_paths(tasks[0]) == (
+        "outputs/LGSWF-006.json",
+    )
+
+
+def test_projection_rejects_conflicting_legacy_outer_paths(tmp_path: Path) -> None:
+    record = _record()
+    record.outputs = (
+        {"path": "inventory/result.json", "output": "inventory/other.json"},
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="declarations conflict"):
+        _bridge_for_projection(tmp_path)._render_projection(_attempt(), record)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        {
+            **_content_addressed_output(),
+            "output": "sha256:conflicting-outer-id",
+        },
+        {
+            **_content_addressed_output(),
+            "path": "sha256:conflicting-outer-id",
+        },
+        {
+            **_content_addressed_output(),
+            "effect": {
+                "declared_path": "inventory/result.json",
+                "effect": "declared_output",
+            },
+        },
+        {
+            **_content_addressed_output(),
+            "effect": {
+                "effect_id": "sha256:effect-001",
+                "declared_path": "inventory/result.json",
+                "effect": "declared_output",
+                "authority": True,
+            },
+        },
+        {
+            **_content_addressed_output(),
+            "effect": {
+                "effect_id": "sha256:effect-001",
+                "declared_path": "inventory/result.json",
+                "effect": "write",
+            },
+        },
+        {
+            "effect_id": "sha256:effect-001",
+            "declared_path": "inventory/result.json",
+            "effect": "declared_output",
+        },
+        _content_addressed_output(declared_path=None),
+        _content_addressed_output(declared_path="../inventory/result.json"),
+        _content_addressed_output(declared_path="/inventory/result.json"),
+        _content_addressed_output(declared_path="inventory\\result.json"),
+        _content_addressed_output(declared_path="inventory//result.json"),
+        _content_addressed_output(declared_path="inventory/result,other.json"),
+        _content_addressed_output(declared_path="inventory/result.json\x85## SAWM-X"),
+        _content_addressed_output(declared_path="inventory/result.json\u2028## SAWM-X"),
+        _content_addressed_output(declared_path="inventory/result.json\u2029## SAWM-X"),
+        _content_addressed_output(declared_path="none"),
+        _content_addressed_output(declared_path="N/A"),
+    ],
+    ids=(
+        "conflicting-outer-aliases",
+        "effect-id-mismatch",
+        "missing-effect-id",
+        "open-effect-record",
+        "wrong-effect-kind",
+        "non-nested-declaration",
+        "non-string-declared-path",
+        "parent-traversal",
+        "absolute-path",
+        "backslash-path",
+        "non-canonical-path",
+        "projection-delimiter",
+        "next-line-control",
+        "unicode-line-separator",
+        "unicode-paragraph-separator",
+        "portal-none-sentinel",
+        "portal-na-sentinel",
+    ),
+)
+def test_projection_rejects_malformed_or_ambiguous_declared_output(
+    tmp_path: Path,
+    output: dict[str, object],
+) -> None:
+    record = _record()
+    record.outputs = (output,)
+
+    with pytest.raises(DatabasePortalBridgeError, match="declared-output"):
+        _bridge_for_projection(tmp_path)._render_projection(_attempt(), record)
+
+
 def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -81,10 +272,24 @@ def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     )
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
-        '{"credential":"must-not-propagate"}',
+        json.dumps(
+            {
+                "authority_mode": "legacy_markdown",
+                "task_source_kind": "legacy-markdown",
+                "failover_policy": "fail_closed",
+                "explicit_legacy": True,
+                "credential": "must-not-propagate",
+            },
+            sort_keys=True,
+        ),
     )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "secret-token")
-    portal = SimpleNamespace(_canonical_ref=lambda task: "task:cid:004")
+    portal = SimpleNamespace(
+        _canonical_ref=lambda task: "task:cid:004",
+        _implementation_untrusted_process_environment=(
+            PortalImplementationDaemon._implementation_untrusted_process_environment
+        ),
+    )
     task = SimpleNamespace(task_id="LGSWF-004")
 
     environment = PortalImplementationDaemon._implementation_process_environment(
