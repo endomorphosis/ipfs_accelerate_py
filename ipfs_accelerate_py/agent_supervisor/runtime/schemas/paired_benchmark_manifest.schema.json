@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/paired-benchmark-manifest@1",
+  "title": "Paired Benchmark Manifest",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "interface", "manifest_id", "baseline", "arms", "equal_controls", "populations", "historical_required_outcomes", "statistics", "promotion_without_paired_campaign"],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/paired-benchmark-manifest@1"}, "interface": {"const": "PairedBenchmarkManifest@1"}, "manifest_id": {"$ref": "#/$defs/text"},
+    "baseline": {"$ref": "#/$defs/baseline"}, "arms": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/arm"}},
+    "equal_controls": {"$ref": "#/$defs/text_list"}, "populations": {"$ref": "#/$defs/populations"}, "historical_required_outcomes": {"$ref": "#/$defs/text_list"}, "statistics": {"$ref": "#/$defs/text_list"}, "promotion_without_paired_campaign": {"const": false}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 4096}, "text_list": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+    "truth_state": {"enum": ["measured", "estimated", "unavailable", "attempted", "observed", "verified", "simulated"]},
+    "evidence": {"type": "object", "additionalProperties": false, "required": ["state", "value", "source", "reference_ids"], "properties": {"state": {"$ref": "#/$defs/truth_state"}, "value": {"type": ["null", "integer", "string", "boolean", "array", "object"], "maxLength": 4096, "maxItems": 1024, "maxProperties": 1024}, "source": {"$ref": "#/$defs/text"}, "reference_ids": {"$ref": "#/$defs/text_list"}}, "allOf": [{"if": {"properties": {"state": {"const": "unavailable"}}}, "then": {"properties": {"value": {"const": null}, "source": {"const": "unavailable"}, "reference_ids": {"maxItems": 0}}}}, {"if": {"properties": {"state": {"const": "verified"}}}, "then": {"properties": {"reference_ids": {"minItems": 1}}}}]},
+    "baseline": {"type": "object", "additionalProperties": false, "required": ["repository_revision", "repository_tree", "objective_id", "objective_revision", "task_inputs_cid", "acceptance_tests_cid", "available_provider_models", "price_accounting", "resource_limits", "maximum_retries", "human_intervention_policy"], "properties": {"repository_revision": {"$ref": "#/$defs/text"}, "repository_tree": {"$ref": "#/$defs/text"}, "objective_id": {"$ref": "#/$defs/text"}, "objective_revision": {"$ref": "#/$defs/text"}, "task_inputs_cid": {"$ref": "#/$defs/text"}, "acceptance_tests_cid": {"$ref": "#/$defs/text"}, "available_provider_models": {"$ref": "#/$defs/text_list"}, "price_accounting": {"$ref": "#/$defs/text"}, "resource_limits": {"$ref": "#/$defs/evidence"}, "maximum_retries": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}, "human_intervention_policy": {"$ref": "#/$defs/text"}}},
+    "arm": {"type": "object", "additionalProperties": false, "required": ["arm", "constraints", "receipt_ids", "evidence_state"], "properties": {"arm": {"enum": ["direct_minimal_orchestration_baseline", "sealed_current_supervisor_baseline", "candidate_optimized_supervisor"]}, "constraints": {"$ref": "#/$defs/text_list"}, "receipt_ids": {"$ref": "#/$defs/text_list"}, "evidence_state": {"$ref": "#/$defs/truth_state"}}},
+    "populations": {"type": "object", "additionalProperties": false, "required": ["hermetic_development_count", "historical_exact_tree_replay_count", "new_live_shadow_canary_count", "live_enrollment_deadline_days"], "properties": {"hermetic_development_count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}, "historical_exact_tree_replay_count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}, "new_live_shadow_canary_count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}, "live_enrollment_deadline_days": {"type": "integer", "minimum": 0, "maximum": 30}}}
+  }
+}

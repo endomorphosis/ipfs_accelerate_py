@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/task-efficiency-receipt@1",
+  "title": "Task Efficiency Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "interface", "identity", "model_use", "compute", "cost", "work", "quality", "evidence", "terminal"],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/task-efficiency-receipt@1"},
+    "interface": {"const": "TaskEfficiencyReceipt@1"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "model_use": {"$ref": "#/$defs/model_use"},
+    "compute": {"$ref": "#/$defs/compute"},
+    "cost": {"$ref": "#/$defs/cost"},
+    "work": {"$ref": "#/$defs/work"},
+    "quality": {"$ref": "#/$defs/quality"},
+    "evidence": {"$ref": "#/$defs/evidence_block"},
+    "terminal": {"$ref": "#/$defs/terminal"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "text_list": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+    "truth_state": {"enum": ["measured", "estimated", "unavailable", "attempted", "observed", "verified", "simulated"]},
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "value", "source", "reference_ids"],
+      "properties": {
+        "state": {"$ref": "#/$defs/truth_state"},
+        "value": {"type": ["null", "integer", "string", "boolean", "array", "object"], "maxLength": 4096, "maxItems": 1024, "maxProperties": 1024},
+        "source": {"$ref": "#/$defs/text"},
+        "reference_ids": {"$ref": "#/$defs/text_list"}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "unavailable"}}}, "then": {"properties": {"value": {"const": null}, "source": {"const": "unavailable"}, "reference_ids": {"maxItems": 0}}}},
+        {"if": {"properties": {"state": {"const": "verified"}}}, "then": {"properties": {"reference_ids": {"minItems": 1}}}}
+      ]
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "task_cid", "objective_id", "objective_revision", "repository_commit", "repository_tree", "policy_identity", "context_pack_cid", "interface_schema_identities", "provider_model_exact_identity_and_revision"],
+      "properties": {
+        "task_id": {"$ref": "#/$defs/text"}, "task_cid": {"$ref": "#/$defs/text"},
+        "objective_id": {"$ref": "#/$defs/text"}, "objective_revision": {"$ref": "#/$defs/text"},
+        "repository_commit": {"$ref": "#/$defs/text"}, "repository_tree": {"$ref": "#/$defs/text"},
+        "policy_identity": {"$ref": "#/$defs/text"}, "context_pack_cid": {"$ref": "#/$defs/text"},
+        "interface_schema_identities": {"$ref": "#/$defs/text_list"},
+        "provider_model_exact_identity_and_revision": {
+          "type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true,
+          "items": {"type": "object", "additionalProperties": false, "required": ["provider", "model", "revision"], "properties": {"provider": {"$ref": "#/$defs/text"}, "model": {"$ref": "#/$defs/text"}, "revision": {"$ref": "#/$defs/text"}}}
+        }
+      }
+    },
+    "model_use": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "cached_input_tokens_where_reported", "reasoning_tokens_where_reported", "number_of_calls", "calls_by_model_class", "safe_provider_request_ids", "provider_reported_usage_where_available", "explicit_unavailable_fields"],
+      "properties": {
+        "input_tokens": {"$ref": "#/$defs/evidence"}, "output_tokens": {"$ref": "#/$defs/evidence"}, "cached_input_tokens_where_reported": {"$ref": "#/$defs/evidence"}, "reasoning_tokens_where_reported": {"$ref": "#/$defs/evidence"}, "number_of_calls": {"$ref": "#/$defs/evidence"},
+        "calls_by_model_class": {"$ref": "#/$defs/evidence"}, "safe_provider_request_ids": {"$ref": "#/$defs/evidence"}, "provider_reported_usage_where_available": {"$ref": "#/$defs/evidence"}, "explicit_unavailable_fields": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "compute": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cpu_seconds", "gpu_seconds", "peak_memory_bytes", "wall_clock_duration_ms", "test_execution_time_ms", "prover_execution_time_ms", "static_analysis_time_ms", "indexing_retrieval_time_ms", "bytes_read", "bytes_written", "process_count", "concurrency"],
+      "properties": {
+        "cpu_seconds": {"$ref": "#/$defs/evidence"}, "gpu_seconds": {"$ref": "#/$defs/evidence"}, "peak_memory_bytes": {"$ref": "#/$defs/evidence"}, "wall_clock_duration_ms": {"$ref": "#/$defs/evidence"}, "test_execution_time_ms": {"$ref": "#/$defs/evidence"}, "prover_execution_time_ms": {"$ref": "#/$defs/evidence"}, "static_analysis_time_ms": {"$ref": "#/$defs/evidence"}, "indexing_retrieval_time_ms": {"$ref": "#/$defs/evidence"}, "bytes_read": {"$ref": "#/$defs/evidence"}, "bytes_written": {"$ref": "#/$defs/evidence"}, "process_count": {"$ref": "#/$defs/evidence"}, "concurrency": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "cost": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider_reported_charge_microunits", "token_based_estimated_charge_microunits", "price_snapshot_identity_and_timestamp", "local_compute_units", "audit_and_verification_overhead_microunits", "cost_per_accepted_patch_microunits", "cost_per_completed_task_microunits"],
+      "properties": {
+        "provider_reported_charge_microunits": {"$ref": "#/$defs/evidence"}, "token_based_estimated_charge_microunits": {"$ref": "#/$defs/evidence"}, "price_snapshot_identity_and_timestamp": {"$ref": "#/$defs/evidence"}, "local_compute_units": {"$ref": "#/$defs/evidence"}, "audit_and_verification_overhead_microunits": {"$ref": "#/$defs/evidence"}, "cost_per_accepted_patch_microunits": {"$ref": "#/$defs/evidence"}, "cost_per_completed_task_microunits": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "work": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tests_selected", "tests_executed", "full_suite_tests", "type_static_schema_checks", "proof_obligations_selected", "proof_obligations_executed", "proof_receipts_reused", "retries", "rescue_attempts", "merge_conflicts", "manual_recovery", "human_interventions", "final_task_outcome", "validation_result", "patch_disposition"],
+      "properties": {
+        "tests_selected": {"$ref": "#/$defs/evidence"}, "tests_executed": {"$ref": "#/$defs/evidence"}, "full_suite_tests": {"$ref": "#/$defs/evidence"}, "type_static_schema_checks": {"$ref": "#/$defs/evidence"}, "proof_obligations_selected": {"$ref": "#/$defs/evidence"}, "proof_obligations_executed": {"$ref": "#/$defs/evidence"}, "proof_receipts_reused": {"$ref": "#/$defs/evidence"}, "retries": {"$ref": "#/$defs/evidence"}, "rescue_attempts": {"$ref": "#/$defs/evidence"}, "merge_conflicts": {"$ref": "#/$defs/evidence"}, "manual_recovery": {"$ref": "#/$defs/evidence"}, "human_interventions": {"$ref": "#/$defs/evidence"}, "final_task_outcome": {"$ref": "#/$defs/evidence"}, "validation_result": {"$ref": "#/$defs/evidence"}, "patch_disposition": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false, "required": ["acceptance_tests_passed", "quality_gate_result", "accepted_patch_rate_basis"],
+      "properties": {"acceptance_tests_passed": {"$ref": "#/$defs/evidence"}, "quality_gate_result": {"$ref": "#/$defs/evidence"}, "accepted_patch_rate_basis": {"$ref": "#/$defs/evidence"}}
+    },
+    "evidence_block": {
+      "type": "object", "additionalProperties": false, "required": ["attempted_operations", "observed_effects", "verified_evidence"],
+      "properties": {"attempted_operations": {"$ref": "#/$defs/attempted_evidence"}, "observed_effects": {"$ref": "#/$defs/observed_evidence"}, "verified_evidence": {"$ref": "#/$defs/verified_evidence"}}
+    },
+    "attempted_evidence": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"state": {"enum": ["attempted", "unavailable"]}}}]},
+    "observed_evidence": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"state": {"enum": ["observed", "unavailable"]}}}]},
+    "verified_evidence": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"state": {"enum": ["verified", "unavailable"]}}}]},
+    "terminal": {
+      "type": "object", "additionalProperties": false, "required": ["is_terminal", "outcome", "evidence_state", "terminal_reason"],
+      "properties": {"is_terminal": {"type": "boolean"}, "outcome": {"enum": ["completed", "failed", "cancelled", "blocked", "incomplete"]}, "evidence_state": {"$ref": "#/$defs/truth_state"}, "terminal_reason": {"$ref": "#/$defs/text"}}
+    }
+  }
+}
