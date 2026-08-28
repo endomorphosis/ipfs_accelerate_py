@@ -16,10 +16,18 @@ import re
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+
+from .quack_owner_mutation import (
+    QUACK_OWNER_MUTATION_MAX_STEPS,
+    QuackOwnerMutationError,
+    execute_mutation_bundle,
+    mutation_step,
+    validate_mutation_binding,
+)
 
 DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
 DEFAULT_MEMORY_LIMIT = "256MB"
@@ -29,6 +37,8 @@ QUACK_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 QUACK_REQUIRE_ENV = "IPFS_ACCELERATE_AGENT_QUACK_REQUIRE"
 QUACK_PREFER_ENV = "IPFS_ACCELERATE_AGENT_QUACK_PREFER"
 QUACK_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
+QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
+QUACK_MUTATION_BINDING_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING"
 QUACK_LIVE_OWNER_FILE_FALLBACK_TIMEOUT_SECONDS = 1.0
 _LOGGER = logging.getLogger(__name__)
 SQLITE_MAGIC = b"SQLite format 3\0"
@@ -301,9 +311,11 @@ def exclusive_file_lock(
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 acquired = True
                 break
-            except BlockingIOError:
+            except BlockingIOError as exc:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(f"timed out acquiring DuckDB process lock: {lock_path}")
+                    raise TimeoutError(
+                        f"timed out acquiring DuckDB process lock: {lock_path}"
+                    ) from exc
                 time.sleep(0.01)
         yield
     finally:
@@ -386,6 +398,11 @@ class DuckDBConnection:
         self._context_depth = 0
         self._closed = False
         self._default_catalog = None
+        self._quack_mutation_binding = None
+        self._quack_mutation_token = ""
+        self._quack_mutation_inbox = None
+        self._quack_pending_mutations: list[dict[str, Any]] = []
+        self._quack_uri = ""
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -424,6 +441,11 @@ class DuckDBConnection:
         instance._closed = False
         instance._lock_context = None
         instance._default_catalog = None
+        instance._quack_mutation_binding = None
+        instance._quack_mutation_token = ""
+        instance._quack_mutation_inbox = None
+        instance._quack_pending_mutations = []
+        instance._quack_uri = ""
         return instance
 
     @property
@@ -445,12 +467,62 @@ class DuckDBConnection:
         if normalized in {"PRAGMA FOREIGN_KEYS=ON", "PRAGMA JOURNAL_MODE=WAL"}:
             return DuckDBCursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
-        if catalog and _quack_owner_mutation_required(normalized):
-            return _execute_quack_owner_mutation(
-                statement,
-                parameters,
-                dml=True,
-            )
+        if catalog and normalized.startswith("BEGIN"):
+            if self._transaction_active or self._quack_pending_mutations:
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation transaction is already active"
+                )
+        if catalog and normalized == "ROLLBACK":
+            self._quack_pending_mutations = []
+        if catalog and normalized == "COMMIT" and self._quack_pending_mutations:
+            pending = list(self._quack_pending_mutations)
+            self._quack_pending_mutations = []
+            # The Quack attachment is a read-only snapshot. End it before the
+            # exclusive owner applies the complete mutation bundle atomically.
+            self._connection.execute("ROLLBACK")
+            _consume_duckdb_result(self._connection)
+            self._transaction_active = False
+            binding = self._quack_mutation_binding
+            inbox = self._quack_mutation_inbox
+            if not isinstance(binding, Mapping) or inbox is None:
+                raise DuckDBConnectionPolicyError(
+                    "quack mutation lacks an exact live owner binding"
+                )
+            try:
+                rowcount = execute_mutation_bundle(
+                    pending,
+                    binding=binding,
+                    token=self._quack_mutation_token,
+                    inbox=inbox,
+                )
+            except QuackOwnerMutationError as exc:
+                raise DuckDBConnectionPolicyError(
+                    f"quack owner mutation failed: {exc.code}"
+                ) from exc
+            self._reattach_quack_transport()
+            return _empty_duckdb_cursor(rowcount=rowcount)
+        is_dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE ", "MERGE "))
+        if catalog and is_dml:
+            if not self._transaction_active:
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation requires an explicit transaction"
+                )
+            if parameters is None or isinstance(parameters, Mapping):
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation templates require positional parameters"
+                )
+            try:
+                step = mutation_step(statement, list(parameters))
+            except QuackOwnerMutationError as exc:
+                raise DuckDBConnectionPolicyError(
+                    f"quack owner mutation rejected: {exc.code}"
+                ) from exc
+            if len(self._quack_pending_mutations) >= QUACK_OWNER_MUTATION_MAX_STEPS:
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation bundle exceeds its step bound"
+                )
+            self._quack_pending_mutations.append(step)
+            return _empty_duckdb_cursor()
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
@@ -470,22 +542,54 @@ class DuckDBConnection:
         sql: str,
         parameters: Iterable[Iterable[Any]],
     ) -> DuckDBCursor:
+        if getattr(self, "_default_catalog", None):
+            raise DuckDBConnectionPolicyError(
+                "quack transport does not admit executemany"
+            )
         self._connection.executemany(sql, parameters)
         return DuckDBCursor(self._connection, dml=True)
 
     def executescript(self, sql: str) -> DuckDBCursor:
+        if getattr(self, "_default_catalog", None):
+            raise DuckDBConnectionPolicyError(
+                "quack transport does not admit scripts"
+            )
         self._connection.execute(sql)
         return DuckDBCursor(self._connection)
 
     def commit(self) -> None:
+        if self._quack_pending_mutations and not self._transaction_active:
+            raise DuckDBConnectionPolicyError(
+                "quack mutation bundle exists outside an active transaction"
+            )
         if self._transaction_active:
-            self._connection.commit()
-            self._transaction_active = False
+            self.execute("COMMIT")
 
     def rollback(self) -> None:
+        self._quack_pending_mutations = []
         if self._transaction_active:
             self._connection.rollback()
             self._transaction_active = False
+
+    def _reattach_quack_transport(self) -> None:
+        uri = str(self._quack_uri or "")
+        if not uri:
+            raise DuckDBConnectionPolicyError("quack transport URI is unavailable")
+        try:
+            self._connection.close()
+        except Exception:
+            pass
+        fresh = open_quack_transport_connection(
+            uri, token=self._quack_mutation_token
+        )
+        self._connection = fresh._connection
+        self._default_catalog = fresh._default_catalog
+        self._quack_mutation_binding = fresh._quack_mutation_binding
+        self._quack_mutation_token = fresh._quack_mutation_token
+        self._quack_mutation_inbox = fresh._quack_mutation_inbox
+        self._quack_uri = fresh._quack_uri
+        fresh._connection = None
+        fresh._closed = True
 
     def close(self) -> None:
         if self._closed:
@@ -826,20 +930,11 @@ def _open_file_duckdb_connection(
     return connection
 
 
-_QUACK_OWNER_DML_PREFIXES = (
-    "UPDATE ",
-    "DELETE ",
-    "MERGE ",
-    "INSERT OR REPLACE",
-    "INSERT OR IGNORE",
-)
-
-
 def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
     """Return the exclusive owner's local mutation inbox, if configured."""
 
     explicit = str(
-        os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "") or ""
+        os.environ.get(QUACK_MUTATION_DIR_ENV, "") or ""
     ).strip()
     if explicit:
         return Path(explicit)
@@ -856,73 +951,26 @@ def quack_owner_mutation_dir(store_id: object = "") -> Path | None:
     return None
 
 
-def _quack_owner_mutation_required(normalized: str) -> bool:
-    return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
+def _empty_duckdb_cursor(*, rowcount: int = -1) -> DuckDBCursor:
+    cursor = DuckDBCursor.__new__(DuckDBCursor)
+    cursor._columns = ()
+    cursor._rows = []
+    cursor._offset = 0
+    cursor.rowcount = int(rowcount)
+    return cursor
 
 
-def _execute_quack_owner_mutation(
-    statement: str,
-    parameters: Iterable[Any] | Mapping[str, Any] | None,
-    *,
-    dml: bool,
-) -> DuckDBCursor:
-    """Apply UPDATE/DELETE on the exclusive owner connection.
-
-    This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
-    DELETE attached base tables. Mutations stay on the state-owner that
-    already holds the exclusive file connection.
-    """
-
-    import json
-    import uuid
-
-    target = quack_owner_mutation_dir()
-    if target is None:
+def _quack_mutation_binding_from_environment() -> Mapping[str, Any] | None:
+    raw = str(os.environ.get(QUACK_MUTATION_BINDING_ENV, "") or "").strip()
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+        return validate_mutation_binding(payload)
+    except (TypeError, ValueError, json.JSONDecodeError, QuackOwnerMutationError) as exc:
         raise DuckDBConnectionPolicyError(
-            "quack ATTACH cannot UPDATE/DELETE remote base tables; set "
-            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR or "
-            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID so the state-owner can "
-            "apply the mutation"
-        )
-    target.mkdir(parents=True, exist_ok=True)
-    request_id = uuid.uuid4().hex
-    request_path = target / f"{request_id}.request.json"
-    done_path = target / f"{request_id}.done.json"
-    if parameters is None:
-        bound: Any = None
-    elif isinstance(parameters, Mapping):
-        bound = dict(parameters)
-    else:
-        bound = list(parameters)
-    request_path.write_text(
-        json.dumps({"sql": statement, "parameters": bound}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-    )
-    deadline = time.monotonic() + 15.0
-    while time.monotonic() < deadline:
-        if done_path.is_file():
-            payload = json.loads(done_path.read_text(encoding="utf-8"))
-            try:
-                request_path.unlink(missing_ok=True)
-                done_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            if payload.get("ok") is not True:
-                raise DuckDBConnectionPolicyError(
-                    "quack owner mutation failed: "
-                    + str(payload.get("error") or "unknown")
-                )
-            cursor = DuckDBCursor.__new__(DuckDBCursor)
-            cursor._columns = ()
-            cursor._rows = []
-            cursor._offset = 0
-            cursor.rowcount = int(payload.get("rowcount") or -1)
-            return cursor
-        time.sleep(0.05)
-    raise DuckDBConnectionPolicyError(
-        "timed out waiting for quack state-owner to apply mutation"
-    )
+            "quack mutation binding environment is invalid"
+        ) from exc
 
 
 def _consume_duckdb_result(connection: Any) -> None:
@@ -937,11 +985,11 @@ def open_quack_transport_connection(
     *,
     token: str = "",
 ) -> DuckDBConnection:
-    """Attach to the exclusive Quack state-owner (multi-reader/multi-writer).
+    """Attach read-only to the state owner's verified Quack replica.
 
-    This is a transport connection, not a direct file open. The sealed
-    one-writer file policy does not apply: Quack ATTACH requires a process
-    that can reach the loopback state-owner.
+    Canonical mutations never traverse the Quack SQL surface. They are
+    buffered into closed protocol-2 bundles and executed by the exclusive
+    DuckDB writer after exact owner/generation authentication.
     """
 
     text = quack_transport_uri(uri)
@@ -957,10 +1005,20 @@ def open_quack_transport_connection(
         raise DuckDBConnectionPolicyError(
             "DuckDB is required for Quack transport"
         ) from exc
-    connection = duckdb.connect(":memory:")
+    # Quack must already be present in the reviewed local extension cache.
+    # Disable DuckDB's implicit installer and autoloader before ``LOAD`` so a
+    # missing client extension is a typed launch failure, never a download.
+    connection = duckdb.connect(
+        ":memory:",
+        config={
+            "autoinstall_known_extensions": "false",
+            "autoload_known_extensions": "false",
+            "allow_unsigned_extensions": "false",
+        },
+    )
     try:
         connection.execute("LOAD quack")
-        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
+        attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_ONLY"
         secret = str(
             token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
         ).strip()
@@ -988,6 +1046,20 @@ def open_quack_transport_connection(
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    wrapped._quack_uri = text
+    wrapped._quack_mutation_token = secret
+    wrapped._quack_mutation_binding = _quack_mutation_binding_from_environment()
+    wrapped._quack_mutation_inbox = quack_owner_mutation_dir(
+        wrapped._quack_mutation_binding.get("store_id")
+        if isinstance(wrapped._quack_mutation_binding, Mapping)
+        else ""
+    )
+    if isinstance(wrapped._quack_mutation_binding, Mapping):
+        if wrapped._quack_mutation_binding.get("listen_uri") != text:
+            wrapped.close()
+            raise DuckDBConnectionPolicyError(
+                "quack mutation binding does not match attached endpoint"
+            )
     return wrapped
 
 

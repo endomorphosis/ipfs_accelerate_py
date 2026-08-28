@@ -57,6 +57,7 @@ INVENTORY_PATHS = tuple(
         "dependency_graph.json",
         "capability_matrix.json",
         "rollout_baseline.json",
+        "prior_materialization_migration.json",
     )
 )
 
@@ -72,7 +73,16 @@ CONTROL_RELATIVE_PATHS = (
     "scripts/validate_semantic_addressed_world_model_board.py",
     "scripts/materialize_semantic_addressed_world_model_program.py",
     "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
     "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
 )
 
@@ -330,6 +340,10 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config = _load_json(root / SCHEDULER_PATH.relative_to(REPO_ROOT))
         seal = _load_json(root / SEAL_PATH.relative_to(REPO_ROOT))
         benchmark = _load_json(root / BENCHMARK_PATH.relative_to(REPO_ROOT))
+        migration = _load_json(
+            root
+            / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json"
+        )
     except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
         _append(checks, errors, "control_documents_parse", False, f"{type(exc).__name__}: {exc}")
         return {
@@ -623,8 +637,43 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
+        or program.get("store_generation") != "2"
+        or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
+    prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
+    if (
+        migration.get("schema") != "sawm/prior-materialization-migration-inventory@1"
+        or migration.get("migration_revision") != "SAWM-R2-M1"
+        or migration.get("prior_authority_preserved") is not True
+        or prior.get("preserve_append_only") is not True
+        or prior.get("store_id") != migration.get("prior_store_id")
+        or prior.get("program_definition_cid") != migration.get("prior_program_definition_cid")
+        or prior.get("plan_root_cid") != migration.get("prior_plan_root_cid")
+        or prior.get("source_binding_cid") != migration.get("prior_source_binding_cid")
+        or prior.get("projection_cid") != migration.get("prior_projection_cid")
+        or set(migration.get("prior_task_cids") or {}) != set(TASK_IDS)
+        or set(migration.get("prior_goal_cids") or {}) != set(GOAL_IDS)
+        or migration.get("prior_task_count") != len(TASK_IDS)
+        or migration.get("prior_goal_count") != len(GOAL_IDS)
+        or migration.get("prior_event_watermark") != 107
+    ):
+        config_errors.append("append-only prior-SAWM migration binding mismatch")
+    repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())
+    if (
+        not repair_paths
+        or len(repair_paths) != len(set(repair_paths))
+        or any(path not in CONTROL_RELATIVE_PATHS for path in repair_paths)
+    ):
+        config_errors.append("bounded launch-repair paths are not exact protected controls")
+    configured_pin = config.get("quack_owner", {}).get("pinned_extension", {})
+    sealed_pin = seal.get("quack_extension_pin", {})
+    if (
+        configured_pin != sealed_pin
+        or configured_pin.get("network_install_allowed") is not False
+        or configured_pin.get("unsigned_extension_allowed") is not False
+    ):
+        config_errors.append("Quack extension pin differs from the sealed local-only capability")
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (
         ducklake.get("authority") is False

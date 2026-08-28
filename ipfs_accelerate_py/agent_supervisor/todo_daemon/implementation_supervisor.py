@@ -10407,6 +10407,7 @@ class PortalImplementationSupervisor:
             payload,
             command_template=self.config.llm_merge_resolver_command,
             timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+            environment=self.provider_subprocess_environment(),
             **route_arguments,
         )
         if route_receipt_path is not None:

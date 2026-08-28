@@ -44,13 +44,23 @@ CONTROL_PATHS = frozenset(
         "docs/architecture/semantic_addressed_world_model_inventory/dependency_graph.json",
         "docs/architecture/semantic_addressed_world_model_inventory/capability_matrix.json",
         "docs/architecture/semantic_addressed_world_model_inventory/rollout_baseline.json",
+        "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json",
         "config/semantic_addressed_world_model_dependencies.seal.json",
         "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
         "scripts/validate_semantic_addressed_world_model_board.py",
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
         "test/api/semantic_world/README.md",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/README.md",
@@ -63,7 +73,8 @@ INTERFACES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py", ("load_configured_board", "preflight_configured_board", "configured_board_launch_plan", "main")),
     ("ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py", ("DatabaseProgramConfig",)),
     ("ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py", ("QuackStateServer", "build_server")),
-    ("ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py", ("discover_live_quack_endpoint",)),
+    ("ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py", ("discover_live_quack_endpoint", "DuckDBConnection")),
+    ("ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py", ("build_mutation_request", "validate_mutation_request", "execute_mutation_bundle", "execute_owner_mutation", "service_mutation_inbox")),
     ("ipfs_accelerate_py/llm_router.py", ("probe_grok_codex_agent_route_readiness",)),
     ("ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py", ("WorktreeLifecycleStore",)),
     ("ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py", ("LeaseCoordinator",)),
@@ -337,7 +348,87 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
     direction = seal.get("package_dependency_direction") if isinstance(seal.get("package_dependency_direction"), Mapping) else {}
     check("authority_dependency_direction", direction.get("accelerate_consumes_datasets_semantics") is True and direction.get("accelerate_consumes_kit_storage") is True and direction.get("datasets_may_depend_on_accelerate_operations") is False and direction.get("kit_may_decide_datasets_semantics") is False and direction.get("parallel_authority_implementation_allowed") is False, direction)
     plane = seal.get("control_plane") if isinstance(seal.get("control_plane"), Mapping) else {}
-    check("duckdb_quack_ducklake_boundaries", plane.get("authoritative_store") == "DuckDB" and plane.get("multi_writer_transport_and_exclusive_owner") == "Quack" and plane.get("ducklake_authoritative") is False and plane.get("markdown_authoritative") is False and plane.get("worker_self_completion_allowed") is False, plane)
+    check(
+        "duckdb_quack_ducklake_boundaries",
+        plane.get("authoritative_store") == "DuckDB"
+        and plane.get("exclusive_mutation_owner") == "canonical DuckDB writer"
+        and plane.get("multi_process_query_transport") == "Quack read-only replica"
+        and plane.get("authenticated_mutation_protocol") == "closed atomic owner-inbox protocol@2"
+        and plane.get("canonical_writer_served_through_quack") is False
+        and plane.get("quack_replica_authoritative") is False
+        and plane.get("owner_protocol_allows_arbitrary_sql") is False
+        and plane.get("ducklake_authoritative") is False
+        and plane.get("markdown_authoritative") is False
+        and plane.get("worker_self_completion_allowed") is False,
+        plane,
+    )
+
+    protocol_errors: list[str] = []
+    try:
+        scheduler = _load(
+            root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        )
+        migration = _load(
+            root
+            / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json"
+        )
+        configured_pin = scheduler.get("quack_owner", {}).get("pinned_extension", {})
+        sealed_pin = seal.get("quack_extension_pin", {})
+        pin_path = Path(str(configured_pin.get("path") or ""))
+        if configured_pin != sealed_pin:
+            protocol_errors.append("scheduler Quack pin differs from the dependency seal")
+        if not pin_path.is_file() or _sha(pin_path) != configured_pin.get("sha256"):
+            protocol_errors.append("reviewed local Quack extension bytes are unavailable or mismatched")
+        if configured_pin.get("network_install_allowed") is not False:
+            protocol_errors.append("Quack network installation must remain forbidden")
+        if configured_pin.get("unsigned_extension_allowed") is not False:
+            protocol_errors.append("unsigned Quack extensions must remain forbidden")
+
+        sealed_migration = seal.get("source_migration", {})
+        if (
+            sealed_migration.get("migration_revision") != migration.get("migration_revision")
+            or sealed_migration.get("prior_store_id") != migration.get("prior_store_id")
+            or sealed_migration.get("target_store_id") != migration.get("target_store_id")
+            or sealed_migration.get("prior_event_watermark") != migration.get("prior_event_watermark")
+            or sealed_migration.get("prior_event_prefix_sha256") != migration.get("prior_event_prefix_sha256")
+            or sealed_migration.get("prior_control_store_sha256") != migration.get("prior_control_store_sha256")
+            or sealed_migration.get("accepted_definition_rewrite_allowed") is not False
+            or sealed_migration.get("accepted_completion_replay_allowed") is not False
+            or sealed_migration.get("prior_authority_preserved") is not True
+        ):
+            protocol_errors.append("append-only source-migration seal differs from its inventory")
+        if scheduler.get("database_program", {}).get("store_generation") != "2":
+            protocol_errors.append("migrated owner must acquire successor store generation 2")
+
+        protocol_source = (
+            root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"
+        ).read_text(encoding="utf-8")
+        operator_source = (
+            root / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+        ).read_text(encoding="utf-8")
+        runner_source = (
+            root / "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+        ).read_text(encoding="utf-8")
+        daemon_source = (
+            root / "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+        ).read_text(encoding="utf-8")
+        if "quack-owner-mutation-request@2" not in protocol_source:
+            protocol_errors.append("closed mutation protocol revision 2 is absent")
+        if "MUTATION_SQL_TEMPLATES" not in protocol_source or "execute_owner_mutation" not in protocol_source:
+            protocol_errors.append("closed atomic mutation catalog is absent")
+        if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
+            protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        for name in (
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING",
+        ):
+            if name not in runner_source:
+                protocol_errors.append(f"state credential scrub list omits {name}")
+        if daemon_source.count("inherit_environment=False") < 3:
+            protocol_errors.append("provider subprocesses do not all use exact scrubbed environments")
+    except Exception as exc:
+        protocol_errors.append(f"{type(exc).__name__}: {exc}")
+    check("append_only_migration_and_closed_quack_protocol", not protocol_errors, protocol_errors)
 
     if cold_import and not errors:
         # Use the sealed interpreter, not whichever Python happened to invoke a

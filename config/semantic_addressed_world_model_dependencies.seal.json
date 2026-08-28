@@ -87,8 +87,8 @@
   "dependency_files": [
     {
       "path": ".gitignore",
-      "sha256": "5529a74c4b8a1fee1ffc9764a99beb9f158f46ed61e3f26fe31d7eee31072b5f",
-      "git_blob_oid": "a1cc0989eb8e339a9a9f19fe3884a187a9955bb1",
+      "sha256": "f81893b948d355a876d2314bf7cfde58fc5a3d93cab7f104ffc0dd5f9cc7dbe0",
+      "git_blob_oid": "fe7e8929702704b0a2d14f33b580d3fde7177657",
       "role": "exact SAWM control and evidence tracking exceptions"
     },
     {
@@ -186,7 +186,12 @@
   },
   "control_plane": {
     "authoritative_store": "DuckDB",
-    "multi_writer_transport_and_exclusive_owner": "Quack",
+    "exclusive_mutation_owner": "canonical DuckDB writer",
+    "multi_process_query_transport": "Quack read-only replica",
+    "authenticated_mutation_protocol": "closed atomic owner-inbox protocol@2",
+    "canonical_writer_served_through_quack": false,
+    "quack_replica_authoritative": false,
+    "owner_protocol_allows_arbitrary_sql": false,
     "duckdb_source": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "quack_server_source": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     "quack_client_source": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
@@ -196,6 +201,26 @@
     "ducklake_authoritative": false,
     "markdown_authoritative": false,
     "worker_self_completion_allowed": false
+  },
+  "quack_extension_pin": {
+    "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+    "version": "c154811",
+    "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
+    "network_install_allowed": false,
+    "unsigned_extension_allowed": false,
+    "service_external_access_limitation": "canonical_writer_sealed; pinned_extension_preloaded_only_in_locked_read_only_loopback_replica"
+  },
+  "source_migration": {
+    "migration_revision": "SAWM-R2-M1",
+    "mode": "append_only_source_authority_revision",
+    "prior_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2/control.duckdb",
+    "target_store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m1/control.duckdb",
+    "prior_event_watermark": 107,
+    "prior_event_prefix_sha256": "c1f9ad28eff2417ec457757fa54ceee75c73f9c45ac3bbdb5964c9063df63a0e",
+    "prior_control_store_sha256": "376133c45344228b0bc653c2bcf019f33eaf540c8bffea1582170d2b97e6f54f",
+    "accepted_definition_rewrite_allowed": false,
+    "accepted_completion_replay_allowed": false,
+    "prior_authority_preserved": true
   },
   "optional_capability_policy": {
     "external_provers": "probe_then_typed_unavailable",

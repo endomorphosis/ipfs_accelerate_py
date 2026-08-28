@@ -29,6 +29,7 @@ import logging
 import os
 import secrets
 import socket
+import stat as stat_module
 import threading
 import time
 import uuid
@@ -936,13 +937,20 @@ class ExclusiveOwnerLease:
 class TokenVault:
     """Store Quack auth tokens behind opaque secret handles.
 
-    The token bytes exist only in a mode-0600 file under the state directory.
-    Public APIs expose only the secret handle.
+    A mode-0600 file provides a one-time trusted-coordinator handoff.  It must
+    be retired before any untrusted provider child is launched.  Public APIs
+    expose only the secret handle.
     """
 
     def __init__(self, state_dir: Path) -> None:
         self.state_dir = Path(state_dir)
-        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.state_dir.chmod(0o700)
+        except OSError as exc:
+            raise QuackStateServerTokenError(
+                "token vault state directory could not be confined"
+            ) from exc
         self._token: str | None = None
         self._handle: str | None = None
         self._path: Path | None = None
@@ -965,7 +973,7 @@ class TokenVault:
         # Ensure the token never collides with handle prefixes.
         if any(token.startswith(prefix) for prefix in SECRET_HANDLE_PREFIXES):
             token = f"x{token}"
-        path = self.state_dir / f"{secret_handle.replace(':', '_').replace('/', '_')}{TOKEN_FILENAME_SUFFIX}"
+        path = self.state_dir / _token_handoff_filename(secret_handle)
         _atomic_write_text(path, token, mode=0o600)
         self._token = token
         self._handle = secret_handle
@@ -997,6 +1005,152 @@ class TokenVault:
             raise QuackStateServerTokenError(
                 f"auth token leaked into {surface_name}"
             )
+
+
+def _token_handoff_filename(secret_handle: str) -> str:
+    """Return the confined handoff filename for one opaque handle."""
+
+    handle = str(secret_handle or "").strip()
+    if not is_secret_handle(handle) or any(
+        ord(character) < 0x20 for character in handle
+    ):
+        raise QuackStateServerTokenError(
+            "token handoff requires a valid opaque secret handle"
+        )
+    filename = (
+        handle.replace(":", "_").replace("/", "_") + TOKEN_FILENAME_SUFFIX
+    )
+    if Path(filename).name != filename or filename in {"", ".", ".."}:
+        raise QuackStateServerTokenError("token handoff filename is not confined")
+    return filename
+
+
+def retire_token_handoff(
+    *,
+    state_dir: Path | str,
+    secret_handle: str,
+    expected_token: str,
+) -> dict[str, Any]:
+    """Atomically retire the provider-readable bootstrap token handoff.
+
+    The caller must first authenticate the live owner with ``expected_token``.
+    A missing handoff is an idempotent success because the authenticated
+    coordinator already holds the in-memory credential.  Any present file is
+    unlinked only after strict ownership, type, mode, link-count, and token
+    checks; malformed or mismatched files fail closed and remain untouched.
+    """
+
+    token = str(expected_token or "")
+    try:
+        token_bytes = token.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise QuackStateServerTokenError(
+            "expected token is not an ASCII transport credential"
+        ) from exc
+    if not 8 <= len(token_bytes) <= 1024 or token.strip() != token:
+        raise QuackStateServerTokenError("expected token has an invalid shape")
+
+    filename = _token_handoff_filename(secret_handle)
+    try:
+        directory = Path(state_dir).expanduser().resolve(strict=True)
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token handoff state directory is unavailable"
+        ) from exc
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        directory_fd = os.open(directory, directory_flags)
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token handoff state directory could not be opened safely"
+        ) from exc
+    try:
+        directory_stat = os.fstat(directory_fd)
+        if (
+            not stat_module.S_ISDIR(directory_stat.st_mode)
+            or directory_stat.st_uid != os.geteuid()
+            or stat_module.S_IMODE(directory_stat.st_mode) & 0o022
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff state directory is not owner-confined"
+            )
+        file_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        try:
+            token_fd = os.open(filename, file_flags, dir_fd=directory_fd)
+        except FileNotFoundError:
+            return {
+                "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+                "retired": True,
+                "already_absent": True,
+                "secret_handle": secret_handle,
+            }
+        except OSError as exc:
+            raise QuackStateServerTokenError(
+                "token handoff could not be opened safely"
+            ) from exc
+        try:
+            opened = os.fstat(token_fd)
+            if (
+                not stat_module.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.geteuid()
+                or opened.st_nlink != 1
+                or stat_module.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise QuackStateServerTokenError(
+                    "token handoff file ownership or mode is invalid"
+                )
+            observed = bytearray()
+            while len(observed) <= 1024:
+                chunk = os.read(token_fd, min(1025 - len(observed), 256))
+                if not chunk:
+                    break
+                observed.extend(chunk)
+            if len(observed) > 1024 or not secrets.compare_digest(
+                bytes(observed), token_bytes
+            ):
+                raise QuackStateServerTokenError(
+                    "token handoff does not match the authenticated owner"
+                )
+            current = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+            if (
+                current.st_dev != opened.st_dev
+                or current.st_ino != opened.st_ino
+                or current.st_mode != opened.st_mode
+                or current.st_size != opened.st_size
+                or current.st_mtime_ns != opened.st_mtime_ns
+            ):
+                raise QuackStateServerTokenError(
+                    "token handoff changed during retirement"
+                )
+            os.unlink(filename, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+        finally:
+            os.close(token_fd)
+        try:
+            os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise QuackStateServerTokenError(
+                "token handoff remained visible after retirement"
+            )
+        return {
+            "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+            "retired": True,
+            "already_absent": False,
+            "secret_handle": secret_handle,
+        }
+    finally:
+        os.close(directory_fd)
 
 
 # ---------------------------------------------------------------------------
@@ -1398,6 +1552,29 @@ class QuackStateServer:
         current = int(row[0] if not isinstance(row, Mapping) else row.get(list(row.keys())[0], 0))
         return max(1, current + 1)
 
+    @staticmethod
+    def _next_credential_generation(connection: Any, secret_handle: str) -> int:
+        try:
+            row = connection.execute(
+                "SELECT COALESCE(MAX(generation), 0) FROM credentials "
+                "WHERE secret_handle = ?",
+                [secret_handle],
+            ).fetchone()
+        except Exception as exc:
+            raise QuackStateServerMigrationError(
+                "credential generation authority is unavailable after migration"
+            ) from exc
+        current = int(
+            row[0]
+            if row is not None and not isinstance(row, Mapping)
+            else (
+                row.get(list(row.keys())[0], 0)
+                if isinstance(row, Mapping) and row
+                else 0
+            )
+        )
+        return current + 1
+
     def _publish_identity_rows(
         self,
         connection: Any,
@@ -1622,8 +1799,14 @@ class QuackStateServer:
                 self._bound_port = port
                 uri = listen_uri(self.config.host, port)
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
+                credential_generation = self._next_credential_generation(
+                    connection, secret_handle
+                )
                 assert self._vault is not None
-                self._vault.mint(secret_handle=secret_handle, generation=1)
+                self._vault.mint(
+                    secret_handle=secret_handle,
+                    generation=credential_generation,
+                )
                 token = self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
@@ -1638,7 +1821,7 @@ class QuackStateServer:
                     process_birth=birth,
                     listen_uri=uri,
                     extension_fingerprint=capability.extension_fingerprint or "",
-                    credential_generation=1,
+                    credential_generation=credential_generation,
                     secret_handle=secret_handle,
                     repository_id=self.config.repository_id
                     or f"repository:{self.config.store_id}",
@@ -1662,6 +1845,11 @@ class QuackStateServer:
                 self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
                 self._identity = identity
+                connection.execute(
+                    "UPDATE state_servers SET status = ?, revision = revision + 1 "
+                    "WHERE server_id = ? AND generation = ?",
+                    ["ready", identity.server_id, identity.generation],
+                )
                 self._lifecycle = ServerLifecycle.READY
                 self._write_status()
                 self._log(
@@ -2156,5 +2344,6 @@ __all__ = (
     "listen_uri",
     "provider_safe_environment",
     "reclaim_stale_owner_marker",
+    "retire_token_handoff",
     "sanitize_for_export",
 )

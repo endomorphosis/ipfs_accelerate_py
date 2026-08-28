@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -58,6 +61,142 @@ def test_rendered_population_has_exact_operator_frontier() -> None:
     assert population["plan_revision"] == "SAWM-PLAN-R2"
 
 
+def test_preserved_definition_cids_rehash_from_the_prior_source_binding() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_identity_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    prior = population["migration_inventory"]
+
+    for record in (*population["objectives"], *population["taskboard"]):
+        assert record["definition"]["source_binding_cid"] == prior[
+            "prior_source_binding_cid"
+        ]
+        assert materializer._identity(record["definition"]) == record["definition_cid"]
+    assert materializer._identity(population["program_definition"]) == population[
+        "program_definition_cid"
+    ]
+
+
+def test_materialization_rejects_a_dirty_or_uncommitted_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_dirty_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    real_git = materializer._git
+
+    def dirty_git(root: Path, *args: str, **kwargs: object) -> str:
+        if args[:2] == ("status", "--porcelain=v1"):
+            return " M scripts/materialize_semantic_addressed_world_model_program.py"
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(materializer, "_git", dirty_git)
+    with pytest.raises(materializer.MaterializationError, match="clean committed"):
+        materializer._assert_committed_clean_source(REPO_ROOT, population)
+
+
+def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_migration_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    migration = population["migration_inventory"]
+    config = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    prior = materializer._verify_prior_store(REPO_ROOT, config, population)
+    dependency = materializer._validator_report(
+        REPO_ROOT, "scripts/validate_semantic_addressed_world_model_dependencies.py"
+    )
+    board = materializer._validator_report(
+        REPO_ROOT, "scripts/validate_semantic_addressed_world_model_board.py"
+    )
+    validation_digest = materializer._identity(
+        {
+            "dependency": dependency,
+            "board": board,
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-test-", dir="/tmp") as directory:
+        stage = Path(directory) / "control.duckdb"
+        shutil.copy2(Path(prior["database_path"]), stage)
+        source = DatabaseTaskSource(
+            stage,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-source-migrator",
+        )
+        try:
+            operator = source.get_task("SAWM-000")
+            assert operator is not None
+            migration_body = materializer._migration_body(
+                population, config, validation_digest
+            )
+            migration_digest = materializer._identity(migration_body)
+            source.plans.append_revision(
+                plan_cid=str(population["plan_root_cid"]),
+                expected_revision=1,
+                body={
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
+                    "source_migration_revision": migration["migration_revision"],
+                    "source_migration_digest": migration_digest,
+                    "supersession_mode": "source_authority_revision_only",
+                },
+                delta=materializer._migration_plan_delta(population),
+            )
+            source.record_evidence(
+                task_cid=operator.task_cid,
+                evidence_kind="operator_control_plane_source_migration",
+                digest=migration_digest,
+                body=migration_body,
+            )
+        finally:
+            source.close()
+
+        verified = materializer._verify_store(
+            stage,
+            population,
+            require_operator_complete=True,
+            require_migration=True,
+            migration_config=config,
+            expected_validation_digest=validation_digest,
+        )
+        assert verified["event_watermark"] == migration["prior_event_watermark"] + 2
+        assert verified["projection_matches_events"] is True
+        assert materializer._store_sha256(Path(prior["database_path"])) == migration[
+            "prior_control_store_sha256"
+        ]
+        stale_lock = stage.parent / ".migration-receipt.json.publish.lock"
+        stale_lock.touch(mode=0o600)
+        receipt = materializer._ensure_migration_receipt(
+            stage.parent, stage, population, verified, validation_digest
+        )
+        receipt_path = stage.parent / "migration-receipt.json"
+        assert receipt_path.is_file()
+        assert materializer._ensure_migration_receipt(
+            stage.parent, stage, population, verified, validation_digest
+        ) == receipt
+        receipt_path.unlink()
+        assert materializer._ensure_migration_receipt(
+            stage.parent, stage, population, verified, validation_digest
+        ) == receipt
+
+
 def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     config = json.loads(
         (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
@@ -72,3 +211,93 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["authority"] is False
     assert ducklake["scheduling_prerequisite"] is False
     assert ducklake["completion_prerequisite"] is False
+
+
+def test_live_owner_identity_requires_exact_canonical_replica_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_identity_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        _schema_fingerprint_digest,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+
+    raw_schema_fingerprint = (
+        "baguqeerayrmgjy3yusfmd7c3zcojf6l2wg7l46dnyvlm4homwfipaf5r2nha"
+    )
+    identity = {
+        "server_id": "server:sawm-test",
+        "store_id": "store:sawm-test",
+        "database_uuid": "database:sawm-test",
+        "process_birth_id": "birth:sawm-test",
+        "listen_uri": "quack:127.0.0.1:45247",
+        "extension_fingerprint": "sha256:" + ("ab" * 32),
+        "schema_revision": 1,
+        "schema_fingerprint": _schema_fingerprint_digest(raw_schema_fingerprint),
+        "generation": 2,
+        "fence_epoch": 2,
+        "revision": 0,
+        "credential_generation": 2,
+        "secret_handle": "env://SAWM_QUACK_TOKEN",
+    }
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self.rows
+
+    class Connection:
+        state_present = True
+
+        def execute(
+            self, sql: str, parameters: list[object] | None = None
+        ) -> Result:
+            del parameters
+            if "FROM state_servers" in sql:
+                rows = [
+                    (
+                        identity["server_id"], identity["store_id"],
+                        identity["database_uuid"], identity["process_birth_id"],
+                        identity["listen_uri"], identity["extension_fingerprint"],
+                        1, 2, "ready", 1,
+                    )
+                ] if self.state_present else []
+                return Result(rows)
+            if "FROM store_generations" in sql:
+                return Result([(2, 1, 2, 0, identity["database_uuid"], identity["process_birth_id"])])
+            if "FROM credentials" in sql:
+                return Result([(
+                    "cred:server:sawm-test:2", identity["secret_handle"],
+                    2, "quack-auth", None, 0,
+                )])
+            if "FROM control_plane_metadata" in sql:
+                return Result([
+                    ("database_uuid", identity["database_uuid"]),
+                    ("schema_fingerprint", raw_schema_fingerprint),
+                    ("schema_version", "1"),
+                ])
+            raise AssertionError(sql)
+
+        def close(self) -> None:
+            return None
+
+    connection = Connection()
+    monkeypatch.setattr(
+        duckdb_state,
+        "open_quack_transport_connection",
+        lambda _uri, *, token: connection,
+    )
+    observed = operator._remote_owner_identity(
+        identity["listen_uri"], "opaque-test-token", identity
+    )
+    assert observed["canonical_rows_verified"] is True
+    connection.state_present = False
+    with pytest.raises(operator.OperatorError, match="missing or ambiguous"):
+        operator._remote_owner_identity(
+            identity["listen_uri"], "opaque-test-token", identity
+        )

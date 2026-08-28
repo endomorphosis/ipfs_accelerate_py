@@ -20349,6 +20349,7 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
                             ),
+                            inherit_environment=False,
                             pass_fds=self._accepted_control_plane_pass_fds(
                                 command
                             ),
@@ -29824,6 +29825,7 @@ class PortalImplementationDaemon:
                                 stdout=log_fh,
                                 input_text=prompt,
                                 env=provider_environment,
+                                inherit_environment=False,
                                 pass_fds=self._accepted_control_plane_pass_fds(
                                     command
                                 ),
@@ -44692,6 +44694,7 @@ class PortalImplementationDaemon:
                             stdout=log_fh,
                             input_text=rescue_prompt,
                             env=provider_environment,
+                            inherit_environment=False,
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
@@ -48239,6 +48242,7 @@ class PortalImplementationDaemon:
             payload,
             command_template=command_template,
             timeout_seconds=self.llm_merge_resolver_timeout_seconds,
+            environment=self._implementation_untrusted_process_environment(),
         )
         compact_result = dict(result)
         if "prompt" in compact_result:
@@ -61401,12 +61405,13 @@ class PortalImplementationDaemon:
         attempt: int,
         checkpoint_dir: Path,
     ) -> dict[str, str]:
-        environment = {
+        environment = self._implementation_untrusted_process_environment()
+        environment.update({
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
-        }
+        })
         if (
             str(
                 os.environ.get(
@@ -61423,6 +61428,51 @@ class PortalImplementationDaemon:
             # that redaction.
             environment[SEMANTIC_TRUTH_AUTHORITY_ENV] = "ipfs_datasets_py"
             environment[SEMANTIC_WRITER_POLICY_ENV] = "reference_only"
+        return environment
+
+    @staticmethod
+    def _implementation_untrusted_process_environment() -> dict[str, str]:
+        """Return the ambient environment with state authority fully removed."""
+
+        from ..runtime.multi_supervisor_runner import (
+            DATABASE_PROGRAM_ENV_NAMES,
+            DATABASE_PROGRAM_JSON_ENV,
+            STATE_ENDPOINT_SECRET_HANDLE_ENV,
+            DatabaseProgramConfig,
+            DatabaseProgramConfigError,
+            provider_subprocess_environment,
+            scrub_state_credentials_from_environment,
+        )
+
+        source_environment = dict(os.environ)
+        secret_handle = str(
+            source_environment.get(STATE_ENDPOINT_SECRET_HANDLE_ENV, "") or ""
+        ).strip()
+        raw_program = str(
+            source_environment.get(DATABASE_PROGRAM_JSON_ENV, "") or ""
+        ).strip()
+        database_program = None
+        if raw_program:
+            try:
+                program_payload = json.loads(raw_program)
+                if not isinstance(program_payload, Mapping):
+                    raise DatabaseProgramConfigError(
+                        "database program environment must be an object"
+                    )
+                database_program = DatabaseProgramConfig.from_mapping(program_payload)
+            except (json.JSONDecodeError, DatabaseProgramConfigError) as exc:
+                raise RuntimeError(
+                    "provider environment cannot verify database authority"
+                ) from exc
+            secret_handle = database_program.endpoint_secret_handle
+        environment = provider_subprocess_environment(
+            scrub_state_credentials_from_environment(
+                source_environment, secret_handle=secret_handle
+            ),
+            program=database_program,
+        )
+        for name in DATABASE_PROGRAM_ENV_NAMES:
+            environment.pop(name, None)
         return environment
 
     def _implementation_progress_observer(
@@ -71439,4 +71489,3 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
-
