@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -287,6 +288,8 @@ def _seed_active_database_pool_lease(
         "database_attempt_number": database_attempt_number,
         "portal_task_cid": portal_task_cid,
         "portal_task_key": portal_identity.canonical_task_key,
+        "portal_board_namespace": portal_identity.board_namespace,
+        "portal_semantic_fingerprint": portal_identity.semantic_fingerprint,
         "task_alias": task_alias,
         "nested_state_path": nested_state_path,
         "lifecycle_path": lifecycle_store.workspace_path_for(workspace),
@@ -344,6 +347,143 @@ def _seed_live_unprojected_database_attempt(
     )
     fixture["implementation_lock_path"] = implementation_lock_path
     return fixture
+
+
+def _seed_live_database_portal_callback_gap(
+    tmp_path: Path,
+    *,
+    task_alias: str = "PCSM-043",
+    database_task_cid: str = "task:database-pcsm-043",
+    database_attempt_number: int = 2,
+    attempt_id: str = "attempt:pcsm-043:database-2",
+) -> dict[str, Any]:
+    fixture = _seed_active_database_pool_lease(
+        tmp_path,
+        task_alias=task_alias,
+        database_task_cid=database_task_cid,
+        database_attempt_number=database_attempt_number,
+        attempt_id=attempt_id,
+    )
+    lifecycle = fixture["lifecycle"]
+    store = WorktreeLifecycleStore(fixture["repo"])
+    terminal = store.mark_terminal(
+        fixture["workspace"],
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+        reason="merge_queue_handoff",
+    )
+    assert store.compare_and_delete(
+        terminal.workspace_path,
+        expected_fence=terminal.fence,
+        lease_id=terminal.lease_id,
+    )
+    fixture["pool_path"].unlink()
+    fixture["lock_path"].unlink()
+    fixture["branch"] = (
+        f"implementation/{task_alias.lower()}-"
+        f"{fixture['portal_semantic_fingerprint'][:12]}-attempt-1-1787897279"
+    )
+
+    now = datetime.now(UTC).isoformat()
+    state = PortalTaskState.load(fixture["nested_state_path"])
+    state.active_task_key = fixture["portal_task_key"]
+    state.active_task_started_at = now
+    state.active_phase = "merge_queue"
+    state.active_phase_detail = fixture["branch"]
+    state.active_phase_started_at = now
+    state.active_branch = fixture["branch"]
+    state.heartbeat_at = now
+    state.last_progress_at = now
+    state.last_implementation_task_id = fixture["task_alias"]
+    state.last_implementation_task_key = fixture["portal_task_key"]
+    state.last_implementation_task_cid = fixture["portal_task_cid"]
+    state.last_implementation_started_at = now
+    state.last_implementation_finished_at = ""
+    state.last_implementation_worktree_path = str(fixture["workspace"])
+    state.last_implementation_branch = fixture["branch"]
+    state.save(fixture["nested_state_path"])
+
+    implementation_lock_path = fixture["attempt_dir"] / "implementation.lock"
+    implementation_lock = {
+        "kind": "implementation",
+        "lease_id": hashlib.sha1(
+            f"{task_alias}:{attempt_id}".encode()
+        ).hexdigest(),
+        "pid": os.getpid(),
+        "owner_script": "implementation_daemon.py",
+        "repo_root": str(fixture["repo"].resolve()),
+        "state_dir": str(fixture["attempt_dir"].resolve()),
+        "task_id": fixture["task_alias"],
+        "canonical_task_key": fixture["portal_task_key"],
+        "canonical_task_cid": fixture["portal_task_cid"],
+        "board_namespace": fixture["portal_board_namespace"],
+        "attempt": 1,
+        "started_at": now,
+    }
+    _write_json(implementation_lock_path, implementation_lock)
+    fixture.update(
+        {
+            "implementation_lock_path": implementation_lock_path,
+            "implementation_lock": implementation_lock,
+        }
+    )
+    return fixture
+
+
+def _clone_database_portal_callback_gap_attempt(
+    fixture: dict[str, Any],
+) -> Path:
+    attempt_id = "attempt:ambiguous-database-callback"
+    attempt_key = hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
+    attempt_dir = fixture["attempt_dir"].parent / attempt_key
+    attempt_dir.mkdir()
+    projection = fixture["projection_path"].read_text(encoding="utf-8").replace(
+        f"- Database attempt ID: {fixture['binding']['attempt_id']}",
+        f"- Database attempt ID: {attempt_id}",
+    )
+    projection_path = attempt_dir / "task-projection.md"
+    projection_path.write_text(projection, encoding="utf-8")
+    binding = dict(fixture["binding"])
+    binding["attempt_id"] = attempt_id
+    binding["projection_seed_digest"] = (
+        "sha256:" + hashlib.sha256(projection.encode("utf-8")).hexdigest()
+    )
+    binding["projection_immutable_digest"] = _projection_immutable_digest(
+        projection
+    )
+    _write_recommitted_binding(
+        attempt_dir / "database-attempt-binding.json",
+        binding,
+    )
+    projected_tasks = parse_task_text(
+        projection,
+        path=projection_path,
+        task_header_prefix=f"## {fixture['task_alias']}",
+    )
+    assert len(projected_tasks) == 1
+    identity = portal_task_identity(
+        projected_tasks[0],
+        todo_path=projection_path.resolve(),
+    )
+
+    state = PortalTaskState.load(fixture["nested_state_path"])
+    state.active_task_key = identity.canonical_task_key
+    state.active_task_cid = identity.canonical_task_cid
+    state.last_implementation_task_key = identity.canonical_task_key
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.save(attempt_dir / "portal-task-state.json")
+    implementation_lock = dict(fixture["implementation_lock"])
+    implementation_lock.update(
+        {
+            "lease_id": hashlib.sha1(attempt_id.encode("utf-8")).hexdigest(),
+            "state_dir": str(attempt_dir.resolve()),
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+        }
+    )
+    _write_json(attempt_dir / "implementation.lock", implementation_lock)
+    return attempt_dir
 
 
 def test_supervisor_loop_config_binds_managed_child_identity_to_lane(
@@ -524,6 +664,261 @@ def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
     assert fixture["state_path"].read_bytes() == original_state
 
 
+def test_database_portal_callback_gap_accepts_exact_live_two_identity_attempt(
+    tmp_path: Path,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+
+    activity = supervisor._active_managed_database_portal_callback(
+        fixture["child"]
+    )
+
+    assert not fixture["lifecycle_path"].exists()
+    assert (
+        supervisor._active_managed_database_pool_lease(fixture["child"])
+        is None
+    )
+    assert (
+        supervisor._active_managed_database_nonterminal_claim(
+            fixture["child"]
+        )
+        is None
+    )
+    assert activity is not None
+    assert activity == {
+        "task_id": "PCSM-043",
+        "database_task_cid": "task:database-pcsm-043",
+        "task_cid": fixture["portal_task_cid"],
+        "database_attempt": "2",
+        "attempt": "1",
+        "phase": "merge_queue",
+        "worktree_path": str(fixture["workspace"].resolve()),
+        "branch": fixture["branch"],
+        "lease_pid": str(os.getpid()),
+    }
+    assert activity["database_task_cid"] != activity["task_cid"]
+    assert activity["database_attempt"] != activity["attempt"]
+
+
+def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    original_state = fixture["state_path"].read_bytes()
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_reason"]
+        == "active_managed_database_portal_callback"
+    )
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_task_id"]
+        == "PCSM-043"
+    )
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_lock",
+        "foreign_lock_pid",
+        "foreign_lock_root",
+        "lock_portal_identity_mismatch",
+        "database_identity_substitution",
+        "lock_attempt_mismatch",
+        "tampered_binding",
+        "tampered_projection",
+        "symlink_projection",
+        "symlink_nested_state",
+        "nested_state_identity_mismatch",
+        "branch_identity_mismatch",
+        "worktree_record_mismatch",
+        "unsupported_phase",
+        "stale_state",
+        "foreign_worktree_root",
+        "mismatched_child_birth",
+        "ambiguous_attempts",
+    ],
+)
+def test_database_portal_callback_gap_never_defers_without_exact_evidence(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    lock_path = fixture["implementation_lock_path"]
+    state_path = fixture["nested_state_path"]
+    projection_path = fixture["projection_path"]
+    if case == "missing_lock":
+        lock_path.unlink()
+    elif case == "foreign_lock_pid":
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock["pid"] = os.getppid()
+        _write_json(lock_path, lock)
+    elif case == "foreign_lock_root":
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock["repo_root"] = str(tmp_path.resolve())
+        _write_json(lock_path, lock)
+    elif case == "lock_portal_identity_mismatch":
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock["canonical_task_cid"] = fixture["database_task_cid"]
+        _write_json(lock_path, lock)
+    elif case == "database_identity_substitution":
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock["canonical_task_key"] = fixture["binding"]["canonical_task_key"]
+        lock["canonical_task_cid"] = fixture["database_task_cid"]
+        _write_json(lock_path, lock)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["active_task_key"] = fixture["binding"]["canonical_task_key"]
+        state["active_task_cid"] = fixture["database_task_cid"]
+        state["last_implementation_task_key"] = fixture["binding"][
+            "canonical_task_key"
+        ]
+        state["last_implementation_task_cid"] = fixture["database_task_cid"]
+        _write_json(state_path, state)
+    elif case == "lock_attempt_mismatch":
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock["attempt"] = 2
+        _write_json(lock_path, lock)
+    elif case == "tampered_binding":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding["task_revision"] += 1
+        _write_json(fixture["binding_path"], binding)
+    elif case == "tampered_projection":
+        projection_path.write_text(
+            projection_path.read_text(encoding="utf-8")
+            + "\n- Allowed Paths: artifacts/foreign.json\n",
+            encoding="utf-8",
+        )
+    elif case == "symlink_projection":
+        target = fixture["attempt_dir"] / "projection-target.md"
+        projection_path.rename(target)
+        projection_path.symlink_to(target.name)
+    elif case == "symlink_nested_state":
+        target = fixture["attempt_dir"] / "state-target.json"
+        state_path.rename(target)
+        state_path.symlink_to(target.name)
+    elif case == "nested_state_identity_mismatch":
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["active_task_cid"] = fixture["database_task_cid"]
+        _write_json(state_path, state)
+    elif case == "branch_identity_mismatch":
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        foreign_branch = "implementation/pcsm-043-000000000000-attempt-1-1787897279"
+        state["active_branch"] = foreign_branch
+        state["active_phase_detail"] = foreign_branch
+        state["last_implementation_branch"] = foreign_branch
+        _write_json(state_path, state)
+    elif case == "worktree_record_mismatch":
+        foreign_workspace = fixture["worktree_root"] / "workspace_foreign"
+        foreign_workspace.mkdir()
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["last_implementation_worktree_path"] = str(
+            foreign_workspace.resolve()
+        )
+        _write_json(state_path, state)
+    elif case == "unsupported_phase":
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["active_phase"] = "merge_reconciliation"
+        _write_json(state_path, state)
+    elif case == "stale_state":
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["heartbeat_at"] = "2000-01-01T00:00:00+00:00"
+        state["active_phase_started_at"] = "2000-01-01T00:00:00+00:00"
+        state["last_progress_at"] = "2000-01-01T00:00:00+00:00"
+        _write_json(state_path, state)
+    elif case == "foreign_worktree_root":
+        foreign_workspace = tmp_path / "foreign-workspace"
+        foreign_workspace.mkdir()
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["active_worktree_path"] = str(foreign_workspace.resolve())
+        state["last_implementation_worktree_path"] = str(
+            foreign_workspace.resolve()
+        )
+        _write_json(state_path, state)
+    elif case == "mismatched_child_birth":
+        observed = fixture["child"].identity_process_birth
+        fixture["child"].identity_process_birth = ProcessBirthIdentity(
+            pid=observed.pid,
+            start_time_ticks=observed.start_time_ticks + 1,
+            boot_id=observed.boot_id,
+            parent_pid=observed.parent_pid,
+        )
+    elif case == "ambiguous_attempts":
+        _clone_database_portal_callback_gap_attempt(fixture)
+
+    assert (
+        fixture["supervisor"]._active_managed_database_portal_callback(
+            fixture["child"]
+        )
+        is None
+    )
+
+
+def test_database_portal_callback_gap_rejects_record_change_during_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    original_snapshot = supervisor._stable_single_link_json_snapshot
+    state_reads = 0
+
+    def changing_snapshot(
+        path: Path,
+    ) -> tuple[dict[str, Any], tuple[int, ...]] | None:
+        nonlocal state_reads
+        snapshot = original_snapshot(path)
+        if path == fixture["nested_state_path"]:
+            state_reads += 1
+            if state_reads == 1:
+                state = json.loads(path.read_text(encoding="utf-8"))
+                state["active_phase_detail"] = "foreign-successor"
+                _write_json(path, state)
+        return snapshot
+
+    monkeypatch.setattr(
+        supervisor,
+        "_stable_single_link_json_snapshot",
+        changing_snapshot,
+    )
+
+    assert (
+        supervisor._active_managed_database_portal_callback(fixture["child"])
+        is None
+    )
+
+
 def _seed_stale_predecessor_projection(
     fixture: dict[str, Any],
     *,
@@ -538,6 +933,236 @@ def _seed_stale_predecessor_projection(
     state.implementation_in_progress = True
     state.save(fixture["state_path"])
     return fixture["state_path"].read_bytes()
+
+
+def test_watchdog_maintenance_defers_for_database_portal_callback_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    original_state = _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on active task PCSM-027",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda update: maintenance_calls.append(update),
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert maintenance_calls == []
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize("recycle_result", ("stuck", "checkout_repair"))
+def test_watchdog_rereads_database_callback_gap_before_recycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recycle_result: str,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    maintenance_calls: list[object] = []
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (
+            True,
+            "no progress on active task PCSM-027",
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def maintenance(update: object) -> dict[str, Any]:
+        maintenance_calls.append(update)
+        state = PortalTaskState.load(fixture["nested_state_path"])
+        now = datetime.now(UTC).isoformat()
+        state.active_phase = "merge_queue"
+        state.active_phase_detail = fixture["branch"]
+        state.active_phase_started_at = now
+        state.heartbeat_at = now
+        state.last_progress_at = now
+        state.save(fixture["nested_state_path"])
+        return {
+            "main_checkout_repair": {
+                "repaired": recycle_result == "checkout_repair"
+            },
+            "stuck": recycle_result == "stuck",
+            "reason": "no progress on active task PCSM-027",
+            "active_task_id": "PCSM-027",
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert len(maintenance_calls) == 1
+
+
+def test_watchdog_rereads_repaired_projection_before_stuck_recycle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    observed_task_ids: list[str] = []
+
+    def projected_is_stuck(
+        state: PortalTaskState,
+        **_kwargs: Any,
+    ) -> tuple[bool, str]:
+        observed_task_ids.append(state.active_task_id)
+        if state.active_task_id == "PCSM-027":
+            return True, "no progress on active task PCSM-027"
+        return False, ""
+
+    monkeypatch.setattr(supervisor, "is_stuck", projected_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+
+    def maintenance(_update: object) -> dict[str, Any]:
+        repaired = PortalTaskState.load(fixture["state_path"])
+        repaired.active_task_id = ""
+        repaired.active_task_cid = ""
+        repaired.active_attempt = 0
+        repaired.active_phase = ""
+        repaired.implementation_in_progress = False
+        repaired.last_implementation_task_id = "PCSM-044"
+        repaired.last_implementation_finished_at = datetime.now(UTC).isoformat()
+        repaired.completed_count += 1
+        repaired.save(fixture["state_path"])
+        return {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": True,
+            "reason": "no progress on active task PCSM-027",
+            "active_task_id": "PCSM-027",
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert observed_task_ids == ["PCSM-027", ""]
+
+
+def test_watchdog_recycles_when_post_maintenance_projection_remains_stuck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_live_database_portal_callback_gap(tmp_path)
+    supervisor = fixture["supervisor"]
+    _seed_stale_predecessor_projection(
+        fixture,
+        task_id="PCSM-027",
+        task_cid="task:stale-pcsm-027",
+    )
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "validating"
+    nested_state.save(fixture["nested_state_path"])
+    observed_task_ids: list[str] = []
+
+    def projected_is_stuck(
+        state: PortalTaskState,
+        **_kwargs: Any,
+    ) -> tuple[bool, str]:
+        observed_task_ids.append(state.active_task_id)
+        reason = (
+            "initial stale projection"
+            if len(observed_task_ids) == 1
+            else "fresh projection still stuck"
+        )
+        return True, reason
+
+    monkeypatch.setattr(supervisor, "is_stuck", projected_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda _status, _message="": None,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update: {
+            "main_checkout_repair": {"repaired": False},
+            "stuck": True,
+            "reason": "initial stale projection",
+            "active_task_id": "PCSM-027",
+        },
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "fresh projection still stuck"
+    assert observed_task_ids == ["PCSM-027", "PCSM-027"]
 
 
 def test_watchdog_maintenance_defers_for_exact_nested_database_pool_lease(

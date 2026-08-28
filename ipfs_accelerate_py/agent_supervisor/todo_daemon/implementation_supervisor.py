@@ -212,6 +212,23 @@ logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.impl
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
+_DATABASE_PORTAL_CALLBACK_PHASES = frozenset({"merge_queue"})
+_DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS = frozenset(
+    {
+        "kind",
+        "lease_id",
+        "pid",
+        "owner_script",
+        "repo_root",
+        "state_dir",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "attempt",
+        "started_at",
+    }
+)
 CONTROL_PLANE_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"
 )
@@ -11392,6 +11409,54 @@ class PortalImplementationSupervisor:
             return None
         return dict(payload) if isinstance(payload, Mapping) else None
 
+    @classmethod
+    def _stable_single_link_json_snapshot(
+        cls,
+        path: Path,
+    ) -> tuple[dict[str, Any], tuple[int, ...]] | None:
+        """Read one unchanged regular JSON record twice.
+
+        Callback liveness grants exceptional recycle-deferral authority, so a
+        replacement between validation steps must fail closed for that
+        authority.  Ordinary watchdog policy then remains authoritative
+        instead of extending a stale attempt.
+        """
+
+        def signature() -> tuple[int, ...] | None:
+            try:
+                observed = path.lstat()
+            except OSError:
+                return None
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or stat.S_ISLNK(observed.st_mode)
+                or int(observed.st_nlink) != 1
+            ):
+                return None
+            return (
+                int(observed.st_dev),
+                int(observed.st_ino),
+                int(observed.st_mode),
+                int(observed.st_nlink),
+                int(observed.st_size),
+                int(observed.st_mtime_ns),
+            )
+
+        before = signature()
+        first = cls._load_single_link_json_object(path)
+        middle = signature()
+        second = cls._load_single_link_json_object(path)
+        after = signature()
+        if (
+            before is None
+            or first is None
+            or before != middle
+            or middle != after
+            or first != second
+        ):
+            return None
+        return first, before
+
     @staticmethod
     def _stable_process_birth_identity(
         identity: Any,
@@ -11729,6 +11794,339 @@ class PortalImplementationSupervisor:
             }
         return None
 
+    def _active_managed_database_portal_callback(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Prove the narrow callback gap after lifecycle and pool handoff.
+
+        ``_enqueue_validated_worktree`` publishes ``merge_queue`` state, then
+        terminalizes/deletes its lifecycle record and releases the pooled
+        checkout before synchronously invoking the merge train.  The database
+        wrapper has no root active-task projection in that interval.  Preserve
+        only the exact live daemon whose immutable database projection derives
+        the Portal identity carried by an unchanged implementation lock and
+        nested state record.  Missing, stale, foreign, or multiple candidates
+        fail closed for callback-deferral authority and return no deferral.
+        """
+
+        worktree_root = self.config.worktree_root
+        if self.config.database_program is None or worktree_root is None:
+            return None
+        child_birth = self._exact_live_managed_child_birth(child)
+        if child_birth is None:
+            return None
+        child_pid = child_birth.pid
+        try:
+            root = Path(worktree_root).resolve(strict=True)
+            repo_root = self.config.repo_root.resolve(strict=True)
+            state_root = self.config.state_dir.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+        attempt_root = (
+            state_root
+            / f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        try:
+            attempt_root_stat = attempt_root.lstat()
+            if (
+                not stat.S_ISDIR(attempt_root_stat.st_mode)
+                or stat.S_ISLNK(attempt_root_stat.st_mode)
+                or attempt_root.resolve(strict=True) != attempt_root
+            ):
+                return None
+            attempt_dirs = sorted(
+                attempt_root.iterdir(),
+                key=lambda path: path.name,
+            )
+        except (OSError, RuntimeError):
+            return None
+
+        grace_seconds = max(
+            30.0,
+            float(self.config.check_interval) * 2.0,
+        )
+        max_age_seconds = max(
+            float(self.config.stale_seconds),
+            self._implementation_watchdog_timeout_seconds(),
+        ) + grace_seconds
+        future_slack_seconds = grace_seconds
+        now_ts = time.time()
+
+        def fresh_timestamp(value: Any, *, max_age: float) -> bool:
+            if type(value) is not str or not value:
+                return False
+            parsed = parse_timestamp(value)
+            if parsed is None:
+                return False
+            age = now_ts - parsed.timestamp()
+            return -future_slack_seconds <= age <= max_age
+
+        candidates: list[dict[str, str]] = []
+        for supplied_attempt_dir in attempt_dirs:
+            if re.fullmatch(r"[0-9a-f]{24}", supplied_attempt_dir.name) is None:
+                continue
+            try:
+                observed_attempt = supplied_attempt_dir.lstat()
+                if (
+                    not stat.S_ISDIR(observed_attempt.st_mode)
+                    or stat.S_ISLNK(observed_attempt.st_mode)
+                ):
+                    continue
+                attempt_dir = supplied_attempt_dir.resolve(strict=True)
+            except (OSError, RuntimeError):
+                continue
+            if attempt_dir != supplied_attempt_dir or attempt_dir.parent != attempt_root:
+                continue
+
+            binding_path = attempt_dir / "database-attempt-binding.json"
+            implementation_lock_path = attempt_dir / "implementation.lock"
+            nested_state_path = attempt_dir / "portal-task-state.json"
+            implementation_lock_snapshot = self._stable_single_link_json_snapshot(
+                implementation_lock_path
+            )
+            if implementation_lock_snapshot is None:
+                continue
+            binding_snapshot = self._stable_single_link_json_snapshot(binding_path)
+            nested_state_snapshot = self._stable_single_link_json_snapshot(
+                nested_state_path
+            )
+            if (
+                binding_snapshot is None
+                or nested_state_snapshot is None
+                or state_file_repair_reason(nested_state_path)
+            ):
+                continue
+            binding, binding_signature = binding_snapshot
+            implementation_lock, implementation_lock_signature = (
+                implementation_lock_snapshot
+            )
+            nested_state, nested_state_signature = nested_state_snapshot
+            task_alias = binding.get("task_alias")
+            database_task_cid = binding.get("task_cid")
+            if (
+                set(binding) != DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
+                or type(task_alias) is not str
+                or not task_alias
+                or type(database_task_cid) is not str
+                or not database_task_cid
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(binding.get("task_contract_digest") or ""),
+                )
+                is None
+                or type(binding.get("repository_tree_id")) is not str
+                or not binding.get("repository_tree_id")
+            ):
+                continue
+            try:
+                verified_identity = (
+                    verify_database_portal_attempt_projection_identity(
+                        attempt_dir / "task-projection.md",
+                        expected_task_alias=task_alias,
+                        expected_task_cid=database_task_cid,
+                        allowed_root=attempt_root,
+                    )
+                )
+            except (
+                DatabasePortalBridgeError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                UnicodeError,
+                ValueError,
+            ):
+                continue
+            portal_identity = verified_identity.get("portal_task_identity")
+            portal_task_key = verified_identity.get("portal_canonical_task_key")
+            portal_task_cid = verified_identity.get("portal_canonical_task_cid")
+            portal_semantic_fingerprint = verified_identity.get(
+                "portal_semantic_fingerprint"
+            )
+            if (
+                verified_identity.get("verified") is not True
+                or not isinstance(portal_identity, Mapping)
+                or type(portal_task_key) is not str
+                or not portal_task_key
+                or type(portal_task_cid) is not str
+                or not portal_task_cid
+                or type(portal_semantic_fingerprint) is not str
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    portal_semantic_fingerprint,
+                )
+                is None
+                or verified_identity.get("task_alias") != task_alias
+                or verified_identity.get("task_cid") != database_task_cid
+                or verified_identity.get("binding_id")
+                != binding.get("binding_id")
+            ):
+                continue
+
+            lock_pid = implementation_lock.get("pid")
+            lock_attempt = implementation_lock.get("attempt")
+            lock_started_at = implementation_lock.get("started_at")
+            if (
+                set(implementation_lock)
+                != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                or implementation_lock.get("kind") != "implementation"
+                or isinstance(lock_pid, bool)
+                or type(lock_pid) is not int
+                or lock_pid != child_pid
+                or type(implementation_lock.get("lease_id")) is not str
+                or re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(implementation_lock.get("lease_id") or ""),
+                )
+                is None
+                or type(implementation_lock.get("owner_script")) is not str
+                or implementation_lock.get("owner_script")
+                != "implementation_daemon.py"
+                or type(implementation_lock.get("board_namespace")) is not str
+                or not implementation_lock.get("board_namespace")
+                or implementation_lock.get("task_id") != task_alias
+                or implementation_lock.get("canonical_task_key")
+                != portal_task_key
+                or implementation_lock.get("canonical_task_cid")
+                != portal_task_cid
+                or implementation_lock.get("board_namespace")
+                != portal_identity.get("board_namespace")
+                or isinstance(lock_attempt, bool)
+                or type(lock_attempt) is not int
+                or lock_attempt < 1
+                or not fresh_timestamp(
+                    lock_started_at,
+                    max_age=max_age_seconds,
+                )
+            ):
+                continue
+            try:
+                raw_lock_repo_root = Path(
+                    str(implementation_lock.get("repo_root") or "")
+                )
+                raw_lock_state_dir = Path(
+                    str(implementation_lock.get("state_dir") or "")
+                )
+                if (
+                    not raw_lock_repo_root.is_absolute()
+                    or raw_lock_repo_root.is_symlink()
+                    or raw_lock_repo_root != repo_root
+                    or raw_lock_repo_root.resolve(strict=True) != repo_root
+                    or not raw_lock_state_dir.is_absolute()
+                    or raw_lock_state_dir.is_symlink()
+                    or raw_lock_state_dir != attempt_dir
+                    or raw_lock_state_dir.resolve(strict=True) != attempt_dir
+                ):
+                    continue
+            except (OSError, RuntimeError):
+                continue
+
+            active_phase = nested_state.get("active_phase")
+            active_worktree_text = nested_state.get("active_worktree_path")
+            active_branch = nested_state.get("active_branch")
+            expected_execution_id = (
+                f"{task_alias.lower().replace('/', '-')}-"
+                f"{portal_semantic_fingerprint[:12]}"
+            )
+            if (
+                nested_state.get("implementation_in_progress") is not True
+                or nested_state.get("active_task_id") != task_alias
+                or nested_state.get("active_task_key") != portal_task_key
+                or nested_state.get("active_task_cid") != portal_task_cid
+                or nested_state.get("active_attempt") != lock_attempt
+                or type(active_phase) is not str
+                or active_phase not in _DATABASE_PORTAL_CALLBACK_PHASES
+                or type(active_worktree_text) is not str
+                or not active_worktree_text
+                or type(active_branch) is not str
+                or not active_branch
+                or re.fullmatch(
+                    rf"implementation/{re.escape(expected_execution_id)}-"
+                    rf"attempt-{lock_attempt}-[1-9][0-9]*",
+                    active_branch.removeprefix("refs/heads/"),
+                )
+                is None
+                or nested_state.get("active_phase_detail") != active_branch
+                or nested_state.get("last_implementation_task_id")
+                != task_alias
+                or nested_state.get("last_implementation_task_key")
+                != portal_task_key
+                or nested_state.get("last_implementation_task_cid")
+                != portal_task_cid
+                or nested_state.get("last_implementation_started_at")
+                != lock_started_at
+                or nested_state.get("last_implementation_finished_at")
+                not in (None, "")
+                or nested_state.get("last_implementation_worktree_path")
+                != active_worktree_text
+                or nested_state.get("last_implementation_branch")
+                != active_branch
+                or not fresh_timestamp(
+                    nested_state.get("active_phase_started_at"),
+                    max_age=max_age_seconds,
+                )
+                or not fresh_timestamp(
+                    nested_state.get("heartbeat_at"),
+                    max_age=max_age_seconds,
+                )
+                or not fresh_timestamp(
+                    nested_state.get("last_progress_at"),
+                    max_age=max_age_seconds,
+                )
+            ):
+                continue
+            try:
+                raw_workspace = Path(active_worktree_text)
+                if not raw_workspace.is_absolute() or raw_workspace.is_symlink():
+                    continue
+                resolved_workspace = raw_workspace.resolve(strict=False)
+                if resolved_workspace != raw_workspace or resolved_workspace == root:
+                    continue
+                resolved_workspace.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+            binding_after = self._stable_single_link_json_snapshot(binding_path)
+            implementation_lock_after = self._stable_single_link_json_snapshot(
+                implementation_lock_path
+            )
+            nested_state_after = self._stable_single_link_json_snapshot(
+                nested_state_path
+            )
+            try:
+                current_birth = read_process_birth(child_pid)
+            except OSError:
+                continue
+            if (
+                binding_after != (binding, binding_signature)
+                or implementation_lock_after
+                != (implementation_lock, implementation_lock_signature)
+                or nested_state_after != (nested_state, nested_state_signature)
+                or self._stable_process_birth_identity(current_birth)
+                != self._stable_process_birth_identity(child_birth)
+                or owner_liveness(current_birth) is not OwnerLiveness.ALIVE
+            ):
+                continue
+            candidates.append(
+                {
+                    "task_id": task_alias,
+                    "database_task_cid": database_task_cid,
+                    "task_cid": portal_task_cid,
+                    "database_attempt": str(
+                        verified_identity.get("attempt_number") or ""
+                    ),
+                    "attempt": str(lock_attempt),
+                    "phase": str(active_phase),
+                    "worktree_path": str(resolved_workspace),
+                    "branch": active_branch,
+                    "lease_pid": str(child_pid),
+                }
+            )
+
+        if len(candidates) != 1:
+            return None
+        return candidates[0]
+
     def _active_managed_database_pool_lease(
         self,
         child: Any,
@@ -11951,8 +12349,19 @@ class PortalImplementationSupervisor:
                 if projected_active or database_pool_activity
                 else self._active_managed_database_nonterminal_claim(_child)
             )
+            database_callback_activity = (
+                None
+                if (
+                    projected_active
+                    or database_pool_activity
+                    or database_nonterminal_activity
+                )
+                else self._active_managed_database_portal_callback(_child)
+            )
             database_activity = (
-                database_pool_activity or database_nonterminal_activity
+                database_pool_activity
+                or database_nonterminal_activity
+                or database_callback_activity
             )
             active = projected_active or bool(database_activity)
             if active:
@@ -11968,7 +12377,11 @@ class PortalImplementationSupervisor:
                         else (
                             "active_managed_database_nonterminal_lifecycle_claim"
                             if database_nonterminal_activity
-                            else "active_task_or_phase"
+                            else (
+                                "active_managed_database_portal_callback"
+                                if database_callback_activity
+                                else "active_task_or_phase"
+                            )
                         )
                     ),
                     "control_plane_reload_deferred_task_id": (
@@ -12025,7 +12438,16 @@ class PortalImplementationSupervisor:
             if database_pool_activity
             else self._active_managed_database_nonterminal_claim(_child)
         )
-        if database_pool_activity or database_nonterminal_activity:
+        database_callback_activity = (
+            None
+            if database_pool_activity or database_nonterminal_activity
+            else self._active_managed_database_portal_callback(_child)
+        )
+        if (
+            database_pool_activity
+            or database_nonterminal_activity
+            or database_callback_activity
+        ):
             return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic
@@ -12058,6 +12480,42 @@ class PortalImplementationSupervisor:
             if not failed:
                 finish_maintenance("completed")
 
+        # Maintenance can overlap the lifecycle/pool handoff itself.  Re-read
+        # every exact database activity proof before acting on a stale root
+        # result so a newly entered synchronous callback is not recycled.
+        database_pool_activity = self._active_managed_database_pool_lease(
+            _child
+        )
+        database_nonterminal_activity = (
+            None
+            if database_pool_activity
+            else self._active_managed_database_nonterminal_claim(_child)
+        )
+        database_callback_activity = (
+            None
+            if database_pool_activity or database_nonterminal_activity
+            else self._active_managed_database_portal_callback(_child)
+        )
+        if (
+            database_pool_activity
+            or database_nonterminal_activity
+            or database_callback_activity
+        ):
+            return SupervisorLoopDecision.keep_running()
+
+        # Maintenance may repair the stale outer compatibility projection
+        # that produced ``result["stuck"]``.  Re-evaluate the durable state
+        # before using that pre-repair result as recycle authority.  A fresh
+        # non-stuck projection keeps the exact managed child alive; a genuine
+        # stuck projection still permits the existing recycle paths below.
+        post_maintenance_state = PortalTaskState.load(self.config.state_path)
+        post_maintenance_stuck, post_maintenance_reason = self.is_stuck(
+            post_maintenance_state,
+            now_ts=time.time(),
+        )
+        if not post_maintenance_stuck:
+            return SupervisorLoopDecision.keep_running()
+
         main_checkout_repair = dict(result.get("main_checkout_repair") or {})
         if main_checkout_repair.get("repaired"):
             return SupervisorLoopDecision.recycle(
@@ -12066,8 +12524,18 @@ class PortalImplementationSupervisor:
             )
         if result.get("stuck"):
             return SupervisorLoopDecision.recycle(
-                str(result.get("reason") or "stuck_progress"),
-                detail={"active_task_id": result.get("active_task_id") or ""},
+                str(
+                    post_maintenance_reason
+                    or result.get("reason")
+                    or "stuck_progress"
+                ),
+                detail={
+                    "active_task_id": (
+                        post_maintenance_state.active_task_id
+                        or result.get("active_task_id")
+                        or ""
+                    )
+                },
             )
         return SupervisorLoopDecision.keep_running()
 
