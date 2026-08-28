@@ -933,9 +933,11 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation.  The active M9 key
-    # intentionally has precedence, including fail-closed malformed handling.
+    # Exercise the historical M8 selector in isolation.  The active M10 and
+    # M9 keys intentionally have precedence, including fail-closed malformed
+    # handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("live_projection_successor_materialization")
     malformed_successor.pop("live_recovery_successor_materialization")
     malformed_successor["source_repair_successor_materialization"] = []
     with pytest.raises(
@@ -1937,6 +1939,363 @@ def test_operator_stop_closes_shared_extension_custody_on_quack_stop_failure() -
     assert replica.closed is True
     assert seal.close_count == 1
     assert transport._sealed_extension_set is None
+
+
+def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m10_projection_test",
+    )
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m10_projection_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m10_projection_test",
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m10_projection_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "live_projection_successor_materialization"
+    cid_key = "live_projection_successor_materialization_cid"
+    expected_cid = (
+        "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10"
+    )
+    authority = config[key]
+    assert authority == migration[key]
+    assert "sha256:" + hashlib.sha256(
+        json.dumps(
+            authority,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest() == expected_cid
+    assert seal[cid_key] == expected_cid
+    assert dependency_validator._m10_live_projection_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert board_validator._m10_migration_errors(config, seal, migration) == []
+    assert board_validator._active_successor_migration_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    # M9 is still checked as immutable history, but its old active paths no
+    # longer override the key-present M10 generation.
+    assert dependency_validator._m9_live_recovery_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert operator._active_source_repair_materialization(config) == authority
+
+    assert authority["live_task_projection"] == {
+        "schema": "sawm/live-task-projection-expectation@1",
+        "task_count": 45,
+        "task_revision_count": 1,
+        "operator_task_alias": "SAWM-000",
+        "operator_status": "completed",
+        "operator_revision": 2,
+        "candidate_task_alias": "SAWM-001",
+        "candidate_task_cid": (
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+        "candidate_status": "retrying",
+        "candidate_revision": 10,
+        "candidate_completion_receipt": {
+            "operation": "operator_control_plane_repair",
+            "settlement_id": (
+                "baguqeeransrfearh5ojrnru6ls43mn7xsx6mlhndkhokrn4k7wlhowxjnshq"
+            ),
+        },
+        "remaining_task_status": "todo",
+        "remaining_task_revision": 2,
+    }
+    assert authority["task_revision_changes"] == 0
+    assert authority["task_status_changes"] == 0
+    assert authority["coordination_semantic_changes"] == 0
+    assert authority["coordination_sidecar_copied_unchanged"] is True
+    assert authority["provider_strategy"]["route_changed"] is False
+    repair_paths = set(authority["bounded_control_plane_repair_paths"])
+    assert len(repair_paths) == 9
+    assert not any("todo_daemon" in path for path in repair_paths)
+    assert "test/api/test_agent_supervisor_database_portal_bridge.py" not in repair_paths
+
+    malformed = copy.deepcopy(config)
+    malformed[key] = []
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M10 live-projection successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M10 live projection authority is invalid",
+    ):
+        materializer._m10_successor_configured(malformed)
+
+    partial_inventory = copy.deepcopy(migration)
+    partial_inventory.pop(key)
+    assert any(
+        "M10" in error
+        for error in board_validator._active_successor_migration_errors(
+            config,
+            seal,
+            partial_inventory,
+        )
+    )
+    changed_config = copy.deepcopy(config)
+    changed_migration = copy.deepcopy(migration)
+    for control in (changed_config, changed_migration):
+        control[key]["task_status_changes"] = 1
+    assert dependency_validator._m10_live_projection_errors(
+        changed_config,
+        seal,
+        changed_migration,
+    )
+    changed_config = copy.deepcopy(config)
+    changed_config["provider"]["fallback_model_id"] = "changed"
+    assert dependency_validator._m10_live_projection_errors(
+        changed_config,
+        seal,
+        migration,
+    )
+
+    operator_source = Path(operator.__file__).read_text(encoding="utf-8")
+    materializer_source = Path(materializer.__file__).read_text(encoding="utf-8")
+    assert operator_source.index(key) < operator_source.index(
+        "live_recovery_successor_materialization"
+    )
+    assert "_verify_m9_head_task_projection" in operator_source
+    assert (
+        'active_source_repair["target_semantic_authority_digest"]'
+        in operator_source
+    )
+    assert "_require_active_final_pair_marker" in operator_source
+    assert f'def _m10_successor_configured' in materializer_source
+    assert "_verify_m9_live_task_projection" in materializer_source
+    assert 'candidate.status != "retrying"' in materializer_source
+    assert "candidate.revision != 10" in materializer_source
+
+
+def test_m10_projection_identity_binds_the_exact_m9_task_head() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m10_projection_identity_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    population = materializer.build_population(REPO_ROOT)
+    material = {
+        "objectives": 1,
+        "goals": [
+            {
+                "goal_cid": str(goal["goal_cid"]),
+                "status": str(goal["status"]),
+                "revision": 1,
+            }
+            for goal in sorted(
+                population["objectives"], key=lambda item: str(item["goal_cid"])
+            )
+        ],
+        "plans": [
+            {
+                "plan_cid": str(population["plan_root_cid"]),
+                "status": "active",
+                "revision": 11,
+            }
+        ],
+        "tasks": [
+            {
+                "task_cid": str(task["task_cid"]),
+                "status": (
+                    "completed"
+                    if task["task_id"] == "SAWM-000"
+                    else "retrying"
+                    if task["task_id"] == "SAWM-001"
+                    else "todo"
+                ),
+                "revision": (
+                    2
+                    if task["task_id"] == "SAWM-000"
+                    else 10
+                    if task["task_id"] == "SAWM-001"
+                    else 2
+                ),
+            }
+            for task in sorted(
+                population["taskboard"], key=lambda item: str(item["task_cid"])
+            )
+        ],
+        "dependency_count": 136,
+        "event_watermark": 179,
+    }
+    assert content_identity(material) == (
+        "baguqeerareq2bngq3hffyk5vidym2ukeleg5gehpaxhqvvdjayn7ucxplcaq"
+    )
+
+
+def test_m10_live_projection_comparators_accept_only_m9_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m10_live_comparator_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m10_live_comparator_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    rearm_receipt = materializer._m9_task_rearm_receipt()
+
+    candidate = SimpleNamespace(
+        task_cid=(
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+        status="retrying",
+        revision=10,
+        body={"completion_receipt": rearm_receipt},
+    )
+    candidate_source = SimpleNamespace(get_task=lambda _task: candidate)
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m6_task_projection",
+        lambda *_args, **_kwargs: ({}, {}, {}),
+    )
+    assert materializer._verify_m9_live_task_projection(
+        candidate_source,
+        population,
+    ) == ({}, {}, {})
+    candidate.status = "todo"
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="frozen M9 task rearm projection differs",
+    ):
+        materializer._verify_m9_live_task_projection(
+            candidate_source,
+            population,
+        )
+    candidate.status = "retrying"
+
+    tasks: dict[str, SimpleNamespace] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        body: dict[str, object] = {}
+        if alias == "SAWM-001":
+            body["completion_receipt"] = rearm_receipt
+        tasks[str(expected["task_cid"])] = SimpleNamespace(
+            status=(
+                "completed"
+                if alias == "SAWM-000"
+                else "retrying"
+                if alias == "SAWM-001"
+                else "todo"
+            ),
+            revision=(
+                2
+                if alias == "SAWM-000"
+                else 10
+                if alias == "SAWM-001"
+                else 2
+            ),
+            body=body,
+        )
+
+    task_revision_rows = [
+        (
+            candidate.task_cid,
+            10,
+            "retrying",
+            json.dumps({"completion_receipt": rearm_receipt}),
+        )
+    ]
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self.rows
+
+        def fetchone(self) -> tuple[object, ...]:
+            return self.rows[0]
+
+    class Connection:
+        def execute(self, statement: str) -> Result:
+            if "FROM task_revisions" in statement:
+                return Result(task_revision_rows)
+            if "FROM completion_receipts" in statement:
+                return Result([(1,)])
+            raise AssertionError(f"unexpected comparator query: {statement}")
+
+    class ConnectionContext:
+        def __enter__(self) -> Connection:
+            return Connection()
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    source = SimpleNamespace(
+        get_task=lambda task_cid: tasks.get(task_cid),
+        intent=SimpleNamespace(
+            _connection=lambda *, write=False: ConnectionContext()
+        ),
+    )
+
+    def historical_projection_mismatch(*_args: object, **_kwargs: object) -> None:
+        raise materializer.MigrationRequired(
+            "frozen M6 task status/revision projection differs"
+        )
+
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m6_task_projection",
+        historical_projection_mismatch,
+    )
+    statuses, revisions, _receipts = operator._verify_m9_head_task_projection(
+        source,
+        population,
+        materializer,
+    )
+    assert statuses["SAWM-001"] == "retrying"
+    assert revisions["SAWM-001"] == 10
+    tasks[candidate.task_cid].revision = 7
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M9-head task status/revision differs: SAWM-001",
+    ):
+        operator._verify_m9_head_task_projection(
+            source,
+            population,
+            materializer,
+        )
 
 
 def _build_m9_rehearsal_pair(

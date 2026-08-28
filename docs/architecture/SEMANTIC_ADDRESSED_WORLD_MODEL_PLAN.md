@@ -440,7 +440,64 @@ The strongest honest terminal is one of: all mandatory work independently accept
 
 Release requires terminal task/goal validation, source/dependency seal validation, required-mode context and transition receipts, self-hosted capstone evidence, transitive final world-root verification, unchanged existing identities, and all safety floors at zero. The final human- and machine-readable report must retain repository/source/dirty-state/migration facts, task revisions and merge outcomes, interface/authority/identity coverage, corpus/model/toolchain identities and typed unavailability, tests/proofs/replay/recovery, rollout receipts, benchmark denominators, token/call metrics, capstone roots, limitations, blockers, compatibility/migration guidance, and rollback target.
 
-## 18. Current limitations at seal time
+## 18. M10 live-projection comparator successor
+
+M9 materialized generation 11, preserved the failed M8 attempt, rearmed
+`SAWM-001` exactly once to `retrying` revision 10, and produced a valid final
+pair marker. The generation-11 Quack owner then started and authenticated.
+The first live operator preflight stopped before any provider probe, task
+claim, effect, implementation commit, or merge with the exact typed error
+`OperatorError: live Quack task authority conflict: frozen M6 task
+status/revision projection differs`. The operator had incorrectly reused the
+closed M6 task-head comparator, which expects `SAWM-001` at `todo` revision 7,
+against the valid M9 head at `retrying` revision 10. The immediately following
+check also selected M9's predecessor-M8 semantic digest rather than M9's
+current semantic digest. Those are control-plane comparator defects; they are
+not implementation failures and do not authorize ordinary program work here.
+
+M10 is an append-only, source-only repair of those two live comparisons. Its
+exact source scope is the scheduler, dependency seal, this plan, migration
+inventory, materializer, operator, two validators, and semantic-board test.
+It changes no accepted task definition, completion, task status, task
+revision, provider route, coordination event, implementation source, effect,
+or merge result. It preserves the M9 materialization receipt's original
+publication digest as historical evidence while anchoring its copy to the
+stopped post-live M9 database bytes.
+
+M10 targets generation 12 and the exact pair:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m10/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m10/control.coordination.duckdb
+plan revision 11
+event cursor  179
+projection    baguqeerareq2bngq3hffyk5vidym2ukeleg5gehpaxhqvvdjayn7ucxplcaq
+SAWM-001      retrying revision 10
+coord events  36
+coord root    sha256:7fb9bacb0f76fe832cc34dd5fb2ccdef13ddafeef4ec2a3d532cb902aa62011e
+semantic      sha256:a4903791c91cc2e9c3337f2abdfd6af78389f7036d54cb7f8e43246cd4f0c023
+```
+
+Materialization copies the exact stopped M9 pair, appends only plan revision
+11 and one operator evidence event, and leaves task, task-revision,
+completion-receipt, and coordination projections unchanged. The coordination
+database is copied byte-for-byte; a second task or coordination rearm is
+forbidden. Publication uses the board-scoped pair lock, no-follow stable-file
+verification, store-before-reference ordering, no execution sidecar, removal
+of mutable staging aliases, published-byte revalidation, and a
+`sawm/non-authoritative-migration-receipt@8` final pair marker written last.
+Key presence selects M10 before every predecessor and malformed M10 authority
+fails closed rather than falling back.
+
+The repaired live comparator must verify all immutable task contracts and the
+single historical completion receipt while expecting exactly
+`SAWM-000=completed@2`, `SAWM-001=retrying@10`, and
+`SAWM-002..SAWM-044=todo@2`. It compares live semantic authority to M10's
+explicit target digest above. It does not weaken definition, receipt, proof,
+validation, provider, or completion authority. The Grok-primary route and the
+independently verified quota condition on the Codex fallback remain unchanged.
+
+## 19. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

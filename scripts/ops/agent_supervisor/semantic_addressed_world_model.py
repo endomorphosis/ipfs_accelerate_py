@@ -29,6 +29,26 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M10_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m10/control.duckdb"
+)
+_M10_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m10/control.coordination.duckdb"
+)
+_M10_GENERATION = 12
+_M9_HEAD_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:a4903791c91cc2e9c3337f2abdfd6af78389f7036d54cb7f8e43246cd4f0c023"
+)
+_M9_REARM_RECEIPT = MappingProxyType(
+    {
+        "operation": "operator_control_plane_repair",
+        "settlement_id": (
+            "baguqeeransrfearh5ojrnru6ls43mn7xsx6mlhndkhokrn4k7wlhowxjnshq"
+        ),
+    }
+)
 _M9_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m9/control.duckdb"
@@ -81,14 +101,38 @@ def _active_source_repair_materialization(
 ) -> Mapping[str, Any]:
     """Return the newest sealed successor authority by key presence.
 
-    M9 is the append-only live-recovery successor to M8.  A present malformed
-    M9 authority must fail closed rather than silently selecting M8.  The same
-    rule applies to M8 before the historical M7 fallback.
+    M10 is the append-only live-projection successor to M9.  Every newer key
+    is selected by presence and a malformed value fails closed rather than
+    silently selecting older evidence.
     """
 
+    projection_key = "live_projection_successor_materialization"
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if projection_key in config:
+        projection = config.get(projection_key)
+        required = {
+            "migration_revision",
+            "target_store_id",
+            "target_coordination_store_id",
+            "target_generation",
+            "target_plan_revision",
+            "target_event_watermark",
+            "target_projection_cid",
+            "target_coordination_projection_digest",
+            "target_semantic_authority_digest",
+            "provider_strategy",
+        }
+        if (
+            not isinstance(projection, Mapping)
+            or any(projection.get(key) in (None, "") for key in required)
+            or not isinstance(projection.get("provider_strategy"), Mapping)
+        ):
+            raise OperatorError(
+                "active M10 live-projection successor authority is invalid"
+            )
+        return projection
     if recovery_key in config:
         recovery = config.get(recovery_key)
         required = {
@@ -132,11 +176,59 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "live_projection_successor_materialization",
             "live_recovery_successor_materialization",
             "source_repair_successor_materialization",
             "source_repair_materialization",
         )
     )
+
+
+def _validate_m10_runtime_binding(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Bind M10 to its exact pair, generation, and unchanged provider route."""
+
+    if "live_projection_successor_materialization" not in config:
+        return
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    provider = config.get("provider")
+    strategy = authority.get("provider_strategy")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (program, owner, provider, strategy)
+    ):
+        raise OperatorError("M10 runtime authority binding is incomplete")
+    prior_route = str(strategy.get("prior_route") or "")
+    if (
+        authority.get("migration_revision") != "SAWM-R2-M10"
+        or authority.get("target_store_id") != _M10_STORE_ID
+        or authority.get("target_coordination_store_id")
+        != _M10_COORDINATION_STORE_ID
+        or int(authority.get("target_generation") or 0) != _M10_GENERATION
+        or authority.get("target_semantic_authority_digest")
+        != _M9_HEAD_SEMANTIC_AUTHORITY_DIGEST
+        or program.get("store_id") != _M10_STORE_ID
+        or int(program.get("store_generation") or 0) != _M10_GENERATION
+        or owner.get("database_path") != _M10_STORE_ID
+        or owner.get("store_id") != _M10_STORE_ID
+        or not prior_route
+        or strategy.get("target_route") != prior_route
+        or strategy.get("route_changed") is not False
+        or strategy.get("capability_probe_required") is not True
+        or strategy.get("provider_result_is_completion_authority") is not False
+        or not str(provider.get("primary_provider_id") or "")
+        or not str(provider.get("primary_model_id") or "")
+        or not str(provider.get("fallback_provider_id") or "")
+        or not str(provider.get("fallback_model_id") or "")
+        or provider.get("fallback_trigger") != "primary_quota_exhausted"
+        or provider.get("provider_results_are_completion_authority") is not False
+    ):
+        raise OperatorError(
+            "M10 runtime store, generation, digest, or provider binding differs"
+        )
 
 
 def _validate_m9_runtime_binding(
@@ -270,6 +362,121 @@ def _require_m9_final_pair_marker(
         ):
             raise OperatorError("M9 materializer check differs from its final pair marker")
     return MappingProxyType(dict(observed))
+
+
+def _require_m10_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M10's receipt-last marker for the unchanged M9-head pair."""
+
+    if "live_projection_successor_materialization" not in config:
+        return MappingProxyType({})
+    _validate_m10_runtime_binding(config, authority)
+    receipt_path = (
+        REPO_ROOT / Path(_M10_STORE_ID).parent / "migration-receipt.json"
+    )
+    try:
+        observed, _receipt_sha256 = materializer._load_nofollow_json(
+            receipt_path,
+            root=REPO_ROOT,
+            noun="M10 final pair commit marker",
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M10 materialized final pair marker is unavailable"
+        ) from exc
+    if not isinstance(observed, Mapping):
+        raise OperatorError("M10 materialized final pair marker is invalid")
+    coordination_path = (REPO_ROOT / _M10_COORDINATION_STORE_ID).resolve()
+    try:
+        coordination_sha256, coordination_size = (
+            materializer._stable_regular_sha256(
+                coordination_path,
+                root=REPO_ROOT,
+                noun="materialized M10 coordination store",
+                required_link_count=1,
+            )
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M10 materialized coordination store is unavailable"
+        ) from exc
+    unhashed = dict(observed)
+    claimed_cid = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed_cid != materializer._identity(unhashed)
+        or observed.get("schema") != "sawm/non-authoritative-migration-receipt@8"
+        or observed.get("receipt_is_final_pair_commit_marker") is not True
+        or observed.get("migration_revision") != authority["migration_revision"]
+        or observed.get("database_path") != _M10_STORE_ID
+        or observed.get("coordination_path") != _M10_COORDINATION_STORE_ID
+        or observed.get("coordination_store_sha256") != coordination_sha256
+        or int(observed.get("coordination_store_size") or 0)
+        != coordination_size
+        or observed.get("migration_projection_cid")
+        != authority["target_projection_cid"]
+        or observed.get("coordination_projection_digest")
+        != authority["target_coordination_projection_digest"]
+        or observed.get("semantic_authority_digest")
+        != _M9_HEAD_SEMANTIC_AUTHORITY_DIGEST
+        or observed.get("live_projection_successor_materialization_cid")
+        != materializer._identity(dict(authority))
+        or int(observed.get("migration_event_watermark") or 0)
+        != int(authority["target_event_watermark"])
+        or int(observed.get("coordination_event_count") or 0) != 36
+        or observed.get("coordination_sidecar_copied_unchanged") is not True
+        or observed.get("coordination_semantic_changes") != 0
+        or observed.get("task_revision_changes") != 0
+        or observed.get("task_status_changes") != 0
+        or observed.get("execution_sidecar_copied") is not False
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M10 materialized final pair marker differs")
+    if checked is not None:
+        expected_control = str((REPO_ROOT / _M10_STORE_ID).resolve())
+        if (
+            checked.get("valid") is not True
+            or checked.get("database_path") != expected_control
+            or checked.get("coordination_path") != str(coordination_path)
+            or checked.get("projection_cid") != authority["target_projection_cid"]
+            or checked.get("coordination_projection_digest")
+            != authority["target_coordination_projection_digest"]
+            or int(checked.get("event_watermark") or 0)
+            != int(authority["target_event_watermark"])
+            or checked.get("receipt") != observed
+        ):
+            raise OperatorError(
+                "M10 materializer check differs from its final pair marker"
+            )
+    return MappingProxyType(dict(observed))
+
+
+def _require_active_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Dispatch to the newest key-present pair marker contract."""
+
+    if "live_projection_successor_materialization" in config:
+        return _require_m10_final_pair_marker(
+            config,
+            authority,
+            materializer,
+            checked=checked,
+        )
+    return _require_m9_final_pair_marker(
+        config,
+        authority,
+        materializer,
+        checked=checked,
+    )
 
 
 def _quack_args(config: Mapping[str, Any], command: str) -> list[str]:
@@ -1092,7 +1299,7 @@ def _validate_offline_quack_start(
             raise OperatorError(
                 "current append-only successor authority does not verify"
             )
-        _require_m9_final_pair_marker(
+        _require_active_final_pair_marker(
             config,
             active_materialization,
             materializer,
@@ -1166,6 +1373,85 @@ def _start_quack(config: Mapping[str, Any]) -> int:
     return 0
 
 
+def _verify_m9_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify immutable M6 contracts plus M9's exact rearmed task head."""
+
+    try:
+        materializer._verify_m6_task_projection(source, population)
+    except materializer.MigrationRequired as exc:
+        if str(exc) != "frozen M6 task status/revision projection differs":
+            raise
+
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_status = (
+            "completed"
+            if alias == "SAWM-000"
+            else "retrying"
+            if alias == "SAWM-001"
+            else "todo"
+        )
+        expected_revision = (
+            2 if alias == "SAWM-000" else 10 if alias == "SAWM-001" else 2
+        )
+        if (
+            observed is None
+            or observed.status != expected_status
+            or int(observed.revision) != expected_revision
+        ):
+            raise materializer.MigrationRequired(
+                f"M9-head task status/revision differs: {alias}"
+            )
+        completion_receipt = observed.body.get("completion_receipt")
+        if alias == "SAWM-001":
+            if completion_receipt != dict(_M9_REARM_RECEIPT):
+                raise materializer.MigrationRequired(
+                    "M9-head SAWM-001 rearm receipt differs"
+                )
+        elif alias != "SAWM-000" and completion_receipt is not None:
+            raise materializer.MigrationRequired(
+                f"M9-head unaccepted completion receipt exists: {alias}"
+            )
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+
+    with source.intent._connection(write=False) as connection:
+        task_revision_rows = connection.execute(
+            "SELECT task_cid, revision, status, body_json "
+            "FROM task_revisions ORDER BY task_cid, revision"
+        ).fetchall()
+        completion_receipt_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM completion_receipts"
+            ).fetchone()[0]
+        )
+    if (
+        len(task_revision_rows) != 1
+        or str(task_revision_rows[0][0])
+        != "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        or int(task_revision_rows[0][1]) != 10
+        or str(task_revision_rows[0][2]) != "retrying"
+        or json.loads(str(task_revision_rows[0][3])).get("completion_receipt")
+        != dict(_M9_REARM_RECEIPT)
+        or completion_receipt_count != 1
+    ):
+        raise materializer.MigrationRequired(
+            "M9-head task revision/completion projection differs"
+        )
+    return statuses, revisions, receipt_cids
+
+
 def _live_preflight(
     config: Mapping[str, Any],
     *,
@@ -1183,7 +1469,7 @@ def _live_preflight(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     active_source_repair = _active_source_repair_materialization(config)
-    final_pair_marker = _require_m9_final_pair_marker(
+    final_pair_marker = _require_active_final_pair_marker(
         config,
         active_source_repair,
         materializer,
@@ -1271,9 +1557,18 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            statuses, _revisions, _receipts = (
-                materializer._verify_m6_task_projection(live, population)
-            )
+            if "live_projection_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m9_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                    )
+                )
+            else:
+                statuses, _revisions, _receipts = (
+                    materializer._verify_m6_task_projection(live, population)
+                )
             with live.intent._connection(write=False) as connection:
                 semantic_authority_digest = (
                     materializer._semantic_authority_digest_on(connection)
@@ -1285,9 +1580,11 @@ def _live_preflight(
             raise OperatorError(
                 f"live Quack task authority conflict: {exc}"
             ) from exc
-        expected_semantic_authority_digest = active_source_repair[
-            "prior_semantic_authority_digest"
-        ]
+        expected_semantic_authority_digest = (
+            active_source_repair["target_semantic_authority_digest"]
+            if "live_projection_successor_materialization" in config
+            else active_source_repair["prior_semantic_authority_digest"]
+        )
         if semantic_authority_digest != expected_semantic_authority_digest:
             raise OperatorError("live Quack semantic task authority differs")
         for expected in population["objectives"]:
@@ -1345,7 +1642,10 @@ def _live_preflight(
         store_report.update(
             {
                 "coordination_path": str(
-                    (REPO_ROOT / _M9_COORDINATION_STORE_ID).resolve()
+                    (
+                        REPO_ROOT
+                        / str(final_pair_marker["coordination_path"])
+                    ).resolve()
                 ),
                 "coordination_projection_digest": final_pair_marker[
                     "coordination_projection_digest"
@@ -1476,7 +1776,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     checked = materializer.check_materialized(
                         REPO_ROOT, config_path
                     )
-                    _require_m9_final_pair_marker(
+                    _require_active_final_pair_marker(
                         config,
                         active_materialization,
                         materializer,

@@ -274,6 +274,22 @@ def _m9_migration_errors(
         return [f"M9 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m10_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M10 live-projection contract across static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m10_live_projection_errors(scheduler, seal, migration)
+        )
+    except Exception as exc:
+        return [f"M10 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -281,11 +297,26 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M9 before M8.  Consequently an empty, null, or
-    otherwise malformed M9 declaration is validated as M9 and cannot silently
-    reactivate the historical M8 authority.  M8 remains independently checked
-    as immutable history whenever M9 is selected.
+    Key presence selects M10 before M9 and M8.  Consequently an empty, null,
+    or otherwise malformed newest declaration is validated at that revision
+    and cannot silently reactivate historical authority.  Every predecessor
+    remains independently checked as immutable history.
     """
+
+    m10_key = "live_projection_successor_materialization"
+    m10_seal_key = "live_projection_successor_materialization_cid"
+    m10_presence = (
+        m10_key in scheduler,
+        m10_key in migration,
+        m10_seal_key in seal,
+    )
+    if any(m10_presence):
+        errors = _m10_migration_errors(scheduler, seal, migration)
+        if not all(m10_presence):
+            errors.append("M10 live-projection authority is only partially declared")
+        errors.extend(_m9_migration_errors(scheduler, seal, migration))
+        errors.extend(_m8_migration_errors(scheduler, seal, migration))
+        return errors
 
     m9_key = "live_recovery_successor_materialization"
     m9_seal_key = "live_recovery_successor_materialization_cid"
@@ -315,7 +346,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9 successor authority is absent"]
+    return ["active M8/M9/M10 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1761,17 +1792,27 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m10_key = "live_projection_successor_materialization"
+    m10_selected = any(
+        (
+            m10_key in config,
+            m10_key in migration,
+            "live_projection_successor_materialization_cid" in seal,
+        )
+    )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = any(
+    m9_selected = not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
             "live_recovery_successor_materialization_cid" in seal,
         )
     )
-    active_run = "run-r2-m9" if m9_selected else "run-r2-m8"
-    active_generation = "11" if m9_selected else "10"
-    active_port = 45251 if m9_selected else 45250
+    active_run = (
+        "run-r2-m10" if m10_selected else "run-r2-m9" if m9_selected else "run-r2-m8"
+    )
+    active_generation = "12" if m10_selected else "11" if m9_selected else "10"
+    active_port = 45253 if m10_selected else 45251 if m9_selected else 45250
     active_store = (
         "data/agent_supervisor/semantic_addressed_world_model/"
         f"{active_run}/control.duckdb"
@@ -1787,7 +1828,63 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m9_selected:
+    if m10_selected:
+        live_projection = config.get(m10_key)
+        expected_m10_cid = (
+            "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10"
+        )
+        expected_m10_fields = {
+            "schema": "sawm/live-control-projection-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M10",
+            "migration_kind": (
+                "authenticated_live_task_and_semantic_projection_comparator_repair"
+            ),
+            "supersession_mode": "source_only_live_projection_comparator_repair",
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m10/control.coordination.duckdb"
+            ),
+            "target_generation": 12,
+            "target_plan_revision": 11,
+            "target_event_watermark": 179,
+            "target_projection_cid": (
+                "baguqeerareq2bngq3hffyk5vidym2ukeleg5gehpaxhqvvdjayn7ucxplcaq"
+            ),
+            "target_semantic_authority_digest": (
+                "sha256:a4903791c91cc2e9c3337f2abdfd6af78389f7036d54cb7f8e43246cd4f0c023"
+            ),
+            "target_coordination_projection_digest": (
+                "sha256:7fb9bacb0f76fe832cc34dd5fb2ccdef13ddafeef4ec2a3d532cb902aa62011e"
+            ),
+            "target_coordination_event_count": 36,
+            "event_suffix_length": 2,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "coordination_semantic_changes": 0,
+        }
+        if type(live_projection) is not dict or any(
+            live_projection.get(field) != expected
+            for field, expected in expected_m10_fields.items()
+        ):
+            config_errors.append("M10 active live-projection authority is not exact")
+        elif (
+            live_projection != migration.get(m10_key)
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    live_projection,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            != expected_m10_cid
+            or seal.get("live_projection_successor_materialization_cid")
+            != expected_m10_cid
+        ):
+            config_errors.append("M10 projection/failure authority CID is not exact")
+    elif m9_selected:
         live_recovery = config.get(m9_key)
         expected_m9_cid = (
             "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9"
