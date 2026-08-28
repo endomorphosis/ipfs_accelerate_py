@@ -5125,6 +5125,11 @@ def test_database_task_state_compatibility_projection_marks_exact_idle_completio
         assert active_projection["task_count"] == 1
         assert active_projection["completed_count"] == 1
         assert active_projection["implementation_in_progress"] is True
+        assert active_projection["last_progress_at"]
+        assert (
+            active_projection["last_progress_at"]
+            == active_projection["heartbeat_at"]
+        )
 
         idle_pass = daemon.run_once()
         assert idle_pass["selection_idle_reason"] == "no_ready_tasks"
@@ -5145,6 +5150,8 @@ def test_database_task_state_compatibility_projection_marks_exact_idle_completio
         assert projection["external_reserved_count"] == 0
         assert projection["active_task_id"] == ""
         assert projection["implementation_in_progress"] is False
+        assert projection["last_progress_at"]
+        assert projection["last_progress_at"] == projection["heartbeat_at"]
         assert projection["task_statuses"] == {"DQP-T001": "completed"}
         persisted = json.loads(state_path.read_text(encoding="utf-8"))
         assert persisted == {

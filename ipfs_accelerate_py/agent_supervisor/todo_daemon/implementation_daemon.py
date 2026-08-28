@@ -87134,6 +87134,7 @@ class DatabaseImplementationDaemon:
                 and pass_result.get("selection_idle_reason") == "no_ready_tasks"
                 and not active_task_id
             )
+            projected_at = utc_now()
             payload = {
                 "schema": DATABASE_TASK_STATE_COMPATIBILITY_PROJECTION_SCHEMA,
                 "authority": "non_authoritative_compatibility_projection",
@@ -87157,7 +87158,8 @@ class DatabaseImplementationDaemon:
                 "completed_task_ids": sorted(completed_task_ids),
                 "ready_task_ids": sorted(ready_task_ids),
                 "blocked_task_ids": sorted(blocked_task_ids),
-                "heartbeat_at": utc_now(),
+                "heartbeat_at": projected_at,
+                "last_progress_at": projected_at,
             }
             write_json_atomic(path, payload)
             return MappingProxyType({**payload, "written": True})
