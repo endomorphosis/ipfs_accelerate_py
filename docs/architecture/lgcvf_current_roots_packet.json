@@ -1,130 +1,91 @@
 {
-  "benchmark_authority_cid": "baguqeera6yzqqcs2dod46s7h5jnean7axorhbju34wamwksin5ez7nkoynra",
-  "benchmark_overall_disposition": "partial",
-  "benchmark_projection_cid": "baguqeerafmcvv3yszair43dgqn4shvo2odjzziuqyyuxapsn77esp3qqouia",
-  "benchmark_report_cid": "baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza",
-  "checkout_fingerprint_cid": "baguqeerammf2wqnzod7clabqmdept3ss3qw5h6m5nnwxlaipptdafeiddx3q",
-  "closeout_implementation_validation_cid": "baguqeera6tggs4rhbxux5d53nhkvb3h3m32yikufuspi5l6vh6fd2rmwlk5a",
+  "authority_scope": "research_and_development_only",
+  "benchmark": {
+    "authority_cid": "baguqeerazlhj3navg62agjcxtkq5tdvblzo5peux7er7scikz37rh4vsrosa",
+    "overall_disposition": "partial",
+    "report_cid": "baguqeera7gtzmszdjpng7qtnhotoxqympq6maympcog7q57zkd4o3dtlvjbq",
+    "reproducible_projection_cid": "baguqeerau7ahxaoqzf6iibvip65tqaussgrxam2fwvfgnghdtb5utt3nxx2a",
+    "warm_cache_model_call_reduction": "not_evaluated"
+  },
+  "derived_state": {
+    "objective_complete": false,
+    "production_authorized": false,
+    "release_qualified": false,
+    "task_implementation_complete": true,
+    "test_qualification_complete": true
+  },
   "evidence_cohort": "hermetic_local_execution",
-  "excluded_cohorts": [
-    "simulated",
-    "live_local_model_execution",
-    "live_remote_model_execution",
-    "production_authoritative_evidence"
-  ],
+  "evidence_issued_at": "2026-08-28T07:57:18Z",
   "file_sha256": {
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:0fa1e9e65e49e143da28da61b114e45753774f645e1c33a455e1ea2b65716dc9",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:0934875a3224df8e0b7e006993adda8f6485bae2c80041945bf246a365f7503d",
-    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:6789198ee90637faee5de9c5b6b299cec31cb185caf8670fe3a47ee5783d64d9",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:c129bae3770eb1e65098f47dd5c34ac8d54ba1b4c59aa9791f5c913312ca50fd",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:c5f5361f88b88589fb0771d5d6c9d00380126922b41a42dabfa4f01acae266c0",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_r_and_d_receipt.v2.json": "sha256:6b16866a9e8f0b9b317046561378e659b5b0b363e0e62d9b0e83d4bb967eaa99",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:cb710c0ffed6d4a58f857170c365b2b9a901b8f204a9b3a33feb65143f850499",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_r_and_d_receipt.v2.json": "sha256:16c5bc946f0b64ff27a7e46514d3d1648a57559ce1e162a2da82273ee393debc",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/r_and_d_terminal_closeout.json": "sha256:a2be76065f4fd71937655a2427fc08f5909eb8b351e6cc7ca8cc1b9b6a75999f",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_resolution.json": "sha256:ed6387df95e1ada16aa382fa8680442b9b6babeef69eccd9dce90de59f5516d9",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:73f2a2140a4b107e1b32fa3fbfa0481d33337981c403c19b1a1f8b03404ebeee",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:b63475662afa7db495af0fb8a9507c415355f66e9f04bab2850c338689d1e040",
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md": "sha256:8aa817f81347ca11b5ce987c35da5228850811e64f8f88c752725856c6132774",
-    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:0d1f826146810524242f735266ed4290192d4f399f24188508ff102960f53d77",
     "docs/architecture/logic_governed_compositional_verification_fabric.todo.md": "sha256:aadaebdb7f7e9292e08a2e2c26769c588e46168708591c265b07df5a22231873"
   },
-  "issuer": "checklist-only; not an independent verifier; not an operator grant",
-  "not_external_qualification_receipt": true,
-  "not_production_authorization_receipt": true,
-  "notes": [
-    "hermetic 113 and 120 did not judge live local, live remote, or production-authoritative cohorts",
-    "paired benchmark observed all twelve representative task classes",
-    "median context reduction met 5452 bps against the 5000 bps target",
-    "warm-cache model-call displacement remains not_evaluated because both routes made zero calls",
-    "datasets 090 is nested commit 66a02063496fd200f2372b3083e376f1978c6be1, recorded as the parent gitlink",
-    "closeout implementation --check passed with validation_cid baguqeera6tggs4rhbxux5d53nhkvb3h3m32yikufuspi5l6vh6fd2rmwlk5a",
-    "run-v16 donor is absent; recovery-preview fails because ipfs_datasets_py HEAD differs from the frozen planning revision",
-    "this packet cannot be copied to the 121 or 123 output paths as issuance",
-    "committing this packet changes the 113 checkout fingerprint; reconstruct 113 before treating qualification_result_cid as live"
+  "limitations": [
+    "Single-user self-verification is not independent third-party qualification.",
+    "The benchmark is partial because warm-cache model-call displacement was not evaluated.",
+    "Production authorization is explicitly declined for this R&D-only scope.",
+    "This roots packet indexes evidence and is not itself an authority receipt."
   ],
-  "objective_complete": false,
   "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "predecessor": {
+    "implementation_authority_cid": "baguqeeranurcrroanskuum2vofeoxzvitfyxsfne322pdhe6tr3x7e5jzzpq",
+    "implementation_report_sha256": "sha256:b63475662afa7db495af0fb8a9507c415355f66e9f04bab2850c338689d1e040",
+    "release_report_sha256": "sha256:0d1f826146810524242f735266ed4290192d4f399f24188508ff102960f53d77",
+    "successor_tasks_cid": "baguqeerayqorjz4hwj6mbq7pzybhqeb7d7y53uq4c43inps63xp52db7xilq"
+  },
   "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
-  "production_authorized": false,
-  "qualification_authority_cid": "baguqeerabesacj5ta45r7effwhw6rjzcqv5lbbez3xu4pocyrmv42bqgcmbq",
-  "qualification_result_cid": "baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq",
-  "release_qualified": false,
-  "release_report_sha256": "sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db",
-  "schema": "lgcvf-current-roots-packet@1",
-  "source_revision": {
-    "branch": "agent/logic-governed-compositional-verification-fabric-v1",
-    "ipfs_accelerate_py": {
-      "head": "6ce8fc6e937b815a8285ac9a4d9a2092e8075a42",
-      "tree": "5505489ab374f27c9533f760f867c74e99e373a4"
-    },
-    "ipfs_datasets_py": {
-      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
-      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
-      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
+  "qualification": {
+    "authority_cid": "baguqeeradbnkycx6phx2l4fs2xedvlmfve4cfhmxgrsbguvsdu6xoguun5la",
+    "checkout_fingerprint_cid": "baguqeeradwzhojt7mtiw3q2tqhe75nh746gmgxxorodtodksv64d3hjg6oma",
+    "passed": true,
+    "result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+    "totals": {
+      "collected": 911,
+      "error_count": 0,
+      "failed_count": 0,
+      "passed_count": 911,
+      "skipped_count": 0,
+      "xfailed_count": 0,
+      "xpassed_count": 0
     }
   },
-  "successor_tasks_cid": "baguqeerasvdhm4jfllqq7k3bjkrdqdf47uvh4zm7c7wr7aijn47lwanlwr5q",
-  "task_implementation_complete": false,
-  "test_qualification_complete": true,
-  "thresholds": [
-    {
-      "comparison": "equal",
-      "disposition": "met",
-      "observed": 0,
-      "reason": "",
-      "target": 0,
-      "threshold_id": "zero_safety_floor_violations"
+  "r_and_d_authority": {
+    "external_qualification_receipt_cid": "baguqeerawnjbh6qwn5m5fjzfxdfu2ev5ij23kx6r4h77j4dn5upawlf7wuoq",
+    "external_qualification_disposition": "self_verified_r_and_d",
+    "production_authorization_disposition": "production_declined_r_and_d",
+    "production_authorization_receipt_cid": "baguqeeraxo5p4snzvpuivxbloc6alnzclrmlhgo4kyghyeyto75ctfz6ty3a",
+    "successor_resolution_cid": "baguqeerajygpea4uadfmvow4akclbmn2rjceolezh5eze5kao4kedpy4grxq",
+    "terminal_closeout_cid": "baguqeeraoa3qpgxvgsl2hopcwkkukzt7s2bj23udxkuzdtr4bds6zxztldoq",
+    "third_party_independence_claimed": false,
+    "trust_key_id": "baguqeeraof5lqknosljjp2d26xqynxi2um53vtfq74dx6apttc3xxsapvslq",
+    "trust_model": "self_signed_single_user_r_and_d",
+    "verifier_identity": "Benjamin Barber",
+    "verifier_role": "sole R&D verifier and operator"
+  },
+  "resolved_tasks": {
+    "LGCVF-S001": "self_verified_r_and_d",
+    "LGCVF-S002": "production_declined_r_and_d",
+    "LGCVF-S003": "completed"
+  },
+  "schema": "lgcvf-current-roots-packet@2",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "319e14a8a863fd0df898d076f741fa519a26c85f",
+      "tree": "035d15c7f0b79efde71fd3b713647663dd3f3424"
     },
-    {
-      "comparison": "equal",
-      "disposition": "met",
-      "observed": 0,
-      "reason": "",
-      "target": 0,
-      "threshold_id": "zero_critical_omissions_accepted"
-    },
-    {
-      "comparison": "at_least",
-      "disposition": "met",
-      "observed": 5452,
-      "reason": "",
-      "target": 5000,
-      "threshold_id": "median_context_reduction_bps"
-    },
-    {
-      "comparison": "at_least",
-      "disposition": "not_evaluated",
-      "observed": null,
-      "reason": "both fixture routes made zero model calls; a repeated task with a nonzero baseline is required to measure displacement",
-      "target": 5000,
-      "threshold_id": "warm_cache_model_call_reduction_bps"
-    },
-    {
-      "comparison": "at_least",
-      "disposition": "met",
-      "observed": 10000,
-      "reason": "",
-      "target": 2500,
-      "threshold_id": "symbolically_closable_deterministic_route_share_bps"
-    },
-    {
-      "comparison": "at_least",
-      "disposition": "met",
-      "observed": 10000,
-      "reason": "",
-      "target": 8000,
-      "threshold_id": "unaffected_proof_test_reuse_bps"
-    },
-    {
-      "comparison": "equal",
-      "disposition": "met",
-      "observed": true,
-      "reason": "",
-      "target": true,
-      "threshold_id": "accepted_patch_quality_not_lower"
-    },
-    {
-      "comparison": "at_least",
-      "disposition": "met",
-      "observed": 12,
-      "reason": "",
-      "target": 12,
-      "threshold_id": "representative_task_class_coverage"
+    "ipfs_datasets_py": {
+      "gitlink": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
     }
-  ],
-  "uncommitted_datasets_090_paths": [],
-  "uncommitted_remaining_auto_work": false
+  }
 }

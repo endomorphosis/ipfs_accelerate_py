@@ -1,0 +1,56 @@
+{
+  "authority_scope": "research_and_development_only",
+  "benchmark_report_cid": "baguqeera7gtzmszdjpng7qtnhotoxqympq6maympcog7q57zkd4o3dtlvjbq",
+  "cohorts": {
+    "live_local_model_execution": "unavailable",
+    "live_remote_model_execution": "unavailable",
+    "production_authoritative_evidence": "unavailable"
+  },
+  "disposition": "self_verified_r_and_d",
+  "expires_at": "2027-08-28T07:57:18Z",
+  "issued_at": "2026-08-28T07:57:18Z",
+  "issuer": {
+    "identity": "Benjamin Barber",
+    "key_id": "baguqeeraof5lqknosljjp2d26xqynxi2um53vtfq74dx6apttc3xxsapvslq",
+    "public_key_base64url": "38lrIFjpu--NDavNq81kDeC7SaUADp6Shth9C5-t8g4",
+    "role": "sole R&D verifier and operator"
+  },
+  "limitations": [
+    "The signer is the sole R&D user and candidate owner, not an independent third party.",
+    "The receipt records self-verification only and grants no release qualification.",
+    "Live model, remote-provider, and production-authoritative cohorts were not exercised."
+  ],
+  "multi_writer": {
+    "disposition": "unavailable",
+    "notes": "The bound evidence does not qualify a production multi-writer deployment.",
+    "quack_qualified": false
+  },
+  "payload_cid": "baguqeeravoqjplxaat7gj4cfw2lxvu56llehhe6xckhoe6c6gsk2nfw4zw3q",
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "production_authorized": false,
+  "provider_disclosure_policy": "No model or remote provider was invoked; only the bound hermetic R&D cohort was judged.",
+  "qualification_checkout_fingerprint_cid": "baguqeeradwzhojt7mtiw3q2tqhe75nh746gmgxxorodtodksv64d3hjg6oma",
+  "qualification_result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+  "receipt_cid": "baguqeerawnjbh6qwn5m5fjzfxdfu2ev5ij23kx6r4h77j4dn5upawlf7wuoq",
+  "receipt_kind": "external_qualification_r_and_d",
+  "release_qualified": false,
+  "schema": "lgcvf-external-qualification-receipt@2",
+  "signature": {
+    "algorithm": "Ed25519",
+    "encoding": "base64url-no-pad",
+    "value": "1f6sg2jwV-1rTtFc8jZIWsOUnZslRumXA5-hUaiY7SeRxrkqDDvK7jxd5N_LWjHVbbY7VlR1ZY9FZzGQzYRaAQ"
+  },
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "319e14a8a863fd0df898d076f741fa519a26c85f",
+      "tree": "035d15c7f0b79efde71fd3b713647663dd3f3424"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    }
+  },
+  "third_party_independence_claimed": false,
+  "trust_model": "self_signed_single_user_r_and_d"
+}

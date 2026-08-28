@@ -1,0 +1,66 @@
+{
+  "authority_scope": "research_and_development_only",
+  "benchmark_report_cid": "baguqeera7gtzmszdjpng7qtnhotoxqympq6maympcog7q57zkd4o3dtlvjbq",
+  "closeout_cid": "baguqeeraoa3qpgxvgsl2hopcwkkukzt7s2bj23udxkuzdtr4bds6zxztldoq",
+  "external_qualification_receipt_cid": "baguqeerawnjbh6qwn5m5fjzfxdfu2ev5ij23kx6r4h77j4dn5upawlf7wuoq",
+  "limitations": [
+    "Single-user self-verification is not independent third-party qualification.",
+    "The benchmark remains partial because warm-cache model-call displacement was not evaluated.",
+    "Production authorization is explicitly declined for this R&D-only scope."
+  ],
+  "objective_complete": false,
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "predecessor_implementation_authority_cid": "baguqeeranurcrroanskuum2vofeoxzvitfyxsfne322pdhe6tr3x7e5jzzpq",
+  "predecessor_implementation_report_sha256": "sha256:b63475662afa7db495af0fb8a9507c415355f66e9f04bab2850c338689d1e040",
+  "predecessor_release_report_sha256": "sha256:0d1f826146810524242f735266ed4290192d4f399f24188508ff102960f53d77",
+  "predecessor_successor_tasks_cid": "baguqeerayqorjz4hwj6mbq7pzybhqeb7d7y53uq4c43inps63xp52db7xilq",
+  "production_authorization_receipt_cid": "baguqeeraxo5p4snzvpuivxbloc6alnzclrmlhgo4kyghyeyto75ctfz6ty3a",
+  "production_authorized": false,
+  "qualification_checkout_fingerprint_cid": "baguqeeradwzhojt7mtiw3q2tqhe75nh746gmgxxorodtodksv64d3hjg6oma",
+  "qualification_result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+  "release_qualified": false,
+  "resolved_tasks": [
+    {
+      "disposition": "self_verified_r_and_d",
+      "evidence_cid": "baguqeeraexg4fogqcfixt2gi724tamejqg6rdkvrnfqhe424qez3tr7o3vqa",
+      "predecessor_task_cid": "baguqeeram6lgwzz3a4fyubei4gfy5ee52y5w3wobdwr63bfw3yqzvxsbfxbq",
+      "task_id": "LGCVF-S001",
+      "task_resolution_cid": "baguqeeragjekb5u4toevwbrp72fbvytluw36qekqjkcnxlsahub7nmexy7bq"
+    },
+    {
+      "disposition": "production_declined_r_and_d",
+      "evidence_cid": "baguqeeraff6yz2tx6q4lwp4t4hemvj63ym4hiuukqachcod55wckpbotyiha",
+      "predecessor_task_cid": "baguqeera5ib2fo56mzservwaar4jhlohlf7m6bohykm3hvofhsctox6z3g6a",
+      "task_id": "LGCVF-S002",
+      "task_resolution_cid": "baguqeeran3o3q5kleemjwg7su5lj3hfxqc7w227ykhcvixmlzr4c4efbwsja"
+    },
+    {
+      "disposition": "completed",
+      "evidence_cid": "baguqeeranb4f3daz5fjniubktcdy2ezehxk2rn3iom3bshenaspcc5ies7ra",
+      "predecessor_task_cid": "baguqeera5j67uziqn4igezwhz5h7fcku72m6nlkmowtizup7lujifr2byvwq",
+      "task_id": "LGCVF-S003",
+      "task_resolution_cid": "baguqeera4v53dccrkytpiaq5g7ootkcvirpagwa6vzqmrneycjvhjxp64haq"
+    }
+  ],
+  "schema": "lgcvf-r-and-d-terminal-closeout@1",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "319e14a8a863fd0df898d076f741fa519a26c85f",
+      "tree": "035d15c7f0b79efde71fd3b713647663dd3f3424"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    }
+  },
+  "successor_resolution_check_cid": "baguqeeraxlgvgzgmytwstebwom6u27fyrdll46a7rj6ayhj6p3zbksolimqq",
+  "successor_resolution_cid": "baguqeerajygpea4uadfmvow4akclbmn2rjceolezh5eze5kao4kedpy4grxq",
+  "task_implementation_complete": true,
+  "test_qualification_complete": true,
+  "third_party_independence_claimed": false,
+  "trust_key_id": "baguqeeraof5lqknosljjp2d26xqynxi2um53vtfq74dx6apttc3xxsapvslq",
+  "trust_model": "self_signed_single_user_r_and_d",
+  "verifier_identity": "Benjamin Barber",
+  "verifier_role": "sole R&D verifier and operator"
+}

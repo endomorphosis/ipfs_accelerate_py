@@ -1,0 +1,92 @@
+{
+  "benchmark_report_cid": "baguqeera7gtzmszdjpng7qtnhotoxqympq6maympcog7q57zkd4o3dtlvjbq",
+  "derived_states": {
+    "objective_complete": false,
+    "production_authorized": false,
+    "release_qualified": false,
+    "task_implementation_complete": true
+  },
+  "limitations": [
+    "S001 is self-verified R&D evidence, not independent release qualification",
+    "S002 explicitly declines production authorization",
+    "objective completion and release qualification remain unclaimed"
+  ],
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "predecessor_successor_tasks_cid": "baguqeerayqorjz4hwj6mbq7pzybhqeb7d7y53uq4c43inps63xp52db7xilq",
+  "qualification_result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+  "resolution_cid": "baguqeerajygpea4uadfmvow4akclbmn2rjceolezh5eze5kao4kedpy4grxq",
+  "schema": "lgcvf-successor-resolution@1",
+  "source_roots": {
+    "ipfs_accelerate_py": {
+      "head": "319e14a8a863fd0df898d076f741fa519a26c85f",
+      "tree": "035d15c7f0b79efde71fd3b713647663dd3f3424"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    }
+  },
+  "tasks": [
+    {
+      "depends_on": [],
+      "disposition": "self_verified_r_and_d",
+      "evidence": {
+        "authority_context_cid": "baguqeera27zce32ikoyz2bdjse6acu2nkpbu2qni6w2uuqpykhqlk7we5xsq",
+        "authority_receipt_cid": "baguqeerawnjbh6qwn5m5fjzfxdfu2ev5ij23kx6r4h77j4dn5upawlf7wuoq",
+        "authority_validation_cid": "baguqeerasig7yjphighbsdux3qew7yj2kd5vvihpfbaawkyt5u6fqhlcokza",
+        "evidence_cid": "baguqeeraexg4fogqcfixt2gi724tamejqg6rdkvrnfqhe424qez3tr7o3vqa",
+        "schema": "lgcvf-successor-authority-resolution-evidence@1"
+      },
+      "predecessor_task_cid": "baguqeeram6lgwzz3a4fyubei4gfy5ee52y5w3wobdwr63bfw3yqzvxsbfxbq",
+      "task_id": "LGCVF-S001",
+      "task_resolution_cid": "baguqeeragjekb5u4toevwbrp72fbvytluw36qekqjkcnxlsahub7nmexy7bq"
+    },
+    {
+      "depends_on": [
+        "LGCVF-S001"
+      ],
+      "disposition": "production_declined_r_and_d",
+      "evidence": {
+        "authority_context_cid": "baguqeerapzr3ep4dhzuwqheaqjc4nhnykwhe45phly2c3fg5ropmqq3rg7bq",
+        "authority_receipt_cid": "baguqeeraxo5p4snzvpuivxbloc6alnzclrmlhgo4kyghyeyto75ctfz6ty3a",
+        "authority_validation_cid": "baguqeerabn66d5t3xhq5hvjezylsm7fxyscoke72mc5c4cbh43kutksfpm7q",
+        "evidence_cid": "baguqeeraff6yz2tx6q4lwp4t4hemvj63ym4hiuukqachcod55wckpbotyiha",
+        "schema": "lgcvf-successor-authority-resolution-evidence@1"
+      },
+      "predecessor_task_cid": "baguqeera5ib2fo56mzservwaar4jhlohlf7m6bohykm3hvofhsctox6z3g6a",
+      "task_id": "LGCVF-S002",
+      "task_resolution_cid": "baguqeeran3o3q5kleemjwg7su5lj3hfxqc7w227ykhcvixmlzr4c4efbwsja"
+    },
+    {
+      "depends_on": [
+        "LGCVF-S001"
+      ],
+      "disposition": "completed",
+      "evidence": {
+        "datasets_commit": "41bbe7ede20294944cccb77f22072351a29e6902",
+        "datasets_tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d",
+        "evidence_cid": "baguqeeranb4f3daz5fjniubktcdy2ezehxk2rn3iom3bshenaspcc5ies7ra",
+        "qualification_observation_cid": "baguqeera4vbuyhixerth537pqh2a22x7s3txjbhn2zqdetzstjjj4y4lxdta",
+        "qualification_result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+        "qualification_suite_id": "fixed_datasets_semantics",
+        "qualification_suite_nodeids_cid": "baguqeeran3je5tqsdt7ojg2wohfsx6lbzjggrh6gnslxuuaufz7ul2naeifa",
+        "schema": "lgcvf-s003-completion-evidence@1",
+        "validations": [
+          {
+            "command": "pytest ipfs_datasets_py/tests/unit/logic/test_compositional_verification_public_api.py",
+            "exit_code": 0,
+            "manifest_path": "tests/unit/logic/test_compositional_verification_public_api.py",
+            "passed": true,
+            "qualification_observation_cid": "baguqeera4vbuyhixerth537pqh2a22x7s3txjbhn2zqdetzstjjj4y4lxdta",
+            "schema": "lgcvf-exact-validation-evidence@1",
+            "validation_cid": "baguqeerayslrx2klefqrn3bket4xe4kn7npyy4ka3475ixo7hlem2rgmmcrq"
+          }
+        ]
+      },
+      "predecessor_task_cid": "baguqeera5j67uziqn4igezwhz5h7fcku72m6nlkmowtizup7lujifr2byvwq",
+      "task_id": "LGCVF-S003",
+      "task_resolution_cid": "baguqeera4v53dccrkytpiaq5g7ootkcvirpagwa6vzqmrneycjvhjxp64haq"
+    }
+  ]
+}

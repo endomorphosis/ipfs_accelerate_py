@@ -1,0 +1,51 @@
+{
+  "authority_scope": "research_and_development_only",
+  "benchmark_report_cid": "baguqeera7gtzmszdjpng7qtnhotoxqympq6maympcog7q57zkd4o3dtlvjbq",
+  "depends_on_lgcvf_121": true,
+  "depends_on_lgcvf_122": true,
+  "disposition": "production_declined_r_and_d",
+  "expires_at": "2027-08-28T07:57:18Z",
+  "external_qualification_payload_cid": "baguqeeravoqjplxaat7gj4cfw2lxvu56llehhe6xckhoe6c6gsk2nfw4zw3q",
+  "external_qualification_receipt_cid": "baguqeerawnjbh6qwn5m5fjzfxdfu2ev5ij23kx6r4h77j4dn5upawlf7wuoq",
+  "issued_at": "2026-08-28T07:57:18Z",
+  "lgswf_006_reused": false,
+  "limitations": [
+    "Production authorization is explicitly declined for this single-user R&D checkout.",
+    "The partial benchmark and self-verification receipt are not release qualification.",
+    "No public, shared, remote, or production deployment is authorized."
+  ],
+  "operator": {
+    "identity": "Benjamin Barber",
+    "key_id": "baguqeeraof5lqknosljjp2d26xqynxi2um53vtfq74dx6apttc3xxsapvslq",
+    "public_key_base64url": "38lrIFjpu--NDavNq81kDeC7SaUADp6Shth9C5-t8g4",
+    "role": "sole R&D verifier and operator"
+  },
+  "payload_cid": "baguqeeraacqmw2dwaawt5ccjj6ujphz54yzdqnkahz2rhytfb5tqpxgbfc6a",
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "production_authorized": false,
+  "qualification_checkout_fingerprint_cid": "baguqeeradwzhojt7mtiw3q2tqhe75nh746gmgxxorodtodksv64d3hjg6oma",
+  "qualification_result_cid": "baguqeerabd22natuwn6emjs56s5iuolko75okqnbp6fbsgluq6ewxa4umciq",
+  "receipt_cid": "baguqeeraxo5p4snzvpuivxbloc6alnzclrmlhgo4kyghyeyto75ctfz6ty3a",
+  "receipt_kind": "production_authorization_r_and_d",
+  "release_qualified": false,
+  "release_report_sha256": "sha256:0d1f826146810524242f735266ed4290192d4f399f24188508ff102960f53d77",
+  "schema": "lgcvf-production-authorization-receipt@2",
+  "scope": "research_and_development_only",
+  "signature": {
+    "algorithm": "Ed25519",
+    "encoding": "base64url-no-pad",
+    "value": "bFkD9qQUtDOYZ07c-bb5b4zX7jYKkeC4zashH0fo-aaUvxPLfuIkW54U5IllY5gNyT_-tKgu_q-yOGDVeEpyAQ"
+  },
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "319e14a8a863fd0df898d076f741fa519a26c85f",
+      "tree": "035d15c7f0b79efde71fd3b713647663dd3f3424"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "head": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    }
+  },
+  "trust_model": "self_signed_single_user_r_and_d"
+}
