@@ -5425,25 +5425,74 @@ def _pending_supervisor_generation_fields(
     reason: str,
     observed_supervisor_pid: int | None = None,
     status_age_seconds: float | None = None,
+    generation_live_status_observed: bool = False,
+    status_gap_started_at_epoch_seconds: float | None = None,
 ) -> dict[str, object]:
-    """Return bounded startup health until this process generation reports."""
+    """Return bounded startup or post-live status-gap health.
 
-    startup_age_seconds = max(
-        0.0,
-        observed_at.timestamp() - generation_started_at_epoch_seconds,
-    )
-    within_startup_grace = startup_age_seconds <= startup_grace_seconds
+    A generation that has never published a valid live status remains bounded
+    by its original startup horizon.  Once a valid live status was observed,
+    an unavailable or generation-invalid read gets a distinct bounded gap
+    horizon.  The caller must retain the first returned gap origin until a
+    generation-valid status is observed; otherwise repeated bad observations
+    could extend the grace indefinitely.
+    """
+
+    observed_epoch_seconds = observed_at.timestamp()
+    if generation_live_status_observed:
+        gap_started_at = (
+            observed_epoch_seconds
+            if status_gap_started_at_epoch_seconds is None
+            else float(status_gap_started_at_epoch_seconds)
+        )
+        if (
+            not math.isfinite(gap_started_at)
+            or gap_started_at < generation_started_at_epoch_seconds
+            or gap_started_at > observed_epoch_seconds + 1e-6
+        ):
+            raise ValueError("supervisor status gap bounds are invalid")
+        gap_age_seconds = max(0.0, observed_epoch_seconds - gap_started_at)
+        within_grace = gap_age_seconds <= startup_grace_seconds
+        generation_state = "status_gap"
+    else:
+        if status_gap_started_at_epoch_seconds is not None:
+            raise ValueError(
+                "supervisor status gap requires a prior valid live status"
+            )
+        startup_age_seconds = max(
+            0.0,
+            observed_epoch_seconds - generation_started_at_epoch_seconds,
+        )
+        within_grace = startup_age_seconds <= startup_grace_seconds
+        generation_state = "pending"
     fields: dict[str, object] = {
-        "supervisor_status": "starting" if within_startup_grace else "stale",
-        "supervisor_status_generation": "pending",
+        "supervisor_status": "starting" if within_grace else "stale",
+        "supervisor_status_generation": generation_state,
         "supervisor_status_generation_reason": reason,
         "supervisor_status_path": str(status_path),
-        "supervisor_startup_age_seconds": round(startup_age_seconds, 1),
-        "supervisor_startup_grace_seconds": startup_grace_seconds,
-        "supervisor_within_startup_grace": within_startup_grace,
         "expected_supervisor_pid": expected_supervisor_pid,
-        "restart_supervisor": not within_startup_grace,
+        "restart_supervisor": not within_grace,
     }
+    if generation_live_status_observed:
+        fields.update(
+            {
+                "supervisor_status_gap_started_at_epoch_seconds": gap_started_at,
+                "supervisor_status_gap_age_seconds": round(gap_age_seconds, 1),
+                "supervisor_status_gap_grace_seconds": startup_grace_seconds,
+                "supervisor_within_status_gap_grace": within_grace,
+            }
+        )
+    else:
+        fields.update(
+            {
+                "supervisor_startup_age_seconds": round(
+                    startup_age_seconds,
+                    1,
+                ),
+                "supervisor_startup_grace_seconds": startup_grace_seconds,
+                "supervisor_within_startup_grace": within_grace,
+            }
+        )
     if observed_supervisor_pid is not None:
         fields["observed_supervisor_pid"] = observed_supervisor_pid
     if status_age_seconds is not None:
@@ -5462,12 +5511,11 @@ def supervisor_status_health_fields(
     expected_supervisor_pid: int | None = None,
     generation_started_at_epoch_seconds: float | None = None,
     startup_grace_seconds: float = 0.0,
+    generation_live_status_observed: bool = False,
+    status_gap_started_at_epoch_seconds: float | None = None,
 ) -> dict[str, object]:
     """Return generation-bound health for the wrapper supervisor status file."""
 
-    status_path = _inferred_supervisor_status_path(track)
-    if status_path is None:
-        return {"supervisor_status": "untracked"}
     generation_bound = (
         expected_supervisor_pid is not None
         or generation_started_at_epoch_seconds is not None
@@ -5480,7 +5528,15 @@ def supervisor_status_health_fields(
         raise ValueError(
             "supervisor status generation requires a positive PID and spawn epoch"
         )
-    observed_at = datetime.now(timezone.utc)
+    if type(generation_live_status_observed) is not bool:
+        raise ValueError(
+            "supervisor live-status observation must be a boolean"
+        )
+    if not generation_bound and (
+        generation_live_status_observed
+        or status_gap_started_at_epoch_seconds is not None
+    ):
+        raise ValueError("supervisor status gap requires a process generation")
     generation_started_at = (
         float(generation_started_at_epoch_seconds)
         if generation_started_at_epoch_seconds is not None
@@ -5497,6 +5553,14 @@ def supervisor_status_health_fields(
         )
     ):
         raise ValueError("supervisor status generation bounds are invalid")
+    status_path = _inferred_supervisor_status_path(track)
+    if status_path is None:
+        return {"supervisor_status": "untracked"}
+    observed_at = datetime.now(timezone.utc)
+    try:
+        status_path_present = status_path.exists()
+    except OSError:
+        status_path_present = True
     payload = _read_json_dict(status_path)
     if not payload:
         if generation_bound:
@@ -5508,7 +5572,17 @@ def supervisor_status_health_fields(
                     generation_started_at
                 ),
                 startup_grace_seconds=grace,
-                reason="status_missing",
+                reason=(
+                    "status_missing_or_invalid"
+                    if status_path_present
+                    else "status_missing"
+                ),
+                generation_live_status_observed=(
+                    generation_live_status_observed
+                ),
+                status_gap_started_at_epoch_seconds=(
+                    status_gap_started_at_epoch_seconds
+                ),
             )
         return {
             "supervisor_status": "missing",
@@ -5531,6 +5605,12 @@ def supervisor_status_health_fields(
                 ),
                 startup_grace_seconds=grace,
                 reason="status_timestamp_missing_or_invalid",
+                generation_live_status_observed=(
+                    generation_live_status_observed
+                ),
+                status_gap_started_at_epoch_seconds=(
+                    status_gap_started_at_epoch_seconds
+                ),
             )
         return {
             "supervisor_status": "unknown",
@@ -5559,6 +5639,12 @@ def supervisor_status_health_fields(
             ),
             observed_supervisor_pid=observed_pid,
             status_age_seconds=age_seconds,
+            generation_live_status_observed=(
+                generation_live_status_observed
+            ),
+            status_gap_started_at_epoch_seconds=(
+                status_gap_started_at_epoch_seconds
+            ),
         )
     if (
         generation_bound
@@ -5573,12 +5659,27 @@ def supervisor_status_health_fields(
             reason="status_predates_process_generation",
             observed_supervisor_pid=observed_pid,
             status_age_seconds=age_seconds,
+            generation_live_status_observed=(
+                generation_live_status_observed
+            ),
+            status_gap_started_at_epoch_seconds=(
+                status_gap_started_at_epoch_seconds
+            ),
         )
+    generation_fields: dict[str, object] = {}
+    if generation_bound:
+        generation_fields = {
+            "supervisor_status_generation": "valid",
+            "supervisor_status_generation_valid": True,
+            "expected_supervisor_pid": int(expected_supervisor_pid),
+            "observed_supervisor_pid": observed_pid,
+        }
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
             "supervisor_status_path": str(status_path),
             "supervisor_status_age_seconds": round(age_seconds, 1),
+            **generation_fields,
         }
 
     child_state_path = _relative_or_absolute_path(
@@ -5596,7 +5697,124 @@ def supervisor_status_health_fields(
         "supervisor_active_task_id": active_task_id,
         "supervisor_child_in_progress": implementation_in_progress,
         "restart_supervisor": not active_child,
+        **generation_fields,
     }
+
+
+@dataclass
+class _SupervisorStatusGenerationBinding:
+    """Retain health state for one exact managed ``Popen`` generation."""
+
+    expected_supervisor_pid: int
+    generation_started_at_epoch_seconds: float
+    startup_grace_seconds: float
+    live_status_observed: bool = False
+    status_gap_started_at_epoch_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.expected_supervisor_pid) is not int
+            or self.expected_supervisor_pid <= 0
+            or isinstance(self.generation_started_at_epoch_seconds, bool)
+            or not isinstance(
+                self.generation_started_at_epoch_seconds,
+                (int, float),
+            )
+            or not math.isfinite(self.generation_started_at_epoch_seconds)
+            or self.generation_started_at_epoch_seconds <= 0
+            or isinstance(self.startup_grace_seconds, bool)
+            or not isinstance(self.startup_grace_seconds, (int, float))
+            or not math.isfinite(self.startup_grace_seconds)
+            or self.startup_grace_seconds < 0
+            or type(self.live_status_observed) is not bool
+        ):
+            raise ValueError("supervisor status generation binding is invalid")
+        if self.status_gap_started_at_epoch_seconds is not None:
+            if (
+                not self.live_status_observed
+                or isinstance(
+                    self.status_gap_started_at_epoch_seconds,
+                    bool,
+                )
+                or not isinstance(
+                    self.status_gap_started_at_epoch_seconds,
+                    (int, float),
+                )
+                or not math.isfinite(
+                    self.status_gap_started_at_epoch_seconds
+                )
+                or self.status_gap_started_at_epoch_seconds
+                < self.generation_started_at_epoch_seconds
+            ):
+                raise ValueError("supervisor status gap binding is invalid")
+
+    def health_fields(
+        self,
+        track: SupervisorTrack,
+        *,
+        repo_root: Path,
+        stale_seconds: float,
+    ) -> dict[str, object]:
+        """Read health using only this exact process generation's bounds."""
+
+        return supervisor_status_health_fields(
+            track,
+            repo_root=repo_root,
+            stale_seconds=stale_seconds,
+            expected_supervisor_pid=self.expected_supervisor_pid,
+            generation_started_at_epoch_seconds=(
+                self.generation_started_at_epoch_seconds
+            ),
+            startup_grace_seconds=self.startup_grace_seconds,
+            generation_live_status_observed=self.live_status_observed,
+            status_gap_started_at_epoch_seconds=(
+                self.status_gap_started_at_epoch_seconds
+            ),
+        )
+
+    def record_observation(self, fields: Mapping[str, object]) -> None:
+        """Advance the gap state without allowing bad reads to reset it."""
+
+        if fields.get("supervisor_status") == "untracked":
+            return
+        expected_pid = fields.get("expected_supervisor_pid")
+        if (
+            type(expected_pid) is not int
+            or expected_pid != self.expected_supervisor_pid
+        ):
+            raise ValueError(
+                "supervisor status observation escaped its process generation"
+            )
+        if fields.get("supervisor_status_generation_valid") is True:
+            observed_pid = fields.get("observed_supervisor_pid")
+            if (
+                type(observed_pid) is not int
+                or observed_pid != self.expected_supervisor_pid
+                or fields.get("supervisor_status")
+                not in {"live", "stale", "stale_active"}
+            ):
+                raise ValueError(
+                    "supervisor valid status escaped its process generation"
+                )
+            self.status_gap_started_at_epoch_seconds = None
+            if fields.get("supervisor_status") == "live":
+                self.live_status_observed = True
+            return
+        if not self.live_status_observed:
+            return
+        observed_gap = fields.get(
+            "supervisor_status_gap_started_at_epoch_seconds"
+        )
+        if isinstance(observed_gap, bool) or not isinstance(
+            observed_gap,
+            (int, float),
+        ):
+            raise ValueError("supervisor status gap observation is invalid")
+        observed_gap = float(observed_gap)
+        if self.status_gap_started_at_epoch_seconds is None:
+            self.status_gap_started_at_epoch_seconds = observed_gap
+        elif observed_gap != self.status_gap_started_at_epoch_seconds:
+            raise ValueError("supervisor status gap origin changed without recovery")
 
 
 def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
@@ -5623,8 +5841,13 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     startup_age = fields.get("supervisor_startup_age_seconds")
     if startup_age is not None:
         parts.append(f"supervisor_startup_age_seconds={startup_age}")
+    gap_age = fields.get("supervisor_status_gap_age_seconds")
+    if gap_age is not None:
+        parts.append(f"supervisor_status_gap_age_seconds={gap_age}")
     if fields.get("supervisor_within_startup_grace"):
         parts.append("supervisor_within_startup_grace=true")
+    if fields.get("supervisor_within_status_gap_grace"):
+        parts.append("supervisor_within_status_gap_grace=true")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
     return " ".join(parts)
@@ -9202,8 +9425,14 @@ def run_supervisor_tracks(
     scope_drift_receipts: list[dict[str, Any]] = []
     replan_required = False
     run_started_at = time.time()
-    track_generation_started_at: dict[str, float] = {}
-    track_startup_grace_seconds: dict[str, float] = {}
+    track_status_generations: dict[
+        str,
+        _SupervisorStatusGenerationBinding,
+    ] = {}
+    track_status_generation_processes: dict[
+        str,
+        subprocess.Popen[bytes],
+    ] = {}
 
     def start_generation(track: SupervisorTrack) -> subprocess.Popen[bytes]:
         """Start one track and retain the lower bound for its status generation."""
@@ -9225,8 +9454,14 @@ def run_supervisor_tracks(
             ),
             output=output,
         )
-        track_generation_started_at[track.name] = generation_started_at
-        track_startup_grace_seconds[track.name] = startup_grace
+        track_status_generations[track.name] = (
+            _SupervisorStatusGenerationBinding(
+                expected_supervisor_pid=int(process.pid),
+                generation_started_at_epoch_seconds=generation_started_at,
+                startup_grace_seconds=startup_grace,
+            )
+        )
+        track_status_generation_processes[track.name] = process
         return process
 
     def recovery_recipient(
@@ -9356,21 +9591,41 @@ def run_supervisor_tracks(
                     resolved.daemon_pid_path,
                     cleanup_stale_marker=True,
                 )
-                supervisor_fields = supervisor_status_health_fields(
-                    resolved,
-                    repo_root=resolved_repo_root,
-                    stale_seconds=float(supervisor_status_stale_seconds),
-                    expected_supervisor_pid=(
-                        None if process is None else int(process.pid)
-                    ),
-                    generation_started_at_epoch_seconds=(
-                        track_generation_started_at.get(track.name)
-                    ),
-                    startup_grace_seconds=track_startup_grace_seconds.get(
-                        track.name,
-                        0.0,
-                    ),
+                generation = track_status_generations.get(track.name)
+                generation_process = track_status_generation_processes.get(
+                    track.name
                 )
+                if process is None:
+                    if generation is not None or generation_process is not None:
+                        raise SupervisorRunInterrupted(
+                            f"{track.name} status generation lost its Popen"
+                        )
+                    supervisor_fields = supervisor_status_health_fields(
+                        resolved,
+                        repo_root=resolved_repo_root,
+                        stale_seconds=float(
+                            supervisor_status_stale_seconds
+                        ),
+                    )
+                else:
+                    if (
+                        generation is None
+                        or generation_process is not process
+                        or generation.expected_supervisor_pid
+                        != int(process.pid)
+                    ):
+                        raise SupervisorRunInterrupted(
+                            f"{track.name} status generation does not match "
+                            "its managed Popen"
+                        )
+                    supervisor_fields = generation.health_fields(
+                        resolved,
+                        repo_root=resolved_repo_root,
+                        stale_seconds=float(
+                            supervisor_status_stale_seconds
+                        ),
+                    )
+                    generation.record_observation(supervisor_fields)
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
                     heartbeat_parts = [
