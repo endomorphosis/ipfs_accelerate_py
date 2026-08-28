@@ -69,12 +69,19 @@ from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS,
+    TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _post_merge_retry_queue_receipt,
+    _validated_post_merge_retry_transition,
+    _validated_post_merge_terminal_control_receipt,
     _validated_legacy_unstall_claim_receipt,
     _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
@@ -163,10 +170,18 @@ _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
         }
     )
 )
-_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
+_DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS: Final[
+    frozenset[str]
+] = frozenset(
     {
         *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    }
+)
+_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        *_DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS,
+        TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
     }
 )
 _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
@@ -174,6 +189,7 @@ _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
 ] = frozenset(
     {
         _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_LEGACY_UNSTALL_OWNER_COMMAND_OPERATIONS,
         _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
     }
 )
@@ -917,12 +933,34 @@ class TypedDatabaseTaskSource:
             "fencing_token": extension_values.get("fencing_token"),
             "fence_epoch": extension_values.get("fence_epoch"),
             "queue_reason": extension_values.get("reason"),
-            "backoff_ms": extension_values.get("delay_ms"),
-            "retry_not_before_ms": extension_values.get(
-                "retry_not_before_ms"
-            ),
             "control_expected_revision": task.revision - 1,
         }
+        if operation in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS:
+            queue_receipt = receipt_values.get("queue_receipt")
+            expected_queue_receipt = _post_merge_retry_queue_receipt(
+                {
+                    **extension_values,
+                    "resolution_cid": cooldown.get("resolution_cid"),
+                }
+            )
+            if (
+                not isinstance(queue_receipt, Mapping)
+                or queue_receipt != expected_queue_receipt
+                or queue_receipt.get("schema")
+                != TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA
+            ):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry receipt differs from its typed queue receipt"
+                )
+        else:
+            exact_bindings.update(
+                {
+                    "backoff_ms": extension_values.get("delay_ms"),
+                    "retry_not_before_ms": extension_values.get(
+                        "retry_not_before_ms"
+                    ),
+                }
+            )
         if any(
             type(receipt_values.get(name)) is not type(expected)
             or receipt_values.get(name) != expected
@@ -1751,6 +1789,282 @@ class TypedDatabaseTaskSource:
             revision=int(result.revision),
             changed=bool(result.changed),
             details=details,
+        )
+
+    def recover_post_merge_retry(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Run only the closed atomic typed-owner post-merge retry command."""
+
+        if _post_merge_recovery_admission is not None:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        prior = self.get(task_cid)
+        if prior is None:
+            raise KeyError(str(task_cid))
+        prior_receipt = prior.body.get("completion_receipt")
+        transition = dict(receipt)
+        normalized_status = str(status or "").strip().lower()
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 1
+            or not isinstance(expected_control_receipt, Mapping)
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry task revision or control receipt is stale"
+            )
+        if (
+            expected_control_receipt.get("operation")
+            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        ):
+            raise TaskSourceConflictError(
+                "typed-deferral post-merge prior requires its dedicated authority"
+            )
+        if (
+            normalized_status != "retrying"
+            or transition.get("operation")
+            not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+        ):
+            raise TaskSourceConflictError(
+                "typed queue/status adapter admits only post-merge retry recovery"
+            )
+        if prior.status == "retrying" and prior.revision == expected_revision + 1:
+            row = self._retry_cooldown_row(prior.task_cid)
+            current_receipt = prior.body.get("completion_receipt")
+            if row is None or not isinstance(current_receipt, Mapping):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry replay has incomplete durable state"
+                )
+            self._validate_retrying_cooldown_binding(prior, row)
+            extension = dict(row["extension"])
+            queue_receipt = current_receipt.get("queue_receipt")
+            expected_attempt = {
+                name: transition.get(name)
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            }
+            try:
+                _validated_post_merge_retry_transition(
+                    transition,
+                    task_cid=prior.task_cid,
+                    expected_task_revision=expected_revision,
+                    queue_reason=str(reason or ""),
+                    attempt_identity=expected_attempt,
+                    recovery_seed_json=(
+                        canonical_json_bytes(
+                            dict(
+                                transition[
+                                    "post_merge_completion_recovery_seed"
+                                ]
+                            )
+                        ).decode("utf-8")
+                        if isinstance(
+                            transition.get(
+                                "post_merge_completion_recovery_seed"
+                            ),
+                            Mapping,
+                        )
+                        else ""
+                    ),
+                )
+                _validated_post_merge_terminal_control_receipt(
+                    expected_control_receipt,
+                    expected_task_revision=expected_revision,
+                    transition=transition,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceConflictError(
+                    "post-merge retry replay authority is invalid"
+                ) from exc
+            if (
+                not isinstance(queue_receipt, Mapping)
+                or dict(current_receipt)
+                != {**transition, "queue_receipt": dict(queue_receipt)}
+                or extension.get("task_cid") != prior.task_cid
+                or extension.get("expected_task_revision")
+                != expected_revision
+                or extension.get("delay_ms") != delay_ms
+                or extension.get("selection_penalty") != selection_penalty
+                or extension.get("reason") != reason
+                or any(
+                    extension.get(name) != value
+                    for name, value in expected_attempt.items()
+                )
+                or (
+                    exact_retry_not_before_ms is not None
+                    and extension.get("retry_not_before_ms")
+                    != exact_retry_not_before_ms
+                )
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge retry replay differs from durable queue authority"
+                )
+            history = self.task_revision_history_projection(prior.task_cid)
+            revisions = history.get("revisions")
+            if not isinstance(revisions, list):
+                raise TaskSourceIntegrityError(
+                    "post-merge retry replay history is malformed"
+                )
+            by_revision = {
+                item.get("revision"): item
+                for item in revisions
+                if isinstance(item, Mapping)
+            }
+            predecessor = by_revision.get(expected_revision)
+            successor = by_revision.get(expected_revision + 1)
+            expected_predecessor_body = {
+                **dict(prior.body),
+                "completion_receipt": dict(expected_control_receipt),
+            }
+            if (
+                len(by_revision) != len(revisions)
+                or not isinstance(predecessor, Mapping)
+                or predecessor.get("status") != "blocked"
+                or predecessor.get("body") != expected_predecessor_body
+                or not isinstance(successor, Mapping)
+                or successor.get("status") != "retrying"
+                or successor.get("body") != dict(prior.body)
+            ):
+                raise TaskSourceConflictError(
+                    "post-merge retry replay has no exact predecessor history"
+                )
+            cas_result = DatabaseCASResult(
+                task=prior,
+                previous_status="blocked",
+                revision=prior.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid=content_identity(dict(current_receipt)),
+            )
+            return MappingProxyType(
+                {
+                    "previous_status": "blocked",
+                    "queue_receipt": dict(queue_receipt),
+                    "queue_reused": (
+                        int(queue_receipt["expected_queue_revision"]) >= 0
+                    ),
+                    "retry_not_before_ms": int(
+                        row["retry_not_before_ms"]
+                    ),
+                    "transition_receipt": dict(current_receipt),
+                    "cas_result": cas_result,
+                }
+            )
+        if (
+            prior.status != "blocked"
+            or prior.revision != expected_revision
+            or not isinstance(prior_receipt, Mapping)
+            or canonical_json_bytes(dict(prior_receipt))
+            != canonical_json_bytes(dict(expected_control_receipt))
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry task revision or control receipt is stale"
+            )
+        predecessor_history = self.task_revision_history_projection(
+            prior.task_cid
+        ).get("revisions")
+        if (
+            not isinstance(predecessor_history, list)
+            or len(predecessor_history) < expected_revision
+            or predecessor_history[expected_revision - 1]
+            != {
+                "revision": expected_revision,
+                "status": "blocked",
+                "body": dict(prior.body),
+            }
+        ):
+            raise TaskSourceConflictError(
+                "post-merge retry blocked predecessor history is absent or stale"
+            )
+        selected_now = self._clock_ms()
+        result = self._client.recover_post_merge_retry(
+            task_cid=prior.task_cid,
+            expected_task_revision=expected_revision,
+            task_body=prior.body,
+            expected_control_receipt=dict(expected_control_receipt),
+            transition_receipt=transition,
+            delay_ms=delay_ms,
+            reason=reason,
+            selection_penalty=selection_penalty,
+            exact_retry_not_before_ms=exact_retry_not_before_ms,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "post-merge retry recovery was not accepted"
+                )
+            )
+        updated = self.get(prior.task_cid)
+        row = self._retry_cooldown_row(prior.task_cid)
+        if updated is None or updated.status != "retrying" or row is None:
+            raise TaskSourceIntegrityError(
+                "post-merge retry recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, row)
+        details = dict(result.result)
+        transition_receipt = updated.body.get("completion_receipt")
+        queue_receipt = details.get("queue_receipt")
+        if (
+            details.get("schema")
+            != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA
+            or details.get("operation")
+            != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND
+            or details.get("previous_status") != "blocked"
+            or type(details.get("queue_reused")) is not bool
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or not isinstance(transition_receipt.get("queue_receipt"), Mapping)
+            or dict(queue_receipt)
+            != dict(transition_receipt["queue_receipt"])
+            or dict(transition_receipt)
+            != dict(details.get("transition_receipt") or {})
+            or int(details.get("retry_not_before_ms") or -1)
+            != int(row["retry_not_before_ms"])
+        ):
+            raise TaskSourceIntegrityError(
+                "post-merge retry recovery result differs from durable state"
+            )
+        cas_result = DatabaseCASResult(
+            task=updated,
+            previous_status="blocked",
+            revision=updated.revision,
+            event_cursor=self.snapshot().event_cursor,
+            changed=bool(result.changed),
+            receipt_cid=str(result.result_digest or ""),
+        )
+        return MappingProxyType(
+            {
+                "previous_status": "blocked",
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(details["queue_reused"]),
+                "retry_not_before_ms": int(
+                    details["retry_not_before_ms"]
+                ),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": cas_result,
+            }
         )
 
     def record_task_retry_cooldown(

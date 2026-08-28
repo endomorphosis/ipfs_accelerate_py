@@ -111226,11 +111226,23 @@ class DatabaseImplementationDaemon:
             + ":"
             + qualification_receipt_id
         )[:2048]
+        # Typed Quack sources expose a closed post-merge-only owner command.
+        # Do not make that capability visible through the legacy generic
+        # queue/status name: unrelated blocked-retry paths use presence of the
+        # generic method as an authority gate.  Embedded DatabaseTaskSource
+        # retains its existing guarded transaction as a compatibility
+        # fallback.
         guarded_queue_status = getattr(
             self.task_source,
-            "record_queue_backoff_and_cas_status",
+            "recover_post_merge_retry",
             None,
         )
+        if not callable(guarded_queue_status):
+            guarded_queue_status = getattr(
+                self.task_source,
+                "record_queue_backoff_and_cas_status",
+                None,
+            )
         if not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery task source has no atomic retry authority"
@@ -111505,11 +111517,12 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery returned malformed queue evidence"
             )
         queue_receipt_dict = dict(queue_receipt)
+        changed = bool(getattr(cas_result, "changed", False))
         return {
             "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
             "attempted": True,
             "recovered": True,
-            "changed": True,
+            "changed": changed,
             "status": "retrying",
             "task_cid": task_cid,
             "task_alias": str(raw["task_alias"]),
@@ -111531,7 +111544,9 @@ class DatabaseImplementationDaemon:
             "queue_reused": queue_reused,
             "queue_receipt": queue_receipt_dict,
             "control_receipt": dict(to_dict()),
-            "write_count": 1 if queue_reused else 2,
+            "write_count": (
+                (1 if queue_reused else 2) if changed else 0
+            ),
         }
 
 

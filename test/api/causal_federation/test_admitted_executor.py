@@ -90,6 +90,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
@@ -5213,14 +5214,24 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                 )
             )
         )
-        with pytest.raises(
-            DatabaseImplementationAuthorityError,
-            match="atomic retry authority|coordination-coupled owner authority",
-        ):
-            DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
-                post_merge_daemon,
-                post_merge_evidence,
-            )
+        # Preserve the typed-unavailability negative independently of the new
+        # closed post-merge owner command.  Generic blocked CAS denial is
+        # asserted above; masking only the specialized capability proves the
+        # daemon still fails before any queue or task mutation when that
+        # capability is unavailable.
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(adapter, "recover_post_merge_retry", None)
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match=(
+                    "atomic retry authority|"
+                    "coordination-coupled owner authority"
+                ),
+            ):
+                DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
+                    post_merge_daemon,
+                    post_merge_evidence,
+                )
         post_merge_entry = adapter.get_queue_entry(post_merge_task.task_cid)
         assert post_merge_entry is None
         post_merge_updated = adapter.get(post_merge_task.task_cid)
@@ -6730,3 +6741,229 @@ def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
     )
     assert parsed.admit_task_execution is True
     assert parsed.executor_mode == "no-change"
+
+
+def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-post-merge-retry.duckdb"
+    task_cid = "task:typed-post-merge-retry"
+    task_alias = "CASF-TYPED-POST-MERGE-RETRY"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-post-merge-retry",
+            "plan_root_cid": "plan:typed-post-merge-retry",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-post-merge-retry",
+                    "goal_alias": "CASF-G-TYPED-POST-MERGE-RETRY",
+                    "title": "Typed post-merge retry",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": task_cid,
+                    "task_id": task_alias,
+                    "goal_cid": "goal:typed-post-merge-retry",
+                    "status": "ready",
+                }
+            ],
+        }
+    )
+    ready = source.get(task_cid)
+    assert ready is not None
+    identity = {
+        "attempt_id": "attempt:typed-post-merge-retry:1",
+        "attempt_number": 1,
+        "claim_id": "claim:typed-post-merge-retry:1",
+        "lease_id": "lease:typed-post-merge-retry:1",
+        "owner_session_id": "session:typed-post-merge-retry",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    source.compare_and_set_status(
+        ready,
+        ready.revision,
+        "in_progress",
+        {"operation": "database_claim", **identity},
+    )
+    claimed = source.get(task_cid)
+    assert claimed is not None
+    terminal_reason = "Portal completion lacks one exact implementation commit"
+    terminal = {
+        "operation": "database_portal_terminal_failure",
+        **identity,
+        "execution_phase": "failed",
+        "execution_revision": 7,
+        "execution_finished_at_ms": 1_000,
+        "reason": terminal_reason,
+        "retryable": False,
+        "coordination": {
+            "attempt_id": identity["attempt_id"],
+            "claim_id": identity["claim_id"],
+            "attempt_number": identity["attempt_number"],
+        },
+        "control_expected_status": "in_progress",
+        "control_expected_revision": claimed.revision,
+    }
+    source.compare_and_set_status(
+        claimed,
+        claimed.revision,
+        "blocked",
+        terminal,
+    )
+    blocked = source.get(task_cid)
+    assert blocked is not None and blocked.status == "blocked"
+    repair_commit = "b" * 40
+    candidate_commit = "a" * 40
+    repair_receipt_id = "receipt:typed-post-merge-retry"
+    source_binding_id = "sha256:" + "c" * 64
+    source_projection_id = "sha256:" + "d" * 64
+    repair_evidence_id = "sha256:" + "e" * 64
+    request_id = "request:typed-post-merge-retry"
+    queue_reason = (
+        "database_post_merge_declared_outputs_repair:"
+        + request_id
+        + ":"
+        + repair_receipt_id
+    )
+    seed = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1"
+        ),
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        **identity,
+        "source_task_revision": blocked.revision,
+        "request_id": request_id,
+        "candidate_commit": candidate_commit,
+        "qualified_target_commit": repair_commit,
+        "qualification_kind": "repair",
+        "qualification_receipt_id": repair_receipt_id,
+        "queue_source_attempt_id": identity["attempt_id"],
+        "queue_source_claim_id": identity["claim_id"],
+        "queue_source_lease_id": identity["lease_id"],
+        "queue_source_fencing_token": identity["fencing_token"],
+        "queue_source_fence_epoch": identity["fence_epoch"],
+        "queue_source_binding_id": source_binding_id,
+        "queue_source_projection_immutable_digest": source_projection_id,
+        "recovery_evidence_id": repair_evidence_id,
+        "terminal_reason": terminal_reason,
+    }
+    seed["seed_id"] = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(seed)
+    ).hexdigest()
+    transition = {
+        "operation": "database_post_merge_declared_outputs_repair_recovery",
+        **identity,
+        "execution_phase": "failed",
+        "execution_revision": 7,
+        "execution_finished_at_ms": 1_000,
+        "request_id": request_id,
+        "candidate_commit": candidate_commit,
+        "source_binding_id": source_binding_id,
+        "source_projection_immutable_digest": source_projection_id,
+        "queue_reason": queue_reason,
+        "queue_receipt": {},
+        "coordination": {
+            "attempt_id": identity["attempt_id"],
+            "claim_id": identity["claim_id"],
+            "attempt_number": identity["attempt_number"],
+        },
+        "control_expected_status": "blocked",
+        "control_expected_revision": blocked.revision,
+        "repair_commit": repair_commit,
+        "repair_receipt_id": repair_receipt_id,
+        "repair_evidence_id": repair_evidence_id,
+        "post_merge_completion_recovery_seed": seed,
+    }
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-post-merge-retry-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-post-merge-retry-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+    )
+    owner = server.start()
+    client_id = "database-implementation-daemon:typed-post-merge-retry"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=owner.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=daemon_required_owner_command_operations(),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=owner.store_id,
+        process_birth_id=owner.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    try:
+        client.attach(owner.listen_uri, server_id=owner.server_id)
+        adapter = TypedDatabaseTaskSource(client, clock_ms=lambda: 2_000)
+        first = adapter.recover_post_merge_retry(
+            task_cid=task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=terminal,
+            status="retrying",
+            receipt=transition,
+            delay_ms=100,
+            reason=queue_reason,
+        )
+        assert first["cas_result"].changed is True
+        assert first["queue_reused"] is False
+        assert first["queue_receipt"]["schema"] == (
+            TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA
+        )
+        durable = adapter.get(task_cid)
+        assert durable is not None and durable.status == "retrying"
+        assert durable.body["completion_receipt"] == first["transition_receipt"]
+        generation = client.load_generation()
+
+        replay = adapter.recover_post_merge_retry(
+            task_cid=task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=terminal,
+            status="retrying",
+            receipt=transition,
+            delay_ms=100,
+            reason=queue_reason,
+        )
+        assert replay["cas_result"].changed is False
+        assert replay["queue_reused"] is False
+        assert replay["transition_receipt"] == first["transition_receipt"]
+        assert client.load_generation().revision == generation.revision
+
+        forged = {**terminal, "reason": "portal_terminal_failure"}
+        with pytest.raises((TaskSourceConflictError, TaskSourceIntegrityError)):
+            adapter.recover_post_merge_retry(
+                task_cid=task_cid,
+                expected_revision=blocked.revision,
+                expected_control_receipt=forged,
+                status="retrying",
+                receipt=transition,
+                delay_ms=100,
+                reason=queue_reason,
+            )
+        assert client.load_generation().revision == generation.revision
+    finally:
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()

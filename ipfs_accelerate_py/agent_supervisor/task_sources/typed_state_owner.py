@@ -100,6 +100,87 @@ TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
     "database_claim_legacy_unstall_dead_process"
 )
+TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-post-merge-retry-recovery@1"
+)
+TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: Final = (
+    "task.post_merge.retry.recover"
+)
+TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-post-merge-retry-queue-receipt@1"
+)
+TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "database_post_merge_declared_outputs_repair_recovery",
+        "database_post_merge_declared_outputs_requalification_recovery",
+        (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ),
+    }
+)
+_TYPED_DATABASE_POST_MERGE_TERMINAL_REASONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "Portal completion lacks one exact implementation commit",
+            "Portal completion lacks one exact evaluated baseline",
+            "Portal callback reconciliation binding is invalid",
+            "post-merge completion recovery seed target generation changed",
+        }
+    )
+)
+_TYPED_DATABASE_POST_MERGE_UNSEEDED_TERMINAL_REASONS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "post_merge_declared_outputs_missing",
+        "protected preservation merged result is not on the exact target branch",
+        "cross_board_manual_completion_authority_metadata_invalid",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "cross_board_manual_completion_authority_unavailable",
+    }
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "operation",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "reason",
+        "retryable",
+        "coordination",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+    )
+)
+_DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+    )
+)
 TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-protected-qualification-completion@1"
@@ -1998,6 +2079,705 @@ def _validated_legacy_unstall_recovery_parameters(
     }
 
 
+def _validated_post_merge_retry_transition(
+    value: Any,
+    *,
+    task_cid: str,
+    expected_task_revision: int,
+    queue_reason: str,
+    attempt_identity: Mapping[str, Any],
+    recovery_seed_json: str,
+) -> dict[str, Any]:
+    """Validate one closed daemon-produced post-merge retry receipt."""
+
+    if not isinstance(value, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry transition is not a mapping"
+        )
+    receipt = dict(value)
+    operation = str(receipt.get("operation") or "")
+    common_fields = {
+        "operation",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "request_id",
+        "candidate_commit",
+        "source_binding_id",
+        "source_projection_immutable_digest",
+        "queue_reason",
+        "queue_receipt",
+        "coordination",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+    operation_fields = {
+        "database_post_merge_declared_outputs_repair_recovery": {
+            "repair_commit",
+            "repair_receipt_id",
+            "repair_evidence_id",
+        },
+        "database_post_merge_declared_outputs_requalification_recovery": {
+            "source_repair_commit",
+            "source_repair_receipt_id",
+            "qualified_target_commit",
+            "requalification_receipt_id",
+            "requalification_evidence_id",
+        },
+        (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ): {
+            "source_integration_commit",
+            "source_train_receipt_id",
+            "qualified_target_commit",
+            "callback_requalification_receipt_id",
+            "callback_reconciliation_evidence_id",
+        },
+    }
+    selected_fields = operation_fields.get(operation)
+    seed = receipt.get("post_merge_completion_recovery_seed")
+    expected_fields = (
+        common_fields
+        | (selected_fields or set())
+        | ({"post_merge_completion_recovery_seed"} if seed is not None else set())
+    )
+    coordination = receipt.get("coordination")
+    if (
+        operation not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+        or selected_fields is None
+        or set(receipt) != expected_fields
+        or receipt.get("control_expected_status") != "blocked"
+        or receipt.get("control_expected_revision") != expected_task_revision
+        or receipt.get("queue_reason") != queue_reason
+        or receipt.get("queue_receipt") != {}
+        or receipt.get("execution_phase") != "failed"
+        or not isinstance(coordination, Mapping)
+        or coordination.get("attempt_id") != attempt_identity["attempt_id"]
+        or coordination.get("claim_id") != attempt_identity["claim_id"]
+        or coordination.get("attempt_number")
+        != attempt_identity["attempt_number"]
+        or any(
+            not _strict_scalar_equal(receipt.get(name), expected)
+            for name, expected in attempt_identity.items()
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry transition differs from its closed authority"
+        )
+    for name in (
+        "request_id",
+        "source_binding_id",
+        "source_projection_immutable_digest",
+    ):
+        member = receipt.get(name)
+        if (
+            type(member) is not str
+            or not member.strip()
+            or member != member.strip()
+            or len(member.encode("utf-8")) > 2_048
+            or any(marker in member for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"post-merge retry {name} is invalid"
+            )
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", str(receipt.get("candidate_commit") or ""))
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(receipt.get("source_binding_id") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(receipt.get("source_projection_immutable_digest") or ""),
+        )
+        is None
+        or any(
+            isinstance(receipt.get(name), bool)
+            or not isinstance(receipt.get(name), int)
+            or int(receipt[name]) < 0
+            for name in (
+                "execution_revision",
+                "execution_finished_at_ms",
+            )
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry transition identity is invalid"
+        )
+    target_commit_name = (
+        "repair_commit"
+        if operation.endswith("repair_recovery")
+        else "qualified_target_commit"
+    )
+    evidence_name = (
+        "repair_evidence_id"
+        if operation.endswith("repair_recovery")
+        else "requalification_evidence_id"
+        if operation.endswith("requalification_recovery")
+        else "callback_reconciliation_evidence_id"
+    )
+    qualification_kind, qualification_receipt_name = {
+        "database_post_merge_declared_outputs_repair_recovery": (
+            "repair",
+            "repair_receipt_id",
+        ),
+        "database_post_merge_declared_outputs_requalification_recovery": (
+            "requalification",
+            "requalification_receipt_id",
+        ),
+        (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ): (
+            "callback_integration",
+            "callback_requalification_receipt_id",
+        ),
+    }[operation]
+    qualification_receipt_id = receipt.get(qualification_receipt_name)
+    expected_queue_reason = (
+        "database_post_merge_declared_outputs_"
+        + qualification_kind
+        + ":"
+        + str(receipt.get("request_id") or "")
+        + ":"
+        + str(qualification_receipt_id or "")
+    )[:2_048]
+    if (
+        re.fullmatch(
+            r"[0-9a-f]{40}", str(receipt.get(target_commit_name) or "")
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(receipt.get(evidence_name) or "")
+        )
+        is None
+        or type(qualification_receipt_id) is not str
+        or not qualification_receipt_id.strip()
+        or qualification_receipt_id != qualification_receipt_id.strip()
+        or len(qualification_receipt_id.encode("utf-8")) > 2_048
+        or receipt.get("queue_reason") != expected_queue_reason
+        or queue_reason != expected_queue_reason
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry qualification identity is invalid"
+        )
+    for commit_name, receipt_name in (
+        (
+            "source_repair_commit",
+            "source_repair_receipt_id",
+        ),
+        (
+            "source_integration_commit",
+            "source_train_receipt_id",
+        ),
+    ):
+        if commit_name not in receipt:
+            continue
+        source_receipt_id = receipt.get(receipt_name)
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", str(receipt.get(commit_name) or ""))
+            is None
+            or type(source_receipt_id) is not str
+            or not source_receipt_id.strip()
+            or source_receipt_id != source_receipt_id.strip()
+            or len(source_receipt_id.encode("utf-8")) > 2_048
+            or (
+                receipt_name == "source_train_receipt_id"
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", source_receipt_id
+                )
+                is None
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry source qualification identity is invalid"
+            )
+
+    if seed is None:
+        if recovery_seed_json != "":
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry absent seed has a foreign exact binding"
+            )
+    else:
+        seed_value, canonical_seed_json = _closed_canonical_json_object(
+            recovery_seed_json,
+            noun="post-merge retry recovery seed",
+        )
+        if seed_value != seed:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry recovery seed differs from its receipt"
+            )
+        seed_body = dict(seed_value)
+        seed_id = seed_body.pop("seed_id", None)
+        expected_seed_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "source_task_revision",
+            "request_id",
+            "candidate_commit",
+            "qualified_target_commit",
+            "qualification_kind",
+            "qualification_receipt_id",
+            "queue_source_attempt_id",
+            "queue_source_claim_id",
+            "queue_source_lease_id",
+            "queue_source_fencing_token",
+            "queue_source_fence_epoch",
+            "queue_source_binding_id",
+            "queue_source_projection_immutable_digest",
+            "recovery_evidence_id",
+            "terminal_reason",
+            "seed_id",
+        }
+        schema = seed_value.get("schema")
+        if schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@2"
+        ):
+            expected_seed_fields.add("recovery_control_revision")
+            bound_revision = seed_value.get("recovery_control_revision")
+        else:
+            bound_revision = seed_value.get("source_task_revision")
+        expected_seed_id = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(seed_body)
+        ).hexdigest()
+        qualification_binding = {
+            "database_post_merge_declared_outputs_repair_recovery": (
+                "repair",
+                "repair_commit",
+                "repair_receipt_id",
+                "repair_evidence_id",
+            ),
+            "database_post_merge_declared_outputs_requalification_recovery": (
+                "requalification",
+                "qualified_target_commit",
+                "requalification_receipt_id",
+                "requalification_evidence_id",
+            ),
+            (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ): (
+                "callback_integration",
+                "qualified_target_commit",
+                "callback_requalification_receipt_id",
+                "callback_reconciliation_evidence_id",
+            ),
+        }[operation]
+        (
+            qualification_kind,
+            target_field,
+            qualification_receipt_field,
+            qualification_evidence_field,
+        ) = qualification_binding
+        if (
+            set(seed_value) != expected_seed_fields
+            or schema
+            not in {
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-recovery-seed@1",
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-recovery-seed@2",
+            }
+            or canonical_seed_json
+            != canonical_json_bytes(dict(seed_value)).decode("utf-8")
+            or seed_id != expected_seed_id
+            or seed_value.get("task_cid") != task_cid
+            or bound_revision != expected_task_revision
+            or any(
+                not _strict_scalar_equal(seed_value.get(name), expected)
+                for name, expected in attempt_identity.items()
+            )
+            or seed_value.get("request_id") != receipt.get("request_id")
+            or seed_value.get("candidate_commit")
+            != receipt.get("candidate_commit")
+            or seed_value.get("qualification_kind") != qualification_kind
+            or seed_value.get("qualified_target_commit")
+            != receipt.get(target_field)
+            or seed_value.get("qualification_receipt_id")
+            != receipt.get(qualification_receipt_field)
+            or seed_value.get("recovery_evidence_id")
+            != receipt.get(qualification_evidence_field)
+            or seed_value.get("queue_source_binding_id")
+            != receipt.get("source_binding_id")
+            or seed_value.get("queue_source_projection_immutable_digest")
+            != receipt.get("source_projection_immutable_digest")
+            or seed_value.get("terminal_reason")
+            not in _TYPED_DATABASE_POST_MERGE_TERMINAL_REASONS
+            or any(
+                type(seed_value.get(name)) is not str
+                or not seed_value[name].strip()
+                or seed_value[name] != seed_value[name].strip()
+                for name in (
+                    "task_alias",
+                    "queue_source_attempt_id",
+                    "queue_source_claim_id",
+                    "queue_source_lease_id",
+                    "qualification_receipt_id",
+                )
+            )
+            or any(
+                isinstance(seed_value.get(name), bool)
+                or not isinstance(seed_value.get(name), int)
+                or seed_value[name] <= 0
+                for name in (
+                    "queue_source_fencing_token",
+                    "queue_source_fence_epoch",
+                    "source_task_revision",
+                )
+            )
+            or (
+                schema
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-post-merge-completion-recovery-seed@2"
+                )
+                and (
+                    isinstance(
+                        seed_value.get("recovery_control_revision"), bool
+                    )
+                    or not isinstance(
+                        seed_value.get("recovery_control_revision"), int
+                    )
+                    or seed_value["recovery_control_revision"]
+                    <= seed_value["source_task_revision"]
+                )
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry recovery seed is invalid or stale"
+            )
+    return receipt
+
+
+def _validated_post_merge_terminal_control_receipt(
+    value: Any,
+    *,
+    expected_task_revision: int,
+    transition: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Prove the exact blocked terminal predecessor for one retry transition."""
+
+    if not isinstance(value, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry predecessor is not a mapping"
+        )
+    receipt = dict(value)
+    fields = set(receipt)
+    route_fields = fields & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+    transfer_fields = (
+        fields & _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    if (
+        route_fields
+        not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+        or transfer_fields
+        not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS))
+        or fields
+        != (
+            set(_DATABASE_PORTAL_TERMINAL_FAILURE_FIELDS)
+            | route_fields
+            | transfer_fields
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry predecessor differs from its closed schema"
+        )
+    if route_fields:
+        route = receipt.get("execution_route_binding")
+        if (
+            not isinstance(route, Mapping)
+            or receipt.get("execution_route_policy_id")
+            != route.get("policy_id")
+            or receipt.get("execution_route_origin_revision")
+            != route.get("task_revision")
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry predecessor route lineage is incomplete"
+            )
+    if transfer_fields:
+        binding = receipt.get("virgin_task_transfer")
+        cursor = receipt.get("virgin_task_transfer_claim_cursor")
+        if (
+            not isinstance(binding, Mapping)
+            or not isinstance(cursor, Mapping)
+            or not str(binding.get("binding_id") or "")
+            or cursor.get("binding_id") != binding.get("binding_id")
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry predecessor transfer lineage is incomplete"
+            )
+    attempt_fields = (
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_revision",
+        "execution_finished_at_ms",
+    )
+    seed = transition.get("post_merge_completion_recovery_seed")
+    terminal_reason = receipt.get("reason")
+    if (
+        receipt.get("operation") != "database_portal_terminal_failure"
+        or receipt.get("retryable") is not False
+        or receipt.get("execution_phase") != "failed"
+        or not isinstance(receipt.get("coordination"), Mapping)
+        or receipt.get("control_expected_status") != "in_progress"
+        or receipt.get("control_expected_revision")
+        != expected_task_revision - 1
+        or any(
+            not _strict_scalar_equal(receipt.get(name), transition.get(name))
+            for name in attempt_fields
+        )
+        or (
+            seed is None
+            and terminal_reason
+            not in _TYPED_DATABASE_POST_MERGE_UNSEEDED_TERMINAL_REASONS
+        )
+        or (
+            isinstance(seed, Mapping)
+            and (
+                terminal_reason != seed.get("terminal_reason")
+                or terminal_reason
+                not in _TYPED_DATABASE_POST_MERGE_TERMINAL_REASONS
+            )
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry predecessor is not the exact failed authority"
+        )
+    return receipt
+
+
+def _post_merge_retry_queue_receipt(
+    cooldown_parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive the sole durable queue receipt for an atomic post-merge retry."""
+
+    values = dict(cooldown_parameters)
+    queue_receipt_body = {
+        "schema": TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
+        "operation": "task.post_merge.retry.cooldown",
+        "task_cid": values["task_cid"],
+        "attempt_id": values["attempt_id"],
+        "claim_id": values["claim_id"],
+        "lease_id": values["lease_id"],
+        "owner_session_id": values["owner_session_id"],
+        "attempt_number": values["attempt_number"],
+        "fencing_token": values["fencing_token"],
+        "fence_epoch": values["fence_epoch"],
+        "queue_reason": values["reason"],
+        "retry_not_before_ms": values["retry_not_before_ms"],
+        "expected_queue_revision": values["expected_queue_revision"],
+        "queue_revision": (
+            1
+            if values["expected_queue_revision"] == -1
+            else values["expected_queue_revision"] + 1
+        ),
+        "resolution_cid": values["resolution_cid"],
+    }
+    return {
+        **queue_receipt_body,
+        "receipt_id": content_identity(queue_receipt_body),
+    }
+
+
+def _validated_post_merge_retry_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed atomic blocked-to-retrying owner command."""
+
+    parameters = dict(value)
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "expected_control_receipt_json",
+        "transition_operation",
+        "transition_receipt_json",
+        "final_transition_receipt_json",
+        "recovery_seed_json",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+        "body_json",
+    }
+    if set(parameters) != expected_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("schema")
+        != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA
+        or parameters.get("operation")
+        != TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND
+        or parameters.get("expected_task_status") != "blocked"
+        or parameters.get("status") != "retrying"
+        or parameters.get("transition_operation")
+        not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry recovery is outside its closed transition"
+        )
+    expected_control_receipt, canonical_control_json = (
+        _closed_canonical_json_object(
+            parameters.get("expected_control_receipt_json"),
+            noun="post-merge retry expected control receipt",
+        )
+    )
+    if (
+        not expected_control_receipt
+        or expected_control_receipt.get("operation")
+        == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry refuses absent or typed-deferral prior authority"
+        )
+    transition, canonical_transition_json = _closed_canonical_json_object(
+        parameters.get("transition_receipt_json"),
+        noun="post-merge retry transition receipt",
+    )
+    final_transition, canonical_final_transition_json = (
+        _closed_canonical_json_object(
+            parameters.get("final_transition_receipt_json"),
+            noun="post-merge retry final transition receipt",
+        )
+    )
+    body, canonical_body_json = _closed_canonical_json_object(
+        parameters.get("body_json"),
+        noun="post-merge retry task body",
+    )
+    attempt_identity = {
+        name: parameters[name]
+        for name in (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+    }
+    transition = _validated_post_merge_retry_transition(
+        transition,
+        task_cid=str(parameters.get("task_cid") or ""),
+        expected_task_revision=int(parameters.get("expected_task_revision") or -1),
+        queue_reason=str(parameters.get("reason") or ""),
+        attempt_identity=attempt_identity,
+        recovery_seed_json=str(parameters.get("recovery_seed_json") or ""),
+    )
+    expected_control_receipt = _validated_post_merge_terminal_control_receipt(
+        expected_control_receipt,
+        expected_task_revision=int(
+            parameters.get("expected_task_revision") or -1
+        ),
+        transition=transition,
+    )
+    cooldown_parameters = {
+        name: member
+        for name, member in parameters.items()
+        if name
+        in {
+            "task_cid",
+            "expected_task_revision",
+            "expected_task_status",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "delay_ms",
+            "started_at_ms",
+            "retry_not_before_ms",
+            "selection_penalty",
+            "consecutive_failures",
+            "reason",
+            "resolution_cid",
+            "expected_queue_revision",
+            "expected_queue_attempt",
+            "extension_schema",
+            "extension_json",
+        }
+    }
+    cooldown_parameters["schema"] = TYPED_RETRY_COOLDOWN_SCHEMA
+    cooldown_parameters["operation"] = "task.retry.cooldown.record"
+    # The generic cooldown contract intentionally refuses blocked tasks.  This
+    # dedicated command reuses its byte/queue validation under the only claimed
+    # status that contract admits; owner semantic authority below separately
+    # proves the exact blocked predecessor and atomic status transition.
+    cooldown_parameters["expected_task_status"] = "in_progress"
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    queue_receipt = _post_merge_retry_queue_receipt(cooldown_parameters)
+    expected_final_transition = {
+        **dict(transition),
+        "queue_receipt": queue_receipt,
+    }
+    if (
+        transition.get("operation") != parameters.get("transition_operation")
+        or final_transition != expected_final_transition
+        or body.get("completion_receipt") != final_transition
+        or len(canonical_body_json.encode("utf-8")) > MAX_BODY_BYTES
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry body differs from its owner-derived transition"
+        )
+    return {
+        **parameters,
+        "expected_control_receipt_json": canonical_control_json,
+        "transition_receipt_json": canonical_transition_json,
+        "final_transition_receipt_json": canonical_final_transition_json,
+        "body_json": canonical_body_json,
+        "expected_control_receipt": dict(expected_control_receipt),
+        "transition_receipt": dict(transition),
+        "final_transition_receipt": dict(final_transition),
+        "queue_receipt": queue_receipt,
+        "body": dict(body),
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
 def _validated_retry_mutation_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2015,6 +2795,15 @@ def _validated_retry_mutation_parameters(
     ):
         return dict(
             _validated_legacy_unstall_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
+    if (
+        value.get("operation")
+        == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND
+    ):
+        return dict(
+            _validated_post_merge_retry_recovery_parameters(value)[
                 "cooldown_parameters"
             ]
         )
@@ -2045,6 +2834,28 @@ def _legacy_unstall_recovery_command_digest(
         name: member
         for name, member in validated.items()
         if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _post_merge_retry_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind replay identity to the complete atomic post-merge recovery."""
+
+    validated = _validated_post_merge_retry_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name
+        not in {
+            "expected_control_receipt",
+            "transition_receipt",
+            "final_transition_receipt",
+            "queue_receipt",
+            "body",
+            "cooldown_parameters",
+        }
     }
     return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
 
@@ -3108,6 +3919,14 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_update_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
+            }
+        ),
         TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: frozenset(
             {
                 "executor_insert_validation_run",
@@ -3141,6 +3960,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
         TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
@@ -3221,6 +4041,12 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 ]
             ),
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
+                {
+                    "executor_cas_task_status_receipt",
+                    "executor_insert_task_revision_history",
+                }
+            ),
+            TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: frozenset(
                 {
                     "executor_cas_task_status_receipt",
                     "executor_insert_task_revision_history",
@@ -4606,7 +5432,10 @@ class TypedStateOwnerGateway:
                                     parameters = tuple(normalized_parameters)
                             elif (
                                 semantic_authority.get("operation")
-                                == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+                                in {
+                                    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                                    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
+                                }
                                 and operation.name
                                 == "executor_cas_task_status_receipt"
                             ):
@@ -5091,6 +5920,7 @@ class TypedStateOwnerGateway:
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
@@ -5129,6 +5959,20 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "legacy unstall recovery replay identity differs from "
+                    "its parameters"
+                )
+        if operation == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND:
+            digest = _post_merge_retry_recovery_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:post-merge-retry-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-post-merge-retry-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry recovery replay identity differs from "
                     "its parameters"
                 )
         if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
@@ -5828,6 +6672,141 @@ class TypedStateOwnerGateway:
                 "prior_queue": prior_queue,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND:
+            recovery = _validated_post_merge_retry_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT task_alias, status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[1] or "").strip().lower() != "blocked"
+                or type(task_row[2]) is not int
+                or int(task_row[2]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry task revision or status is stale"
+                )
+            prior_body, _ = _closed_canonical_json_object(
+                task_row[3],
+                noun="post-merge retry prior task body",
+            )
+            prior_body_json = canonical_json_bytes(prior_body).decode("utf-8")
+            history_rows = self._connection.execute(
+                """
+                SELECT status, body_json FROM task_revisions
+                WHERE task_cid = ? AND revision = ? LIMIT 2
+                """,
+                [values["task_cid"], values["expected_task_revision"]],
+            ).fetchall()
+            if (
+                len(history_rows) != 1
+                or str(history_rows[0][0] or "") != "blocked"
+                or str(history_rows[0][1] or "") != prior_body_json
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry blocked predecessor history is absent or stale"
+                )
+            prior_receipt = prior_body.get("completion_receipt")
+            if (
+                not isinstance(prior_receipt, Mapping)
+                or prior_receipt.get("operation")
+                == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+                or canonical_json_bytes(dict(prior_receipt))
+                != canonical_json_bytes(recovery["expected_control_receipt"])
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry expected control receipt is stale or protected"
+                )
+            recovery_seed = recovery["transition_receipt"].get(
+                "post_merge_completion_recovery_seed"
+            )
+            if (
+                isinstance(recovery_seed, Mapping)
+                and recovery_seed.get("task_alias") != str(task_row[0] or "")
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry seed task alias is stale"
+                )
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = dict(
+                recovery["final_transition_receipt"]
+            )
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if (
+                recovery["body"] != expected_body
+                or recovery["body_json"] != expected_body_json
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry final body differs from control authority"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(queue_rows) > 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry cooldown authority is ambiguous"
+                )
+            prior_queue: dict[str, Any] = {}
+            if queue_rows:
+                validated_prior = _validated_stored_retry_cooldown(
+                    queue_rows[0], task_cid=values["task_cid"]
+                )
+                prior_queue = {
+                    **validated_prior,
+                    "attempt_number": validated_prior["attempt"],
+                }
+            if (
+                (values["expected_queue_revision"] == -1 and prior_queue)
+                or (values["expected_queue_revision"] >= 0 and not prior_queue)
+                or (
+                    prior_queue
+                    and (
+                        prior_queue["revision"]
+                        != values["expected_queue_revision"]
+                        or prior_queue["attempt_number"]
+                        != values["expected_queue_attempt"]
+                        or prior_queue["attempt_number"]
+                        >= values["attempt_number"]
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry cooldown CAS authority is stale"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "predecessor_body_json": prior_body_json,
+                "cooldown_parameters": values,
+                "prior_queue": prior_queue,
+                "transition_receipt": dict(
+                    recovery["final_transition_receipt"]
+                ),
+                "queue_receipt": dict(recovery["queue_receipt"]),
             }
         if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
             values = _validated_protected_qualification_completion_parameters(
@@ -7563,6 +8542,7 @@ class TypedStateOwnerGateway:
                 in {
                     "task.database.claim.phase",
                     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                    TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
                     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
                 }
             ):
@@ -8742,6 +9722,140 @@ class TypedStateOwnerGateway:
             if observed_queue != expected_queue:
                 raise TypedStateOwnerAuthorizationError(
                     "legacy unstall recovery cooldown post-state differs"
+                )
+            return
+
+        if operation == TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND:
+            values = dict(authority["cooldown_parameters"])
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_revision = int(authority["expected_revision"])
+            expected_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            one(expected_mutation)
+            if by_name.get(alternate):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry contains both cooldown mutation roles"
+                )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_task_revision_history"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "task_revision": expected_revision + 1,
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(3))
+                if len(task_rows) == 1
+                else ()
+            )
+            if observed_task != (
+                "retrying",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry task post-state differs"
+                )
+            history_rows = self._connection.execute(
+                """
+                SELECT revision, status, body_json FROM task_revisions
+                WHERE task_cid = ? AND revision IN (?, ?)
+                ORDER BY revision LIMIT 3
+                """,
+                [
+                    authority["task_cid"],
+                    expected_revision,
+                    expected_revision + 1,
+                ],
+            ).fetchall()
+            observed_history = [
+                tuple(row[index] for index in range(3))
+                for row in history_rows
+            ]
+            if observed_history != [
+                (
+                    expected_revision,
+                    "blocked",
+                    authority["predecessor_body_json"],
+                ),
+                (
+                    expected_revision + 1,
+                    "retrying",
+                    authority["body_json"],
+                ),
+            ]:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry predecessor/successor history differs"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_queue_revision = (
+                int(prior_queue["revision"]) + 1 if prior_queue else 1
+            )
+            expected_queue = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                expected_queue_revision,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_queue = (
+                tuple(
+                    queue_rows[0][index]
+                    for index in range(len(expected_queue))
+                )
+                if len(queue_rows) == 1
+                else ()
+            )
+            if observed_queue != expected_queue:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry cooldown post-state differs"
                 )
             return
 
