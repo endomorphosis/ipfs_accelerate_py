@@ -86,6 +86,7 @@ CONTROL_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
@@ -102,6 +103,7 @@ CONTROL_RELATIVE_PATHS = (
     "test/api/test_agent_supervisor_configured_board_live_capsule.py",
     "test/api/test_agent_supervisor_configured_board_scheduler.py",
     "test/api/test_agent_supervisor_native_dependency_pin.py",
+    "test/api/test_agent_supervisor_provider_command_binding.py",
     "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
 )
 
@@ -1167,16 +1169,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("quack_endpoint") != "quack:127.0.0.1:45247"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "5"
+        or program.get("store_generation") != "6"
         or program.get("store_id") != migration.get("target_store_id")
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
     if (
         migration.get("schema") != "sawm/prior-materialization-migration-inventory@2"
-        or migration.get("migration_revision") != "SAWM-R2-M3"
+        or migration.get("migration_revision") != "SAWM-R2-M4"
         or migration.get("migration_kind")
-        != "bounded_preworker_capsule_mode_and_quack_generation_recovery"
+        != "bounded_preworker_provider_binding_and_generation_recovery"
         or migration.get("supersession_reason") != migration.get("migration_kind")
         or migration.get("prior_authority_preserved") is not True
         or prior.get("preserve_append_only") is not True
@@ -1193,18 +1195,18 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or migration.get("prior_goal_count") != len(GOAL_IDS)
         or migration.get("definition_source_binding_cid")
         != "sha256:cf4d9fa1ba595286866f5406e61b2ac71e4ed3730af70a2b07f88d0c16905e5e"
-        or migration.get("prior_event_watermark") != 111
-        or migration.get("prior_plan_revision") != 3
-        or migration.get("target_plan_revision") != 4
+        or migration.get("prior_event_watermark") != 113
+        or migration.get("prior_plan_revision") != 4
+        or migration.get("target_plan_revision") != 5
     ):
         config_errors.append("append-only prior-SAWM migration binding mismatch")
     history = migration.get("migration_history")
     if (
         not isinstance(history, list)
-        or len(history) != 2
+        or len(history) != 3
         or any(not isinstance(entry, Mapping) for entry in history)
         or [entry.get("migration_revision") for entry in history]
-        != ["SAWM-R2-M1", "SAWM-R2-M2"]
+        != ["SAWM-R2-M1", "SAWM-R2-M2", "SAWM-R2-M3"]
         or any(
             entry.get("schema") != "sawm/source-migration-history-entry@1"
             for entry in history
@@ -1223,7 +1225,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or history[-1].get("migration_receipt_path")
         != migration.get("prior_materialization_receipt_path")
     ):
-        config_errors.append("M0-through-M2 migration history binding mismatch")
+        config_errors.append("M0-through-M3 migration history binding mismatch")
     launch_failure = migration.get("preworker_launch_failure")
     if isinstance(launch_failure, Mapping):
         error_payload = launch_failure.get("error_payload")
@@ -1241,26 +1243,77 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     else:
         error_payload_cid = ""
+    expected_launch_failure = {
+        "schema": "sawm/pre-worker-launch-failure@2",
+        "outer_launch_command": (
+            "python scripts/ops/agent_supervisor/"
+            "semantic_addressed_world_model.py launch"
+        ),
+        "outer_launch_exit_code": 0,
+        "command": (
+            "ipfs_accelerate_py.agent_supervisor.runtime."
+            "multi_supervisor_runner"
+        ),
+        "phase": "detached_coordinator_provider_entry_module_preflight",
+        "exit_code": 2,
+        "error_payload": {
+            "schema": "sawm/coordinator-error@1",
+            "valid": False,
+            "error": (
+                "ModuleNotFoundError: No module named "
+                "'ipfs_accelerate_py.agent_supervisor."
+                "provider_command_environment'"
+            ),
+        },
+        "error_payload_cid": (
+            "sha256:7eccdc0993160ddf88afeaa8acd66f951c525d0758c21326a6075d850b996afb"
+        ),
+        "source_head": "29fb3cec38d682702c952dd20111b56d993345bb",
+        "source_tree": "4e3e7532d4d850edabad1610d98bab82d4fe2410",
+        "configuration_root": (
+            "baguqeeraime2bkkng2cuttamu3qtrqxxlp3xim7hzpkpce7sunv7ptumfkeq"
+        ),
+        "store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m3/control.duckdb"
+        ),
+        "owner_generation": 5,
+        "owner_server_id": "server:67f0d1bb-0289-45ae-b2bc-33c87f040124",
+        "owner_process_birth_id": "birth:eaf37ba44ad162fc5231eb6e4dbbf35e",
+        "control_plane_capsule_id": (
+            "sha256:50b6acb20e822d5a841282fbafc7aa5d32dfce9af68bca99c2107fffeb50ef9b"
+        ),
+        "control_plane_archive_sha256": (
+            "sha256:4ea5c26e631544abc5890e28f176685957a8fb367858c8653e9aee5289a00646"
+        ),
+        "control_plane_admission_cid": (
+            "baguqeeraug4eqqturk3lnsf2xfmg2sqrrm3ij6v7u5pnlxlcfbivzhyi6enq"
+        ),
+        "accepted_control_plane_admitted": True,
+        "coordinator_log_path": (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/"
+            "logs/configured-board-20260828T060454Z.log"
+        ),
+        "coordinator_log_sha256": (
+            "sha256:d9932d7bb2f5d906a09a9fe9f1f28886913aec4a40dbdd803d1c17d049a8bc8b"
+        ),
+        "coordinator_pid": 3669646,
+        "coordinator_pid_projection_after_failure": "absent",
+        "provider_capability_probed": True,
+        "credential_handoff_retired": True,
+        "worker_started": False,
+        "task_claimed": False,
+        "task_state_changed": False,
+        "implementation_provider_invoked": False,
+        "failure_time_authority": "unavailable",
+    }
     if (
         not isinstance(launch_failure, Mapping)
-        or launch_failure.get("schema") != "sawm/pre-worker-launch-failure@1"
+        or dict(launch_failure) != expected_launch_failure
         or launch_failure.get("error_payload_cid") != error_payload_cid
         or launch_failure.get("source_head") != migration.get("prior_source_head")
         or launch_failure.get("source_tree") != migration.get("prior_source_tree")
         or launch_failure.get("store_id") != migration.get("prior_store_id")
-        or launch_failure.get("owner_generation") != 3
-        or launch_failure.get("exit_code") != 2
-        or launch_failure.get("credential_handoff_retired") is not True
-        or launch_failure.get("failure_time_authority") != "unavailable"
-        or any(
-            launch_failure.get(field) is not False
-            for field in (
-                "worker_started",
-                "task_claimed",
-                "task_state_changed",
-                "implementation_provider_invoked",
-            )
-        )
     ):
         config_errors.append("typed pre-worker launch failure binding mismatch")
     repair_paths = tuple(migration.get("bounded_control_plane_repair_paths") or ())

@@ -53,22 +53,22 @@
     "task_source_kind": "duckdb",
     "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
     "quack_endpoint": "quack:127.0.0.1:45247",
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/control.duckdb",
-    "store_generation": "5",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "store_generation": "6",
     "schema_revision": "datasets-authoritative-operational-v1",
-    "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/events",
-    "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/registry",
-    "worktree_root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/worktrees",
+    "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/events",
+    "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/registry",
+    "worktree_root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/worktrees",
     "export_profile": "semantic-addressed-world-model-r2",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
   },
   "quack_owner": {
-    "database_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/control.duckdb",
-    "state_dir": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/quack-owner",
+    "database_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
+    "state_dir": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/quack-owner",
     "host": "127.0.0.1",
     "port": 45247,
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/control.duckdb",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/control.duckdb",
     "repository_id": "ipfs_accelerate_py:semantic-addressed-world-model-v1",
     "secret_handle": "env://SAWM_QUACK_TOKEN",
     "allow_experimental_local_extension": true,
@@ -102,24 +102,24 @@
     }
   },
   "prior_materialization": {
-    "migration_revision": "SAWM-R2-M3",
+    "migration_revision": "SAWM-R2-M4",
     "inventory_path": "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json",
-    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m2/control.duckdb",
+    "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/control.duckdb",
     "program_definition_cid": "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72",
     "plan_root_cid": "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914",
-    "source_binding_cid": "sha256:02982fb3bc82269ebf7225c63d02b3d25fcffd4cd0e63ccc69a8e977f48a3841",
-    "projection_cid": "baguqeerard4v5jqglteq72mmrlktr34jirshc7vsvuvs77hiiyuhk4sgw6aa",
+    "source_binding_cid": "sha256:5f069e314b962c290df400372aa68606fcf565a067fe75d19decc68828d2a3f4",
+    "projection_cid": "baguqeerankpr7tug6v6yldbv6s2cu3e5uvfpuvrlzr2zsggv52pm7re3fwsa",
     "operator_task_cid": "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6",
     "preserve_append_only": true,
-    "reason": "bounded_preworker_capsule_mode_and_quack_generation_recovery"
+    "reason": "bounded_preworker_provider_binding_and_generation_recovery"
   },
   "ducklake_history_projection": {
     "enabled_when_locally_available": true,
     "load_local_only": true,
     "install_or_network_forbidden": true,
-    "catalog_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/ducklake/history.ducklake",
-    "data_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/ducklake/data",
-    "receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/ducklake-history-receipt.json",
+    "catalog_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/ducklake/history.ducklake",
+    "data_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/ducklake/data",
+    "receipt_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/ducklake-history-receipt.json",
     "authority": false,
     "scheduling_prerequisite": false,
     "completion_prerequisite": false,
@@ -153,11 +153,11 @@
     "ipfs_kit_py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3",
-    "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/state",
-    "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/worktrees",
-    "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/merge-queue",
-    "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/logs",
+    "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4",
+    "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/state",
+    "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/worktrees",
+    "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/merge-queue",
+    "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m4/logs",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "lanes": [
@@ -250,6 +250,7 @@
       "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
       "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
       "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
@@ -269,7 +270,8 @@
       "test/api/test_agent_supervisor_configured_board_extension_projection.py",
       "test/api/test_agent_supervisor_configured_board_live_capsule.py",
       "test/api/test_agent_supervisor_configured_board_scheduler.py",
-      "test/api/test_agent_supervisor_native_dependency_pin.py"
+      "test/api/test_agent_supervisor_native_dependency_pin.py",
+      "test/api/test_agent_supervisor_provider_command_binding.py"
     ]
   },
   "protected_paths": [
@@ -299,6 +301,7 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
@@ -315,6 +318,7 @@
     "test/api/test_agent_supervisor_configured_board_live_capsule.py",
     "test/api/test_agent_supervisor_configured_board_scheduler.py",
     "test/api/test_agent_supervisor_native_dependency_pin.py",
+    "test/api/test_agent_supervisor_provider_command_binding.py",
     "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json"
   ],
   "release_safety_floors": {

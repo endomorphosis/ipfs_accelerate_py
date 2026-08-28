@@ -8364,7 +8364,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             preflight_provider_entry_module(
-                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+                "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner"
             )
         except ProviderCommandBindingError as exc:
             parser.error(f"provider command binding preflight failed: {exc}")

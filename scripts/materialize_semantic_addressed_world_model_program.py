@@ -34,6 +34,105 @@ ROOT_GOAL = "SAWM-G000"
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/semantic-addressed-world-model-materialization@1"
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
 
+_M3_PREWORKER_FAILURE_V2: dict[str, Any] = {
+    "schema": "sawm/pre-worker-launch-failure@2",
+    "command": "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+    "phase": "detached_coordinator_provider_entry_module_preflight",
+    "exit_code": 2,
+    "outer_launch_command": (
+        "python scripts/ops/agent_supervisor/"
+        "semantic_addressed_world_model.py launch"
+    ),
+    "outer_launch_exit_code": 0,
+    "error_payload": {
+        "schema": "sawm/coordinator-error@1",
+        "valid": False,
+        "error": (
+            "ModuleNotFoundError: No module named "
+            "'ipfs_accelerate_py.agent_supervisor.provider_command_environment'"
+        ),
+    },
+    "error_payload_cid": (
+        "sha256:7eccdc0993160ddf88afeaa8acd66f951c525d0758c21326a6075d850b996afb"
+    ),
+    "source_head": "29fb3cec38d682702c952dd20111b56d993345bb",
+    "source_tree": "4e3e7532d4d850edabad1610d98bab82d4fe2410",
+    "configuration_root": (
+        "baguqeeraime2bkkng2cuttamu3qtrqxxlp3xim7hzpkpce7sunv7ptumfkeq"
+    ),
+    "control_plane_admission_cid": (
+        "baguqeeraug4eqqturk3lnsf2xfmg2sqrrm3ij6v7u5pnlxlcfbivzhyi6enq"
+    ),
+    "control_plane_capsule_id": (
+        "sha256:50b6acb20e822d5a841282fbafc7aa5d32dfce9af68bca99c2107fffeb50ef9b"
+    ),
+    "control_plane_archive_sha256": (
+        "sha256:4ea5c26e631544abc5890e28f176685957a8fb367858c8653e9aee5289a00646"
+    ),
+    "coordinator_pid": 3669646,
+    "coordinator_pid_projection_after_failure": "absent",
+    "coordinator_log_path": (
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m3/"
+        "logs/configured-board-20260828T060454Z.log"
+    ),
+    "coordinator_log_sha256": (
+        "sha256:d9932d7bb2f5d906a09a9fe9f1f28886913aec4a40dbdd803d1c17d049a8bc8b"
+    ),
+    "store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m3/control.duckdb"
+    ),
+    "owner_generation": 5,
+    "owner_server_id": "server:67f0d1bb-0289-45ae-b2bc-33c87f040124",
+    "owner_process_birth_id": "birth:eaf37ba44ad162fc5231eb6e4dbbf35e",
+    "credential_handoff_retired": True,
+    "accepted_control_plane_admitted": True,
+    "provider_capability_probed": True,
+    "worker_started": False,
+    "task_claimed": False,
+    "task_state_changed": False,
+    "implementation_provider_invoked": False,
+    "failure_time_authority": "unavailable",
+}
+
+_M3_FROZEN_PRIOR_BINDING: dict[str, Any] = {
+    "prior_store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m3/control.duckdb"
+    ),
+    "prior_control_store_sha256": (
+        "5f0ab2700371350502a6d8d73440f08f5c9b42e3580eaf671352e344344c5a7f"
+    ),
+    "prior_event_watermark": 113,
+    "prior_event_prefix_sha256": (
+        "1d0374314d8cb413b0593bda79b8c654dd5fbd52790dae36a636e2ccd607a296"
+    ),
+}
+
+# These are current datasets-authoritative operational-schema tables. A row
+# in any of them would contradict the sealed claim that the detached M3
+# coordinator failed before task dispatch or implementation-provider use.
+_PREWORKER_ZERO_ACTIVITY_TABLES: tuple[str, ...] = (
+    "task_revisions",
+    "task_assignments",
+    "task_blocks",
+    "task_attempts",
+    "attempt_phases",
+    "task_claims",
+    "provider_invocations",
+    "provider_calls",
+    "provider_responses",
+    "supervisor_instances",
+    "daemon_instances",
+    "daemon_sessions",
+    "heartbeats",
+    "worktrees",
+    "worktree_snapshots",
+    "worktree_paths",
+    "leases",
+    "lease_events",
+)
+
 
 class MaterializationError(RuntimeError):
     """Fail-closed SAWM bootstrap error."""
@@ -116,6 +215,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
@@ -132,6 +232,7 @@ def _source_binding(root: Path) -> dict[str, Any]:
         "test/api/test_agent_supervisor_configured_board_live_capsule.py",
         "test/api/test_agent_supervisor_configured_board_scheduler.py",
         "test/api/test_agent_supervisor_native_dependency_pin.py",
+        "test/api/test_agent_supervisor_provider_command_binding.py",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
     )
     missing = [path for path in controls if not (root / path).is_file()]
@@ -187,41 +288,9 @@ def build_population(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     launch_failure = migration.get("preworker_launch_failure")
     if (
         not isinstance(launch_failure, dict)
-        or set(launch_failure)
-        != {
-            "schema",
-            "command",
-            "phase",
-            "exit_code",
-            "error_payload",
-            "error_payload_cid",
-            "source_head",
-            "source_tree",
-            "configuration_root",
-            "store_id",
-            "owner_generation",
-            "owner_server_id",
-            "owner_process_birth_id",
-            "credential_handoff_retired",
-            "worker_started",
-            "task_claimed",
-            "task_state_changed",
-            "implementation_provider_invoked",
-            "failure_time_authority",
-        }
-        or launch_failure.get("schema")
-        != "sawm/pre-worker-launch-failure@1"
+        or launch_failure != _M3_PREWORKER_FAILURE_V2
         or _identity(launch_failure.get("error_payload"))
         != launch_failure.get("error_payload_cid")
-        or any(
-            launch_failure.get(field) is not False
-            for field in (
-                "worker_started",
-                "task_claimed",
-                "task_state_changed",
-                "implementation_provider_invoked",
-            )
-        )
     ):
         raise MaterializationError("the typed pre-worker launch failure is invalid")
     prior_goal_cids = migration.get("prior_goal_cids")
@@ -562,6 +631,16 @@ def _verify_prior_store(
     population: Mapping[str, Any],
 ) -> dict[str, Any]:
     migration = population["migration_inventory"]
+    launch_failure = migration.get("preworker_launch_failure")
+    if (
+        isinstance(launch_failure, Mapping)
+        and launch_failure.get("schema") == "sawm/pre-worker-launch-failure@2"
+        and any(
+            migration.get(key) != expected
+            for key, expected in _M3_FROZEN_PRIOR_BINDING.items()
+        )
+    ):
+        raise MigrationRequired("sealed M3 predecessor binding differs")
     configured = config.get("prior_materialization") or {}
     for inventory_key, config_key in (
         ("migration_revision", "migration_revision"),
@@ -640,6 +719,60 @@ def _verify_prior_store(
         completed = [str(row[0]) for row in task_rows if str(row[2]) == "completed"]
         if completed != ["SAWM-000"]:
             raise MigrationRequired(f"sealed prior completion set differs: {completed}")
+        if (
+            isinstance(launch_failure, Mapping)
+            and launch_failure.get("schema") == "sawm/pre-worker-launch-failure@2"
+        ):
+            statuses = {str(row[0]): str(row[2]) for row in task_rows}
+            expected_statuses = {
+                alias: "completed" if alias == "SAWM-000" else "todo"
+                for alias in migration["prior_task_cids"]
+            }
+            if statuses != expected_statuses:
+                raise MigrationRequired(
+                    "sealed M3 task state changed before worker dispatch"
+                )
+            activity_counts: dict[str, int] = {}
+            for table_name in _PREWORKER_ZERO_ACTIVITY_TABLES:
+                try:
+                    row = connection.execute(
+                        f'SELECT COUNT(*) FROM "{table_name}"'
+                    ).fetchone()
+                except Exception as exc:
+                    raise MigrationRequired(
+                        "sealed M3 pre-worker authority table is unavailable: "
+                        f"{table_name}"
+                    ) from exc
+                activity_counts[table_name] = int(row[0]) if row is not None else -1
+            nonempty_activity = {
+                name: count
+                for name, count in activity_counts.items()
+                if count != 0
+            }
+            if nonempty_activity:
+                raise MigrationRequired(
+                    "sealed M3 contains worker/task/provider activity: "
+                    + json.dumps(
+                        nonempty_activity,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+            owner = connection.execute(
+                "SELECT server_id, process_birth_id, status "
+                "FROM state_servers WHERE generation = ?",
+                [int(launch_failure["owner_generation"])],
+            ).fetchall()
+            if owner != [
+                (
+                    launch_failure["owner_server_id"],
+                    launch_failure["owner_process_birth_id"],
+                    "stopped",
+                )
+            ]:
+                raise MigrationRequired(
+                    "sealed M3 launch owner identity or stopped state differs"
+                )
         operator = next(row for row in task_rows if row[0] == "SAWM-000")
         if str(operator[2]) != migration["prior_operator_status"] or int(operator[3]) != 2:
             raise MigrationRequired("sealed prior operator status/revision differs")

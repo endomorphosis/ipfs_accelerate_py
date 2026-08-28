@@ -79,6 +79,7 @@ CONTROL_PATHS = frozenset(
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
@@ -93,6 +94,7 @@ CONTROL_PATHS = frozenset(
         "test/api/semantic_world/test_semantic_addressed_world_model_quack_protocol.py",
         "test/api/test_agent_supervisor_configured_board_extension_projection.py",
         "test/api/test_agent_supervisor_configured_board_live_capsule.py",
+        "test/api/test_agent_supervisor_provider_command_binding.py",
         "test/api/test_agent_supervisor_configured_board_scheduler.py",
         "test/api/test_agent_supervisor_native_dependency_pin.py",
         "benchmarks/agent_supervisor/semantic_addressed_world_model/benchmark_freeze.json",
@@ -107,6 +109,7 @@ INTERFACES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py", ("load_configured_board", "preflight_configured_board", "configured_board_launch_plan", "main")),
     ("ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py", ("ConfiguredBoardLiveCapsuleAdmission", "parse_configured_board_live_capsule_policy", "parse_configured_board_live_capsule_admission", "build_configured_board_live_capsule_admission", "verify_configured_board_live_capsule")),
     ("ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py", ("DatabaseProgramConfig",)),
+    ("ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py", ("preflight_provider_entry_module",)),
     ("ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py", ("QuackStateServer", "build_server")),
     ("ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py", ("discover_live_quack_endpoint", "DuckDBConnection")),
     ("ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py", ("build_mutation_request", "validate_mutation_request", "execute_mutation_bundle", "execute_owner_mutation", "service_mutation_inbox")),
@@ -1065,6 +1068,84 @@ print(json.dumps({"valid":not errors and not changed and not removed and after_t
             }
 
 
+def _control_plane_mode_closure(
+    root: Path,
+    python: str,
+    fixed: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Exercise the capsule's own closed file discovery and stable-read gate."""
+
+    probe = r'''
+import importlib.util, json, os, pathlib, stat, sys
+root = pathlib.Path(sys.argv[1]).resolve(strict=True)
+source = root / "ipfs_accelerate_py" / "agent_implementation_route.py"
+spec = importlib.util.spec_from_file_location("_sawm_control_plane_mode_probe", source)
+if spec is None or spec.loader is None:
+    raise RuntimeError("control_plane_probe_loader_unavailable")
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+files = module._agent_control_plane_source_files(
+    root,
+    verify_loaded_origins=False,
+)
+errors = []
+mode_counts = {}
+for path in files:
+    try:
+        module._agent_read_stable_file(path)
+        mode = oct(stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode))
+        mode_counts[mode] = mode_counts.get(mode, 0) + 1
+    except Exception as exc:
+        errors.append({
+            "path": str(path.relative_to(root)),
+            "error": type(exc).__name__ + ": " + str(exc),
+        })
+print(json.dumps({
+    "valid": bool(files) and not errors,
+    "file_count": len(files),
+    "mode_counts": mode_counts,
+    "errors": errors,
+    "argv_flags": ["-I", "-S", "-B"],
+}, sort_keys=True))
+'''
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="sawm-control-plane-mode-",
+            dir="/tmp",
+        ) as directory:
+            home = Path(directory)
+            (home / ".python-user-base").mkdir(mode=0o700)
+            (home / ".cache").mkdir(mode=0o700)
+            completed = subprocess.run(
+                [python, "-I", "-S", "-B", "-c", probe, str(root)],
+                cwd=root,
+                env=_positive_launch_environment(fixed, home=home),
+                check=False,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+    except Exception as exc:
+        return {"valid": False, "error": f"{type(exc).__name__}: {exc}"}
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return {
+            "valid": False,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout[-2000:],
+            "stderr": completed.stderr[-2000:],
+        }
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {
+            "valid": False,
+            "stdout": completed.stdout[-2000:],
+            "stderr": completed.stderr[-2000:],
+        }
+
+
 def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: bool = True) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     errors: list[str] = []
@@ -1184,6 +1265,17 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                 "authority": "test-only; excluded from launch admission",
             },
         },
+    )
+
+    mode_closure = (
+        _control_plane_mode_closure(root, str(launch_python), fixed)
+        if not launch_toolchain_errors
+        else {"valid": False, "error": "launch toolchain is unavailable"}
+    )
+    check(
+        "accepted_control_plane_mode_closure",
+        mode_closure.get("valid") is True,
+        mode_closure,
     )
 
     try:
@@ -1402,8 +1494,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or sealed_migration.get("prior_authority_preserved") is not True
         ):
             protocol_errors.append("append-only source-migration seal differs from its inventory")
-        if scheduler.get("database_program", {}).get("store_generation") != "5":
-            protocol_errors.append("migrated owner must acquire successor store generation 5")
+        if scheduler.get("database_program", {}).get("store_generation") != "6":
+            protocol_errors.append("migrated owner must acquire successor store generation 6")
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"

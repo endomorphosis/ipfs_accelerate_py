@@ -70,6 +70,7 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
     checks = {item["name"]: item for item in report["checks"]}
     for name in (
         "sealed_launch_toolchain_declaration",
+        "accepted_control_plane_mode_closure",
         "independent_native_dependency_authorization",
         "quack_httpfs_projection_pins",
         "isolated_launch_toolchain",
@@ -78,6 +79,14 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
         "cold_import_side_effects",
     ):
         assert checks[name]["passed"] is True, checks[name]["detail"]
+    mode_closure = checks["accepted_control_plane_mode_closure"]["detail"]
+    assert mode_closure["argv_flags"] == ["-I", "-S", "-B"]
+    assert mode_closure["file_count"] >= 852
+    assert mode_closure["errors"] == []
+    assert all(
+        int(mode, 8) & 0o022 == 0
+        for mode in mode_closure["mode_counts"]
+    )
     isolated = checks["isolated_duckdb_quack_httpfs_load"]["detail"]
     assert isolated["python_executable"] == "/usr/bin/python3.12"
     assert isolated["argv_flags"] == ["-I", "-S", "-B"]
@@ -336,7 +345,7 @@ def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     assert ducklake["completion_prerequisite"] is False
 
 
-def test_m3_migration_preserves_the_exact_m0_m1_and_m2_authorities() -> None:
+def test_m4_migration_preserves_the_exact_m0_through_m3_authorities() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_chain_test",
@@ -345,19 +354,21 @@ def test_m3_migration_preserves_the_exact_m0_m1_and_m2_authorities() -> None:
     migration = population["migration_inventory"]
     history = migration["migration_history"]
 
-    assert migration["migration_revision"] == "SAWM-R2-M3"
+    assert migration["migration_revision"] == "SAWM-R2-M4"
     assert migration["migration_kind"] == (
-        "bounded_preworker_capsule_mode_and_quack_generation_recovery"
+        "bounded_preworker_provider_binding_and_generation_recovery"
     )
     assert migration["supersession_reason"] == migration["migration_kind"]
-    assert migration["prior_plan_revision"] == 3
-    assert migration["target_plan_revision"] == 4
-    assert migration["prior_event_watermark"] == 111
-    assert len(history) == 2
+    assert migration["prior_plan_revision"] == 4
+    assert migration["target_plan_revision"] == 5
+    assert migration["prior_event_watermark"] == 113
+    assert len(history) == 3
     m1 = history[0]
     m2 = history[1]
+    m3 = history[2]
     assert m1["migration_revision"] == "SAWM-R2-M1"
     assert m2["migration_revision"] == "SAWM-R2-M2"
+    assert m3["migration_revision"] == "SAWM-R2-M3"
     assert materializer._store_sha256(REPO_ROOT / m1["prior_store_id"]) == m1[
         "prior_control_store_sha256"
     ]
@@ -367,10 +378,13 @@ def test_m3_migration_preserves_the_exact_m0_m1_and_m2_authorities() -> None:
     assert materializer._store_sha256(REPO_ROOT / m2["target_store_id"]) == m2[
         "target_control_store_sha256"
     ]
-    assert m2["target_control_store_sha256"] == migration[
+    assert materializer._store_sha256(REPO_ROOT / m3["target_store_id"]) == m3[
+        "target_control_store_sha256"
+    ]
+    assert m3["target_control_store_sha256"] == migration[
         "prior_control_store_sha256"
     ]
-    assert m2["target_event_prefix_sha256"] == migration[
+    assert m3["target_event_prefix_sha256"] == migration[
         "prior_event_prefix_sha256"
     ]
     for entry in history:
@@ -379,13 +393,82 @@ def test_m3_migration_preserves_the_exact_m0_m1_and_m2_authorities() -> None:
             entry["migration_receipt_cid"],
         )
     failure = migration["preworker_launch_failure"]
-    assert failure["schema"] == "sawm/pre-worker-launch-failure@1"
+    assert set(failure) == {
+        "accepted_control_plane_admitted",
+        "command",
+        "configuration_root",
+        "control_plane_admission_cid",
+        "control_plane_archive_sha256",
+        "control_plane_capsule_id",
+        "coordinator_log_path",
+        "coordinator_log_sha256",
+        "coordinator_pid",
+        "coordinator_pid_projection_after_failure",
+        "credential_handoff_retired",
+        "error_payload",
+        "error_payload_cid",
+        "exit_code",
+        "failure_time_authority",
+        "implementation_provider_invoked",
+        "outer_launch_command",
+        "outer_launch_exit_code",
+        "owner_generation",
+        "owner_process_birth_id",
+        "owner_server_id",
+        "phase",
+        "provider_capability_probed",
+        "schema",
+        "source_head",
+        "source_tree",
+        "store_id",
+        "task_claimed",
+        "task_state_changed",
+        "worker_started",
+    }
+    assert failure["schema"] == "sawm/pre-worker-launch-failure@2"
+    assert failure["phase"] == "detached_coordinator_provider_entry_module_preflight"
+    assert failure["outer_launch_exit_code"] == 0
+    assert failure["exit_code"] == 2
+    assert failure["accepted_control_plane_admitted"] is True
+    assert failure["provider_capability_probed"] is True
+    assert failure["coordinator_pid_projection_after_failure"] == "absent"
     assert failure["worker_started"] is False
     assert failure["task_claimed"] is False
     assert failure["task_state_changed"] is False
     assert failure["implementation_provider_invoked"] is False
     assert failure["credential_handoff_retired"] is True
     assert failure["failure_time_authority"] == "unavailable"
+
+
+def test_m4_provider_binding_paths_are_exact_protected_controls() -> None:
+    validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m4_provider_binding_paths_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    provider_controls = {
+        "ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
+        "test/api/test_agent_supervisor_provider_command_binding.py",
+    }
+
+    assert provider_controls.issubset(validator.CONTROL_RELATIVE_PATHS)
+    assert tuple(config["protected_paths"]) == validator.CONTROL_RELATIVE_PATHS
+    assert provider_controls.issubset(
+        config["configured_board_live_capsule"]["control_paths"]
+    )
+    assert provider_controls.issubset(migration["bounded_control_plane_repair_paths"])
 
 
 def test_live_owner_identity_requires_exact_canonical_replica_rows(
