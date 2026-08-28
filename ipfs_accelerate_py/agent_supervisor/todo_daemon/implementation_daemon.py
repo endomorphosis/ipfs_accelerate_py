@@ -67546,8 +67546,8 @@ class DatabaseImplementationDaemon:
                 )
             self._quack_uri = resolved_quack_uri
             self._store_target = resolved_quack_uri
-            # Control and coordination go through the Quack state-owner.
-            # Execution metadata stays process-local; Quack ATTACH cannot
+            # Task/CAS control goes through the Quack state-owner. Coordination
+            # and execution metadata stay lane-local; Quack ATTACH cannot
             # create owner-only indexes on the remote base table.
             control_path = Path(str(database_path))
             self.database_path = control_path
