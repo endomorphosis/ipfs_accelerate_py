@@ -35236,6 +35236,21 @@ class PortalImplementationDaemon:
                     "reason": "merge_queue_reconciliation_continuation_invalid",
                 }
             source_event_task_cid = str(continuation["task_cid"])
+            producer_projection_task_cid = str(
+                continuation["projection_task_cid"]
+            )
+
+            def normalized_continuation_producer_source(
+                event: Mapping[str, Any],
+            ) -> Mapping[str, Any]:
+                """Translate only the sealed projection CID into DB authority."""
+
+                event_task_cid = str(event.get("canonical_task_cid") or "")
+                if event_task_cid != producer_projection_task_cid:
+                    return event
+                normalized = dict(event)
+                normalized["canonical_task_cid"] = source_event_task_cid
+                return normalized
 
             def sealed_local_replay_producer_source() -> dict[str, Any] | None:
                 local_sources = [
@@ -35420,9 +35435,13 @@ class PortalImplementationDaemon:
                 if str(event.get("type") or "") == "implementation_finished"
                 and event_request_id(event) == request_id
             ]
+            normalized_producer_request_sources = [
+                normalized_continuation_producer_source(event)
+                for event in producer_request_sources
+            ]
             producer_exact_sources = [
                 event
-                for event in producer_request_sources
+                for event in normalized_producer_request_sources
                 if exact_producer_source(event)
             ]
             producer_source: Mapping[str, Any] | None = None

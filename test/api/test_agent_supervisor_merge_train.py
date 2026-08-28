@@ -1529,9 +1529,18 @@ def test_database_portal_retry_consumer_continues_merge_into_current_projection(
     )
 
 
-def test_database_portal_retry_continues_merge_into_current_projection(
+@pytest.mark.parametrize(
+    ("producer_event_task_cid", "accepted"),
+    [
+        pytest.param("projection", True, id="sealed-projection-cid"),
+        pytest.param("foreign", False, id="foreign-cid"),
+    ],
+)
+def test_database_portal_retry_normalizes_only_sealed_projection_cid(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    producer_event_task_cid: str,
+    accepted: bool,
 ) -> None:
     repo = _repo(tmp_path)
     merge_queue_dir = tmp_path / "merge-queue"
@@ -1594,11 +1603,17 @@ def test_database_portal_retry_continues_merge_into_current_projection(
             "selection": {"scope": "pre_merge"},
         },
     )
+    projection_task_cid = request.canonical_task_id
+    assert projection_task_cid != task_cid
     producer._record_event(
         "implementation_finished",
         {
             "task_id": task.task_id,
-            "canonical_task_cid": task_cid,
+            "canonical_task_cid": (
+                projection_task_cid
+                if producer_event_task_cid == "projection"
+                else "task:cid:foreign"
+            ),
             "attempt": 1,
             "returncode": 0,
             "attempt_consumed": True,
@@ -1627,10 +1642,40 @@ def test_database_portal_retry_continues_merge_into_current_projection(
 
     result = consumer._merge_train_callback(request)
 
+    if not accepted:
+        assert result["merged"] is False
+        assert result["integration_occurred"] is True
+        assert result["completion_skipped"] is True
+        assert result["reason"] == (
+            "merge_queue_reconciliation_producer_source_conflict"
+        )
+        assert result["merge_reconciliation_receipt"] == {
+            "recorded": False,
+            "reason": "merge_queue_reconciliation_producer_source_conflict",
+            "request_source_count": 1,
+            "exact_source_count": 0,
+        }
+        assert "- Status: ready" in (
+            consumer_paths.task_projection.read_text(encoding="utf-8")
+        )
+        consumer_events = consumer._iter_merge_lifecycle_events()
+        assert not any(
+            event.get("type")
+            in {
+                "worktree_reconciliation_candidate_queued",
+                "merge_reconciled",
+                "todo_status_updated",
+                "task_completed",
+            }
+            for event in consumer_events
+        )
+        return
+
     assert result.get("merged") is True
     continuation = result["database_portal_merge_continuation"]
     assert continuation["task_id"] == "REF-040"
     assert continuation["task_cid"] == task_cid
+    assert continuation["projection_task_cid"] == projection_task_cid
     assert continuation["producer_binding_id"] == producer_binding["binding_id"]
     assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
     assert "- Status: ready" in producer_paths.task_projection.read_text(
@@ -1667,6 +1712,8 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         provenance["producer_completion_source_event_id"]
         == producer_source["event_id"]
     )
+    assert producer_source["canonical_task_cid"] == projection_task_cid
+    assert local_source["canonical_task_cid"] == projection_task_cid
     assert provenance["producer_binding_id"] == producer_binding["binding_id"]
     assert provenance["consumer_binding_id"] == consumer_binding["binding_id"]
     assert provenance["producer_projection_path"] == str(
