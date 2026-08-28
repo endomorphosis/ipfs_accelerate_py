@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -532,6 +533,16 @@ def test_shutdown_preserves_marker_when_managed_daemon_remains_live(
     )
     monkeypatch.setattr(
         supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.ALIVE,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: desired,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
         "terminate_pid_tree",
         lambda *_args, **_kwargs: False,
     )
@@ -550,7 +561,7 @@ def test_shutdown_preserves_marker_when_managed_daemon_remains_live(
     assert supervisor._managed_daemon_identity_path().exists()
 
 
-def test_shutdown_atomically_replaces_symlinked_marker_for_remaining_daemon(
+def test_shutdown_atomically_rebinds_symlinked_marker_to_owned_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -576,6 +587,16 @@ def test_shutdown_atomically_replaces_symlinked_marker_for_remaining_daemon(
     )
     monkeypatch.setattr(
         supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.ALIVE,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: desired,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
         "terminate_pid_tree",
         lambda *_args, **_kwargs: False,
     )
@@ -591,8 +612,9 @@ def test_shutdown_atomically_replaces_symlinked_marker_for_remaining_daemon(
     assert result["quiesced"] is False
     assert result["remaining_pid"] == remaining_pid
     assert not pid_path.is_symlink()
-    assert pid_path.read_text(encoding="utf-8") == f"{remaining_pid}\n"
+    assert pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
     assert foreign_pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
+    assert supervisor._managed_daemon_identity_path().exists()
 
 
 def test_shared_launcher_refuses_unreconciled_identity_before_spawning(
@@ -1187,6 +1209,131 @@ def test_adopted_child_exit_is_proven_before_identity_markers_are_cleared(
     assert clear_child_pid_file(child) is True
     assert not pid_path.exists()
     assert not identity_path.exists()
+
+
+def test_supervisor_loop_reverifies_and_inherits_both_fds_after_restart(
+    tmp_path: Path,
+) -> None:
+    """Every real child generation retains the two immutable live inputs."""
+
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    repo.mkdir()
+    result_path = state_dir / "fd-generations.jsonl"
+    capsule_read, capsule_write = os.pipe()
+    native_read, native_write = os.pipe()
+    command = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        (
+            "import ctypes,json,os,sys,time;"
+            "libc=ctypes.CDLL(None,use_errno=True);"
+            "assert libc.prctl(4,0,0,0,0)==0;"
+            "dumpable=libc.prctl(3,0,0,0,0);"
+            "assert dumpable==0;"
+            "fds=(int(sys.argv[1]),int(sys.argv[2]));"
+            "[os.fstat(fd) for fd in fds];"
+            "path=sys.argv[3];"
+            "generation=(sum(1 for _ in open(path,encoding='utf-8'))+1) "
+            "if os.path.exists(path) else 1;"
+            "handle=open(path,'a',encoding='utf-8');"
+            "handle.write(json.dumps({'generation':generation,'fds':fds,"
+            "'dumpable':dumpable})+'\\n');"
+            "handle.close();"
+            "time.sleep(0.05);"
+            "raise SystemExit(23)"
+        ),
+        str(capsule_read),
+        str(native_read),
+        str(result_path),
+    )
+    spec = ManagedDaemonSpec(
+        name="sealed-fd-restart-daemon",
+        schema="test.sealed-fd-restart-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=command,
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        supervisor_lock_path=state_dir / "supervisor.lock",
+        latest_log_path=state_dir / "latest.log",
+    )
+    verified_generations: list[tuple[int, ...]] = []
+
+    def verify_before_popen(child_spec: SupervisedChildSpec) -> None:
+        assert child_spec.command == command
+        assert child_spec.inherit_environment is False
+        assert child_spec.pass_fds == tuple(
+            sorted((capsule_read, native_read))
+        )
+        for descriptor in child_spec.pass_fds:
+            os.fstat(descriptor)
+        verified_generations.append(child_spec.pass_fds)
+
+    try:
+        result = SupervisorLoop(
+            SupervisorLoopConfig(
+                spec=spec,
+                command=command,
+                log_prefix="sealed-fd-child",
+                restart_policy=supervisor_runtime.RestartPolicy(
+                    restart_backoff_seconds=0.0,
+                    fast_restart_backoff_seconds=0.0,
+                ),
+                heartbeat_seconds=0.01,
+                poll_seconds=0.01,
+                watchdog_startup_grace_seconds=60.0,
+                max_restarts=2,
+                child_env={
+                    "LC_ALL": "C",
+                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                        state_dir / "child.identity.json"
+                    ),
+                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                        {"lane": "live-test"},
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                },
+                child_inherit_environment=False,
+                pass_fds=(native_read, capsule_read, native_read),
+                pre_popen_verify=verify_before_popen,
+            ),
+            sleep=lambda _seconds: None,
+        ).run()
+    finally:
+        for descriptor in (
+            capsule_read,
+            capsule_write,
+            native_read,
+            native_write,
+        ):
+            os.close(descriptor)
+
+    generations = [
+        json.loads(line)
+        for line in result_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert result.status == "child_exited"
+    assert result.restart_count == 2
+    assert [item["generation"] for item in generations] == [1, 2]
+    assert all(
+        item["fds"] == [capsule_read, native_read]
+        for item in generations
+    )
+    assert [item["dumpable"] for item in generations] == [0, 0]
+    assert verified_generations == [
+        tuple(sorted((capsule_read, native_read))),
+        tuple(sorted((capsule_read, native_read))),
+    ]
 
 
 def test_stale_child_handle_cannot_signal_replacement_identity_generation(

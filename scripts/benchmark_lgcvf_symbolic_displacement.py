@@ -81,7 +81,9 @@ QUALIFICATION_VALIDATOR: Final[Path] = (
     / "scripts"
     / "qualify_logic_governed_compositional_verification_fabric.py"
 )
-QUALIFICATION_REPLAY_TIMEOUT_SECONDS: Final[int] = 900
+# Ordinary qualification permits one protected suite to consume up to 3,600
+# seconds.  Allow bounded setup and the preceding short suites as well.
+QUALIFICATION_REPLAY_TIMEOUT_SECONDS: Final[int] = 4_000
 
 REQUIRED_TASK_CLASSES: Final[tuple[str, ...]] = (
     "local_bug_repair",

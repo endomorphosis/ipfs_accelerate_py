@@ -9391,7 +9391,7 @@ def test_merge_rejects_submodule_target_ref_ahead_of_authoritative_gitlink(
     assert _git(submodule, "rev-parse", integration_ref) == ahead_commit
 
 
-def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
+def test_merge_rotates_divergent_legacy_submodule_target_ref(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     common_base = _git(submodule, "rev-parse", "HEAD")
     (submodule / "target-owned.txt").write_text(
@@ -9437,7 +9437,97 @@ def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
         target_scope="main",
         task=PortalTask(
             task_id="AUTO-TARGET-DIVERGED",
-            title="Reject a divergent target cursor",
+            title="Rotate a divergent legacy target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    scoped_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+        target_base_commit=target_base,
+    )
+    assert result["merged"] is True
+    assert result["superseded_integration_ref"] == integration_ref
+    assert result["superseded_integration_ref_commit"] == divergent_commit
+    assert result["superseded_integration_ref_drift_kind"] == "diverged"
+    assert result["base_scoped_integration_ref"] == scoped_ref
+    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+    integrated_commit = _git(submodule, "rev-parse", scoped_ref)
+    assert result["commit"] == integrated_commit
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        target_base,
+        integrated_commit,
+    ) == ""
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        divergent_commit,
+        integrated_commit,
+    ) == ""
+
+
+def test_merge_rejects_divergent_base_scoped_submodule_target_ref(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    common_base = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-scoped-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, common_base)
+    (submodule / "task-owned.txt").write_text(
+        "divergent task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "create divergent task cursor")
+    divergent_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    legacy_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    scoped_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+        target_base_commit=target_base,
+    )
+    _git(submodule, "update-ref", legacy_ref, divergent_commit)
+    _git(submodule, "update-ref", scoped_ref, divergent_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-SCOPED-DIVERGED",
+            title="Reject a divergent base-scoped target cursor",
             status="todo",
             completion="manual",
             priority="P0",
@@ -9449,7 +9539,10 @@ def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
     assert result["merged"] is False
     assert result["reason"] == "submodule_target_ref_drift"
     assert result["drift_kind"] == "diverged"
-    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+    assert result["superseded_integration_ref"] == legacy_ref
+    assert result["base_scoped_integration_ref"] == scoped_ref
+    assert _git(submodule, "rev-parse", legacy_ref) == divergent_commit
+    assert _git(submodule, "rev-parse", scoped_ref) == divergent_commit
 
 
 def test_merge_rejects_stale_submodule_target_ref_compare_and_swap_race(
@@ -11290,6 +11383,298 @@ def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
 
     assert captured["merge_queue_dir"] == merge_queue_dir
     assert captured["strict_task_sharding"] is True
+
+
+def test_lgcvf_daemon_diagnostic_is_bounded_staged_and_secret_free(capfd):
+    sentinel = "must-not-cross-lgcvf-daemon-diagnostic"
+
+    with pytest.raises(KeyError, match=sentinel):
+        implementation_daemon_module._lgcvf_daemon_call(
+            "owner_bootstrap",
+            lambda: (_ for _ in ()).throw(KeyError(sentinel)),
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=owner_bootstrap type=KeyError site=implementation_daemon:"
+    )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert sentinel not in captured.err
+    assert len(captured.err.encode("ascii")) <= 160
+
+
+def test_lgcvf_daemon_diagnostic_sites_exec_namespace_not_in_sys_modules(
+    capfd,
+    monkeypatch,
+):
+    sentinel = "must-not-cross-lgcvf-exec-namespace"
+    monkeypatch.delitem(
+        sys.modules,
+        implementation_daemon_module.__name__,
+    )
+
+    with pytest.raises(ValueError, match=sentinel):
+        implementation_daemon_module._lgcvf_daemon_call(
+            "runtime_pass",
+            lambda: (_ for _ in ()).throw(ValueError(sentinel)),
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=ValueError site=implementation_daemon:"
+    )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert sentinel not in captured.err
+
+
+def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
+    sentinel = "must-not-cross-lgcvf-daemon-metadata"
+
+    class DiagnosticTypeName(str):
+        def __str__(self):
+            return sentinel
+
+    class DiagnosticSentinelError(Exception):
+        pass
+
+    DiagnosticSentinelError.__name__ = DiagnosticTypeName("RuntimeError")
+    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+        sentinel,
+        DiagnosticSentinelError(sentinel),
+    )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=unknown type=BaseException\n"
+    )
+    assert sentinel not in captured.err
+
+
+def test_lgcvf_daemon_diagnostic_names_sealed_supervisor_exceptions(capfd):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        typed_database_task_source,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    sentinel = "must-not-cross-lgcvf-sealed-exception-diagnostic"
+    try:
+        typed_database_task_source._bounded_json(object(), noun=sentinel)
+    except TaskSourceIntegrityError as exc:
+        implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+            "runtime_pass",
+            exc,
+        )
+    else:  # pragma: no cover - the helper must reject an untyped object
+        raise AssertionError("typed database JSON boundary unexpectedly accepted")
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=TaskSourceIntegrityError site="
+    )
+    assert captured.err.startswith(prefix)
+    site = captured.err.removeprefix(prefix).rstrip("\n")
+    component, line, module_digest = site.split(":")
+    assert component == "typed_database_task_source"
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert all(character in "0123456789abcdef" for character in module_digest)
+    assert sentinel not in captured.err
+    assert len(captured.err.encode("ascii")) <= 160
+
+
+def test_lgcvf_daemon_diagnostic_emits_bounded_typed_owner_cause_chain(capfd):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+        QuackClientTransportError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerRemoteError,
+    )
+
+    sentinel = "must-not-cross-lgcvf-cause-chain"
+    try:
+        try:
+            try:
+                raise TypedStateOwnerRemoteError(
+                    "operation_failed",
+                    "DuckDBConnectionPolicyError",
+                )
+            except TypedStateOwnerRemoteError as remote:
+                raise QuackClientTransportError(sentinel) from remote
+        except QuackClientTransportError as transport:
+            raise TaskSourceIntegrityError(sentinel) from transport
+    except TaskSourceIntegrityError as exc:
+        implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+            "runtime_pass",
+            exc,
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    lines = captured.err.splitlines()
+    assert lines[0].startswith(
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=TaskSourceIntegrityError"
+    )
+    assert "depth=1 type=QuackClientTransportError" in lines[1]
+    assert lines[2].endswith(
+        "depth=2 type=TypedStateOwnerRemoteError "
+        "code=operation_failed remote=DuckDBConnectionPolicyError"
+    )
+    assert sentinel not in captured.err
+    assert all(len(line.encode("ascii")) + 1 <= 160 for line in lines)
+
+
+def test_lgcvf_daemon_diagnostic_rejects_forged_supervisor_module(capfd):
+    sentinel = "must-not-cross-lgcvf-forged-supervisor-type"
+
+    class ForgedSupervisorError(Exception):
+        pass
+
+    ForgedSupervisorError.__module__ = (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source"
+    )
+    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+        "runtime_pass",
+        ForgedSupervisorError(sentinel),
+    )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=BaseException\n"
+    )
+    assert sentinel not in captured.err
+
+
+def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
+    tmp_path,
+    monkeypatch,
+    capfd,
+):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_state_client as quack_state_client_module,
+        state_owner_bootstrap as state_owner_bootstrap_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    sentinel = "must-not-cross-lgcvf-owner-client-construction"
+    endpoint = "quack:127.0.0.1:24701"
+    store_id = "state/control.duckdb"
+
+    class Credentials:
+        client_id = "database-implementation-daemon:lane-0"
+        process_birth_id = "birth:test-lane-0"
+        server_id = "server:test"
+        execution_route_policy = None
+
+        def __init__(self):
+            self.endpoint = endpoint
+            self.store_id = store_id
+
+        def install_environment(self):
+            os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = sentinel
+            os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = str(
+                tmp_path / "owner.sock"
+            )
+
+    program = SimpleNamespace(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        store_id=store_id,
+        quack_endpoint=endpoint,
+        schema_revision="test-schema-v1",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "database_program_from_daemon_namespace",
+        lambda _args: program,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "resolve_database_implementation_paths",
+        lambda _args, *, authority_mode: {
+            "database_path": tmp_path / "control.duckdb",
+            "coordination_path": tmp_path / "coordination.duckdb",
+            "execution_path": tmp_path / "execution.duckdb",
+        },
+    )
+    monkeypatch.setattr(
+        state_owner_bootstrap_module,
+        "request_state_owner_bootstrap",
+        lambda *_args, **_kwargs: Credentials(),
+    )
+
+    def fail_client_construction(**_kwargs):
+        raise TypeError(sentinel)
+
+    monkeypatch.setattr(
+        quack_state_client_module,
+        "QuackStateClient",
+        fail_client_construction,
+    )
+
+    with pytest.raises(TypeError, match=sentinel):
+        implementation_daemon_module.main(
+            [
+                "--once",
+                "--todo-path",
+                str(tmp_path / "board.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--state-prefix",
+                "lgcvf_lane_0",
+                "--task-source-kind",
+                "duckdb",
+                "--authority-mode",
+                "quack",
+                "--quack-endpoint",
+                endpoint,
+                "--state-store-id",
+                store_id,
+                "--owner-session-id",
+                "lane-0",
+                "--state-owner-bootstrap-fd",
+                "99",
+                "--state-owner-bootstrap-store-id",
+                store_id,
+            ]
+        )
+
+    captured = capfd.readouterr()
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 phase=owner_attach type=TypeError "
+        "site=implementation_daemon:"
+    )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert sentinel not in captured.err
+    assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+    assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
 
 
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
@@ -13219,6 +13604,9 @@ def test_auto_provider_does_not_bypass_grok_capacity_latch(
 
 def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        provider_executable_trust,
+    )
 
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
@@ -13246,6 +13634,11 @@ def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     )
     # The production resolver accepts only an installed, trusted executable.
     # Route-construction tests use a fixed inert path and never launch it.
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
     monkeypatch.setattr(
         grok_cli_runner,
         "resolve_codex_quota_fallback_executable",
@@ -14478,6 +14871,9 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
     monkeypatch,
 ):
     from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        provider_executable_trust,
+    )
 
     grok_bin = tmp_path / "grok"
     grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -14491,6 +14887,11 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
         implementation_daemon_module,
         "_grok_cli_available",
         lambda: True,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
     )
     monkeypatch.setattr(
         grok_cli_runner,
@@ -15321,6 +15722,7 @@ def test_implementation_daemon_moves_directory_lock_and_acquires_lock(tmp_path):
     assert reason == "acquired"
     assert existing is None
     assert lock_path.is_file()
+    assert lock_path.stat().st_mode & 0o777 == 0o600
     backups = list(state_dir.glob("implementation.lock.directory-backup-*"))
     assert len(backups) == 1
     assert (backups[0] / "fragment").exists()

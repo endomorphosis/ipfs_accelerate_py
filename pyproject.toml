@@ -157,6 +157,8 @@ full = [
 ]
 testing = [
   "pytest>=8.0.0",
+  "z3-solver>=4.12.0,<5.0.0",
+  "cvc5==1.3.3",
   "pytest-timeout>=2.4.0",
   "pytest-cov>=4.0.0",
   "pytest-env>=1.1.3",
@@ -235,6 +237,146 @@ all = [
   "llama-cpp-python[server]>=0.3.10",
   "huggingface_hub>=0.24.0",
 ]
+
+[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
+schema = "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4"
+requires-python = ">=3.8"
+authority = { file = "requirements.txt", sha256 = "db63abfc0624140dfb23b96d8d024d48a83013626fc227a56c4c26ad6682cc01", extra = "testing", extra-requirements-sha256 = "77fa42b129c722ddf2b7146aaaf22aba08e3b0f4c134af42a5af9db3d4e093cc" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_program_repair_egraph.py"
+command-target = "test/api/test_agent_supervisor_program_repair_egraph.py"
+command-kind = "pytest"
+validation-command-sha256 = "ea59cc9c67aaf3f6876446ea61118092f43746f3d21973d7bbca201388dc0d2f"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera22uu4o4ux6kzp4fgv5gxqupas3nhdjtbrtt73x2kc6mhtxkdbtwq", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py", "test/api/test_agent_supervisor_program_repair_egraph.py"] }
+baseline = { state = "present", sha256 = "e5b4751b5bedc77e83a9b4b3dd5d2fc205a0862f3f86a9f2a7916d8afd95a61a" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_program_repair_cegis.py"
+command-target = "test/api/test_agent_supervisor_program_repair_cegis.py"
+command-kind = "pytest"
+validation-command-sha256 = "992da9d4e8c60c9eac3e3583593f8e8dd6d6c43c654fa786746af9a9cdbfb26a"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeeraxnljzua5u6p7tlwhor6pia72itrxgpw7kfc45qntwafgfhodrv4a", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/repair_operator_registry.py", "ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py", "test/api/test_agent_supervisor_program_repair_cegis.py"] }
+baseline = { state = "present", sha256 = "0ab04e3e6312a01c7df08870ad9e47305ff42c577282637a9702e887f1692508" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_proof_carrying_context.py"
+command-target = "test/api/test_agent_supervisor_proof_carrying_context.py"
+command-kind = "pytest"
+validation-command-sha256 = "12fcbe4f9e5bbbdc9962aa5554ed17421d2bffbe6a7c4296080c1b1c937fc30d"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeeraykp6as4gm2ekcdjq4khku3mkuq55uitikww32xto5y35a4iqxkea", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py", "test/api/test_agent_supervisor_proof_carrying_context.py"] }
+baseline = { state = "present", sha256 = "3f49aab241141fb04641e5a3e682fa2a5dc23b8b2a75fedadcb3c3e1b4b7f135" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_lgcvf_planner_doctor.py"
+command-target = "test/api/test_agent_supervisor_lgcvf_planner_doctor.py"
+command-kind = "pytest"
+validation-command-sha256 = "7cb4b5f93a5dd58e2e4ae4cc1c9e8cdab3a9c32634a561f32b4cdea93f8726e0"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeeratitnrgk2iso55m5e3saw7qsnek6u4wep2rk2yav62snpco4eueaa", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py", "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_live_fixed_point.py", "test/api/test_agent_supervisor_lgcvf_planner_doctor.py"] }
+baseline = { state = "present", sha256 = "7cd0587b983fae92c09dd6b45dc90d173fddcbd9f4c9eea2401b1564cc513aef" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_lgcvf_persistence.py"
+command-target = "test/api/test_agent_supervisor_lgcvf_persistence.py"
+command-kind = "pytest"
+validation-command-sha256 = "1e93ecdb6784162a2bf25347307d190e017f39e53d8f72f8536e67b8d9657d7f"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerazhnw7dykuzccan4c5uvctm3tn27n4hi7brtshmzfuvpbs4yykdpq", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py", "test/api/test_agent_supervisor_lgcvf_persistence.py"] }
+baseline = { state = "present", sha256 = "28d9b870f44fc472a57b0fdde5bfb7ec5af384da178abe3a7278b2e876f81b00" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_lgcvf_transport_parity.py"
+command-target = "test/api/test_agent_supervisor_lgcvf_transport_parity.py"
+command-kind = "pytest"
+validation-command-sha256 = "df4e78cc3e527546f0494c82d9ba2508a343254f62e54978ec866447df3f5711"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeeralwt32wfzhjl3zv7a6kwolcuge2fh6ee7nmnq66lenq4ahynte32q", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py", "test/api/test_agent_supervisor_lgcvf_transport_parity.py"] }
+baseline = { state = "present", sha256 = "86fe9c7be16fd84fdcedd0277dc008948e10b513ae8be5b2b173d0d0cf60d937" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_compositional_verification_vertical.py"
+command-target = "test/api/test_agent_supervisor_compositional_verification_vertical.py"
+command-kind = "pytest"
+validation-command-sha256 = "abecabc7005ad941b42908fcb2b2eda9ffb21e97dc51b80e3c72fcbcb027e8e0"
+requirements = ["pytest>=8.0.0", "z3-solver>=4.12.0,<5.0.0", "cvc5==1.3.3"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera3kr4nchya7wkcerdqoqzvhuuoibnzzvzsb3d5peii4wzrqcechpa", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/validation/compositional_verification_vertical.py", "test/fixtures/agent_supervisor/compositional_verification", "test/api/test_agent_supervisor_compositional_verification_vertical.py"] }
+baseline = { state = "present", sha256 = "2fd61ec5585b8bcae4936019bbfb03b2f804c0afee6e83a61c5fdbb13df95a21" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_lgcvf_focused_qualification.py"
+command-target = "test/api/test_agent_supervisor_lgcvf_focused_qualification.py"
+command-kind = "pytest"
+validation-command-sha256 = "540d0375c1741388ffed13eaa78b8985a9a79a8ebbef332142850078c9730afc"
+requirements = ["pytest>=8.0.0", "z3-solver>=4.12.0,<5.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerau4vdgcyn3sdorik7zawwgwrhy7mxxydb6gashctytbmdzwtmumea", declared-outputs = ["test/api/test_agent_supervisor_lgcvf_focused_qualification.py"] }
+baseline = { state = "present", sha256 = "be4444d30cf61f078ae5bc31856f63ce6cd65e642f0885dc9c330fa570ca5bc2" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "test/api/test_agent_supervisor_lgcvf_adversarial.py"
+command-target = "test/api/test_agent_supervisor_lgcvf_adversarial.py"
+command-kind = "pytest"
+validation-command-sha256 = "ac1306d967d962d8f1eba15b044eb4c21d2ecb45e1826177ee775416e32aa4da"
+requirements = ["pytest>=8.0.0"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeeramxjolmqp2rh7r5vfrrs5ne3mqqhbxh3pn74k27h5tbpf4luasfkq", declared-outputs = ["test/api/test_agent_supervisor_lgcvf_adversarial.py"] }
+baseline = { state = "present", sha256 = "55bb713634d717f1874aa1c44405c58b25a3d56263a5f1ff69655ff2961bfae0" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json"
+command-target = "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+command-kind = "python-script-check"
+validation-command-sha256 = "c06a8e186e3ff2eaf09d2c0d3c1f3dc7cd16592ff5d18de63bb8a55dba9ce432"
+requirements = ["pytest>=8.0.0", "z3-solver>=4.12.0,<5.0.0", "cvc5==1.3.3"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerakwvsckoysv5edcru3makxvmcwjjm2alzam5umsyqbkp3efngyqpa", declared-outputs = ["data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json"] }
+baseline = { state = "present", sha256 = "ae706a44b084231bd9af0d1195c97e0760083f8d008f31325fd1fdd6976d419d" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "scripts/benchmark_lgcvf_symbolic_displacement.py"
+command-target = "scripts/benchmark_lgcvf_symbolic_displacement.py"
+command-kind = "python-script-check"
+validation-command-sha256 = "efbc2177cb5b97fef4d0ab80f1fe2c65dd1878cc0d376c720817b66546529ed4"
+requirements = ["pytest>=8.0.0", "z3-solver>=4.12.0,<5.0.0", "cvc5==1.3.3"]
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerabc3lsi3ijupnqqov47tnd5ozlnqfrfobt2t7yqa3kigvujksdjdq", declared-outputs = ["scripts/benchmark_lgcvf_symbolic_displacement.py", "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json"] }
+baseline = { state = "present", sha256 = "07ca8c7baf61623595cf605007c7977fc326e8a935ce97b2d6a15b31d5604d6e" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_receipt.json"
+command-target = "data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_receipt.json"
+command-kind = "json-tool"
+validation-command-sha256 = "ccc319cefa70b66b3b29594d9d55404b55c8a60f2131ef406589c900e5533339"
+requirements = []
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera6ivyotodkjj7v52oebdcxr4bwlw7yej2bkvk3z7ixiyutfvr2vta", declared-outputs = ["data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_receipt.json"] }
+baseline = { state = "present", sha256 = "ba7449e83b6efa322011eb4927ca471f5536e3d6a8a4a53ed6dbbb5a289126e7" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md"
+command-target = "scripts/validate_logic_governed_compositional_verification_fabric_closeout.py"
+command-kind = "python-script-mode-check"
+validation-command-sha256 = "ebbd687220dfc3a15110fcb4c4f0cea782a25ee7d6a99f0bc0520a07fcb5e133"
+requirements = []
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerajz3kvkwemucldoinsotfbmor5zpuhubfk7se3f7ezriunqo53qvq", declared-outputs = ["docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md"] }
+baseline = { state = "present", sha256 = "ac17f20581f98395447bb7a9e4e952d27cf3ad2cf569db08edf4628a83e0ccc5" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_receipt.json"
+command-target = "data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_receipt.json"
+command-kind = "json-tool"
+validation-command-sha256 = "7856695cf4c231ffbaf45611c4f99f43eb654556bc6280ac747e9640a3c1a060"
+requirements = []
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeerawziaahwiz2urgumlyjdpuozzjxxx2oxryxe5lyci73aohfef3pjq", declared-outputs = ["data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_receipt.json"] }
+baseline = { state = "present", sha256 = "497bbf2ac5029d69b56a4061e9e9b5be4b78950558e800d8dcd169d2a081d100" }
+
+[[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
+target = "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md"
+command-target = "scripts/validate_logic_governed_compositional_verification_fabric_closeout.py"
+command-kind = "python-script-mode-check"
+validation-command-sha256 = "ee46c8a003fc7244f0d646863f340c9550f84bc21e15a1ba29f841f7693f6d60"
+requirements = []
+task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera3y2hsc25gqc7wsa6nojhdz74fn4hkmgwexq5rgpajir3ahq6w4ma", declared-outputs = ["docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md", "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json"] }
+baseline = { state = "present", sha256 = "ca32167a0f4d1013a14f2c16676e1f6314662b78490ac6607d94663afeefad1d" }
 
 [tool.setuptools.packages.find]
 include = ["ipfs_accelerate_py*", "scripts", "scripts.*"]

@@ -5,6 +5,13 @@ proof-directed retrieval handles, and validation/scope bindings into a
 body-free capsule.  Satisfied evidence is represented only as digests/handles.
 Repository text is labeled untrusted data and cannot become instructions.
 
+LGCVF-091 extends the same capsule optimizer with mandatory-coverage
+proof-carrying compilation: exact, conservative, and opaque substitution
+classes minimize token cost without dropping affected interfaces, open
+assumptions/obligations, policy, allowed effects, or validation. Satisfied
+proofs stay digest handles. Optional source is compressed by class; secrets
+and instruction injection cannot enter; stale roots fail closed.
+
 The residual-only repair path:
 
 * skips the LLM entirely when a deterministic closure already discharges the
@@ -21,8 +28,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import PurePosixPath
 from types import MappingProxyType
@@ -167,6 +174,20 @@ MAX_PATHS: Final[int] = 1_024
 MAX_TEXT_BYTES: Final[int] = 4_096
 MAX_UNTRUSTED_SNIPPET_BYTES: Final[int] = 400
 MAX_CAPSULE_BYTES: Final[int] = 262_144
+
+# Mandatory coverage for LGCVF-091 proof-carrying compilation. Policy is the
+# security-root / policy-id binding; the compiler emits kind "policy" and
+# kind "security" together so neither can be omitted independently.
+PROOF_CARRYING_MANDATORY_COVERAGE: Final[tuple[str, ...]] = (
+    "affected_interfaces",
+    "open_obligations",
+    "assumptions",
+    "policy",
+    "allowed_effects",
+    "validation",
+)
+CONSERVATIVE_SOURCE_PREVIEW_BYTES: Final[int] = 80
+EXACT_SOURCE_PREVIEW_BYTES: Final[int] = MAX_UNTRUSTED_SNIPPET_BYTES
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +374,37 @@ def _reject_forbidden_keys(payload: Mapping[str, Any], *, where: str) -> None:
                 f"{where} cannot embed {key} (forbidden body/secret)",
                 reason_code="forbidden_body",
             )
+
+
+def _iter_text_values(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str):
+                yield key
+            yield from _iter_text_values(item)
+        return
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray, memoryview)
+    ):
+        for item in value:
+            yield from _iter_text_values(item)
+
+
+def _reject_injection(text: str, *, where: str) -> None:
+    if _INSTRUCTION_RE.search(text or ""):
+        raise PlannerDoctorContextAuthorityError(
+            f"{where} contains instruction-injection content",
+            reason_code="injection",
+        )
+
+
+def _reject_untrusted_payload(payload: Mapping[str, Any], *, where: str) -> None:
+    _reject_forbidden_keys(payload, where=where)
+    for text in _iter_text_values(payload):
+        _reject_injection(text, where=where)
 
 
 def _positive_int(value: Any, name: str, *, default: int | None = None) -> int:
@@ -719,7 +771,7 @@ class PlannerDoctorContextRequest:
                 raise PlannerDoctorContextError(
                     "optional_source_snippets items must be mappings"
                 )
-            _reject_forbidden_keys(item, where="optional_source_snippet")
+            _reject_untrusted_payload(item, where="optional_source_snippet")
             snippets.append(MappingProxyType(dict(item)))
         object.__setattr__(self, "optional_source_snippets", tuple(snippets))
         slots: list[Mapping[str, Any]] = []
@@ -1287,6 +1339,24 @@ def build_planner_doctor_context_references(
                 metadata={"core_field": "affected_interfaces", "mandatory_coverage": True},
             )
         )
+        refs.append(
+            _ref(
+                reference_id="policy:binding",
+                kind="policy",
+                tier=ContextTier.INVARIANT,
+                content={
+                    "policy_id": request.policy_id,
+                    "policy_revision": request.policy_revision,
+                    "security_roots": list(request.security_roots),
+                },
+                repository_id=repo,
+                tree_id=tree,
+                summary="policy binding",
+                required=True,
+                priority=1,
+                metadata={"mandatory_coverage": True, "core_field": "security"},
+            )
+        )
     if request.proof_carrying_artifact_cid:
         refs.append(
             _ref(
@@ -1430,22 +1500,34 @@ def build_planner_doctor_context_references(
             )
         )
 
-    # Optional source snippets — untrusted data.
+    # Optional source snippets — untrusted data. Preview is never inferred
+    # from the path: empty text means handle-only (opaque / compressed).
     expansion_ids: list[str] = []
     for index, snippet in enumerate(request.optional_source_snippets):
         path = str(snippet.get("path") or f"snippet:{index}")
-        body = str(snippet.get("text") or snippet.get("summary") or path)[
+        handle = str(snippet.get("handle") or path)
+        preview = str(snippet.get("text") or snippet.get("summary") or "")[
             :MAX_UNTRUSTED_SNIPPET_BYTES
         ]
+        content: dict[str, Any] = {"path": path, "handle": handle}
+        source_meta: dict[str, Any] = {
+            "voi_rank": index,
+            "expansion_candidate": True,
+            "handle": handle,
+            "body_embedded": bool(preview),
+        }
+        if preview:
+            # Preview must live on the reference record so substitution class
+            # changes the compiled token cost. Hashing it only into
+            # referenced_content_id would make exact/conservative/opaque
+            # capsules the same size.
+            content["preview"] = preview
+            source_meta["preview"] = preview
         ref = _ref(
             reference_id=f"source-optional:{index}",
             kind="optional_source",
             tier=ContextTier.EVIDENCE,
-            content={
-                "path": path,
-                "preview": body,
-                "handle": snippet.get("handle") or path,
-            },
+            content=content,
             repository_id=repo,
             tree_id=tree,
             path=path if "/" in path or path.endswith(".py") else "",
@@ -1453,7 +1535,7 @@ def build_planner_doctor_context_references(
             required=False,
             priority=20 + index,
             untrusted_data=True,
-            metadata={"voi_rank": index, "expansion_candidate": True},
+            metadata=source_meta,
         )
         expansion_ids.append(ref.reference_id)
         refs.append(ref)
@@ -1634,36 +1716,74 @@ def compile_planner_doctor_context(
     )
 
 
-def _reject_injection(text: str, *, where: str) -> None:
-    if _INSTRUCTION_RE.search(text or ""):
-        raise PlannerDoctorContextAuthorityError(
-            f"{where} contains instruction-injection content",
-            reason_code="injection",
-        )
+def _source_preview_limit(capsule_class: ProofCarryingCapsuleClass) -> int:
+    if capsule_class is ProofCarryingCapsuleClass.EXACT:
+        return EXACT_SOURCE_PREVIEW_BYTES
+    if capsule_class is ProofCarryingCapsuleClass.CONSERVATIVE:
+        return CONSERVATIVE_SOURCE_PREVIEW_BYTES
+    return 0
 
 
-def compile_proof_carrying_context(
-    request: PlannerDoctorContextRequest,
+def _snippet_handle(snippet: Mapping[str, Any], *, index: int) -> str:
+    return str(snippet.get("handle") or snippet.get("path") or f"snippet:{index}")
+
+
+def _project_optional_source_snippets(
+    snippets: Sequence[Mapping[str, Any]],
     *,
-    tokenizer: Any | None = None,
-    provider_context_window: int | None = None,
-) -> PlannerDoctorContextCapsule:
-    """Compile mandatory-coverage proof-carrying context (LGCVF-091).
+    capsule_class: ProofCarryingCapsuleClass,
+) -> tuple[Mapping[str, Any], ...]:
+    """Compress optional source according to the substitution class.
 
-    Extends the existing Planner/Doctor capsule optimizer. Satisfied evidence
-    is compressed to handles. Secrets and injection cannot enter the capsule.
-    Stale roots and omitted mandatory coverage fail closed.
+    Exact keeps a bounded preview. Conservative keeps a cheaper truncated
+    preview. Opaque retains only path/handle identity so critical source
+    handles survive without embedding bodies.
     """
 
-    if not isinstance(request, PlannerDoctorContextRequest):
-        raise PlannerDoctorContextError(
-            "request must be a PlannerDoctorContextRequest"
-        )
-    if request.expected_tree_id and request.expected_tree_id != request.tree_id:
-        raise PlannerDoctorContextError(
-            "context tree_id is stale relative to expected_tree_id",
-            reason_code="stale_root",
-        )
+    limit = _source_preview_limit(capsule_class)
+    projected: list[Mapping[str, Any]] = []
+    for index, snippet in enumerate(snippets):
+        path = str(snippet.get("path") or f"snippet:{index}")
+        handle = _snippet_handle(snippet, index=index)
+        text = str(snippet.get("text") or snippet.get("summary") or "")
+        item: dict[str, Any] = {"path": path, "handle": handle}
+        if limit > 0 and text:
+            item["text"] = text[:limit]
+        projected.append(MappingProxyType(item))
+    return tuple(projected)
+
+
+def _require_critical_source_handles(
+    request: PlannerDoctorContextRequest,
+    snippets: Sequence[Mapping[str, Any]],
+) -> None:
+    present = {str(item) for item in request.satisfied_proof_handles}
+    for index, snippet in enumerate(snippets):
+        present.add(_snippet_handle(snippet, index=index))
+        path = str(snippet.get("path") or "")
+        if path:
+            present.add(path)
+    missing_critical = [
+        handle
+        for handle in request.critical_source_handles
+        if handle not in present
+    ]
+    if not missing_critical:
+        return
+    prefix = (
+        "opaque capsule dropped critical source"
+        if request.capsule_class is ProofCarryingCapsuleClass.OPAQUE
+        else "compiled capsule dropped critical source"
+    )
+    raise PlannerDoctorContextError(
+        f"{prefix} handle {missing_critical[0]}",
+        reason_code="critical_source_dropped",
+    )
+
+
+def _require_proof_carrying_coverage(
+    request: PlannerDoctorContextRequest,
+) -> None:
     missing: list[str] = []
     if not request.affected_interface_ids:
         missing.append("affected_interfaces")
@@ -1683,52 +1803,65 @@ def compile_proof_carrying_context(
             reason_code="omission",
         )
 
-    for index, snippet in enumerate(request.optional_source_snippets):
-        preview = str(snippet.get("text") or snippet.get("summary") or "")
-        _reject_injection(preview, where=f"optional_source_snippets[{index}]")
-        _reject_forbidden_keys(snippet, where=f"optional_source_snippets[{index}]")
 
-    snippets = request.optional_source_snippets
-    if request.capsule_class is ProofCarryingCapsuleClass.OPAQUE:
-        compressed: list[Mapping[str, Any]] = []
-        for snippet in snippets:
-            handle = str(snippet.get("handle") or snippet.get("path") or "")
-            compressed.append(
-                MappingProxyType(
-                    {
-                        "path": str(snippet.get("path") or ""),
-                        "handle": handle,
-                        "text": "",
-                    }
-                )
-            )
-        object.__setattr__(request, "optional_source_snippets", tuple(compressed))
-        present_handles = {
-            str(item.get("handle") or item.get("path") or "")
-            for item in request.optional_source_snippets
-        }
-        present_handles.update(request.satisfied_proof_handles)
-        missing_critical = [
-            handle
-            for handle in request.critical_source_handles
-            if handle not in present_handles
-        ]
-        if missing_critical:
-            raise PlannerDoctorContextError(
-                "opaque capsule dropped critical source handle "
-                + missing_critical[0],
-                reason_code="critical_source_dropped",
-            )
+def compile_proof_carrying_context(
+    request: PlannerDoctorContextRequest,
+    *,
+    tokenizer: Any | None = None,
+    provider_context_window: int | None = None,
+) -> PlannerDoctorContextCapsule:
+    """Compile mandatory-coverage proof-carrying context (LGCVF-091).
+
+    Extends the existing Planner/Doctor capsule optimizer. Cost is minimized
+    by substitution class without dropping mandatory coverage. Satisfied
+    evidence is compressed to handles. Secrets and injection cannot enter
+    the capsule. Stale roots and omitted mandatory coverage fail closed.
+    """
+
+    if not isinstance(request, PlannerDoctorContextRequest):
+        raise PlannerDoctorContextError(
+            "request must be a PlannerDoctorContextRequest"
+        )
+    if not request.expected_tree_id:
+        raise PlannerDoctorContextError(
+            "expected_tree_id is required to reject stale roots",
+            reason_code="stale_root",
+        )
+    if request.expected_tree_id != request.tree_id:
+        raise PlannerDoctorContextError(
+            "context tree_id is stale relative to expected_tree_id",
+            reason_code="stale_root",
+        )
+    _require_proof_carrying_coverage(request)
+
+    for index, snippet in enumerate(request.optional_source_snippets):
+        _reject_untrusted_payload(
+            snippet, where=f"optional_source_snippets[{index}]"
+        )
+
+    projected = _project_optional_source_snippets(
+        request.optional_source_snippets,
+        capsule_class=request.capsule_class,
+    )
+    _require_critical_source_handles(request, projected)
+
+    working = request
+    if projected != request.optional_source_snippets:
+        working = replace(request, optional_source_snippets=projected)
 
     capsule = compile_planner_doctor_context(
-        request,
+        working,
         tokenizer=tokenizer,
         provider_context_window=provider_context_window,
     )
     kinds = {ref.kind for ref in capsule.capsule.evidence}
-    if "affected_interfaces" not in kinds:
+    compiled_missing = [
+        kind for kind in PROOF_CARRYING_MANDATORY_COVERAGE if kind not in kinds
+    ]
+    if compiled_missing:
         raise PlannerDoctorContextError(
-            "compiled capsule omitted affected interfaces",
+            "compiled capsule omitted mandatory coverage: "
+            + ",".join(compiled_missing),
             reason_code="omission",
         )
     if request.satisfied_proof_handles:
@@ -1738,15 +1871,51 @@ def compile_proof_carrying_context(
             if ref.kind == "satisfied_proof_handle"
         ]
         if not handle_refs or any(
-            not (ref.metadata or {}).get("digest_only") for ref in handle_refs
+            not (ref.metadata or {}).get("digest_only")
+            or not (ref.metadata or {}).get("no_body")
+            for ref in handle_refs
         ):
             raise PlannerDoctorContextError(
                 "satisfied proof was not compressed to a handle",
                 reason_code="handle_required",
             )
-    serialized = _canonical_json(dict(capsule.metadata))
+        if any("proof_transcript" in (ref.summary or "") for ref in handle_refs):
+            raise PlannerDoctorContextError(
+                "satisfied proof handle embedded a proof transcript",
+                reason_code="handle_required",
+            )
+    for ref in capsule.capsule.evidence:
+        if ref.kind == "expansion_cid" and (ref.metadata or {}).get(
+            "body_embedded", True
+        ):
+            raise PlannerDoctorContextError(
+                "dynamic expansion embedded a body instead of a handle",
+                reason_code="handle_required",
+            )
+        if ref.kind == "optional_source":
+            summary = (ref.summary or "").lower()
+            if "secret" in summary or "api_key" in summary:
+                raise PlannerDoctorContextAuthorityError(
+                    "optional source summary exposed a secret",
+                    reason_code="forbidden_body",
+                )
+            if (
+                request.capsule_class is ProofCarryingCapsuleClass.OPAQUE
+                and (ref.metadata or {}).get("body_embedded")
+            ):
+                raise PlannerDoctorContextError(
+                    "opaque capsule embedded optional source",
+                    reason_code="handle_required",
+                )
+    extra_metadata = {
+        **dict(capsule.metadata),
+        "mandatory_coverage": list(PROOF_CARRYING_MANDATORY_COVERAGE),
+        "source_preview_limit": _source_preview_limit(request.capsule_class),
+        "source_body_embedded": _source_preview_limit(request.capsule_class) > 0,
+    }
+    serialized = _canonical_json(extra_metadata)
     _reject_injection(serialized, where="compiled_capsule")
-    return capsule
+    return replace(capsule, metadata=extra_metadata)
 
 
 # ---------------------------------------------------------------------------
@@ -2447,6 +2616,7 @@ __all__ = [
     "PLANNER_DOCTOR_CONTEXT_SCHEMA",
     "PLANNER_DOCTOR_CONTEXT_VERSION",
     "PRODUCER_ID",
+    "PROOF_CARRYING_MANDATORY_COVERAGE",
     "REQUIRED_CORE_FIELDS",
     "RESIDUAL_ADMISSION_SCHEMA",
     "RESIDUAL_LLM_REPAIR_SCHEMA",

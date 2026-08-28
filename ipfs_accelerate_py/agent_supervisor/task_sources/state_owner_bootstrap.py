@@ -130,6 +130,62 @@ def _connect_inherited_listener(
     return channel
 
 
+def validate_state_owner_bootstrap_listener(descriptor: int) -> str | bytes:
+    """Validate an inherited rendezvous listener without consuming its FD.
+
+    Launch parents use this before forwarding the capability through another
+    process boundary.  Validation operates on a duplicate so the descriptor
+    retained for the eventual daemon remains open and keeps its original
+    number.
+    """
+
+    if isinstance(descriptor, bool) or not isinstance(descriptor, int) or descriptor < 3:
+        raise StateOwnerBootstrapError("state-owner bootstrap descriptor is invalid")
+    try:
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        raise StateOwnerBootstrapError(
+            "state-owner bootstrap descriptor is unavailable"
+        ) from exc
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise StateOwnerBootstrapError(
+            "state-owner bootstrap requires an inherited Unix socket"
+        )
+    duplicate = -1
+    listener: socket.socket | None = None
+    try:
+        duplicate = os.dup(descriptor)
+        listener = socket.socket(fileno=duplicate)
+        duplicate = -1
+        if listener.family != socket.AF_UNIX or (
+            listener.type & socket.SOCK_STREAM
+        ) != socket.SOCK_STREAM:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap descriptor has the wrong socket type"
+            )
+        if listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap descriptor is not a rendezvous listener"
+            )
+        address = listener.getsockname()
+        if not isinstance(address, (str, bytes)) or not address:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap rendezvous identity is unavailable"
+            )
+        return address
+    except StateOwnerBootstrapError:
+        raise
+    except (OSError, TypeError, ValueError) as exc:
+        raise StateOwnerBootstrapError(
+            "state-owner bootstrap listener could not be validated"
+        ) from exc
+    finally:
+        if listener is not None:
+            listener.close()
+        elif duplicate >= 0:
+            os.close(duplicate)
+
+
 @dataclass(frozen=True)
 class StateOwnerBootstrapCredentials:
     """One daemon-birth-bound credential received from its state owner."""
@@ -294,4 +350,5 @@ __all__ = [
     "_receive_frame",
     "_send_frame",
     "request_state_owner_bootstrap",
+    "validate_state_owner_bootstrap_listener",
 ]

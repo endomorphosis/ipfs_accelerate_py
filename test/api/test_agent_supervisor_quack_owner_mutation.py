@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as quack_server_module
+
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    quack_state_server as quack_server_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     MUTATION_REQUEST_NAME,
     QUACK_ISOLATION_RECEIPT_SCHEMA,
@@ -22,7 +25,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerIsolationError,
     build_server,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    duckdb_state as duckdb_state_module,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_state_owner as typed_owner_module,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     CommandKind,
     CommandOutcome,
@@ -88,6 +96,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    TypedStateOwnerAuthorizationError,
+    TypedStateOwnerConnection,
     build_control_plane_operation_catalog,
 )
 
@@ -196,6 +206,153 @@ def _typed_task_source(
         monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
     assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
     return TypedDatabaseTaskSource(client, clock_ms=clock_ms)
+
+
+def test_typed_client_grant_renews_an_existing_connected_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Renewal must extend the grant already bound to an open Unix channel."""
+
+    server, identity, _owner_token, _database = _server(tmp_path)
+    client_id = "client:transparent-grant-renewal"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(sorted(build_control_plane_operation_catalog())),
+        peer_pid=os.getpid(),
+        ttl_seconds=2.0,
+    )
+    connection = TypedStateOwnerConnection(
+        socket_path=server.typed_command_socket_path(),
+        token=token,
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        store_id=identity.store_id,
+    )
+    try:
+        initial_generation = connection.execute_operation(
+            "load_store_generation"
+        ).fetchall()
+
+        renewal_now_ms = grant.expires_at - 100
+        with monkeypatch.context() as renewal_clock:
+            renewal_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: renewal_now_ms / 1_000,
+            )
+            renewed = server.renew_typed_client_grant(
+                grant.grant_id,
+                ttl_seconds=2.0,
+            )
+            assert renewed.grant_id == grant.grant_id
+            assert renewed.expires_at > grant.expires_at
+            assert {
+                key: value
+                for key, value in renewed.public_dict().items()
+                if key not in {"issued_at", "expires_at"}
+            } == {
+                key: value
+                for key, value in grant.public_dict().items()
+                if key not in {"issued_at", "expires_at"}
+            }
+
+            # This instant is after the record captured by the open channel
+            # expired, but before the server-side renewal expires.  No token
+            # replacement, reconnect, or new client object is allowed here.
+            renewal_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: (grant.expires_at + 100) / 1_000,
+            )
+            assert connection.execute_operation(
+                "load_store_generation"
+            ).fetchall() == initial_generation
+    finally:
+        connection.close()
+        server.stop()
+
+
+def test_typed_client_grant_renewal_rejects_nonexact_or_inactive_grants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only one exact, currently active grant ID is renewable."""
+
+    primary_root = tmp_path / "primary"
+    primary_root.mkdir()
+    server, identity, _owner_token, _database = _server(primary_root)
+    foreign_root = tmp_path / "foreign"
+    foreign_root.mkdir()
+    foreign_server, foreign_identity, _foreign_token, _foreign_database = (
+        _server(foreign_root)
+    )
+    grant_kwargs = {
+        "client_id": "client:grant-renewal-negative",
+        "process_birth_id": identity.process_birth_id,
+        "allowed_operations": ("load_store_generation", "whoami_metadata"),
+        "peer_pid": os.getpid(),
+        "ttl_seconds": 2.0,
+    }
+    _active_token, active = server.issue_typed_client_grant_record(**grant_kwargs)
+    _revoked_token, revoked = server.issue_typed_client_grant_record(
+        **{**grant_kwargs, "client_id": "client:grant-renewal-revoked"}
+    )
+    _expired_token, expired = server.issue_typed_client_grant_record(
+        **{**grant_kwargs, "client_id": "client:grant-renewal-expired"}
+    )
+    _foreign_client_token, foreign = (
+        foreign_server.issue_typed_client_grant_record(
+            client_id="client:grant-renewal-foreign",
+            process_birth_id=foreign_identity.process_birth_id,
+            allowed_operations=("load_store_generation", "whoami_metadata"),
+            peer_pid=os.getpid(),
+            ttl_seconds=2.0,
+        )
+    )
+    try:
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                f"{active.grant_id}:tampered",
+                ttl_seconds=2.0,
+            )
+
+        # A valid grant from a different owner is still the wrong grant here.
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                foreign.grant_id,
+                ttl_seconds=2.0,
+            )
+
+        server.revoke_typed_client_grant(revoked.grant_id)
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                revoked.grant_id,
+                ttl_seconds=2.0,
+            )
+
+        with monkeypatch.context() as expired_clock:
+            expired_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: (expired.expires_at + 1) / 1_000,
+            )
+            with pytest.raises(TypedStateOwnerAuthorizationError):
+                server.renew_typed_client_grant(
+                    expired.grant_id,
+                    ttl_seconds=2.0,
+                )
+
+        # None of the rejected requests may disturb an unrelated active grant.
+        renewed = server.renew_typed_client_grant(
+            active.grant_id,
+            ttl_seconds=2.0,
+        )
+        assert renewed.grant_id == active.grant_id
+    finally:
+        foreign_server.stop()
+        server.stop()
 
 
 def _typed_claim_receipt(
@@ -755,6 +912,447 @@ def _publish(server: Any, request: dict[str, Any]) -> Path:
 def _done(server: Any, request: dict[str, Any]) -> dict[str, Any]:
     path = server.mutation_inbox_path() / f"{request['request_id']}.done.json"
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _owner_command_request(
+    server: Any,
+    token: str,
+    *,
+    request_id: str,
+    store_generation: str = "pcpc-v1",
+) -> dict[str, Any]:
+    identity = server._identity  # noqa: SLF001
+    assert identity is not None
+    request = {
+        "schema": duckdb_state_module.QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": f"supervisor-process:{os.getpid()}",
+        "store_id": identity.store_id,
+        "store_generation": store_generation,
+        "command": duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+        "payload": {
+            "task_cid": "task:test",
+            "delay_ms": 60_000,
+            "reason": "regression-test",
+            "selection_penalty": 7,
+        },
+    }
+    request["signature"] = duckdb_state_module.quack_owner_command_signature(
+        request,
+        token,
+    )
+    return request
+
+
+def test_owner_command_and_inbox_share_one_transaction_lock(
+    tmp_path: Path,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    attempted = threading.Event()
+    finished = threading.Event()
+    outcomes: list[int] = []
+
+    def service() -> None:
+        attempted.set()
+        outcomes.append(server.service_mutation_inbox())
+        finished.set()
+
+    worker = threading.Thread(target=service, daemon=True)
+    server._owner_transaction_lock.acquire()  # noqa: SLF001
+    try:
+        gateway = server._command_gateway  # noqa: SLF001
+        assert gateway is not None
+        assert gateway._transaction_lock is server._owner_transaction_lock  # noqa: SLF001
+        worker.start()
+        assert attempted.wait(timeout=5)
+        assert not finished.wait(timeout=0.1)
+    finally:
+        server._owner_transaction_lock.release()  # noqa: SLF001
+    try:
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+        assert outcomes == [0]
+    finally:
+        server.stop()
+
+
+def test_noncanonical_uuid_request_is_dropped_without_owner_failure(
+    tmp_path: Path,
+) -> None:
+    """A legacy/foreign UUID envelope cannot terminate the typed owner."""
+
+    server, _identity, _token, _database = _server(tmp_path)
+    request_id = "c" * 32
+    request = server.mutation_inbox_path() / f"{request_id}.request.json"
+    done = server.mutation_inbox_path() / f"{request_id}.done.json"
+    request.parent.mkdir(mode=0o700, parents=True)
+    request.write_text(
+        '{"op": "board_unstall", "stale_seconds": 16200}\n',
+        encoding="utf-8",
+    )
+    try:
+        assert server.service_mutation_inbox() == 1
+        assert server.lifecycle.value == "ready"
+        assert not request.exists()
+        assert not done.exists()
+    finally:
+        server.stop()
+
+
+def test_canonical_foreign_uuid_request_has_no_signed_oracle(
+    tmp_path: Path,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    request_id = "d" * 32
+    request = server.mutation_inbox_path() / f"{request_id}.request.json"
+    done = server.mutation_inbox_path() / f"{request_id}.done.json"
+    request.parent.mkdir(mode=0o700, parents=True)
+    request.write_bytes(
+        canonical_json_bytes(
+            {"op": "board_unstall", "stale_seconds": 16_200}
+        )
+        + b"\n"
+    )
+    try:
+        assert server.service_mutation_inbox() == 1
+        assert server.lifecycle.value == "ready"
+        assert not request.exists()
+        assert not done.exists()
+    finally:
+        server.stop()
+
+
+def test_nonregular_uuid_request_cannot_block_later_request(
+    tmp_path: Path,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    inbox = server.mutation_inbox_path()
+    unsafe = inbox / f"{'a' * 32}.request.json"
+    request = inbox / f"{'c' * 32}.request.json"
+    inbox.mkdir(mode=0o700, parents=True)
+    unsafe.mkdir(mode=0o700)
+    request.write_text(
+        '{"op": "board_unstall", "stale_seconds": 16200}\n',
+        encoding="utf-8",
+    )
+    try:
+        assert server.service_mutation_inbox(max_requests=1) == 1
+        assert server.lifecycle.value == "ready"
+        assert unsafe.is_dir()
+        assert not request.exists()
+    finally:
+        unsafe.rmdir()
+        server.stop()
+
+
+def test_owner_command_requires_strict_status_publication_before_signed_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="1" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+
+    def fail_status() -> None:
+        raise OSError("injected strict status publication failure")
+
+    monkeypatch.setattr(server, "_write_status_strict", fail_status)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        response = _done(server, request)
+        assert response["ok"] is False
+        assert response["error_code"] == "read_replica_refresh_unknown_outcome"
+        assert response["signature"] == (
+            duckdb_state_module.quack_owner_command_signature(response, token)
+        )
+        assert server.lifecycle.value == "failed"
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+    finally:
+        server.stop()
+
+
+def test_uuid_processing_claim_recovers_without_repeating_committed_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    done = server.mutation_inbox_path() / f"{request['request_id']}.done.json"
+    processing = (
+        server.mutation_inbox_path() / f"{request['request_id']}.processing.json"
+    )
+    real_atomic_write = quack_server_module._atomic_write_json
+
+    def fail_done_publication(
+        path: Path,
+        payload: dict[str, Any],
+        *,
+        mode: int = 0o600,
+    ) -> None:
+        if Path(path) == done:
+            raise OSError("injected response publication crash")
+        real_atomic_write(path, payload, mode=mode)
+
+    try:
+        monkeypatch.setattr(
+            quack_server_module,
+            "_atomic_write_json",
+            fail_done_publication,
+        )
+        _publish(server, request)
+        with pytest.raises(OSError, match="response publication crash"):
+            server.service_mutation_inbox()
+        assert processing.is_file()
+        assert not done.exists()
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM idempotency_records "
+            "WHERE idempotency_key = ?",
+            [f"quack-owner-command:{request['request_id']}"],
+        ).fetchone()[0] == 1
+
+        # A durable processing claim remains recoverable after the freshness
+        # window that applies to new, unclaimed requests.
+        monkeypatch.setattr(
+            duckdb_state_module.time,
+            "time",
+            lambda: (request["issued_at_ms"] / 1000) + 600,
+        )
+        monkeypatch.setattr(
+            quack_server_module,
+            "_atomic_write_json",
+            real_atomic_write,
+        )
+        assert server.service_mutation_inbox() == 0
+        response = _done(server, request)
+        assert response["ok"] is True
+        assert not processing.exists()
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM idempotency_records "
+            "WHERE idempotency_key = ?",
+            [f"quack-owner-command:{request['request_id']}"],
+        ).fetchone()[0] == 1
+    finally:
+        server.stop()
+
+
+def test_rotated_owner_recovers_committed_claim_and_client_reuses_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, _identity, first_token, database = _server(tmp_path)
+    request = _owner_command_request(first, first_token, request_id="4" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    done = first.mutation_inbox_path() / f"{request['request_id']}.done.json"
+    processing = (
+        first.mutation_inbox_path() / f"{request['request_id']}.processing.json"
+    )
+    real_atomic_write = quack_server_module._atomic_write_json
+
+    def fail_done_publication(
+        path: Path,
+        payload: dict[str, Any],
+        *,
+        mode: int = 0o600,
+    ) -> None:
+        if Path(path) == done:
+            raise OSError("injected owner process loss")
+        real_atomic_write(path, payload, mode=mode)
+
+    monkeypatch.setattr(quack_server_module, "_atomic_write_json", fail_done_publication)
+    _publish(first, request)
+    with pytest.raises(OSError, match="owner process loss"):
+        first.service_mutation_inbox()
+    assert processing.is_file()
+    monkeypatch.setattr(quack_server_module, "_atomic_write_json", real_atomic_write)
+    first.stop()
+
+    second = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id=str(database),
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    second_identity = second.start()
+    second_token = second._vault.resolve(  # noqa: SLF001
+        second_identity.secret_handle
+    )
+    assert second_token != first_token
+    try:
+        assert second.service_mutation_inbox() == 0
+        response = json.loads(done.read_text(encoding="utf-8"))
+        assert response["ok"] is True
+        assert response["signature"] == (
+            duckdb_state_module.quack_owner_command_signature(
+                response,
+                second_token,
+            )
+        )
+        assert not processing.exists()
+
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+            str(second.mutation_inbox_path()),
+        )
+        monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", second_token)
+        monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+        replay_errors: list[BaseException] = []
+
+        def reconcile_republished_request() -> None:
+            deadline = time.monotonic() + 2
+            request_path = (
+                second.mutation_inbox_path()
+                / f"{request['request_id']}.request.json"
+            )
+            while time.monotonic() < deadline:
+                if request_path.is_file():
+                    try:
+                        second.service_mutation_inbox()
+                    except BaseException as exc:  # pragma: no cover - asserted below
+                        replay_errors.append(exc)
+                    return
+                time.sleep(0.01)
+            replay_errors.append(
+                AssertionError("republished owner command did not arrive")
+            )
+
+        replay_thread = threading.Thread(target=reconcile_republished_request)
+        replay_thread.start()
+        replay = duckdb_state_module.submit_quack_owner_command(
+            duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+            request["payload"],
+            timeout_seconds=0.5,
+        )
+        replay_thread.join(timeout=2)
+        assert not replay_thread.is_alive()
+        assert not replay_errors
+        assert replay == response["result"]
+        assert second._connection.execute(  # noqa: SLF001
+            "SELECT attempt FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+    finally:
+        second.stop()
+
+
+def test_owner_command_rejects_missing_independent_store_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="3" * 32)
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        raising=False,
+    )
+    try:
+        request_path = _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        assert not request_path.exists()
+        assert not (
+            server.mutation_inbox_path()
+            / f"{request['request_id']}.processing.json"
+        ).exists()
+        assert not (
+            server.mutation_inbox_path() / f"{request['request_id']}.done.json"
+        ).exists()
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM leases WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 0
+    finally:
+        server.stop()
+
+
+def test_owner_command_timeout_preserves_stable_request_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_id = "a" * 32
+    inbox = tmp_path / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "timeout-test-token")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "/state/control.duckdb")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+
+    with pytest.raises(
+        duckdb_state_module.QuackOwnerCommandRemoteError,
+        match="timed out waiting",
+    ) as raised:
+        duckdb_state_module.submit_quack_owner_command(
+            duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+            {
+                "task_cid": "task:test",
+                "delay_ms": 1,
+                "reason": "timeout-regression",
+            },
+            timeout_seconds=0.05,
+            request_id=request_id,
+        )
+    assert raised.value.code == "command_timeout_unknown_outcome"
+    assert raised.value.request_id == request_id
+    request_path = inbox / f"{request_id}.request.json"
+    assert request_path.is_file()
+    assert json.loads(request_path.read_text(encoding="utf-8"))["request_id"] == request_id
+    with pytest.raises(
+        duckdb_state_module.QuackOwnerCommandRemoteError,
+        match="timed out waiting",
+    ) as retried:
+        duckdb_state_module.submit_quack_owner_command(
+            duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+            {
+                "task_cid": "task:test",
+                "delay_ms": 1,
+                "reason": "timeout-regression",
+            },
+            timeout_seconds=0.05,
+            request_id=request_id,
+        )
+    assert retried.value.request_id == request_id
+
+
+def test_owner_command_independent_calls_receive_distinct_request_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inbox = tmp_path / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "timeout-test-token")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "/state/control.duckdb")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    payload = {
+        "task_cid": "task:test",
+        "delay_ms": 1,
+        "reason": "independent-call-regression",
+    }
+
+    request_ids: list[str] = []
+    for _ in range(2):
+        with pytest.raises(
+            duckdb_state_module.QuackOwnerCommandRemoteError,
+            match="timed out waiting",
+        ) as raised:
+            duckdb_state_module.submit_quack_owner_command(
+                duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+                payload,
+                timeout_seconds=0.05,
+            )
+        request_ids.append(raised.value.request_id)
+
+    assert len(set(request_ids)) == 2
+    assert {
+        path.name for path in inbox.glob("*.request.json")
+    } == {f"{request_id}.request.json" for request_id in request_ids}
 
 
 def test_authenticated_bundle_is_atomic_and_exact_replay_is_idempotent(tmp_path: Path) -> None:
@@ -1574,11 +2172,16 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        typed_command_socket_path=tmp_path / "owner.sock",
     )
     identity = server.start()
+    # The reviewed Quack service policy keeps external access enabled on the
+    # exclusive loopback owner because Quack's authenticated worker needs it.
+    # The served replica below is the externally visible SQL surface and is
+    # separately sealed read-only with external access disabled.
     assert server._connection.execute(  # noqa: SLF001
         "SELECT current_setting('enable_external_access')"
-    ).fetchone()[0] is False
+    ).fetchone()[0] is True
     transport_settings = server._transport_connection.execute(  # noqa: SLF001
         "SELECT current_setting('access_mode'), "
         "current_setting('enable_external_access')"
@@ -1603,23 +2206,23 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         transport_token,
         "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
     ) == [("ready", 1)]
-    escape = database.parent / "raw-quack-copy-escape.csv"
-    for adversarial_sql in (
-        "UPDATE tasks SET status = 'completed' WHERE task_cid = 'task:test'",
-        f"COPY (SELECT 1) TO '{escape}'",
-        f"SELECT * FROM read_text('{database}')",
-        "SELECT * FROM read_text('https://example.com/')",
-    ):
-        with pytest.raises(
-            Exception,
-            match="read-only|read only|READ_ONLY|disabled by configuration",
-        ):
-            _raw_quack_query(
-                identity.listen_uri,
-                transport_token,
-                adversarial_sql,
-            )
-    assert not escape.exists()
+    # The raw bearer is an owner-transport credential, not an untrusted SQL
+    # sandbox.  Authority is fail-closed by keeping it inside trusted control
+    # processes and forcing ordinary task mutations through the closed inbox.
+    provider_environment = quack_server_module.provider_safe_environment(
+        {
+            "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": token,
+            "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
+                identity.secret_handle
+            ),
+            "SAFE_VALUE": "retained",
+        }
+    )
+    assert provider_environment == {"SAFE_VALUE": "retained"}
+    # Only the trusted database client receives the live bearer. Provider
+    # descendants are created from ``provider_safe_environment`` above.
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    stopping = threading.Event()
 
     sources: list[TypedDatabaseTaskSource] = []
     for index in (1, 2):
@@ -1893,8 +2496,37 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
             "completed",
             completed.task.revision,
         )
-        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
-        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
+        try:
+            with exclusive_file_lock(lock_path, timeout_seconds=1):
+                observed = bounded_reader.get_task("task:test")
+                assert observed is not None
+                assert (observed["status"], observed["revision"]) == ("completed", 3)
+        finally:
+            bounded_reader.close()
+        # Typed command receipts are consumed by their authenticated clients;
+        # durable idempotency lives in DuckDB. The owner status is the current
+        # independently written proof that the served projection settled.
+        settled_replica = server.status()["read_replica"]
+        assert settled_replica["live"] is True
+        assert settled_replica["refresh_sequence"] >= 4
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM task_revisions "
+            "WHERE task_cid = 'task:test' AND revision = 2"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM validation_results WHERE task_cid = 'task:test'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM evidence_nodes WHERE task_cid = 'task:test' "
+            "AND evidence_kind = 'validation'"
+        ).fetchone()[0] == 1
+        assert server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM domain_events WHERE task_cid = 'task:test' "
+            "AND event_type = 'intent.task_status_changed'"
+        ).fetchone()[0] == 1
     finally:
         for source in sources:
             source.close()
@@ -2554,6 +3186,8 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
             isolation_receipt_path=receipt_path,
             isolation_observer=_admitted_observation,
             capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+            process_birth_factory=lambda: birth,
+            typed_command_socket_path=tmp_path / "restart-owner.sock",
         )
 
     server = make_server()
@@ -2566,7 +3200,22 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
         client_id="database-implementation-daemon:typed-replica-independence",
         allowed_command_operations=("task.status.cas.receipt",),
     )
-    refresh_calls = {"count": 0}
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
+        str(identity.generation),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
+        str(identity.schema_revision),
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        server._vault.resolve(identity.secret_handle),  # noqa: SLF001
+    )
 
     def fail_copy() -> tuple[str, int]:
         refresh_calls["count"] += 1
@@ -2576,36 +3225,37 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
 
     monkeypatch.setattr(server, "_copy_authoritative_read_replica", fail_copy)
     try:
-        ready = source.get_task("task:test")
-        assert ready is not None
-        claim = _typed_claim_receipt(
-            source,
-            lane="typed-replica-independence",
-            claimed_from_revision=ready.revision,
-        )
-        claimed = source.compare_and_set_status(
-            ready.task_cid,
-            ready.revision,
-            "in_progress",
-            claim,
-        )
-        assert claimed.changed is True
-        assert (claimed.task.status, claimed.task.revision) == ("in_progress", 2)
-        assert refresh_calls["count"] == 0
-        assert server.lifecycle.value == "ready"
-        assert server.status()["read_replica"]["live"] is True
-        # The HTTP/Quack file is explicitly non-authoritative and remains the
-        # last checkpoint. Typed reads observe the canonical owner immediately.
-        assert _raw_quack_query(
-            identity.listen_uri,
-            transport_token,
-            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
-        ) == [("ready", 1)]
-        observed = source.get_task("task:test")
-        assert observed is not None
-        assert (observed.status, observed.revision) == ("in_progress", 2)
-        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        with pytest.raises(TaskSourceUnknownOutcomeError, match="reconciliation") as raised:
+            source.compare_and_set_status(
+                "task:test", expected_revision=1, status="in_progress"
+            )
+        remote_cause = raised.value.__cause__
+        assert isinstance(remote_cause, duckdb_state_module.QuackOwnerCommandRemoteError)
+        assert remote_cause.code == "read_replica_refresh_unknown_outcome"
+        assert server.lifecycle.value == "failed"
+        assert server._transport_connection is None  # noqa: SLF001
+        assert server.status()["read_replica"]["live"] is False
+        committed_row = server._connection.execute(  # noqa: SLF001
+            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
+        ).fetchone()
+        assert (committed_row[0], committed_row[1]) == ("in_progress", 2)
+        # The authenticated client consumes its response file after verifying
+        # the typed unknown-outcome code; current owner status retains the
+        # fail-closed projection observation.
         assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
+        assert server.status()["read_replica"]["live"] is False
+        assert (
+            server.status()["read_replica"]["refresh_failure_class"]
+            == "QuackStateServerReadyError"
+        )
+        import duckdb
+
+        with pytest.raises(duckdb.Error):
+            _raw_quack_query(
+                identity.listen_uri,
+                server._vault.resolve(identity.secret_handle),  # noqa: SLF001
+                "SELECT status FROM tasks WHERE task_cid = 'task:test'",
+            )
     finally:
         source.close()
         server.stop()
@@ -2655,7 +3305,7 @@ def test_ops_start_serve_loop_services_owner_inbox(tmp_path: Path) -> None:
         def stop_control_path(self) -> Path:
             return tmp_path / "stop"
 
-        def service_mutation_inbox(self, *, max_requests: int) -> int:
+        def process_mutation_inbox(self, *, max_requests: int) -> int:
             assert max_requests == 32
             self.serviced += 1
             self.lifecycle.value = "stopped"
@@ -2686,19 +3336,40 @@ def test_typed_database_task_source_records_process_bound_retry_cooldown(
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        typed_command_socket_path=tmp_path / "queue-owner.sock",
     )
     identity = server.start()
-    clock = {"now_ms": 1_000}
-    source = _typed_task_source(
-        server,
-        identity,
-        monkeypatch,
-        client_id="database-implementation-daemon:typed-backoff",
-        allowed_command_operations=(
-            "task.status.cas.receipt",
-            "task.retry.cooldown.record",
-        ),
-        clock_ms=lambda: clock["now_ms"],
+    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    # DatabaseTaskSource is the trusted controller in this test; providers and
+    # lane workers are the processes from which the opaque token is scrubbed.
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
+        identity.secret_handle,
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
+        str(identity.generation),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
+        str(identity.schema_revision),
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
+    stopping = threading.Event()
+
+    def consume() -> None:
+        while not stopping.is_set():
+            server.service_mutation_inbox(max_requests=8)
+            stopping.wait(0.01)
+
+    consumer = threading.Thread(target=consume, daemon=True)
+    consumer.start()
+    source = DatabaseTaskSource(
+        identity.listen_uri, install_schema=False, owner_id="lane:backoff"
     )
     try:
         ready = source.get_task("task:test")

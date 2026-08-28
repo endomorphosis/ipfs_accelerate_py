@@ -30,6 +30,7 @@ werkzeug>=3.0.0
 PyGithub>=2.3.0
 
 # Utilities
+packaging>=23.2
 tqdm>=4.64.0
 numpy>=1.23.0
 toml>=0.10.2

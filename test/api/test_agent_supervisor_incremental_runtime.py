@@ -1442,6 +1442,277 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
 
 
+def test_successor_generation_retires_exact_dead_predecessor_claim(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    program_root = tmp_path / "program"
+    state_dir = program_root / "run-v2" / "state" / "lane-0"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "successor-generation-worktrees",
+    )
+    task = PortalTask(
+        task_id="INC-002-DEAD-PREDECESSOR",
+        title="Supersede a stopped generation lifecycle owner",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    predecessor_workspace = (
+        tmp_path / "predecessor-generation-worktrees" / "preserved-attempt"
+    )
+    predecessor_workspace.mkdir(parents=True)
+    marker = predecessor_workspace / "preserved.txt"
+    marker.write_text("keep predecessor workspace\n", encoding="utf-8")
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=canonical_task_cid,
+        attempt=1,
+        lane_id="predecessor-generation:lane-0",
+        workspace_path=predecessor_workspace,
+        branch="implementation/inc-002-dead-predecessor-attempt-1-old",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(
+            (program_root / "run-v1" / "state" / "lane-0").resolve()
+        ),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 31,
+            start_time_ticks=1,
+            boot_id="stopped-predecessor",
+        ),
+    )
+    predecessor_record_path = (
+        daemon.worktree_lifecycle.workspace_path_for(predecessor_workspace)
+    )
+    predecessor_index_path = (
+        daemon.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=canonical_task_cid,
+            task_id=task.task_id,
+            attempt=1,
+        )
+    )
+    record_before = predecessor_record_path.read_bytes()
+    index_before = predecessor_index_path.read_bytes()
+    successor_state_path = daemon.state_path
+    daemon.state_path = (
+        program_root / "run-v1" / "state" / "lane-9" / "state.json"
+    )
+
+    same_generation = (
+        daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+            task=task,
+            attempt=1,
+        )
+    )
+
+    assert same_generation["finalized"] is False
+    assert same_generation["reason"] == (
+        "task_attempt_claim_identity_mismatch"
+    )
+    assert same_generation["mismatched_fields"] == [
+        "predecessor_generation"
+    ]
+    assert predecessor_record_path.read_bytes() == record_before
+    assert predecessor_index_path.read_bytes() == index_before
+    daemon.state_path = successor_state_path
+    actual_proc_root = daemon.worktree_lifecycle.proc_root
+    fake_proc_root = tmp_path / "proc"
+    (fake_proc_root / "self").mkdir(parents=True)
+    (fake_proc_root / "self" / "cgroup").write_text(
+        "0::/user.slice/app.slice/ipfs-accelerate-lgcvf-v2.service\n",
+        encoding="utf-8",
+    )
+    unrelated_process = fake_proc_root / "123"
+    unrelated_process.mkdir()
+    (unrelated_process / "cgroup").write_text(
+        "0::/user.slice/session-1.scope\n",
+        encoding="utf-8",
+    )
+    fake_cgroup_root = tmp_path / "cgroup"
+    daemon.worktree_lifecycle.proc_root = fake_proc_root
+    cgroup_quiescent = daemon._predecessor_generation_cgroup_quiescence(
+        predecessor,
+        cgroup_root=fake_cgroup_root,
+    )
+
+    assert cgroup_quiescent["quiescent"] is True
+    assert cgroup_quiescent["predecessor_cgroup"] == (
+        "/user.slice/app.slice/ipfs-accelerate-lgcvf-v1.service"
+    )
+    predecessor_process = fake_proc_root / "456"
+    predecessor_process.mkdir()
+    (predecessor_process / "cgroup").write_text(
+        "0::/user.slice/app.slice/"
+        "ipfs-accelerate-lgcvf-v1.service/provider.scope\n",
+        encoding="utf-8",
+    )
+    cgroup_active = daemon._predecessor_generation_cgroup_quiescence(
+        predecessor,
+        cgroup_root=fake_cgroup_root,
+    )
+
+    assert cgroup_active["quiescent"] is False
+    assert cgroup_active["reason"] == (
+        "generation_cgroup_process_still_active"
+    )
+    daemon.worktree_lifecycle.proc_root = actual_proc_root
+    daemon.worktree_lifecycle.clock = lambda: (
+        predecessor.updated_at + 181.0
+    )
+    survivor = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        cwd=predecessor_workspace,
+        start_new_session=True,
+    )
+    try:
+        blocked = (
+            daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+                task=task,
+                attempt=1,
+            )
+        )
+    finally:
+        survivor.terminate()
+        try:
+            survivor.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            survivor.kill()
+            survivor.wait(timeout=5)
+
+    assert blocked["finalized"] is False
+    assert blocked["reason"] == (
+        "task_attempt_claim_worktree_process_still_active"
+    )
+    assert predecessor_record_path.read_bytes() == record_before
+    assert predecessor_index_path.read_bytes() == index_before
+    monkeypatch.setattr(
+        daemon,
+        "_predecessor_worktree_dispatch_quiescence",
+        lambda _record: {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+        },
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result["returncode"] == 7
+    assert result.get("reason") != "worktree_lifecycle_claim_exists"
+    assert marker.read_text(encoding="utf-8") == (
+        "keep predecessor workspace\n"
+    )
+    assert not predecessor_record_path.exists()
+    assert not predecessor_index_path.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    finalized = next(
+        event
+        for event in events
+        if event.get("type")
+        == "worktree_lifecycle_dead_predecessor_claim_finalized"
+    )
+    assert finalized["record_id"] == predecessor.record_id
+    assert finalized["predecessor_owner_liveness"] == "dead"
+    assert finalized["reason"] == (
+        "successor_generation_dead_owner_superseded"
+    )
+
+
+def test_successor_generation_cannot_retire_live_predecessor_claim(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    program_root = tmp_path / "program"
+    state_dir = program_root / "run-v2" / "state" / "lane-0"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c(
+            "raise AssertionError('provider must not run')"
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "successor-generation-worktrees",
+    )
+    task = PortalTask(
+        task_id="INC-002-LIVE-PREDECESSOR",
+        title="Preserve a live generation lifecycle owner",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    predecessor_workspace = (
+        tmp_path / "predecessor-generation-worktrees" / "live-attempt"
+    )
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=canonical_task_cid,
+        attempt=1,
+        lane_id="predecessor-generation:lane-0",
+        workspace_path=predecessor_workspace,
+        branch="implementation/inc-002-live-predecessor-attempt-1-old",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(
+            (program_root / "run-v1" / "state" / "lane-0").resolve()
+        ),
+    )
+    predecessor_record_path = (
+        daemon.worktree_lifecycle.workspace_path_for(predecessor_workspace)
+    )
+    predecessor_index_path = (
+        daemon.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=canonical_task_cid,
+            task_id=task.task_id,
+            attempt=1,
+        )
+    )
+    record_before = predecessor_record_path.read_bytes()
+    index_before = predecessor_index_path.read_bytes()
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result["reason"] == "worktree_lifecycle_claim_exists"
+    assert result["attempt_consumed"] is False
+    assert result["provider_call_allowed"] is False
+    assert result["predecessor_recovery"]["finalized"] is False
+    assert result["predecessor_recovery"]["reason"] == (
+        "task_attempt_claim_owner_alive"
+    )
+    assert predecessor_record_path.read_bytes() == record_before
+    assert predecessor_index_path.read_bytes() == index_before
+    assert (
+        daemon.worktree_lifecycle.load_workspace(predecessor_workspace)
+        == predecessor
+    )
+
+
 def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
     tmp_path: Path,
 ) -> None:

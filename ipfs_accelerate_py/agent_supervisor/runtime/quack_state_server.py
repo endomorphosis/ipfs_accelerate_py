@@ -81,6 +81,10 @@ from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
     install_control_plane_schema,
 )
+from ..task_sources.database_task_source import (
+    execute_quack_owner_command,
+    quack_owner_command_error_code,
+)
 from ..task_sources.duckdb_state import (
     DEFAULT_MEMORY_LIMIT,
     DUCKDB_CONNECTION_POLICY_SETTINGS,
@@ -97,6 +101,8 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_VALIDATION_RECORD,
     QUACK_MUTATION_VALIDATION_RESULT_INSERT,
     QUACK_MUTATION_VALIDATION_RUN_INSERT,
+    QUACK_OWNER_COMMAND_MAX_ENVELOPE_BYTES,
+    QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
     QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
     QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
@@ -106,17 +112,22 @@ from ..task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
     DuckDBConnection,
+    DuckDBConnectionPolicyError,
     open_duckdb_connection,
     open_quack_state_owner_connection,
+    quack_owner_command_response,
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
     unstall_stale_in_progress_tasks,
+    validate_quack_owner_command,
+    validate_quack_owner_command_request,
 )
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     QUEUE_ENTRY_SCHEMA,
+    IntentRepository,
     missing_current_evidence_on,
 )
 from ..task_sources.quack_capabilities import (
@@ -126,6 +137,7 @@ from ..task_sources.quack_capabilities import (
 from ..task_sources.quack_owner_mutation import (
     MAX_MUTATION_REQUEST_BYTES,
     MAX_MUTATION_RESULT_ROWS,
+    QUACK_OWNER_MUTATION_REQUEST_SCHEMA as LEGACY_QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
     QuackOwnerMutationEnvelopeError,
     build_mutation_result,
     mutation_envelope_exists_at,
@@ -182,10 +194,18 @@ READ_REPLICA_MAX_BYTES: Final[int] = 8 * 1024 * 1024 * 1024
 READ_REPLICA_COPY_CHUNK_BYTES: Final[int] = 1024 * 1024
 READ_REPLICA_COPY_TIMEOUT_SECONDS: Final[float] = 30.0
 READ_REPLICA_STOP_TIMEOUT_SECONDS: Final[float] = 2.0
+QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS: Final[float] = 2.5
+QUACK_LIVE_QUERY_BIRTH_RETRY_SECONDS: Final[float] = 0.025
 MUTATION_INBOX_DIRNAME: Final = "mutations"
 MAX_MUTATIONS_PER_POLL: Final[int] = 64
 MUTATION_REQUEST_NAME: Final[re.Pattern[str]] = re.compile(
     r"^(?P<request_id>b[a-z2-7]{40,127})\.request\.json$"
+)
+OWNER_COMMAND_REQUEST_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>[0-9a-f]{32})\.request\.json$"
+)
+OWNER_COMMAND_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>[0-9a-f]{32})\.processing\.json$"
 )
 MUTATION_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
     r"^(?P<request_id>b[a-z2-7]{40,127})\.processing\.json$"
@@ -2519,6 +2539,15 @@ class InProcessQuackTransport:
                 break
             except Exception as exc:  # pragma: no cover - depends on extension
                 last_error = exc
+                # Only call-shape errors authorize a compatibility fallback.
+                # A runtime bind/transport failure must not silently start the
+                # default endpoint while advertising the requested endpoint.
+                if type(exc).__name__ not in {
+                    "BinderException",
+                    "CatalogException",
+                    "InvalidInputException",
+                }:
+                    break
                 continue
         if last_error is not None:
             raise QuackStateServerCapabilityError(
@@ -2569,18 +2598,32 @@ class InProcessQuackTransport:
         try:
             import duckdb
 
-            client = duckdb.connect(":memory:")
-            try:
-                client.execute("LOAD quack")
-                for sql, params in query_attempts:
-                    try:
-                        rows = client.execute(sql, params).fetchall()
-                        last_error = None
-                        break
-                    except Exception as exc:  # pragma: no cover - extension-version path
-                        last_error = exc
-            finally:
-                client.close()
+            deadline = time.monotonic() + QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
+            while True:
+                client = duckdb.connect(":memory:")
+                try:
+                    client.execute("LOAD quack")
+                    for sql, params in query_attempts:
+                        try:
+                            rows = client.execute(sql, params).fetchall()
+                            last_error = None
+                            break
+                        except Exception as exc:  # pragma: no cover - extension-version path
+                            last_error = exc
+                finally:
+                    client.close()
+                if last_error is None:
+                    break
+                detail = str(last_error).lower()
+                transient_birth = (
+                    "invalid connection id" in detail
+                    or "connection refused" in detail
+                    or "could not connect to server" in detail
+                    or "listener unavailable" in detail
+                )
+                if not transient_birth or time.monotonic() >= deadline:
+                    break
+                time.sleep(QUACK_LIVE_QUERY_BIRTH_RETRY_SECONDS)
         except Exception as exc:
             last_error = exc
         if last_error is not None or rows is None:
@@ -2775,6 +2818,11 @@ class QuackStateServer:
         default_factory=threading.RLock, init=False, repr=False
     )
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _owner_transaction_lock: threading.RLock = field(
+        default_factory=threading.RLock,
+        init=False,
+        repr=False,
+    )
     _bound_port: int = field(default=0, init=False)
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
     _mutation_recovery_complete: bool = field(default=False, init=False, repr=False)
@@ -3418,6 +3466,29 @@ class QuackStateServer:
             ttl_seconds=ttl_seconds,
         )
 
+    def renew_typed_client_grant(
+        self,
+        grant_id: str,
+        *,
+        ttl_seconds: float = 3_600.0,
+    ) -> OwnerClientGrant:
+        """Renew one live exact-client grant without changing its scope."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant renewal requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        return gateway.renew_grant(
+            grant_id,
+            ttl_seconds=ttl_seconds,
+        )
+
     def _require_eaaef_owner_gateway(self) -> TypedStateOwnerGateway:
         identity = self._identity
         owner = self._owner
@@ -3598,16 +3669,17 @@ class QuackStateServer:
         catalog_bound = MUTATION_MAX_PER_PASS
         if not isinstance(catalog_bound, int) or catalog_bound < 1:
             catalog_bound = 32
-        # Drain closed-catalog bundles first so protocol-@2 `*.request.json`
-        # files are not misread as envelope mutations.
-        self.service_mutation_inbox(
-            max_requests=min(max(int(max_requests), 1), catalog_bound)
-        )
-        with self._lock:
-            return self._process_mutation_inbox_locked(
-                max_requests=max_requests,
-                now_ms=now_ms,
+        with self._owner_transaction_lock:
+            # Drain closed-catalog bundles first so protocol-@2
+            # `*.request.json` files are not misread as envelope mutations.
+            self.service_mutation_inbox(
+                max_requests=min(max(int(max_requests), 1), catalog_bound)
             )
+            with self._lock:
+                return self._process_mutation_inbox_locked(
+                    max_requests=max_requests,
+                    now_ms=now_ms,
+                )
 
     def _process_mutation_inbox_locked(
         self,
@@ -3651,6 +3723,23 @@ class QuackStateServer:
             )[:max_requests]
             for request_name in request_names:
                 request_id = request_name[: -len(suffix)]
+                try:
+                    candidate = read_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        max_bytes=QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
+                    )
+                except (OSError, QuackOwnerMutationEnvelopeError):
+                    candidate = None
+                if (
+                    isinstance(candidate, Mapping)
+                    and candidate.get("schema") == QUACK_OWNER_COMMAND_REQUEST_SCHEMA
+                ):
+                    # A command may arrive after service_mutation_inbox took
+                    # its directory snapshot. Leave it for the closed command
+                    # dispatcher on the next pump instead of publishing a
+                    # protocol-2 DML response under the same UUID filename.
+                    continue
                 summaries.append(
                     self._process_mutation_request_at(
                         inbox_fd=inbox_fd,
@@ -5568,7 +5657,7 @@ class QuackStateServer:
             )
             # Status is the handle resolver's independently read freshness
             # binding and must settle before the signed mutation result.
-            self._write_status()
+            self._write_status_strict()
         except BaseException as exc:
             try:
                 self._stop_transport_connection(observe_closed=True)
@@ -5590,6 +5679,16 @@ class QuackStateServer:
     def _recover_stale_mutation_claims(self, inbox: Path) -> None:
         now = time.time()
         for path in tuple(inbox.iterdir())[:MUTATION_MAX_DIRECTORY_ENTRIES]:
+            command_match = OWNER_COMMAND_PROCESSING_NAME.fullmatch(path.name)
+            if command_match is not None:
+                self._service_owner_command_request(
+                    request_path=path,
+                    request_id=command_match.group("request_id"),
+                    already_claimed=True,
+                )
+                if self._lifecycle is not ServerLifecycle.READY:
+                    return
+                continue
             match = MUTATION_PROCESSING_NAME.fullmatch(path.name)
             if match is None:
                 continue
@@ -5651,90 +5750,405 @@ class QuackStateServer:
             finally:
                 path.unlink(missing_ok=True)
 
+    def _service_owner_command_request(
+        self,
+        *,
+        request_path: Path,
+        request_id: str,
+        already_claimed: bool = False,
+    ) -> bool:
+        """Execute one authenticated command from the closed command catalog.
+
+        ``DatabaseTaskSource`` emits this protocol when its reads use Quack.
+        The owner maps the admitted command name to repository methods on its
+        already-open exclusive connection; requesters never supply SQL.
+        """
+
+        assert self._connection is not None
+        assert self._identity is not None
+        assert self._vault is not None
+        processing = request_path.with_name(f"{request_id}.processing.json")
+        done = request_path.with_name(f"{request_id}.done.json")
+        try:
+            claim_path = processing if already_claimed else request_path
+            metadata = claim_path.lstat()
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1
+                or metadata.st_size <= 0
+                or metadata.st_size > QUACK_OWNER_COMMAND_MAX_ENVELOPE_BYTES
+            ):
+                try:
+                    claim_path.unlink(missing_ok=True)
+                except OSError:
+                    return False
+                return True
+            if not already_claimed:
+                if processing.exists():
+                    return False
+                os.replace(request_path, processing)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            try:
+                claim_path.unlink(missing_ok=True)
+            except OSError:
+                return False
+            return True
+
+        published = False
+        request: dict[str, Any] | None = None
+        response: dict[str, Any] | None = None
+        try:
+            request = _read_bounded_canonical_json(processing)
+            token = self._vault.resolve(self._identity.secret_handle)
+            configured_generation = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
+                or ""
+            ).strip()
+            if not configured_generation:
+                raise DuckDBConnectionPolicyError(
+                    "state owner has no independent logical store generation"
+                )
+            request_generation = str(request.get("store_generation") or "").strip()
+            command, payload = validate_quack_owner_command_request(
+                request,
+                token=token,
+                expected_request_id=request_id,
+                expected_store_id=self._identity.store_id,
+                # The logical board generation is separate from the owner's
+                # live integer generation and must be independently configured.
+                expected_store_generation=configured_generation,
+                # A file atomically claimed by an earlier owner birth remains
+                # replayable.  Its HMAC and logical generation still bind it,
+                # while the durable idempotency record prevents a second effect.
+                allow_expired=already_claimed,
+            )
+            repository = IntentRepository(
+                bound_connection=self._connection,
+                install_schema=False,
+            )
+            try:
+                result = execute_quack_owner_command(
+                    repository,
+                    command,
+                    payload,
+                    request_id=request_id,
+                    store_id=self._identity.store_id,
+                    store_generation=request_generation,
+                )
+            finally:
+                repository.close()
+            try:
+                self._refresh_read_replica()
+                self._write_status_strict()
+            except BaseException as exc:  # commit may already be durable
+                self._log(
+                    "typed owner command replica refresh failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                try:
+                    self._stop_transport_connection(observe_closed=True)
+                except Exception:
+                    pass
+                self._read_replica_observation = {
+                    **self._read_replica_observation,
+                    "live": False,
+                    "refresh_failure_class": type(exc).__name__,
+                }
+                self._lifecycle = ServerLifecycle.FAILED
+                try:
+                    self._write_status()
+                except Exception:
+                    pass
+                response = quack_owner_command_response(
+                    request,
+                    token=token,
+                    error_code="read_replica_refresh_unknown_outcome",
+                    error_message=(
+                        "owner command committed but read-replica "
+                        "reconciliation failed"
+                    ),
+                )
+            else:
+                response = quack_owner_command_response(
+                    request,
+                    token=token,
+                    result=result,
+                )
+            _atomic_write_json(done, response, mode=0o600)
+            published = True
+        except DuckDBConnectionPolicyError:
+            # A prior owner birth used a different in-memory credential.  It
+            # may receive a newly signed response only when the exact request,
+            # command payload, store generation, and durable idempotency record
+            # all agree.  Uncommitted or malformed claims receive no oracle.
+            if already_claimed and request is not None:
+                self._recover_committed_owner_command_claim(
+                    request,
+                    request_id=request_id,
+                    done=done,
+                )
+            published = True
+        except BaseException as exc:  # repository failures are typed to clients
+            # Publication failure is not a repository rejection.  Keep the
+            # processing claim so a later pass can replay the durable result
+            # and publish the same authenticated response.
+            if response is not None:
+                raise
+            if request is None:
+                published = True
+            else:
+                token = self._vault.resolve(self._identity.secret_handle)
+                response = quack_owner_command_response(
+                    request,
+                    token=token,
+                    error_code=quack_owner_command_error_code(exc),
+                    error_message=f"typed owner command rejected: {type(exc).__name__}",
+                )
+                _atomic_write_json(done, response, mode=0o600)
+                published = True
+        finally:
+            if published:
+                processing.unlink(missing_ok=True)
+        return True
+
+    def _recover_committed_owner_command_claim(
+        self,
+        request: Mapping[str, Any],
+        *,
+        request_id: str,
+        done: Path,
+    ) -> bool:
+        """Re-sign one exact durable result after an owner-token rotation."""
+
+        assert self._connection is not None
+        assert self._identity is not None
+        assert self._vault is not None
+        expected_fields = {
+            "schema",
+            "request_id",
+            "issued_at_ms",
+            "writer_identity",
+            "store_id",
+            "store_generation",
+            "command",
+            "payload",
+            "signature",
+        }
+        generation = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
+            or ""
+        ).strip()
+        writer = str(request.get("writer_identity") or "")
+        signature = str(request.get("signature") or "")
+        if (
+            set(request) != expected_fields
+            or request.get("schema") != QUACK_OWNER_COMMAND_REQUEST_SCHEMA
+            or request.get("request_id") != request_id
+            or type(request.get("issued_at_ms")) is not int
+            or re.fullmatch(r"supervisor-process:[1-9][0-9]{0,19}", writer) is None
+            or re.fullmatch(r"[0-9a-f]{64}", signature) is None
+            or request.get("store_id") != self._identity.store_id
+            or request.get("store_generation") != generation
+            or not generation
+        ):
+            return False
+        command = str(request.get("command") or "")
+        payload = request.get("payload")
+        if not isinstance(payload, Mapping):
+            return False
+        try:
+            command_payload = validate_quack_owner_command(command, payload)
+        except DuckDBConnectionPolicyError:
+            return False
+        repository = IntentRepository(
+            bound_connection=self._connection,
+            install_schema=False,
+        )
+        try:
+            result = repository.recover_idempotent_owner_command(
+                request_id=request_id,
+                command=command,
+                command_payload=command_payload,
+                store_id=self._identity.store_id,
+                store_generation=generation,
+            )
+        except Exception:
+            return False
+        finally:
+            repository.close()
+        if result is None:
+            return False
+        token = self._vault.resolve(self._identity.secret_handle)
+        response = quack_owner_command_response(
+            request,
+            token=token,
+            result=result,
+        )
+        _atomic_write_json(done, response, mode=0o600)
+        self._log(
+            "reconciled durable typed owner command after credential rotation"
+        )
+        return True
+
     def service_mutation_inbox(self, *, max_requests: int = MUTATION_MAX_PER_PASS) -> int:
         """Claim and execute bounded, authenticated mutation bundles."""
 
         if type(max_requests) is not int or not 1 <= max_requests <= MUTATION_MAX_PER_PASS:
             raise ValueError("max_requests is outside the closed service bound")
-        with self._lock:
-            if self._lifecycle is not ServerLifecycle.READY or self._connection is None:
-                raise QuackStateServerNotRunningError("state-owner is not ready")
-            inbox = self.mutation_inbox_path()
-            inbox.mkdir(parents=True, exist_ok=True)
-            if inbox.is_symlink():
-                raise QuackStateServerReadyError(
-                    "mutation inbox is not a safe owner directory"
-                )
-            os.chmod(inbox, 0o700)
-            entries = tuple(inbox.iterdir())
-            if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
-                raise QuackStateServerMutationError("inbox_population_exceeded")
-            self._recover_stale_mutation_claims(inbox)
-            if self._lifecycle is not ServerLifecycle.READY:
-                return 0
-            serviced = 0
-            for request_path in sorted(entries, key=lambda item: item.name):
-                if serviced >= max_requests:
-                    break
-                match = MUTATION_REQUEST_NAME.fullmatch(request_path.name)
-                if match is None:
-                    continue
-                request_id = match.group("request_id")
-                processing = inbox / f"{request_id}.processing.json"
-                done = inbox / f"{request_id}.done.json"
-                claimed = False
-                try:
-                    if processing.exists():
-                        continue
-                    try:
-                        # Claim the pathname before reading any bytes.  This
-                        # competes atomically with client cancellation, so an
-                        # owner can execute only the inode it actually won.
-                        os.replace(request_path, processing)
-                        claimed = True
-                    except FileNotFoundError:
-                        continue
-                    payload = _read_bounded_canonical_json(processing)
-                    request = self._validate_mutation_request(
-                        payload, request_id=request_id
+        # The owner-connection lock always precedes the lifecycle lock.  The
+        # typed gateway uses this same lock across BEGIN..COMMIT and invokes
+        # its commit observer before releasing it, so the order cannot invert.
+        with self._owner_transaction_lock:
+            with self._lock:
+                if (
+                    self._lifecycle is not ServerLifecycle.READY
+                    or self._connection is None
+                ):
+                    raise QuackStateServerNotRunningError("state-owner is not ready")
+                inbox = self.mutation_inbox_path()
+                inbox.mkdir(parents=True, exist_ok=True)
+                if inbox.is_symlink():
+                    raise QuackStateServerReadyError(
+                        "mutation inbox is not a safe owner directory"
                     )
-                    if done.is_file() and self._existing_result_is_valid(done, request):
-                        # Exact deterministic replay consumes no second effect;
-                        # the client authenticates the retained receipt.
-                        processing.unlink(missing_ok=True)
-                        serviced += 1
+                os.chmod(inbox, 0o700)
+                entries = tuple(inbox.iterdir())
+                if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+                    raise QuackStateServerMutationError("inbox_population_exceeded")
+                self._recover_stale_mutation_claims(inbox)
+                if self._lifecycle is not ServerLifecycle.READY:
+                    return 0
+                serviced = 0
+                for request_path in sorted(entries, key=lambda item: item.name):
+                    if serviced >= max_requests:
+                        break
+                    command_match = OWNER_COMMAND_REQUEST_NAME.fullmatch(
+                        request_path.name
+                    )
+                    if command_match is not None:
+                        try:
+                            candidate = _read_bounded_canonical_json(
+                                request_path
+                            )
+                        except (
+                            OSError,
+                            QuackStateServerMutationError,
+                            ValueError,
+                        ):
+                            candidate = None
+                        if (
+                            isinstance(candidate, Mapping)
+                            and candidate.get("schema")
+                            == LEGACY_QUACK_OWNER_MUTATION_REQUEST_SCHEMA
+                        ):
+                            # Legacy owner-DML envelopes also use UUID-shaped
+                            # filenames. Leave that reviewed protocol for
+                            # _process_mutation_inbox_locked instead of
+                            # consuming it as an invalid command request.
+                            continue
+                        if (
+                            isinstance(candidate, Mapping)
+                            and candidate.get("schema")
+                            != QUACK_OWNER_COMMAND_REQUEST_SCHEMA
+                        ):
+                            # UUID filenames were historically also used by
+                            # untyped helper requests.  They are neither an
+                            # authenticated command nor a legacy owner-DML
+                            # envelope, so consume a regular foreign artifact
+                            # without creating a signed response oracle.
+                            try:
+                                request_path.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            else:
+                                serviced += 1
+                            continue
+                        if self._service_owner_command_request(
+                            request_path=request_path,
+                            request_id=command_match.group("request_id"),
+                        ):
+                            serviced += 1
+                        if self._lifecycle is not ServerLifecycle.READY:
+                            break
                         continue
-                    done.unlink(missing_ok=True)
+                    match = MUTATION_REQUEST_NAME.fullmatch(request_path.name)
+                    if match is None:
+                        continue
+                    request_id = match.group("request_id")
+                    processing = inbox / f"{request_id}.processing.json"
+                    done = inbox / f"{request_id}.done.json"
+                    claimed = False
                     try:
-                        rowcounts, observed = self._execute_mutation_request(request)
-                    except QuackStateServerMutationError as exc:
-                        self._write_mutation_result(
-                            done, request, ok=False, error_code=exc.code,
-                            rowcounts=[], observed=exc.observed,
+                        if processing.exists():
+                            continue
+                        try:
+                            # Claim the pathname before reading any bytes.  This
+                            # competes atomically with client cancellation, so an
+                            # owner can execute only the inode it actually won.
+                            os.replace(request_path, processing)
+                            claimed = True
+                        except FileNotFoundError:
+                            continue
+                        payload = _read_bounded_canonical_json(processing)
+                        request = self._validate_mutation_request(
+                            payload, request_id=request_id
                         )
-                        if exc.code == "read_replica_refresh_unknown_outcome":
-                            self._lifecycle = ServerLifecycle.FAILED
-                            self._write_status()
-                    except Exception:
-                        self._write_mutation_result(
-                            done, request, ok=False, error_code="owner_transaction_failed",
-                            rowcounts=[], observed={},
-                        )
-                    else:
-                        self._write_mutation_result(
-                            done, request, ok=True, rowcounts=rowcounts,
-                            observed=observed,
-                        )
-                    finally:
-                        processing.unlink(missing_ok=True)
-                    serviced += 1
-                except (OSError, QuackStateServerMutationError, ValueError):
-                    # Unauthenticated/malformed files receive no signed oracle.
-                    if claimed:
-                        processing.unlink(missing_ok=True)
-                    else:
-                        request_path.unlink(missing_ok=True)
-                    serviced += 1
+                        if done.is_file() and self._existing_result_is_valid(
+                            done, request
+                        ):
+                            # Exact deterministic replay consumes no second
+                            # effect; the client authenticates the receipt.
+                            processing.unlink(missing_ok=True)
+                            serviced += 1
+                            continue
+                        done.unlink(missing_ok=True)
+                        try:
+                            rowcounts, observed = self._execute_mutation_request(
+                                request
+                            )
+                        except QuackStateServerMutationError as exc:
+                            self._write_mutation_result(
+                                done,
+                                request,
+                                ok=False,
+                                error_code=exc.code,
+                                rowcounts=[],
+                                observed=exc.observed,
+                            )
+                            if exc.code == "read_replica_refresh_unknown_outcome":
+                                self._lifecycle = ServerLifecycle.FAILED
+                                self._write_status()
+                        except Exception:
+                            self._write_mutation_result(
+                                done,
+                                request,
+                                ok=False,
+                                error_code="owner_transaction_failed",
+                                rowcounts=[],
+                                observed={},
+                            )
+                        else:
+                            self._write_mutation_result(
+                                done,
+                                request,
+                                ok=True,
+                                rowcounts=rowcounts,
+                                observed=observed,
+                            )
+                        finally:
+                            processing.unlink(missing_ok=True)
+                        serviced += 1
+                    except (OSError, QuackStateServerMutationError, ValueError):
+                        # Unauthenticated/malformed files receive no signed oracle.
+                        if claimed:
+                            processing.unlink(missing_ok=True)
+                        else:
+                            request_path.unlink(missing_ok=True)
+                        serviced += 1
             return serviced
 
     # -- lifecycle ---------------------------------------------------------
@@ -5743,7 +6157,10 @@ class QuackStateServer:
         """Acquire exclusive ownership, migrate, serve, and publish identity."""
 
         with self._lifecycle_gate:
-            return self._start_under_lifecycle_gate(acquired_owner_lease=None)
+            with self._owner_transaction_lock:
+                return self._start_under_lifecycle_gate(
+                    acquired_owner_lease=None
+                )
 
     def start_with_acquired_lease(
         self,
@@ -5766,9 +6183,10 @@ class QuackStateServer:
                 "owner lease handoff requires exact ExclusiveOwnerLease"
             )
         with self._lifecycle_gate:
-            return self._start_under_lifecycle_gate(
-                acquired_owner_lease=owner_lease
-            )
+            with self._owner_transaction_lock:
+                return self._start_under_lifecycle_gate(
+                    acquired_owner_lease=owner_lease
+                )
 
     def _start_under_lifecycle_gate(
         self,
@@ -5987,7 +6405,7 @@ class QuackStateServer:
                     store_id=identity.store_id,
                     identity=identity.to_dict(),
                     owner_liveness_probe=self.owner_liveness_probe,
-                    transaction_lock=self._lock,
+                    transaction_lock=self._owner_transaction_lock,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
                 gateway.start()
@@ -6084,6 +6502,12 @@ class QuackStateServer:
         * live transport query succeeds
         * store / generation / schema / server identities match the published set
         """
+
+        with self._owner_transaction_lock:
+            return self._ready_transaction_serialized()
+
+    def _ready_transaction_serialized(self) -> dict[str, Any]:
+        """Inspect readiness without interleaving another owner transaction."""
 
         with self._lock:
             if self._lifecycle is not ServerLifecycle.READY or self._identity is None:
@@ -6228,6 +6652,12 @@ class QuackStateServer:
     def checkpoint(self) -> dict[str, Any]:
         """Force a clean DuckDB checkpoint while owning the database."""
 
+        with self._owner_transaction_lock:
+            return self._checkpoint_transaction_serialized()
+
+    def _checkpoint_transaction_serialized(self) -> dict[str, Any]:
+        """Checkpoint under the shared owner-connection transaction lock."""
+
         with self._lock:
             if self._lifecycle is not ServerLifecycle.READY or self._connection is None:
                 raise QuackStateServerNotRunningError(
@@ -6283,6 +6713,11 @@ class QuackStateServer:
                 raise QuackStateServerControlError(
                     "outbox worker did not stop within its bounded deadline"
                 )
+        # Detach and stop the gateway without holding the lifecycle lock.  A
+        # client may be finishing a transaction while its commit observer
+        # briefly acquires that lock; joining it under the lock would invert
+        # the shared owner-transaction -> lifecycle order.
+        gateway: TypedStateOwnerGateway | None = None
         with self._lock:
             if self._lifecycle is ServerLifecycle.STOPPED:
                 return {"stopped": True, "already": True}
@@ -6291,7 +6726,15 @@ class QuackStateServer:
                     self._event_wait.shutdown()
                 self._lifecycle = ServerLifecycle.STOPPED
                 return {"stopped": True, "already": True}
-
+            self._lifecycle = ServerLifecycle.STOPPING
+            gateway = self._command_gateway
+            self._command_gateway = None
+        if gateway is not None:
+            try:
+                gateway.stop()
+            except Exception as exc:
+                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
+        with self._lock:
             self._lifecycle = ServerLifecycle.STOPPING
             if self._event_wait is not None:
                 self._event_wait.shutdown()
@@ -6415,14 +6858,14 @@ class QuackStateServer:
 
         with self._lock:
             identity = self._identity
-            storage_schema_fingerprint = ""
-            if identity is not None and self._connection is not None:
-                try:
-                    storage_schema_fingerprint = str(
-                        self._mutation_binding().get("schema_fingerprint") or ""
-                    )
-                except QuackStateServerMutationError:
-                    storage_schema_fingerprint = ""
+            # Replica settlement captures this value while the shared owner
+            # transaction lock is held.  Status must remain a pure projection;
+            # querying the writer here could interleave with a gateway
+            # BEGIN..COMMIT transaction.
+            storage_schema_fingerprint = str(
+                self._read_replica_observation.get("storage_schema_fingerprint")
+                or ""
+            )
             payload: dict[str, Any] = {
                 "schema": self.SCHEMA,
                 "interface": self.INTERFACE,
@@ -6497,13 +6940,18 @@ class QuackStateServer:
         # Explicitly do not pass secret handles or tokens to providers.
         return provider_safe_environment(base)
 
+    def _write_status_strict(self) -> None:
+        """Publish status or raise so a caller can gate signed success on it."""
+
+        _atomic_write_text(
+            self.status_path(),
+            canonical_json_bytes(self.status()).decode("utf-8") + "\n",
+            mode=0o600,
+        )
+
     def _write_status(self) -> None:
         try:
-            _atomic_write_text(
-                self.status_path(),
-                canonical_json_bytes(self.status()).decode("utf-8") + "\n",
-                mode=0o600,
-            )
+            self._write_status_strict()
         except Exception as exc:
             self._log(f"status write warning: {type(exc).__name__}")
 

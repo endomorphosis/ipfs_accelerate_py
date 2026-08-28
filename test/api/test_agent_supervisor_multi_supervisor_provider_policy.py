@@ -85,10 +85,10 @@ def test_direct_multi_supervisor_canonicalizes_compatible_grok_alias(
 @pytest.mark.parametrize(
     ("name", "value"),
     (
-        ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "auto"),
+        ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "openai"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", "copilot"),
         ("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", "always"),
-        ("IPFS_ACCELERATE_AGENT_GROK_MODEL", "grok-4.6"),
+        ("IPFS_ACCELERATE_AGENT_GROK_MODEL", "grok-5"),
         ("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "gpt-5.6-codex"),
         ("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "low"),
     ),

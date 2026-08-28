@@ -382,6 +382,10 @@ class TaskSourceUnknownOutcomeError(
 ):
     """A remote owner effect requires exact post-restart reconciliation."""
 
+    def __init__(self, message: str, *, request_id: str = "") -> None:
+        self.request_id = str(request_id or "")
+        super().__init__(message)
+
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):
     """A query or population bound was exceeded."""
@@ -1911,6 +1915,14 @@ def _cas_result_from_dict(payload: Mapping[str, Any]) -> CASResult:
 
 
 def _raise_typed_owner_error(exc: QuackOwnerCommandRemoteError) -> None:
+    if exc.code in {
+        "command_timeout_unknown_outcome",
+        "read_replica_refresh_unknown_outcome",
+    }:
+        raise TaskSourceUnknownOutcomeError(
+            exc.message,
+            request_id=exc.request_id,
+        ) from exc
     if exc.code == "conflict":
         raise TaskSourceConflictError(exc.message) from exc
     if exc.code == "completion_refused":
@@ -2232,6 +2244,40 @@ class DatabaseTaskSource:
 
         if not isinstance(population, Mapping):
             raise TaskSourceIntegrityError("population must be a mapping")
+        preflight_tasks = population.get("taskboard") or population.get("tasks") or ()
+        if isinstance(preflight_tasks, Mapping):
+            preflight_tasks = (preflight_tasks,)
+        for item in preflight_tasks:
+            if not isinstance(item, Mapping):
+                continue
+            task_key = str(
+                item.get("task_cid")
+                or item.get("task_id")
+                or item.get("id")
+                or ""
+            )
+            if not task_key:
+                continue
+            current = self.get(task_key)
+            if current is None:
+                continue
+            current_body = current.body if isinstance(current.body, Mapping) else {}
+            current_receipt = current_body.get("completion_receipt")
+            claimed = bool(
+                str(current.status or "").strip().lower()
+                in {"claimed", "in_progress", "running"}
+                or (
+                    isinstance(current_receipt, Mapping)
+                    and (
+                        current_receipt.get("operation") == "database_claim"
+                        or current_receipt.get("virgin_task_transfer") is not None
+                    )
+                )
+            )
+            if claimed:
+                raise TaskSourceTransitionError(
+                    "materialization cannot rewrite a claimed task"
+                )
         tree_id = str(
             repository_tree_id
             or population.get("repository_tree_id")

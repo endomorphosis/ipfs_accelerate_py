@@ -2142,7 +2142,8 @@ def test_exact_candidate_merge_survives_concurrent_target_advance(
     assert result["merged"] is True
     assert result["returncode"] == 0
     assert _git(repo, "rev-parse", branch) == candidate_commit
-    integration_commit = _git(repo, "rev-parse", "main")
+    target_branch = str(daemon.resolved_merge_target_branch or "main")
+    integration_commit = _git(repo, "rev-parse", target_branch)
     parents = _git(repo, "show", "-s", "--format=%P", integration_commit).split()
     assert parents == [target_before, candidate_commit]
     assert _git(
@@ -2152,8 +2153,8 @@ def test_exact_candidate_merge_survives_concurrent_target_advance(
         candidate_commit,
         integration_commit,
     ) == ""
-    assert (repo / "candidate.txt").read_text(encoding="utf-8") == "candidate\n"
-    assert (repo / "unrelated.txt").read_text(encoding="utf-8") == "target advance\n"
+    assert _git(repo, "show", f"{integration_commit}:candidate.txt") == "candidate"
+    assert _git(repo, "show", f"{integration_commit}:unrelated.txt") == "target advance"
 
 
 def test_enqueue_refreshes_authority_before_context_and_rejects_any_denial(

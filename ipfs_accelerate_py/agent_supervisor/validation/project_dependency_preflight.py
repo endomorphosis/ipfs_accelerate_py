@@ -5,8 +5,9 @@ no subprocess, package-manager, network, or filesystem mutation.  At explicit
 call time it reads static PEP-621 declarations or a narrowly scoped, declarative
 supervisor contract and evaluates them in the same approved, sealed Python
 environment used by authoritative validation.  Scoped contracts may attest a
-literal ``setup.py`` extra without executing setup code; they never replace
-ordinary project-wide dependency metadata.
+literal ``setup.py`` extra or an exact file-backed PEP-621 validation extra
+without executing setup code; they never replace ordinary project-wide
+dependency metadata.
 """
 
 from __future__ import annotations
@@ -68,6 +69,9 @@ SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2 = (
 SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3 = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@3"
 )
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4 = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4"
+)
 
 SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
@@ -127,7 +131,7 @@ PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
 _LOWER_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _SAFE_SCOPED_TARGET_PATTERN = re.compile(
-    r"tests/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
+    r"tests?/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
     r"[A-Za-z0-9_][A-Za-z0-9_.-]*\.py"
 )
 _SCOPED_CONTRACT_FIELDS = frozenset(
@@ -157,11 +161,29 @@ _SCOPED_CONTRACT_V2_TARGET_FIELDS = frozenset(
         "baseline",
     }
 )
+_SCOPED_CONTRACT_V4_TARGET_FIELDS = frozenset(
+    {
+        "target",
+        "command-target",
+        "command-kind",
+        "validation-command-sha256",
+        "requirements",
+        "task",
+        "baseline",
+    }
+)
 _SCOPED_CONTRACT_V2_TASK_FIELDS = frozenset(
     {
         "board-namespace",
         "canonical-task-cid",
         "declared-output",
+    }
+)
+_SCOPED_CONTRACT_V4_TASK_FIELDS = frozenset(
+    {
+        "board-namespace",
+        "canonical-task-cid",
+        "declared-outputs",
     }
 )
 _SCOPED_CONTRACT_V2_PRESENT_BASELINE_FIELDS = frozenset(
@@ -570,6 +592,7 @@ def _scoped_dependency_contract_configuration(
         if schema in {
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
         }
         else _SCOPED_CONTRACT_FIELDS
     )
@@ -669,7 +692,11 @@ def _command_is_exact_scoped_pytest_target(
     return tokens == expected
 
 
-def _require_safe_scoped_pytest_target(value: Any) -> str:
+def _require_safe_scoped_pytest_target(
+    value: Any,
+    *,
+    allow_singular_test_root: bool = False,
+) -> str:
     """Return one bounded canonical test-file target or fail closed."""
 
     if type(value) is not str:
@@ -685,7 +712,11 @@ def _require_safe_scoped_pytest_target(value: Any) -> str:
         or target_path.is_absolute()
         or ".." in target_path.parts
         or target_path.as_posix() != target
-        or not target.startswith("tests/")
+        or not target.startswith(
+            ("test/", "tests/")
+            if allow_singular_test_root
+            else ("tests/",)
+        )
         or not target.endswith(".py")
         or _SAFE_SCOPED_TARGET_PATTERN.fullmatch(target) is None
         or "::" in target
@@ -694,12 +725,16 @@ def _require_safe_scoped_pytest_target(value: Any) -> str:
     return target
 
 
-def _require_scoped_requirements(value: Any) -> list[str]:
-    """Return one nonempty, bounded, non-coercing requirement list."""
+def _require_scoped_requirements(
+    value: Any,
+    *,
+    allow_empty: bool = False,
+) -> list[str]:
+    """Return one bounded, non-coercing requirement list."""
 
     if not (
         type(value) is list
-        and value
+        and (allow_empty or value)
         and all(
             type(requirement) is str
             and requirement
@@ -715,6 +750,68 @@ def _require_scoped_requirements(value: Any) -> list[str]:
     ):
         raise _ScopedDependencyContractError("v2_target_requirements_invalid")
     return list(value)
+
+
+def _require_safe_scoped_v4_file(value: Any, *, reason: str) -> str:
+    """Return one bounded canonical repository-relative regular-file path."""
+
+    if type(value) is not str:
+        raise _ScopedDependencyContractError(reason)
+    path = value
+    parsed = PurePosixPath(path)
+    if (
+        not path
+        or path.strip() != path
+        or len(path.encode("utf-8", errors="surrogatepass"))
+        > MAX_SCOPED_CONTRACT_TARGET_BYTES
+        or "\\" in path
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or parsed.as_posix() != path
+        or len(parsed.parts) < 2
+        or any(ord(character) < 32 for character in path)
+        or parsed.suffix.lower() not in {".json", ".md", ".py"}
+    ):
+        raise _ScopedDependencyContractError(reason)
+    return path
+
+
+def _command_is_exact_v4_target(
+    command: str,
+    *,
+    relative_root: str,
+    command_kind: str,
+    command_target: str,
+) -> bool:
+    """Match one of the closed validation grammars admitted by v4."""
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return False
+    if relative_root:
+        prefix = ["cd", relative_root, "&&"]
+        if tokens[: len(prefix)] != prefix:
+            return False
+        tokens = tokens[len(prefix) :]
+    if command_kind == "pytest":
+        return tokens in (
+            ["python", "-m", "pytest", "-q", command_target],
+            ["python3", "-m", "pytest", command_target, "-q"],
+        )
+    if command_kind == "python-script-check":
+        return tokens == ["python", command_target, "--check"]
+    if command_kind == "python-script-mode-check":
+        return (
+            len(tokens) == 4
+            and tokens[0] == "python"
+            and tokens[1] == command_target
+            and tokens[2] in {"implementation", "release"}
+            and tokens[3] == "--check"
+        )
+    if command_kind == "json-tool":
+        return tokens == ["python", "-m", "json.tool", command_target]
+    return False
 
 
 def _expected_scoped_declared_output(relative_root: str, target: str) -> str:
@@ -756,21 +853,49 @@ def _require_scoped_prior_seed_paths(
     return list(value)
 
 
+def _scoped_selected_task_authority(
+    selected_target: Mapping[str, Any],
+    *,
+    contract_schema: str,
+) -> dict[str, Any]:
+    """Project the exact schema-specific task authority for one target."""
+
+    return {
+        "board_namespace": selected_target["board_namespace"],
+        "canonical_task_cid": selected_target["canonical_task_cid"],
+        **(
+            {"declared_outputs": selected_target["declared_outputs"]}
+            if contract_schema
+            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+            else {"declared_output": selected_target["declared_output"]}
+        ),
+    }
+
+
 def _scoped_prior_seed_target_sha256(
     authority: Mapping[str, Any] | None,
     *,
     project_root: Path,
     relative_root: str,
     selected_target: Mapping[str, Any],
+    contract_schema: str,
 ) -> str:
-    """Authenticate one task-bound replay that materialized an absent target.
+    """Authenticate one task-bound replay that changed its validation target.
 
-    The baseline receipt proves that the target was absent before replay.  The
-    seed authority is emitted only after the daemon's accepted proposal gate
-    has rebound the prior task delta to the current clean baseline.  This
-    verifier closes and content-binds that compact handoff before trusting it.
+    The baseline receipt proves the target's exact pre-replay state.  The seed
+    authority is emitted only after the daemon's accepted proposal gate has
+    rebound the prior task delta to the current clean baseline.  This verifier
+    closes and content-binds that compact handoff before trusting it.
     """
 
+    if contract_schema not in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+    }:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_contract_schema_invalid"
+        )
     if not (
         type(authority) is dict
         and set(authority) == _SCOPED_PRIOR_SEED_AUTHORITY_FIELDS
@@ -954,28 +1079,52 @@ def _scoped_prior_seed_target_sha256(
         for project in projects
         if isinstance(project, Mapping) and project.get("root") == relative_root
     ]
-    expected_task_authority = {
-        "board_namespace": selected_target["board_namespace"],
-        "canonical_task_cid": selected_target["canonical_task_cid"],
-        "declared_output": declared_output,
-    }
+    expected_task_authority = _scoped_selected_task_authority(
+        selected_target,
+        contract_schema=contract_schema,
+    )
     if len(matching_projects) != 1:
         raise _ScopedDependencyContractError(
             "v2_prior_seed_baseline_project_missing"
         )
     baseline_project = matching_projects[0]
+    expected_baseline_state = str(selected_target["baseline_state"])
+    expected_materialization_state = (
+        "absent"
+        if expected_baseline_state == "declared-output-absent"
+        else "present"
+    )
+    baseline_manifest_valid = True
+    if expected_baseline_state == "present":
+        baseline_manifests = baseline_project.get("dependency_manifests")
+        target_path_sha256 = hashlib.sha256(
+            str(selected_target["target"]).encode(
+                "utf-8", errors="surrogatepass"
+            )
+        ).hexdigest()
+        baseline_manifest_valid = bool(
+            isinstance(baseline_manifests, list)
+            and any(
+                isinstance(manifest, Mapping)
+                and manifest.get("path_sha256") == target_path_sha256
+                and manifest.get("content_sha256")
+                == selected_target["baseline_sha256"]
+                for manifest in baseline_manifests
+            )
+        )
     if not (
         baseline_project.get("passed") is True
         and baseline_project.get("dependency_contract_schema")
-        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
+        == contract_schema
         and baseline_project.get("scoped_validation_command_sha256")
         == selected_target["validation_command_sha256"]
         and baseline_project.get("scoped_validation_target_baseline_state")
-        == "declared-output-absent"
+        == expected_baseline_state
         and baseline_project.get(
             "scoped_validation_target_materialization_state"
         )
-        == "absent"
+        == expected_materialization_state
+        and baseline_manifest_valid
         and baseline_project.get("scoped_validation_task_authority_sha256")
         == _content_sha256(expected_task_authority)
         and baseline_project.get("scoped_validation_target_contract_sha256")
@@ -1109,12 +1258,16 @@ def _scoped_v2_selected_target(
     validation_commands: Sequence[str],
     task_authority: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """Validate all v2/v3 entries and select one task-bound command."""
+    """Validate all task-bound entries and select one exact command."""
 
-    mixed_declared_output_roots = (
-        contract.get("schema")
-        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
+    contract_schema = contract.get("schema")
+    v4_contract = (
+        contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
     )
+    mixed_declared_output_roots = contract_schema in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+    }
 
     targets = contract.get("targets")
     if not (
@@ -1180,14 +1333,64 @@ def _scoped_v2_selected_target(
     requirement_count = 0
     requirement_total_bytes = 0
     for raw_entry in targets:
+        expected_target_fields = (
+            _SCOPED_CONTRACT_V4_TARGET_FIELDS
+            if v4_contract
+            else _SCOPED_CONTRACT_V2_TARGET_FIELDS
+        )
         if not (
             type(raw_entry) is dict
-            and set(raw_entry) == _SCOPED_CONTRACT_V2_TARGET_FIELDS
+            and set(raw_entry) == expected_target_fields
         ):
             raise _ScopedDependencyContractError("v2_target_fields_invalid")
-        target = _require_safe_scoped_pytest_target(raw_entry.get("target"))
-        target_total_bytes += len(
-            target.encode("utf-8", errors="surrogatepass")
+        if v4_contract:
+            target = _require_safe_scoped_v4_file(
+                raw_entry.get("target"),
+                reason="v4_target_path_invalid",
+            )
+            command_target = _require_safe_scoped_v4_file(
+                raw_entry.get("command-target"),
+                reason="v4_command_target_path_invalid",
+            )
+            command_kind = raw_entry.get("command-kind")
+            if command_kind not in {
+                "json-tool",
+                "pytest",
+                "python-script-check",
+                "python-script-mode-check",
+            }:
+                raise _ScopedDependencyContractError(
+                    "v4_command_kind_invalid"
+                )
+            if command_kind == "pytest":
+                _require_safe_scoped_pytest_target(
+                    command_target,
+                    allow_singular_test_root=True,
+                )
+                if command_target != target:
+                    raise _ScopedDependencyContractError(
+                        "v4_pytest_target_mismatch"
+                    )
+            elif command_kind in {
+                "python-script-check",
+                "python-script-mode-check",
+            } and not command_target.startswith("scripts/"):
+                raise _ScopedDependencyContractError(
+                    "v4_script_command_target_invalid"
+                )
+            elif command_kind == "json-tool" and command_target != target:
+                raise _ScopedDependencyContractError(
+                    "v4_json_command_target_mismatch"
+                )
+        else:
+            target = _require_safe_scoped_pytest_target(
+                raw_entry.get("target"),
+            )
+            command_target = target
+            command_kind = "pytest"
+        target_total_bytes += sum(
+            len(value.encode("utf-8", errors="surrogatepass"))
+            for value in (target, command_target)
         )
         if (
             target in seen_targets
@@ -1208,7 +1411,8 @@ def _scoped_v2_selected_target(
         seen_commands.add(command_sha256)
 
         requirements = _require_scoped_requirements(
-            raw_entry.get("requirements")
+            raw_entry.get("requirements"),
+            allow_empty=v4_contract,
         )
         requirement_count += len(requirements)
         requirement_total_bytes += sum(
@@ -1224,15 +1428,32 @@ def _scoped_v2_selected_target(
             )
 
         entry_task = raw_entry.get("task")
+        expected_task_fields = (
+            _SCOPED_CONTRACT_V4_TASK_FIELDS
+            if v4_contract
+            else _SCOPED_CONTRACT_V2_TASK_FIELDS
+        )
         if not (
             type(entry_task) is dict
-            and set(entry_task) == _SCOPED_CONTRACT_V2_TASK_FIELDS
+            and set(entry_task) == expected_task_fields
         ):
             raise _ScopedDependencyContractError("v2_target_task_fields_invalid")
         board_namespace = entry_task.get("board-namespace")
         canonical_task_cid = entry_task.get("canonical-task-cid")
-        declared_output = entry_task.get("declared-output")
-        if mixed_declared_output_roots:
+        if v4_contract:
+            declared_outputs = _require_scoped_prior_seed_paths(
+                entry_task.get("declared-outputs"),
+                reason="v4_target_declared_outputs_invalid",
+            )
+            if target not in declared_outputs:
+                raise _ScopedDependencyContractError(
+                    "v4_target_not_declared_output"
+                )
+            declared_output = target
+        else:
+            declared_output = entry_task.get("declared-output")
+            declared_outputs = [str(declared_output)]
+        if mixed_declared_output_roots and not v4_contract:
             declared_output = _require_v3_scoped_declared_output(
                 declared_output,
                 target=target,
@@ -1256,7 +1477,11 @@ def _scoped_v2_selected_target(
             raise _ScopedDependencyContractError("v2_target_task_authority_invalid")
         identity_bytes = sum(
             len(value.encode("utf-8", errors="surrogatepass"))
-            for value in (board_namespace, canonical_task_cid, declared_output)
+            for value in (
+                board_namespace,
+                canonical_task_cid,
+                *declared_outputs,
+            )
         )
         if identity_bytes > MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES:
             raise _ScopedDependencyContractError(
@@ -1292,11 +1517,14 @@ def _scoped_v2_selected_target(
         parsed_targets.append(
             {
                 "target": target,
+                "command_target": command_target,
+                "command_kind": command_kind,
                 "validation_command_sha256": command_sha256,
                 "requirements": requirements,
                 "board_namespace": board_namespace,
                 "canonical_task_cid": canonical_task_cid,
                 "declared_output": declared_output,
+                "declared_outputs": declared_outputs,
                 "baseline_state": baseline_state,
                 "baseline_sha256": baseline_sha256,
             }
@@ -1307,7 +1535,14 @@ def _scoped_v2_selected_target(
         for entry in parsed_targets
         if entry["validation_command_sha256"] == validation_command_sha256
         and (
-            _command_is_exact_v3_scoped_pytest_target(
+            _command_is_exact_v4_target(
+                validation_command,
+                relative_root=relative_root,
+                command_kind=str(entry["command_kind"]),
+                command_target=str(entry["command_target"]),
+            )
+            if v4_contract
+            else _command_is_exact_v3_scoped_pytest_target(
                 validation_command,
                 relative_root=relative_root,
                 target=str(entry["target"]),
@@ -1325,6 +1560,7 @@ def _scoped_v2_selected_target(
     result = selected[0]
     if (
         mixed_declared_output_roots
+        and not v4_contract
         and result["declared_output"]
         != _expected_scoped_declared_output(
             relative_root,
@@ -1337,7 +1573,11 @@ def _scoped_v2_selected_target(
     if (
         result["board_namespace"] != runtime_board_namespace
         or result["canonical_task_cid"] != runtime_task_cid
-        or result["declared_output"] not in runtime_declared_outputs
+        or (
+            result["declared_outputs"] != runtime_declared_outputs
+            if v4_contract
+            else result["declared_output"] not in runtime_declared_outputs
+        )
     ):
         raise _ScopedDependencyContractError("v2_validation_task_authority_mismatch")
     return result
@@ -1353,7 +1593,7 @@ def _scoped_setup_extra_dependencies(
     task_authority: Mapping[str, Any] | None = None,
     prior_seed_authority: Mapping[str, Any] | None = None,
 ) -> tuple[list[str], list[dict[str, Any]], dict[str, Any]]:
-    """Resolve one exact-target setup-extra contract without executing setup."""
+    """Resolve one exact-target static dependency authority."""
 
     contract = _scoped_dependency_contract_configuration(parsed)
     if contract is None:
@@ -1363,6 +1603,7 @@ def _scoped_setup_extra_dependencies(
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
     }:
         raise ValueError("scoped dependency contract schema is unsupported")
 
@@ -1370,6 +1611,7 @@ def _scoped_setup_extra_dependencies(
         if contract_schema in {
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
         }:
             return _ScopedDependencyContractError(reason)
         return ValueError(message)
@@ -1382,13 +1624,20 @@ def _scoped_setup_extra_dependencies(
             "v2_setup_authority_fields_invalid",
             "scoped dependency authority fields are not closed",
         )
+    authority_file = authority.get("file")
     authority_extra = authority.get("extra")
-    if authority.get("file") != "setup.py":
+    if (
+        contract_schema != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+        and authority_file != "setup.py"
+    ):
         raise contract_failure(
             "v2_setup_authority_unsupported",
             "scoped dependency authority is unsupported",
         )
-    if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3:
+    if contract_schema in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+    }:
         if not (
             type(authority_extra) is str
             and authority_extra
@@ -1399,7 +1648,10 @@ def _scoped_setup_extra_dependencies(
             and _SAFE_SCOPED_EXTRA_PATTERN.fullmatch(authority_extra)
         ):
             raise _ScopedDependencyContractError(
-                "v3_setup_authority_extra_invalid"
+                "v4_file_authority_extra_invalid"
+                if contract_schema
+                == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+                else "v3_setup_authority_extra_invalid"
             )
     elif authority_extra != "test":
         raise contract_failure(
@@ -1504,8 +1756,26 @@ def _scoped_setup_extra_dependencies(
             )
             observed_target_sha256 = hashlib.sha256(target_payload).hexdigest()
             if observed_target_sha256 != selected_v2_target["baseline_sha256"]:
-                raise _ScopedDependencyContractError(
-                    "v2_present_target_digest_mismatch"
+                if prior_seed_authority is None:
+                    raise _ScopedDependencyContractError(
+                        "v2_present_target_digest_mismatch"
+                    )
+                expected_seeded_target_sha256 = (
+                    _scoped_prior_seed_target_sha256(
+                        prior_seed_authority,
+                        project_root=project_root,
+                        relative_root=relative_root,
+                        selected_target=selected_v2_target,
+                        contract_schema=str(contract_schema),
+                    )
+                )
+                if observed_target_sha256 != expected_seeded_target_sha256:
+                    raise _ScopedDependencyContractError(
+                        "v2_prior_seed_target_content_mismatch"
+                    )
+                target_materialization_state = "authenticated-prior-seed"
+                prior_seed_authority_sha256 = str(
+                    prior_seed_authority.get("authority_sha256")
                 )
         else:
             try:
@@ -1552,9 +1822,10 @@ def _scoped_setup_extra_dependencies(
             else:
                 target_materialization_state = "absent"
 
-    # A malformed setuptools file declaration cannot be bypassed by adding a
-    # second supervisor-only source.  This contract is only for setup.py-backed
-    # projects that have no declarative setuptools dependency file.
+    # V1-v3 authorize a literal setup.py extra only when the project has no
+    # declarative setuptools dependency file.  V4 instead binds the existing
+    # single file-backed dependency source and one static PEP-621 validation
+    # extra.  Neither path imports or executes packaging code.
     tool = parsed.get("tool")
     setuptools = tool.get("setuptools") if isinstance(tool, Mapping) else None
     if setuptools is not None and not isinstance(setuptools, Mapping):
@@ -1562,45 +1833,135 @@ def _scoped_setup_extra_dependencies(
     dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
     if dynamic is not None and not isinstance(dynamic, Mapping):
         raise ValueError("tool.setuptools.dynamic must be a table")
-    if isinstance(dynamic, Mapping) and "dependencies" in dynamic:
-        raise ValueError("scoped and setuptools dependency sources conflict")
-
-    setup_path, setup_payload = _read_bounded_contained_regular_file(
-        project_root,
-        project_root / "setup.py",
-        maximum_bytes=(
-            MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
-        ),
-        expected_containment_root_snapshot=expected_project_root_snapshot,
-    )
-    observed_setup_sha256 = hashlib.sha256(setup_payload).hexdigest()
-    if observed_setup_sha256 != authority_sha256:
-        raise contract_failure(
-            "v2_setup_authority_digest_mismatch",
-            "setup.py authority digest drifted",
+    if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4:
+        dependency_source = (
+            dynamic.get("dependencies")
+            if isinstance(dynamic, Mapping)
+            else None
         )
-    try:
-        authority_requirements = _setup_extra_literal_requirements(
-            setup_payload,
-            extra=str(authority_extra),
+        raw_authority_files = (
+            dependency_source.get("file")
+            if isinstance(dependency_source, Mapping)
+            else None
         )
-    except ValueError as exc:
-        if contract_schema in {
-            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
-            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
-        }:
+        authority_files = (
+            [raw_authority_files]
+            if isinstance(raw_authority_files, str)
+            else list(raw_authority_files)
+            if isinstance(raw_authority_files, list)
+            and all(isinstance(item, str) for item in raw_authority_files)
+            else []
+        )
+        if (
+            type(authority_file) is not str
+            or not authority_file
+            or authority_files != [authority_file]
+        ):
             raise _ScopedDependencyContractError(
-                "v3_setup_authority_not_static"
-                if contract_schema
-                == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
-                else "v2_setup_authority_not_static"
+                "v4_dynamic_dependency_authority_mismatch"
+            )
+        try:
+            _base_requirements, authority_manifests = (
+                _setuptools_file_backed_requirement_source(
+                    dependency_source,
+                    project_root,
+                    maximum_total_bytes=(
+                        MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
+                    ),
+                    expected_project_root_snapshot=(
+                        expected_project_root_snapshot
+                    ),
+                    maximum_files=1,
+                )
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise _ScopedDependencyContractError(
+                "v4_dynamic_dependency_authority_invalid"
             ) from exc
-        raise
-    if _content_sha256(authority_requirements) != extra_requirements_sha256:
-        raise contract_failure(
-            "v2_setup_extra_digest_mismatch",
-            "setup.py extra authority digest drifted",
+        if (
+            len(authority_manifests) != 1
+            or authority_manifests[0].get("path") != authority_file
+            or authority_manifests[0].get("sha256") != authority_sha256
+        ):
+            raise _ScopedDependencyContractError(
+                "v4_dynamic_dependency_authority_digest_mismatch"
+            )
+        project_dynamic = project.get("dynamic", [])
+        optional_dependencies = project.get("optional-dependencies")
+        raw_authority_requirements = (
+            optional_dependencies.get(str(authority_extra))
+            if isinstance(optional_dependencies, Mapping)
+            else None
         )
+        if (
+            not isinstance(project_dynamic, list)
+            or "optional-dependencies" in project_dynamic
+        ):
+            raise _ScopedDependencyContractError(
+                "v4_optional_dependency_authority_dynamic"
+            )
+        try:
+            authority_requirements = _require_scoped_requirements(
+                raw_authority_requirements
+            )
+        except _ScopedDependencyContractError as exc:
+            raise _ScopedDependencyContractError(
+                "v4_optional_dependency_authority_invalid"
+            ) from exc
+        if _content_sha256(authority_requirements) != extra_requirements_sha256:
+            raise _ScopedDependencyContractError(
+                "v4_optional_dependency_authority_digest_mismatch"
+            )
+        manifests = list(authority_manifests)
+    else:
+        if isinstance(dynamic, Mapping) and "dependencies" in dynamic:
+            raise ValueError("scoped and setuptools dependency sources conflict")
+
+        setup_path, setup_payload = _read_bounded_contained_regular_file(
+            project_root,
+            project_root / "setup.py",
+            maximum_bytes=(
+                MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
+            ),
+            expected_containment_root_snapshot=(
+                expected_project_root_snapshot
+            ),
+        )
+        observed_setup_sha256 = hashlib.sha256(setup_payload).hexdigest()
+        if observed_setup_sha256 != authority_sha256:
+            raise contract_failure(
+                "v2_setup_authority_digest_mismatch",
+                "setup.py authority digest drifted",
+            )
+        try:
+            authority_requirements = _setup_extra_literal_requirements(
+                setup_payload,
+                extra=str(authority_extra),
+            )
+        except ValueError as exc:
+            if contract_schema in {
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+            }:
+                raise _ScopedDependencyContractError(
+                    "v3_setup_authority_not_static"
+                    if contract_schema
+                    == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
+                    else "v2_setup_authority_not_static"
+                ) from exc
+            raise
+        if _content_sha256(authority_requirements) != extra_requirements_sha256:
+            raise contract_failure(
+                "v2_setup_extra_digest_mismatch",
+                "setup.py extra authority digest drifted",
+            )
+        manifests = [
+            {
+                "path": setup_path.relative_to(project_root).as_posix(),
+                "sha256": observed_setup_sha256,
+                "bytes": len(setup_payload),
+            }
+        ]
     if (
         selected_v2_target is not None
         and selected_v2_target["baseline_state"] == "declared-output-absent"
@@ -1629,29 +1990,33 @@ def _scoped_setup_extra_dependencies(
             "v2_target_requirement_order_mismatch",
             "scoped dependency authority subset order drifted",
         )
-    pytest_requirements = [
-        requirement
-        for requirement in requirements
-        if re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", requirement)
-    ]
-    if not pytest_requirements:
-        raise contract_failure(
-            "v2_target_requirements_omit_pytest",
-            "scoped pytest dependency contract omits pytest",
+    if (
+        contract_schema != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+        or (
+            selected_v2_target is not None
+            and selected_v2_target.get("command_kind") == "pytest"
         )
-    if not any(";" not in requirement for requirement in pytest_requirements):
-        raise contract_failure(
-            "v2_pytest_requirement_marker_only",
-            "scoped pytest runner requirement cannot have a marker",
-        )
+    ):
+        pytest_requirements = [
+            requirement
+            for requirement in requirements
+            if re.match(
+                r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", requirement
+            )
+        ]
+        if not pytest_requirements:
+            raise contract_failure(
+                "v2_target_requirements_omit_pytest",
+                "scoped pytest dependency contract omits pytest",
+            )
+        if not any(
+            ";" not in requirement for requirement in pytest_requirements
+        ):
+            raise contract_failure(
+                "v2_pytest_requirement_marker_only",
+                "scoped pytest runner requirement cannot have a marker",
+            )
 
-    manifests = [
-        {
-            "path": setup_path.relative_to(project_root).as_posix(),
-            "sha256": observed_setup_sha256,
-            "bytes": len(setup_payload),
-        }
-    ]
     if target_file is not None:
         manifests.append(
             {
@@ -1665,16 +2030,23 @@ def _scoped_setup_extra_dependencies(
         "scoped_validation_target_sha256": hashlib.sha256(
             target.encode("utf-8")
         ).hexdigest(),
-        "setup_extra_requirements_sha256": extra_requirements_sha256,
+        (
+            "scoped_file_extra_requirements_sha256"
+            if contract_schema
+            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+            else "setup_extra_requirements_sha256"
+        ): extra_requirements_sha256,
     }
-    if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3:
+    if contract_schema in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+    }:
         metadata["scoped_validation_extra"] = authority_extra
     if selected_v2_target is not None:
-        selected_task_authority = {
-            "board_namespace": selected_v2_target["board_namespace"],
-            "canonical_task_cid": selected_v2_target["canonical_task_cid"],
-            "declared_output": selected_v2_target["declared_output"],
-        }
+        selected_task_authority = _scoped_selected_task_authority(
+            selected_v2_target,
+            contract_schema=str(contract_schema),
+        )
         metadata.update(
             {
                 "scoped_validation_command_sha256": selected_v2_target[
@@ -2068,13 +2440,37 @@ def _bounded_static_project(
                 "reason": "pep621_dependencies_static_and_dynamic",
                 "pyproject_sha256": pyproject_sha256,
             }
-        try:
-            dependencies, dependency_manifests = _setuptools_file_backed_dependencies(
-                parsed,
-                project_root,
-                project_root_snapshot,
-            )
-        except (OSError, UnicodeError, ValueError):
+        tool_configuration = parsed.get("tool")
+        supervisor_configuration = (
+            tool_configuration.get("ipfs-accelerate-agent-supervisor")
+            if isinstance(tool_configuration, Mapping)
+            else None
+        )
+        raw_scoped_contract = (
+            supervisor_configuration.get("project-dependency-preflight")
+            if isinstance(supervisor_configuration, Mapping)
+            else None
+        )
+        prefer_scoped_contract = (
+            isinstance(raw_scoped_contract, Mapping)
+            and raw_scoped_contract.get("schema")
+            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+        )
+        dynamic_dependency_error = prefer_scoped_contract
+        if not prefer_scoped_contract:
+            try:
+                dependencies, dependency_manifests = (
+                    _setuptools_file_backed_dependencies(
+                        parsed,
+                        project_root,
+                        project_root_snapshot,
+                    )
+                )
+            except (OSError, UnicodeError, ValueError):
+                dynamic_dependency_error = True
+            else:
+                dependency_source = "setuptools_dynamic_file"
+        if dynamic_dependency_error:
             try:
                 (
                     dependencies,
@@ -2103,10 +2499,13 @@ def _bounded_static_project(
                 if isinstance(exc, _ScopedDependencyContractError):
                     failure["contract_error_reason"] = exc.reason
                 return failure
-            dependency_source = "agent_supervisor_scoped_setup_extra"
+            dependency_source = (
+                "agent_supervisor_scoped_file_extra"
+                if scoped_contract_metadata.get("dependency_contract_schema")
+                == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+                else "agent_supervisor_scoped_setup_extra"
+            )
             scoped_contract_selected = True
-        else:
-            dependency_source = "setuptools_dynamic_file"
     elif dependencies is None:
         dependencies = []
     if not isinstance(dependencies, list) or not all(
@@ -2120,13 +2519,16 @@ def _bounded_static_project(
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
+    scoped_validation_extra = str(
+        scoped_contract_metadata.get("scoped_validation_extra") or "test"
+    )
     requirement_marker_extras = [
-        "test" if scoped_contract_selected else ""
+        scoped_validation_extra if scoped_contract_selected else ""
     ] * len(dependencies)
     if scoped_contract_selected:
         validation_dependencies: list[str] = []
         validation_marker_extras: list[str] = []
-        selected_extras = ["test"]
+        selected_extras = [scoped_validation_extra]
         validation_manifests: list[dict[str, Any]] = []
         validation_dependency_source = "scoped_dependency_contract"
     else:
@@ -2969,9 +3371,10 @@ def _evaluate_dependency_payload(
             "",
             *PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY,
         }
-        if dependency_contract_schema == (
-            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
-        ):
+        if dependency_contract_schema in {
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        }:
             if (
                 type(scoped_validation_extra) is str
                 and scoped_validation_extra
@@ -3168,6 +3571,24 @@ def _run_bounded_probe_process(
         return returncode, bytes(output), {}
 
 
+def _active_module_source_bytes() -> bytes:
+    """Read this module through its import loader, including ZIP capsules."""
+
+    module_path = str(globals().get("__file__") or "")
+    if not module_path:
+        raise RuntimeError("dependency preflight module path is unavailable")
+    loader = globals().get("__loader__")
+    loader_get_data = getattr(loader, "get_data", None)
+    if callable(loader_get_data):
+        source = loader_get_data(module_path)
+        if type(source) is not bytes:
+            raise RuntimeError(
+                "dependency preflight loader returned non-byte source"
+            )
+        return source
+    return Path(module_path).resolve(strict=True).read_bytes()
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
@@ -3180,8 +3601,7 @@ def _run_dependency_probe(
         validation_environment,
         _run_dependency_probe,
     )
-    module_path = Path(__file__).resolve(strict=True)
-    source = module_path.read_bytes()
+    source = _active_module_source_bytes()
     source_sha256 = hashlib.sha256(source).hexdigest()
     if len(source) > MAX_PROBE_SOURCE_BYTES:
         return {
@@ -3427,7 +3847,10 @@ def _preflight_validation_project_dependencies(
                             ),
                         }
                         if project.get("dependency_contract_schema")
-                        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3
+                        in {
+                            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
+                            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                        }
                         else {}
                     ),
                 }

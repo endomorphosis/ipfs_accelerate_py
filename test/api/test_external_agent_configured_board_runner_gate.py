@@ -357,6 +357,60 @@ def test_start_track_requires_live_ticket_before_any_popen(
     assert calls == []
 
 
+def test_main_forwards_eaaef_live_seal_to_supervisor_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+
+    entry = tmp_path / "entry.py"
+    entry.write_text("# entry\n", encoding="utf-8")
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        process_security,
+        "harden_state_authority_process",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        process_security,
+        "capture_state_authority_credentials",
+        lambda: False,
+    )
+
+    def run_tracks(*_args: object, **kwargs: object) -> dict[str, object]:
+        captured.append(kwargs)
+        return {"completed": True, "all_trees_fenced": True}
+
+    monkeypatch.setattr(runner, "run_supervisor_tracks", run_tracks)
+    live_config = runner.EAAEF_CONFIGURED_BOARD_LIVE_SEAL_CONFIG_PATH
+    result = runner.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--track",
+            "|".join(
+                (
+                    "eaaef-lane-0",
+                    str(entry),
+                    str(tmp_path / "lane.log"),
+                    str(tmp_path / "lane.pid"),
+                    str(tmp_path / "daemon.pid"),
+                )
+            ),
+            "--master-log",
+            str(tmp_path / "master.log"),
+            "--master-pid-path",
+            str(tmp_path / "master.pid"),
+            "--require-configured-board-live-seal",
+            live_config,
+        ]
+    )
+
+    assert result == 0
+    assert len(captured) == 1
+    assert captured[0]["require_configured_board_live_seal"] == live_config
+
+
 def test_plan_bound_birth_gate_reopens_ticket_after_parent_release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

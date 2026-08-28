@@ -1838,6 +1838,42 @@ class DatabaseCoordinator:
         except Exception:
             pass
 
+    @staticmethod
+    def _begin_strict_transaction_unlocked(
+        connection: Any,
+        *,
+        operation: str,
+    ) -> None:
+        """Begin one required transaction without best-effort fallbacks."""
+
+        if getattr(connection, "in_transaction", None) is not False:
+            raise DatabaseCoordinationConflictError(
+                f"{operation} requires an idle, transaction-aware connection"
+            )
+        connection.execute("BEGIN TRANSACTION")
+        if getattr(connection, "in_transaction", None) is not True:
+            raise DatabaseCoordinationError(
+                f"{operation} did not enter its required transaction"
+            )
+
+    @staticmethod
+    def _commit_strict_transaction_unlocked(
+        connection: Any,
+        *,
+        operation: str,
+    ) -> None:
+        """Commit one required transaction and expose any native failure."""
+
+        if getattr(connection, "in_transaction", None) is not True:
+            raise DatabaseCoordinationError(
+                f"{operation} lost its transaction before commit"
+            )
+        connection.execute("COMMIT")
+        if getattr(connection, "in_transaction", None) is not False:
+            raise DatabaseCoordinationError(
+                f"{operation} commit did not close its transaction"
+            )
+
     def _rollback_if_open(self, connection: Any) -> None:
         try:
             rollback = getattr(connection, "rollback", None)
@@ -2125,7 +2161,10 @@ class DatabaseCoordinator:
 
         with self._lock:
             connection = self._require()
-            self._begin(connection)
+            self._begin_strict_transaction_unlocked(
+                connection,
+                operation="authoritative task synchronization",
+            )
             try:
                 existing = connection.execute(
                     """
@@ -2475,15 +2514,17 @@ class DatabaseCoordinator:
                     existing is not None
                     and (existing_ready != ready or existing_body != projection_body)
                 ):
-                    connection.execute(
-                        """
-                        UPDATE coordination_tasks
-                        SET ready = ?, body_json = ? WHERE task_cid = ?
-                        """,
-                        [ready, _canonical_json(projection_body), cid],
+                    self._set_task_ready_with_table_rebuild_unlocked(
+                        connection,
+                        task_cid=cid,
+                        ready=ready,
+                        body_json=_canonical_json(projection_body),
                     )
                     changed = True
-                self._commit_if_idle(connection)
+                self._commit_strict_transaction_unlocked(
+                    connection,
+                    operation="authoritative task synchronization",
+                )
                 return {
                     "task_cid": cid,
                     "task_id": tid,
@@ -3047,29 +3088,19 @@ class DatabaseCoordinator:
     def _begin_task_rearm_transaction_unlocked(connection: Any) -> None:
         """Begin the destructive rearm transaction without best-effort fallbacks."""
 
-        if getattr(connection, "in_transaction", None) is not False:
-            raise DatabaseCoordinationConflictError(
-                "task rearm requires an idle, transaction-aware connection"
-            )
-        connection.execute("BEGIN TRANSACTION")
-        if getattr(connection, "in_transaction", None) is not True:
-            raise DatabaseCoordinationError(
-                "task rearm did not enter its required transaction"
-            )
+        DatabaseCoordinator._begin_strict_transaction_unlocked(
+            connection,
+            operation="task rearm",
+        )
 
     @staticmethod
     def _commit_task_rearm_transaction_unlocked(connection: Any) -> None:
         """Commit rearm and prove the transaction closed before returning."""
 
-        if getattr(connection, "in_transaction", None) is not True:
-            raise DatabaseCoordinationError(
-                "task rearm lost its transaction before commit"
-            )
-        connection.execute("COMMIT")
-        if getattr(connection, "in_transaction", None) is not False:
-            raise DatabaseCoordinationError(
-                "task rearm commit did not close its transaction"
-            )
+        DatabaseCoordinator._commit_strict_transaction_unlocked(
+            connection,
+            operation="task rearm",
+        )
 
     @staticmethod
     def _set_task_ready_with_table_rebuild_unlocked(
@@ -3077,23 +3108,26 @@ class DatabaseCoordinator:
         *,
         task_cid: str,
         ready: bool,
+        body_json: str | None = None,
     ) -> None:
-        """Replace the task registry without mutating either of its ART indexes.
+        """Replace one task projection without mutating either ART index.
 
-        The caller must first prove whole-sidecar quiescence.  Dropping only
-        ``coordination_tasks_ready_idx`` is insufficient: DuckDB implements an
-        ``UPDATE`` as a delete plus insert of the complete row, which still
+        The caller must exclude concurrent sidecar writers; control rearm
+        callers additionally prove whole-sidecar logical quiescence.  Dropping
+        only ``coordination_tasks_ready_idx`` is insufficient: DuckDB implements
+        an ``UPDATE`` as a delete plus insert of the complete row, which still
         rewrites the table's primary-key ART index.  A persisted ART can reject
         that delete with a fatal ``Only deleted 0 out of 1 rows`` error.
 
         Build the exact authority table under a transaction-local staging
-        name, copying the target row with its new ready bit, then replace the
-        old table as one transactional DDL operation.  No row in the landed
-        ``coordination_tasks`` table is updated or deleted.  The staging table
-        has the same constraints and defaults, and the required secondary
-        index is recreated before validating the complete authority inventory.
-        DuckDB transactional DDL makes any failure roll back both the table
-        replacement and the caller's logical-completion removal.
+        name, copying the target row with its new ready bit and, when supplied,
+        projection body, then replace the old table as one transactional DDL
+        operation.  No row in the landed ``coordination_tasks`` table is
+        updated or deleted.  The staging table has the same constraints and
+        defaults, and the required secondary index is recreated before
+        validating the complete authority inventory.  DuckDB transactional
+        DDL makes any failure roll back both the table replacement and the
+        caller's other coordination changes.
         """
 
         source_row = connection.execute(
@@ -3134,10 +3168,13 @@ class DatabaseCoordinator:
             )
             SELECT task_cid, task_id, worktree_id, registered_at_ms,
                    CASE WHEN task_cid = ? THEN ? ELSE ready END,
-                   body_json
+                   CASE WHEN task_cid = ?
+                        THEN COALESCE(?, body_json)
+                        ELSE body_json
+                   END
             FROM coordination_tasks
             """,
-            [task_cid, bool(ready)],
+            [task_cid, bool(ready), task_cid, body_json],
         )
         row = connection.execute(
             """
@@ -3172,14 +3209,26 @@ class DatabaseCoordinator:
             """
         )
         row = connection.execute(
-            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
             [task_cid],
         ).fetchone()
-        if row is None or bool(
-            _row_get(_row_mapping(row), "ready", "0", default=not ready)
-        ) is not bool(ready):
+        if row is None:
             raise DatabaseCoordinationStaleFenceError(
-                "task ready-bit rearm lost its exact registry row"
+                "task projection rebuild lost its exact registry row"
+            )
+        landed_mapping = _row_mapping(row)
+        landed_ready = bool(
+            _row_get(landed_mapping, "ready", "0", default=not ready)
+        )
+        landed_body = str(
+            _row_get(landed_mapping, "body_json", "1", default="") or ""
+        )
+        if (
+            landed_ready is not bool(ready)
+            or (body_json is not None and landed_body != body_json)
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "task projection rebuild lost its exact registry row"
             )
         _validate_coordination_authority(connection)
 

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    multi_supervisor_runner as runner_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     _track_supervisor_status_startup_grace_seconds,
     parse_track_spec,
@@ -252,3 +257,248 @@ def test_runner_recycles_prior_status_after_declared_startup_grace(
         and "restart_supervisor=true" in line
         for line in output
     )
+
+
+def _run_status_observation_sequence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    observations: list[dict[str, object]],
+) -> tuple[dict[str, object], list[str]]:
+    _write_worker(tmp_path)
+    observed = iter(observations)
+
+    def status_fields(*args, **kwargs):
+        del args, kwargs
+        return next(
+            observed,
+            {
+                "supervisor_status": "live",
+                "restart_supervisor": False,
+            },
+        )
+
+    monkeypatch.setattr(
+        runner_module,
+        "supervisor_status_health_fields",
+        status_fields,
+    )
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [_track()],
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.21,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="status observation sequence runner",
+        output=output.append,
+    )
+    return result, output
+
+
+def test_one_transient_status_miss_after_live_does_not_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, output = _run_status_observation_sequence(
+        tmp_path,
+        monkeypatch,
+        [
+            {"supervisor_status": "live", "restart_supervisor": False},
+            {
+                "supervisor_status": "stale",
+                "supervisor_status_generation": "pending",
+                "supervisor_status_generation_reason": "status_missing",
+                "restart_supervisor": True,
+            },
+            {"supervisor_status": "live", "restart_supervisor": False},
+        ],
+    )
+
+    assert result["completed"] is True
+    assert sum("started T supervisor" in line for line in output) == 1
+    assert not any("restarting stale T supervisor" in line for line in output)
+    assert any(
+        "supervisor_status_restart_deferred=true" in line for line in output
+    )
+
+
+def test_sustained_status_misses_after_live_restart_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, output = _run_status_observation_sequence(
+        tmp_path,
+        monkeypatch,
+        [
+            {"supervisor_status": "live", "restart_supervisor": False},
+            {
+                "supervisor_status": "stale",
+                "supervisor_status_generation": "pending",
+                "supervisor_status_generation_reason": "status_missing",
+                "restart_supervisor": True,
+            },
+            {
+                "supervisor_status": "stale",
+                "supervisor_status_generation": "pending",
+                "supervisor_status_generation_reason": "status_missing",
+                "restart_supervisor": True,
+            },
+            {"supervisor_status": "live", "restart_supervisor": False},
+        ],
+    )
+
+    assert result["completed"] is True
+    assert sum("started T supervisor" in line for line in output) == 2
+    assert sum(
+        "restarting stale T supervisor" in line for line in output
+    ) == 1
+
+
+class _StrictProjectionProcess:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self.alive = True
+
+    def poll(self) -> int | None:
+        return None if self.alive else 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        self.alive = False
+        return 0
+
+
+def _strict_projection_restart_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    substitute_projection: bool,
+) -> tuple[dict[str, object], list[_StrictProjectionProcess], list[str], Path]:
+    track = replace(_track(), extra_args=("--plan-bound-dispatch",))
+    pid_path = track.resolve(tmp_path).supervisor_pid_path
+    processes: list[_StrictProjectionProcess] = []
+    substituted = False
+
+    def strict_start_track(*args, **kwargs):
+        del args
+        resolved = track.resolve(Path(kwargs["repo_root"]))
+        resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, identity = runner_module._reserve_owned_pid_projection(
+            resolved.supervisor_pid_path
+        )
+        process = _StrictProjectionProcess(810_000 + len(processes))
+        try:
+            runner_module._publish_reserved_pid_projection(
+                resolved.supervisor_pid_path,
+                descriptor,
+                identity,
+                process.pid,
+            )
+        finally:
+            os.close(descriptor)
+        processes.append(process)
+        return process
+
+    def terminate(process, *, grace_seconds):
+        nonlocal substituted
+        del grace_seconds
+        process.alive = False
+        if substitute_projection and not substituted:
+            pid_path.write_text("999999\n", encoding="ascii")
+            pid_path.chmod(0o600)
+            substituted = True
+        return True, (process.pid,)
+
+    def status_fields(*args, **kwargs):
+        del args, kwargs
+        restart = len(processes) == 1
+        return {
+            "supervisor_status": "stale" if restart else "ok",
+            "supervisor_status_generation": "current",
+            "supervisor_status_generation_reason": "status_missing",
+            "supervisor_status_age_seconds": 999.0 if restart else 0.0,
+            "restart_supervisor": restart,
+        }
+
+    monkeypatch.setattr(runner_module, "start_track", strict_start_track)
+    monkeypatch.setattr(
+        runner_module,
+        "daemon_pid_health_fields",
+        lambda *args, **kwargs: {
+            "daemon_pid": None,
+            "daemon_status": "missing",
+        },
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "supervisor_status_health_fields",
+        status_fields,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "pid_alive",
+        lambda pid: any(item.pid == pid and item.alive for item in processes),
+    )
+    monkeypatch.setattr(runner_module, "_terminate_managed_process", terminate)
+    monkeypatch.setattr(
+        runner_module,
+        "stop_tracks",
+        lambda *args, **kwargs: {
+            "stopped_count": 0,
+            "all_trees_fenced": True,
+            "removed_runtime_markers": [],
+        },
+    )
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.11,
+        heartbeat_interval_seconds=0.01,
+        supervisor_status_stale_seconds=0.01,
+        stop_grace_seconds=0.01,
+        python_executable=sys.executable,
+        label="strict projection generation test runner",
+        output=output.append,
+    )
+    return result, processes, output, pid_path
+
+
+def test_strict_projection_is_retired_before_same_track_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, processes, output, pid_path = _strict_projection_restart_harness(
+        tmp_path,
+        monkeypatch,
+        substitute_projection=False,
+    )
+
+    assert result["completed"] is True
+    assert len(processes) == 2
+    assert pid_path.read_text(encoding="ascii") == f"{processes[1].pid}\n"
+    assert sum("started T supervisor" in line for line in output) == 0
+    assert any("restarting stale T supervisor" in line for line in output)
+
+
+def test_strict_projection_substitution_blocks_same_track_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, processes, _output, pid_path = _strict_projection_restart_harness(
+        tmp_path,
+        monkeypatch,
+        substitute_projection=True,
+    )
+
+    assert result["completed"] is False
+    assert "could not retire fenced T supervisor PID projection" in str(
+        result["interrupted"]
+    )
+    assert len(processes) == 1
+    assert pid_path.read_text(encoding="ascii") == "999999\n"

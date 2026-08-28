@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     DatabaseTaskSource,
     TaskSourceCompletionError,
     TaskSourceConflictError,
+    TaskSourceUnknownOutcomeError,
     execute_quack_owner_command,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -111,7 +112,7 @@ def test_request_authentication_binds_generation_freshness_and_hmac() -> None:
     request = _signed_request()
     for changes, message in (
         ({"store_generation": "generation-2"}, "binding"),
-        ({"issued_at_ms": 900_000}, "stale"),
+        ({"issued_at_ms": 600_000}, "stale"),
         ({"signature": "0" * 64}, "authorization"),
     ):
         changed = {**request, **changes}
@@ -174,6 +175,131 @@ def test_submit_round_trips_bound_typed_result(tmp_path: Path, monkeypatch) -> N
     assert result == {"schema": "typed-result@1", "value": 7}
 
 
+def test_stable_request_id_rejects_response_for_different_payload(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    inbox = tmp_path / "mutations"
+    token = "token_value_123"
+    store_id = "data/control.duckdb"
+    store_generation = "generation-1"
+    request_id = "b" * 32
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", store_id)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        store_generation,
+    )
+    inbox.mkdir(parents=True)
+    prior_request = {
+        "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": "supervisor-process:123",
+        "store_id": store_id,
+        "store_generation": store_generation,
+        "command": QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        "payload": {
+            "task_cid": "task:typed-owner-test",
+            "evidence_kind": "validation",
+            "digest": "sha256:" + ("1" * 64),
+        },
+    }
+    prior_request["signature"] = quack_owner_command_signature(
+        prior_request,
+        token,
+    )
+    stale_response = quack_owner_command_response(
+        prior_request,
+        token=token,
+        result={"schema": "typed-result@1", "value": "stale"},
+    )
+    (inbox / f"{request_id}.done.json").write_text(
+        json.dumps(stale_response),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(QuackOwnerCommandRemoteError) as caught:
+        submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+            {
+                "task_cid": "task:typed-owner-test",
+                "evidence_kind": "validation",
+                "digest": "sha256:" + ("2" * 64),
+            },
+            timeout_seconds=0.1,
+            request_id=request_id,
+        )
+    assert caught.value.code == "command_timeout_unknown_outcome"
+    assert caught.value.request_id == request_id
+    assert isinstance(caught.value.__cause__, DuckDBConnectionPolicyError)
+    assert (inbox / f"{request_id}.request.json").is_file()
+
+
+def test_stable_request_id_rejects_stale_failure_for_prior_publication(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    inbox = tmp_path / "mutations"
+    token = "token_value_123"
+    store_id = "data/control.duckdb"
+    store_generation = "generation-1"
+    request_id = "c" * 32
+    payload = {
+        "task_cid": "task:typed-owner-test",
+        "evidence_kind": "validation",
+        "digest": "sha256:" + ("3" * 64),
+    }
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", store_id)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        store_generation,
+    )
+    inbox.mkdir(parents=True)
+    prior_request = {
+        "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000) - 1_000,
+        "writer_identity": "supervisor-process:123",
+        "store_id": store_id,
+        "store_generation": store_generation,
+        "command": QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        "payload": payload,
+    }
+    prior_request["signature"] = quack_owner_command_signature(
+        prior_request,
+        token,
+    )
+    stale_failure = quack_owner_command_response(
+        prior_request,
+        token=token,
+        error_code="prior_definitive_failure",
+        error_message="the prior publication was rejected",
+    )
+    (inbox / f"{request_id}.done.json").write_text(
+        json.dumps(stale_failure),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(QuackOwnerCommandRemoteError) as caught:
+        submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+            payload,
+            timeout_seconds=0.1,
+            request_id=request_id,
+        )
+    assert caught.value.code == "command_timeout_unknown_outcome"
+    assert caught.value.request_id == request_id
+    assert isinstance(caught.value.__cause__, DuckDBConnectionPolicyError)
+    replacement = json.loads(
+        (inbox / f"{request_id}.request.json").read_text(encoding="utf-8")
+    )
+    assert replacement["signature"] != prior_request["signature"]
+
+
 def test_submit_rejects_forged_owner_response(tmp_path: Path, monkeypatch) -> None:
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
@@ -211,7 +337,7 @@ def test_submit_rejects_forged_owner_response(tmp_path: Path, monkeypatch) -> No
 
     thread = threading.Thread(target=forger)
     thread.start()
-    with pytest.raises(DuckDBConnectionPolicyError, match="authorization"):
+    with pytest.raises(QuackOwnerCommandRemoteError) as caught:
         submit_quack_owner_command(
             QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
             {
@@ -219,8 +345,11 @@ def test_submit_rejects_forged_owner_response(tmp_path: Path, monkeypatch) -> No
                 "evidence_kind": "validation",
                 "digest": "sha256:" + ("4" * 64),
             },
-            timeout_seconds=2,
+            timeout_seconds=0.2,
         )
+    assert caught.value.code == "command_timeout_unknown_outcome"
+    assert len(caught.value.request_id) == 32
+    assert isinstance(caught.value.__cause__, DuckDBConnectionPolicyError)
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert len(list(inbox.glob("*.request.json"))) == 1
@@ -263,7 +392,7 @@ def test_submit_rejects_unsafe_owner_response_file(
 
     thread = threading.Thread(target=unsafe_writer)
     thread.start()
-    with pytest.raises(DuckDBConnectionPolicyError, match="response"):
+    with pytest.raises(QuackOwnerCommandRemoteError) as caught:
         submit_quack_owner_command(
             QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
             {
@@ -271,8 +400,11 @@ def test_submit_rejects_unsafe_owner_response_file(
                 "evidence_kind": "validation",
                 "digest": "sha256:" + ("5" * 64),
             },
-            timeout_seconds=2,
+            timeout_seconds=0.2,
         )
+    assert caught.value.code == "command_timeout_unknown_outcome"
+    assert len(caught.value.request_id) == 32
+    assert isinstance(caught.value.__cause__, DuckDBConnectionPolicyError)
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert len(list(inbox.glob("*.request.json"))) == 1
@@ -721,6 +853,21 @@ def test_database_task_source_maps_typed_owner_failures(monkeypatch) -> None:
     )
     with pytest.raises(TaskSourceCompletionError, match="current evidence"):
         source.compare_and_set_status("task:1", 1, "completed")
+
+    def unknown(*_args, **_kwargs):
+        raise QuackOwnerCommandRemoteError(
+            "command_timeout_unknown_outcome",
+            "reconcile exact request",
+            request_id="e" * 32,
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source.submit_quack_owner_command",
+        unknown,
+    )
+    with pytest.raises(TaskSourceUnknownOutcomeError) as raised:
+        source.record_queue_retry(task_cid="task:1")
+    assert raised.value.request_id == "e" * 32
     source.close()
 
 

@@ -2,16 +2,38 @@
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import os
 import sys
 from pathlib import Path
 
+from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LlmRouterInvocation,
     call_llm_router,
 )
+
+
+def _load_legacy_physical_grok_runner():
+    """Load the still-executed flat adapter without the package alias map."""
+
+    runner_path = (
+        Path(__file__).resolve().parents[2]
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "grok_cli_runner.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_test_legacy_physical_grok_runner",
+        runner_path,
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError("legacy physical Grok runner is not importable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_supervisor_child_routes_grok_through_datasets_router(monkeypatch, tmp_path) -> None:
@@ -37,9 +59,24 @@ print(json.dumps({
     )
     fake_grok.chmod(0o700)
 
+    for name in (
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_AGENT_GROK_BIN",
+        "GROK_CLI_CMD",
+        "GROK_BIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("IPFS_DATASETS_PY_GROK_CLI_CMD", str(fake_grok))
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_CACHE", "0")
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE", "0")
+    monkeypatch.setattr(
+        llm_router,
+        "_host_cli_binary",
+        lambda name: "/opt/host/grok" if name == "grok" else None,
+    )
+
+    assert llm_router.find_grok_cli() == str(fake_grok)
 
     config = LlmRouterInvocation(
         repo_root=Path(__file__).resolve().parents[2],
@@ -53,7 +90,7 @@ print(json.dumps({
         required_effective_providers=("grok_cli",),
     )
 
-    assert call_llm_router("child-smoke", config) == "supervisor:grok-4.5:child-smoke"
+    assert call_llm_router("child-smoke", config) == "supervisor:grok-4.6:child-smoke"
 
 
 def test_grok_agent_runner_forwards_resolved_launch_policy(
@@ -79,6 +116,11 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
         return FakeProcess(cmd, **kwargs)
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair the board"))
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_select_grok_isolation_backend",
+        lambda **_kwargs: grok_cli_runner.GROK_ISOLATION_GROK_SANDBOX,
+    )
     monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
 
     result = grok_cli_runner.main(
@@ -113,6 +155,8 @@ def test_grok_agent_runner_emits_private_body_free_failure_receipt(
     monkeypatch,
     tmp_path,
 ) -> None:
+    legacy_runner = _load_legacy_physical_grok_runner()
+
     class FailedProcess:
         stdout = io.StringIO("")
         stderr = io.StringIO(
@@ -126,17 +170,17 @@ def test_grok_agent_runner_emits_private_body_free_failure_receipt(
 
     read_fd, write_fd = os.pipe()
     monkeypatch.setenv(
-        grok_cli_runner.TRUSTED_FAILURE_RECEIPT_FD_ENV,
+        legacy_runner.TRUSTED_FAILURE_RECEIPT_FD_ENV,
         str(write_fd),
     )
-    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
+    monkeypatch.setattr(legacy_runner.sys, "stdin", io.StringIO("repair"))
     monkeypatch.setattr(
-        grok_cli_runner.subprocess,
+        legacy_runner.subprocess,
         "Popen",
         lambda cmd, **kwargs: FailedProcess(),
     )
     try:
-        result = grok_cli_runner.main(
+        result = legacy_runner.main(
             [
                 "--workspace",
                 str(tmp_path),

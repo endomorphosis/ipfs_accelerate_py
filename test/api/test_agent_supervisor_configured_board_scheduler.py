@@ -1580,17 +1580,17 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         source_tree=source_tree,
     )
     sealed_modules = (
-        multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE,
-        (
+        (multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE, 0),
+        ((
             "ipfs_accelerate_py.agent_supervisor.runtime."
             "configured_board_scheduler"
-        ),
-        (
+        ), 0),
+        ((
             "ipfs_accelerate_py.agent_supervisor.todo_daemon."
             "implementation_supervisor"
-        ),
+        ), 78),
     )
-    for sealed_module in sealed_modules:
+    for sealed_module, expected_returncode in sealed_modules:
         sealed_command = (
             multi_runner_module.build_sealed_control_plane_module_command(
                 python_executable=sys.executable,
@@ -1610,12 +1610,11 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
             check=False,
             timeout=30,
         )
-        if sealed_module.endswith(".implementation_supervisor"):
-            assert sealed_result.returncode == 78
-            assert sealed_result.stdout == ""
-        else:
-            assert sealed_result.returncode == 0, sealed_result.stderr
+        assert sealed_result.returncode == expected_returncode, sealed_result.stderr
+        if expected_returncode == 0:
             assert "usage:" in sealed_result.stdout
+        else:
+            assert sealed_result.stdout == ""
         assert not sentinel.exists()
     entries = (
         REPO_ROOT
@@ -1742,6 +1741,96 @@ def test_sealed_bootstrap_requires_verified_eaaef_191_not_an_admission_word(
     assert admitted[9] == (
         multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
     )
+
+
+def test_implementation_daemon_rehardens_before_argument_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The token-bearing daemon restores its kernel boundary after exec."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+
+    events: list[str] = []
+
+    def harden() -> bool:
+        events.append("harden")
+        return True
+
+    def stop_before_parse(_argv: list[str] | None = None) -> None:
+        events.append("parse")
+        raise RuntimeError("stop after observing entry order")
+
+    monkeypatch.setattr(
+        process_security,
+        "harden_state_authority_process",
+        harden,
+    )
+    monkeypatch.setattr(daemon_module, "parse_args", stop_before_parse)
+    with pytest.raises(RuntimeError, match="entry order"):
+        daemon_module.main([])
+    assert events == ["harden", "parse"]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="in-memory state-authority isolation is Linux-specific",
+)
+def test_state_authority_capture_removes_ambient_subprocess_credential() -> None:
+    script = r'''
+import json
+import os
+import subprocess
+import sys
+
+from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+    capture_state_authority_credentials,
+    forward_env_secret_handle_credentials,
+    state_authority_credential,
+)
+
+name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+expected = os.environ[name]
+assert capture_state_authority_credentials() is True
+assert name not in os.environ
+assert state_authority_credential(name) == expected
+probe_code = (
+    "import os; raise SystemExit(1 if "
+    "os.getenv('IPFS_ACCELERATE_AGENT_QUACK_TOKEN') else 0)"
+)
+probe = subprocess.run(
+    [sys.executable, "-c", probe_code],
+    check=False,
+)
+trusted = {}
+forward_env_secret_handle_credentials(
+    trusted,
+    secret_handle="env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+    source_environment=os.environ,
+)
+print(json.dumps({
+    "generic_child_token_free": probe.returncode == 0,
+    "trusted_hop_restored": trusted.get(name) == expected,
+}))
+'''
+    environment = dict(os.environ)
+    environment["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = (
+        "capture_regression_token_0123456789"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(completed.stdout) == {
+        "generic_child_token_free": True,
+        "trusted_hop_restored": True,
+    }
 
 
 def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
@@ -2270,6 +2359,430 @@ def _detached_runner_args(tmp_path: Path, pid_path: Path) -> SimpleNamespace:
         master_pid_path=pid_path,
         stamp="test-detached-pid",
     )
+
+
+def _run_test_lgcvf_foreground_master(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    pid_path: Path,
+    on_start: Any,
+) -> dict[str, object]:
+    context = SimpleNamespace(
+        admission=SimpleNamespace(admission_id="sha256:" + "a" * 64),
+        capsule_pin=SimpleNamespace(capsule_id="sha256:" + "b" * 64),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_configured_board_live_seal_required",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_verify_lgcvf_configured_board_live_profile",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_track_supervisor_status_startup_grace_seconds",
+        lambda *_args, **_kwargs: 0.0,
+    )
+
+    class Process:
+        pid = 424242
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    def start(*_args: object, **_kwargs: object) -> Process:
+        on_start()
+        return Process()
+
+    monkeypatch.setattr(multi_runner_module, "start_track", start)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "stop_tracks",
+        lambda *_args, **_kwargs: {
+            "stopped_count": 1,
+            "all_trees_fenced": True,
+            "removed_runtime_markers": [],
+        },
+    )
+    track = multi_runner_module.SupervisorTrack(
+        name="lgcvf-quack-lane-0",
+        script_path=Path("unused.py"),
+        log_path=Path("runtime/lane-0.log"),
+        supervisor_pid_path=Path("runtime/lane-0.pid"),
+        daemon_pid_path=Path("runtime/lane-0-daemon.pid"),
+    )
+    return multi_runner_module.run_supervisor_tracks(
+        (track,),
+        repo_root=tmp_path,
+        common_args=(
+            "--board-namespace",
+            multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        ),
+        duration_seconds=0,
+        master_pid_path=pid_path,
+        require_lgcvf_configured_board_live_seal=(
+            multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+        ),
+        configured_board_live_capsule_pin_json="{}",
+        configured_board_live_capsule_fd=10,
+        configured_board_live_admission_json="{}",
+        configured_board_live_native_launch_json="{}",
+        configured_board_live_native_fd=11,
+        output=lambda _message: None,
+    )
+
+
+def test_lgcvf_foreground_quarantines_dead_legacy_master_before_birth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 3594290
+    pid_path.write_text(f"{stale_pid}\n", encoding="ascii")
+    stale_inode = os.lstat(pid_path).st_ino
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    def admitted_start() -> None:
+        assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    result = _run_test_lgcvf_foreground_master(
+        tmp_path,
+        monkeypatch,
+        pid_path=pid_path,
+        on_start=admitted_start,
+    )
+
+    assert result["completed"] is True
+    assert probes == [(stale_pid, 0)]
+    assert not pid_path.exists()
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{stale_pid}\n"
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert receipt["legacy_pid"] == stale_pid
+    assert receipt["outcome"] == "quarantined"
+    assert receipt["liveness_evidence"]["errno"] == "ESRCH"
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_lgcvf_foreground_refuses_live_or_unknown_legacy_master(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3594290\n", encoding="ascii")
+    started = False
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    def forbidden_start() -> None:
+        nonlocal started
+        started = True
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    with pytest.raises(ValueError, match=liveness):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=forbidden_start,
+        )
+    assert started is False
+    assert pid_path.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("unsafe_kind", ("malformed", "symlink", "hardlink"))
+def test_lgcvf_foreground_refuses_unsafe_legacy_master_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-master.pid"
+    outside.write_text("3594290\n", encoding="ascii")
+    if unsafe_kind == "malformed":
+        pid_path.write_text("3594290", encoding="ascii")
+    elif unsafe_kind == "symlink":
+        pid_path.symlink_to(outside)
+    else:
+        os.link(outside, pid_path)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unsafe master PID reached liveness or process birth")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected)
+    with pytest.raises(ValueError):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=unexpected,
+        )
+    assert outside.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_lgcvf_foreground_refuses_master_substitution_after_esrch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3594290\n", encoding="ascii")
+    original_read = multi_runner_module._read_stable_regular_bytes
+    reads = 0
+    started = False
+
+    def substitute_on_confirmation(*args: object, **kwargs: object):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            pid_path.unlink()
+            pid_path.write_text("3594290\n", encoding="ascii")
+        return original_read(*args, **kwargs)
+
+    def absent_probe(_pid: int, _signal_number: int) -> None:
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    def forbidden_start() -> None:
+        nonlocal started
+        started = True
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_read_stable_regular_bytes",
+        substitute_on_confirmation,
+    )
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    with pytest.raises(ValueError, match="changed after liveness proof"):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=forbidden_start,
+        )
+    assert reads == 2
+    assert started is False
+    assert pid_path.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_lgcvf_live_supervisor_reservation_quarantines_dead_legacy_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 3627056
+    pid_path.write_text(f"{stale_pid}\n", encoding="ascii")
+    stale_inode = os.lstat(pid_path).st_ino
+    admission_id = "sha256:" + "a" * 64
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    descriptor, identity = (
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id=admission_id,
+        )
+    )
+    try:
+        assert pid_path.read_bytes() == b""
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+        multi_runner_module._publish_reserved_pid_projection(
+            pid_path,
+            descriptor,
+            identity,
+            os.getpid(),
+        )
+        assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+    finally:
+        os.close(descriptor)
+        multi_runner_module._discard_reserved_pid_projection(
+            pid_path,
+            identity,
+        )
+
+    assert probes == [(stale_pid, 0)]
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    decisions = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.decision.json")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(decisions) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{stale_pid}\n"
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    decision = json.loads(decisions[0].read_text(encoding="utf-8"))
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert decision["schema"] == (
+        multi_runner_module.STALE_LGCVF_LIVE_SUPERVISOR_PID_DECISION_SCHEMA
+    )
+    assert receipt["schema"] == (
+        multi_runner_module.STALE_LGCVF_LIVE_SUPERVISOR_PID_RECEIPT_SCHEMA
+    )
+    for artifact in (decision, receipt):
+        assert artifact["projection_role"] == "lgcvf_live_supervisor"
+        assert artifact["lane_name"] == "lgcvf-quack-lane-0"
+        assert artifact["configured_board_live_admission_id"] == admission_id
+        assert artifact["legacy_pid"] == stale_pid
+        assert artifact["liveness_evidence"]["errno"] == "ESRCH"
+    assert receipt["decision_receipt_id"] == decision["decision_receipt_id"]
+    claimed_decision_id = decision.pop("decision_receipt_id")
+    claimed_receipt_id = receipt.pop("receipt_id")
+    assert claimed_decision_id == multi_runner_module.content_identity(decision)
+    assert claimed_receipt_id == multi_runner_module.content_identity(receipt)
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_lgcvf_live_supervisor_reservation_refuses_live_or_unknown_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    with pytest.raises(ValueError, match=liveness):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("unsafe_kind", ("malformed", "symlink", "hardlink"))
+def test_lgcvf_live_supervisor_reservation_refuses_unsafe_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-supervisor.pid"
+    outside.write_text("3627056\n", encoding="ascii")
+    if unsafe_kind == "malformed":
+        pid_path.write_text("3627056", encoding="ascii")
+    elif unsafe_kind == "symlink":
+        pid_path.symlink_to(outside)
+    else:
+        os.link(outside, pid_path)
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unsafe lane PID reached liveness proof")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected_probe)
+    with pytest.raises(ValueError):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert outside.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_lgcvf_live_supervisor_reservation_refuses_post_esrch_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+    original_read = multi_runner_module._read_stable_regular_bytes
+    reads = 0
+
+    def substitute_on_confirmation(*args: object, **kwargs: object):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            pid_path.unlink()
+            pid_path.write_text("3627056\n", encoding="ascii")
+        return original_read(*args, **kwargs)
+
+    def absent_probe(_pid: int, _signal_number: int) -> None:
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_read_stable_regular_bytes",
+        substitute_on_confirmation,
+    )
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    with pytest.raises(ValueError, match="changed after liveness proof"):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert reads == 2
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_plan_bound_pid_reservation_does_not_recover_dead_existing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "plan-bound-supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("strict plan-bound reservation probed a legacy PID")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected_probe)
+    with pytest.raises(ValueError, match="unsafe existing file"):
+        multi_runner_module._reserve_owned_pid_projection(pid_path)
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
 
 
 def test_non_plan_detach_quarantines_dead_legacy_pid_before_spawn(
@@ -3637,13 +4150,114 @@ def test_receipt_coordinator_prepares_fresh_private_lane_directories(
         path=lambda relative: tmp_path / relative,
     )
 
-    scheduler_module._prepare_coordinator_lane_status_permissions(board)
+    previous_umask = os.umask(0o002)
+    try:
+        scheduler_module._prepare_coordinator_lane_status_permissions(board)
+    finally:
+        os.umask(previous_umask)
 
     for lane_index in range(4):
         lane_dir = tmp_path / "state" / f"lane-{lane_index}"
         assert lane_dir.is_dir()
         assert not lane_dir.is_symlink()
         assert stat.S_IMODE(os.lstat(lane_dir).st_mode) == 0o700
+
+
+def test_receipt_coordinator_rejects_peer_writable_lane_directory(
+    tmp_path: Path,
+) -> None:
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+    lane_dir = tmp_path / "state" / "lane-0"
+    lane_dir.mkdir(mode=0o700, parents=True)
+    lane_dir.chmod(0o775)
+
+    with pytest.raises(
+        scheduler_module.ConfiguredBoardError,
+        match="exact owner-private directory",
+    ):
+        scheduler_module._prepare_coordinator_lane_status_permissions(board)
+
+    assert stat.S_IMODE(os.lstat(lane_dir).st_mode) == 0o775
+
+
+def test_lgcvf_sealed_bootstrap_diagnostic_is_closed_bounded_and_secret_free() -> None:
+    bootstrap = multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP
+    sentinel = "must-not-cross-lgcvf-bootstrap-diagnostic"
+    secret_type = "MustNotCrossLGCVFMetaSecret1234567890"
+    injection_point = "try:\n    if not sys.flags.isolated"
+    injected = (
+        "try:\n"
+        f"    _phase={sentinel * 8!r}\n"
+        "    class DiagnosticTypeName(str):\n"
+        f"        def __str__(self): return {secret_type!r}\n"
+        "    class DiagnosticSentinelError(Exception): pass\n"
+        "    DiagnosticSentinelError.__name__=DiagnosticTypeName('RuntimeError')\n"
+        f"    raise DiagnosticSentinelError({sentinel!r})\n"
+        "    if not sys.flags.isolated"
+    )
+    assert bootstrap.count(injection_point) == 1
+    probe = bootstrap.replace(injection_point, injected, 1)
+
+    completed = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-c", probe],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 78
+    assert completed.stdout == ""
+    assert completed.stderr == (
+        "lgcvf-sealed-bootstrap@1 phase=unknown type=BaseException\n"
+    )
+    assert len(completed.stderr.encode("ascii")) <= 160
+    assert sentinel not in completed.stderr
+    assert secret_type not in completed.stderr
+    assert "str(sealed_exc)" not in bootstrap
+
+
+def test_lgcvf_sealed_bootstrap_names_transaction_failures_without_details() -> None:
+    bootstrap = multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP
+    sentinel = "must-not-cross-lgcvf-transaction-diagnostic"
+    injection_point = "try:\n    if not sys.flags.isolated"
+    injected = (
+        "try:\n"
+        "    class TransactionError(Exception): pass\n"
+        f"    raise TransactionError({sentinel!r})\n"
+        "    if not sys.flags.isolated"
+    )
+    assert bootstrap.count(injection_point) == 1
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            bootstrap.replace(injection_point, injected, 1),
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 78
+    assert completed.stdout == ""
+    assert completed.stderr == (
+        "lgcvf-sealed-bootstrap@1 phase=birth_env type=TransactionError\n"
+    )
+    assert sentinel not in completed.stderr
 
 
 def test_receipt_coordinator_preidentity_failure_fences_exact_child_handle() -> None:
@@ -5385,13 +5999,21 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         "mixed",
         "disjoint",
         "changed_no_change",
+        "repeated_no_change_cleanup",
         "compact_hidden_drift",
         "crash_proposal_ready",
+        "crash_proposal_ready_same_process_confirmed_retry",
+        "same_process_prepared_response_loss_retry",
         "crash_before_enqueue",
         "crash_after_enqueue",
+        "crash_after_enqueue_missing_handoff_receipt",
+        "crash_after_enqueue_divergent_handoff_receipt",
         "crash_confirmed",
         "crash_confirmed_retry",
         "crash_completed_before_finalize",
+        "crash_completed_after_publish",
+        "crash_completed_poisoned_sidecar",
+        "crash_changed_integration_before_cleanup",
         "crash_serialized_merge_confirmed",
         "crash_no_change",
         "crash_after_enqueue_mismatch",
@@ -5452,9 +6074,9 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         ),
     )
     if wave_scenario == "crash_serialized_merge_confirmed":
-        _write(repo / ".gitignore", "*.json\n*.log\n*.duckdb\n*.lock\n")
+        _write(repo / ".gitignore", "data/configured-board/\n")
         _git(repo, "add", ".gitignore")
-        _git(repo, "commit", "-m", "seed ignored runtime artifact patterns")
+        _git(repo, "commit", "-m", "seed ignored runtime umbrella")
     plan_common_args = scheduler_module.configured_board_common_args(
         board,
         implement=True,
@@ -6070,17 +6692,34 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         ).returncode == 0
         if (
             wave_scenario == "crash_changed_integration_before_cleanup"
-            and "test-a" in str(branch_name)
+            and str(branch_name) != implementation_branch
+            and str(branch_name).startswith("implementation/test-a-")
+            and "-attempt-" in str(branch_name)
             and integrated_output
             and not crash_receipt_path.exists()
         ):
-            task_id, phase = current_plan_attempt()
-            if task_id == "TEST-A" and phase == "merge_enqueue_confirmed":
-                crash_receipt_path.write_text(
-                    "changed_integration_before_cleanup\n",
-                    encoding="utf-8",
-                )
-                os._exit(86)
+            integrated_target = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"{implementation_branch}:src/test-a.py",
+                ],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if (
+                integrated_target.returncode == 0
+                and integrated_target.stdout == "VALUE = 'TEST-A'\n"
+            ):
+                task_id, phase = current_plan_attempt()
+                if task_id == "TEST-A" and phase == "merge_enqueue_confirmed":
+                    crash_receipt_path.write_text(
+                        "changed_integration_before_cleanup\n",
+                        encoding="utf-8",
+                    )
+                    os._exit(86)
         return original_cleanup_merged_worktree(
             self,
             worktree_path,
@@ -6222,10 +6861,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             if pid == 0:  # pragma: no branch - isolated production boundary
                 try:
                     # The production runner applies this sealed environment
-                    # before it starts a plan-bound child.  This fixture
-                    # invokes the entry point directly after ``fork()``, so
-                    # mirror that boundary in the child without changing the
-                    # pytest parent's later recovery and assertion context.
+                    # and private runtime umask before it starts a plan-bound
+                    # child.  This fixture invokes the entry point directly
+                    # after ``fork()``, so mirror that boundary in the child
+                    # without changing the pytest parent's later recovery and
+                    # assertion context.
+                    os.umask(0o077)
                     os.environ.update(launch_plan["environment"])
                     child_rc = supervisor_module._run_plan_bound_daemon_child(
                         helper_argv
@@ -6378,6 +7019,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "branch",
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
+                assert implementation_branch in implementation_branches
                 assert all(
                     branch == implementation_branch
                     or not branch.startswith("implementation/")
@@ -7288,6 +7930,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     recovery_argv,
                     cwd=repo,
                     env=recovery_env,
+                    umask=0o077,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -7649,6 +8292,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "branch",
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
+                assert implementation_branch in implementation_branches
                 assert all(
                     branch == implementation_branch
                     or not branch.startswith("implementation/")
@@ -12257,3 +12901,315 @@ def test_configured_board_live_seal_real_birth_rejects_before_startup_hook(
     )
     assert completed.returncode == 78
     assert not sentinel.exists()
+
+
+_REAL_NONDUMPABLE_GATE_CODE = (
+    "import ctypes,os,sys\n"
+    "libc=ctypes.CDLL(None,use_errno=True)\n"
+    "if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:\n"
+    "    raise OSError(ctypes.get_errno(),'prctl')\n"
+    "print('ready:0',flush=True)\n"
+    "os.read(int(sys.argv[1]),1)\n"
+)
+
+
+def _spawn_real_nondumpable_live_gate(
+    tmp_path: Path,
+) -> tuple[
+    subprocess.Popen[Any],
+    int,
+    multi_runner_module.LifecycleProfile,
+    Path,
+    Path,
+    Path,
+]:
+    repo = (tmp_path / "repo").resolve()
+    state_dir = repo / "state"
+    run_root = state_dir / "run"
+    run_root.mkdir(parents=True)
+    todo_path = repo / "TODO.md"
+    _write(todo_path, "# test board\n")
+    read_fd, write_fd = os.pipe()
+    command = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        _REAL_NONDUMPABLE_GATE_CODE,
+        str(read_fd),
+    )
+    profile = multi_runner_module.LifecycleProfile(
+        target_id="supervisor-track:lgcvf-lane-0",
+        run_id="test-lgcvf-live-nondumpable-gate",
+        configuration_root="test-lgcvf-live-nondumpable-config",
+        repository_root=str(repo),
+        state_root=str(state_dir),
+        run_root=str(run_root),
+        argv=command,
+        cwd=str(repo),
+    )
+    try:
+        process = _spawn_test_process(
+            command,
+            cwd=repo,
+            env=profile.launch_environment(0),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            pass_fds=(read_fd,),
+            start_new_session=True,
+        )
+    finally:
+        os.close(read_fd)
+    assert process.stdout is not None
+    assert process.stdout.readline().strip() == "ready:0"
+    return process, write_fd, profile, repo, state_dir, todo_path
+
+
+def _test_live_daemon_termination_authority(
+    *,
+    profile: multi_runner_module.LifecycleProfile,
+    repo: Path,
+    state_dir: Path,
+    todo_path: Path,
+    sealed_command_prefix: tuple[str, ...],
+    state_owner_bootstrap_fd: int = 999,
+    state_owner_bootstrap_store_id: str = "test-lgcvf-control.duckdb",
+) -> multi_runner_module._LgcvfLiveDaemonTerminationAuthority:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        supervised_child_identity_path,
+    )
+
+    state_prefix = "lgcvf_lane_0"
+    pid_path = state_dir / f"{state_prefix}_managed_daemon.pid"
+    owner_scope = {
+        "repo_root": str(repo),
+        "state_dir": str(state_dir),
+        "state_prefix": state_prefix,
+        "todo_path": str(todo_path),
+        "daemon_entrypoint": (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        ),
+    }
+    return multi_runner_module._LgcvfLiveDaemonTerminationAuthority(
+        profile_id=profile.profile_id,
+        state_dir=state_dir,
+        state_prefix=state_prefix,
+        todo_path=todo_path,
+        pid_path=pid_path,
+        identity_path=supervised_child_identity_path(pid_path),
+        owner_scope=tuple(sorted(owner_scope.items())),
+        sealed_command_prefix=sealed_command_prefix,
+        database_owner_session_id="lgcvf-quack-lane-0",
+        state_owner_bootstrap_fd=state_owner_bootstrap_fd,
+        state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
+    )
+
+
+def _bind_test_live_termination_authority(
+    process: subprocess.Popen[Any],
+    *,
+    profile: multi_runner_module.LifecycleProfile,
+    identity: Any,
+    authority: multi_runner_module._LgcvfLiveDaemonTerminationAuthority,
+) -> None:
+    process._agent_supervisor_lifecycle_profile = profile
+    process._agent_supervisor_process_identity = identity
+    process._agent_supervisor_live_admission_id = "sha256:" + "a" * 64
+    process._agent_supervisor_live_capsule_id = "sha256:" + "b" * 64
+    process._agent_supervisor_live_daemon_termination_authority = authority
+
+
+def _force_stop_real_live_test_process(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        process.wait(timeout=5)
+    except (ChildProcessError, subprocess.TimeoutExpired):
+        pass
+
+
+def test_lgcvf_live_parent_attested_birth_fences_real_nondumpable_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process, write_fd, profile, repo, state_dir, todo_path = (
+        _spawn_real_nondumpable_live_gate(tmp_path)
+    )
+    try:
+        with pytest.raises(OSError) as denied:
+            Path(f"/proc/{process.pid}/environ").read_bytes()
+        assert denied.value.errno in {errno.EACCES, errno.EPERM}
+        assert not multi_runner_module.LinuxProcessAdapter().snapshot(
+            profile
+        ).members
+
+        def forbidden_proc_identity_field(*_args: Any) -> Any:
+            raise AssertionError("live gate capture read a ptrace-gated field")
+
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_environ",
+            staticmethod(forbidden_proc_identity_field),
+        )
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_argv",
+            staticmethod(forbidden_proc_identity_field),
+        )
+        identity = multi_runner_module._capture_lgcvf_live_gated_process_identity(
+            process,
+            profile,
+        )
+        assert identity.pid == process.pid
+        assert identity.argv == profile.argv
+        assert identity.parent_pid == os.getpid()
+        assert identity.process_group_id == process.pid
+        assert identity.session_id == process.pid
+        authority = _test_live_daemon_termination_authority(
+            profile=profile,
+            repo=repo,
+            state_dir=state_dir,
+            todo_path=todo_path,
+            sealed_command_prefix=("sealed-test-daemon",),
+        )
+        _bind_test_live_termination_authority(
+            process,
+            profile=profile,
+            identity=identity,
+            authority=authority,
+        )
+        fenced, stopped = multi_runner_module._terminate_managed_process(
+            process,
+            grace_seconds=0.2,
+        )
+        assert fenced is True
+        assert process.pid in stopped
+        process.wait(timeout=5)
+        assert multi_runner_module._lgcvf_live_exact_root_state(identity) == "dead"
+    finally:
+        try:
+            os.close(write_fd)
+        except OSError:
+            pass
+        _force_stop_real_live_test_process(process)
+
+
+def test_lgcvf_live_exited_root_fences_real_nondumpable_daemon_sidecar(
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        write_supervised_child_identity,
+    )
+
+    root, write_fd, profile, repo, state_dir, todo_path = (
+        _spawn_real_nondumpable_live_gate(tmp_path)
+    )
+    cleanup_processes = [root]
+    cleanup_descriptors = {write_fd}
+
+    def cleanup() -> None:
+        for descriptor in cleanup_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        for child in reversed(cleanup_processes):
+            _force_stop_real_live_test_process(child)
+
+    request.addfinalizer(cleanup)
+    identity = multi_runner_module._capture_lgcvf_live_gated_process_identity(
+        root,
+        profile,
+    )
+    os.write(write_fd, b"1")
+    os.close(write_fd)
+    cleanup_descriptors.discard(write_fd)
+    root.wait(timeout=5)
+    assert multi_runner_module._lgcvf_live_exact_root_state(identity) == "dead"
+
+    daemon_code = (
+        "import ctypes,time\n"
+        "libc=ctypes.CDLL(None,use_errno=True)\n"
+        "if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:\n"
+        "    raise OSError(ctypes.get_errno(),'prctl')\n"
+        "print('ready:0',flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    sealed_prefix = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        daemon_code,
+    )
+    daemon_command = (
+        *sealed_prefix,
+        "--state-dir",
+        str(state_dir),
+        "--state-prefix",
+        "lgcvf_lane_0",
+        "--todo-path",
+        str(todo_path),
+        "--board-namespace",
+        multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        "--task-shard-count",
+        "4",
+        "--task-shard-index",
+        "0",
+        "--owner-session-id",
+        "lgcvf-quack-lane-0",
+        "--state-owner-bootstrap-fd",
+        "999",
+        "--state-owner-bootstrap-store-id",
+        "test-lgcvf-control.duckdb",
+        "--strict-task-sharding",
+    )
+    daemon = _spawn_test_process(
+        daemon_command,
+        cwd=repo,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    cleanup_processes.append(daemon)
+    assert daemon.stdout is not None
+    assert daemon.stdout.readline().strip() == "ready:0"
+    authority = _test_live_daemon_termination_authority(
+        profile=profile,
+        repo=repo,
+        state_dir=state_dir,
+        todo_path=todo_path,
+        sealed_command_prefix=sealed_prefix,
+    )
+    write_supervised_child_identity(
+        authority.identity_path,
+        pid=daemon.pid,
+        command=daemon_command,
+        owner_scope=dict(authority.owner_scope),
+        require_direct_child=True,
+    )
+    _write(authority.pid_path, f"{daemon.pid}\n")
+    _bind_test_live_termination_authority(
+        root,
+        profile=profile,
+        identity=identity,
+        authority=authority,
+    )
+    fenced, stopped = multi_runner_module._terminate_managed_process(
+        root,
+        grace_seconds=0.2,
+    )
+    assert fenced is True
+    assert daemon.pid in stopped
+    daemon.wait(timeout=5)

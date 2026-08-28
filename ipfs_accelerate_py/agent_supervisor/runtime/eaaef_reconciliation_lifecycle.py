@@ -238,8 +238,12 @@ _EAAEF_CASF_IMPORT_BLOB_PATHS: Final = frozenset(
 _EAAEF_CASF_IMPORT_OVERRIDE_PATHS: Final = frozenset(
     {
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "scripts/run_agent_supervisor_causal_event_federation.py",
     }
 )
 _EAAEF_CASF_IMPORT_MANIFEST_FIELDS: Final = frozenset(

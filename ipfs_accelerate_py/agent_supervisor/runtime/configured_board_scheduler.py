@@ -138,6 +138,7 @@ from .multi_supervisor_runner import (
     parse_accepted_control_plane_pin,
     parse_database_program_config,
     utc_run_stamp,
+    verify_lgcvf_configured_board_live_context,
 )
 from .provider_capacity_monitor import (
     DEFAULT_RESPONSE_TOKENS_PER_REQUEST,
@@ -161,6 +162,14 @@ IMPLEMENTATION_ENTRY_PATH = Path(
 )
 CONFIGURED_SCHEDULER_ENTRY_PATH = Path(
     "scripts/ops/agent_supervisor/configured_board_scheduler.py"
+)
+LGCVF_LIVE_CONFIG_PATH = Path(
+    "config/"
+    "agent_supervisor_logic_governed_compositional_verification_fabric_"
+    "quack_candidate_scheduler.json"
+)
+LGCVF_LIVE_BOARD_NAMESPACE = (
+    "logic-governed-compositional-verification-fabric-v1"
 )
 PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 FALLBACK_PROVIDER_ENV = (
@@ -2464,8 +2473,15 @@ def load_configured_board(
     config_path: Path | str,
     *,
     repo_root: Path | str,
+    config_bytes: bytes | None = None,
 ) -> ConfiguredBoard:
-    """Load and structurally validate one sealed scheduler document."""
+    """Load and structurally validate one sealed scheduler document.
+
+    ``config_bytes`` is reserved for a caller that has already authenticated
+    the document from an immutable capsule.  The lexical repository path is
+    still retained as the board's effect-scope identity, but it is not reopened
+    when exact bytes are supplied.
+    """
 
     root = Path(repo_root).resolve()
     path = Path(config_path)
@@ -2478,20 +2494,30 @@ def load_configured_board(
             "scheduler config must be inside the repository"
         ) from exc
     try:
-        config_bytes, _config_evidence = _read_stable_regular_bytes(
-            path,
-            max_bytes=4_194_304,
-        )
-        if config_bytes is None:
+        admitted_config_bytes = config_bytes
+        if admitted_config_bytes is None:
+            admitted_config_bytes, _config_evidence = _read_stable_regular_bytes(
+                path,
+                max_bytes=4_194_304,
+            )
+        elif (
+            type(admitted_config_bytes) is not bytes
+            or not admitted_config_bytes
+            or len(admitted_config_bytes) > 4_194_304
+        ):
+            raise ConfiguredBoardError(
+                "sealed scheduler config bytes are invalid"
+            )
+        if admitted_config_bytes is None:
             raise ConfiguredBoardError("scheduler config is absent")
         configuration_revision = _identity(
             {
                 "path": path.resolve(strict=False).relative_to(root).as_posix(),
-                "bytes_sha256": hashlib.sha256(config_bytes).hexdigest(),
+                "bytes_sha256": hashlib.sha256(admitted_config_bytes).hexdigest(),
             }
         )
         payload = json.loads(
-            config_bytes.decode("utf-8"),
+            admitted_config_bytes.decode("utf-8"),
             object_pairs_hook=_reject_duplicate_keys,
         )
     except ConfiguredBoardError:
@@ -2880,6 +2906,29 @@ def load_configured_board(
             database_program = parse_database_program_config(program_payload)
         except DatabaseProgramConfigError as exc:
             raise ConfiguredBoardError(str(exc)) from exc
+        claim_policy = dict(database_program.claim_policy or {})
+        normalized_prefix = re.sub(
+            r"^\s*#{1,6}\s*",
+            "",
+            task_prefix,
+        ).strip()
+        expected_claim_policy = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-claim-policy@1"
+            ),
+            "task_prefix": normalized_prefix,
+            "task_shard_count": max_lanes,
+            "strict_task_sharding": strict_task_sharding,
+            "idle_lane_work_stealing": idle_lane_work_stealing,
+        }
+        if idle_lane_work_stealing and (
+            database_program.authority_mode == "quack"
+            and claim_policy != expected_claim_policy
+        ):
+            raise ConfiguredBoardError(
+                "database claim_policy differs from the configured board"
+            )
 
     _validate_eaaef_database_programs(
         board_namespace=board_namespace,
@@ -2894,7 +2943,11 @@ def load_configured_board(
         repo_root=root,
         payload=payload,
         configuration_root=_identity(
-            {"bytes_sha256": hashlib.sha256(config_bytes).hexdigest()}
+            {
+                "bytes_sha256": hashlib.sha256(
+                    admitted_config_bytes
+                ).hexdigest()
+            }
         ),
         configuration_revision=configuration_revision,
         taskboard_path=taskboard_path,
@@ -2925,6 +2978,11 @@ def _run(
         return subprocess.run(
             command,
             cwd=cwd,
+            # Preflight helpers never receive live state credentials, loader
+            # authority, caller Python paths, or an ambient Git configuration.
+            # This matters when the configured-board scheduler itself holds
+            # the in-memory Quack attach token.
+            env=_sanitized_git_environment(),
             text=True,
             capture_output=True,
             check=False,
@@ -4615,7 +4673,11 @@ def _control_file_is_tracked(
     return False
 
 
-def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
+def preflight_configured_board(
+    board: ConfiguredBoard,
+    *,
+    admitted_live_validator_sha256: str = "",
+) -> dict[str, Any]:
     """Prove that a scheduler document can safely launch from this checkout."""
 
     checks: list[dict[str, Any]] = []
@@ -4837,7 +4899,33 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         )
 
     validator_report: dict[str, Any] = {}
-    if board.path(board.validator_path).is_file():
+    if admitted_live_validator_sha256:
+        admitted_validator = bool(
+            board.board_namespace == LGCVF_LIVE_BOARD_NAMESPACE
+            and board.config_path.relative_to(board.repo_root)
+            == LGCVF_LIVE_CONFIG_PATH
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                admitted_live_validator_sha256,
+            )
+        )
+        _append_check(
+            checks,
+            errors,
+            name="declared_validator",
+            passed=admitted_validator,
+            detail={
+                "execution": "controller-qualified_sealed_capsule_member",
+                "sha256": admitted_live_validator_sha256,
+            },
+        )
+        if admitted_validator:
+            validator_report = {
+                "valid": True,
+                "authority": "controller-qualified_sealed_capsule_member",
+                "validator_sha256": admitted_live_validator_sha256,
+            }
+    elif board.path(board.validator_path).is_file():
         validator = _run(
             (
                 sys.executable,
@@ -4999,6 +5087,8 @@ def configured_board_common_args(
     board: ConfiguredBoard,
     *,
     implement: bool,
+    state_owner_bootstrap_fd: int = -1,
+    state_owner_bootstrap_store_id: str = "",
 ) -> tuple[str, ...]:
     """Map scheduler policy to existing implementation-supervisor CLI args."""
 
@@ -5119,6 +5209,45 @@ def configured_board_common_args(
         args.append("--no-dependency-guardrail")
     if payload.get("reconciliation_guardrail_enabled") is False:
         args.append("--no-reconciliation-guardrail")
+    bootstrap_presence = (
+        state_owner_bootstrap_fd >= 3,
+        bool(str(state_owner_bootstrap_store_id or "").strip()),
+    )
+    if any(bootstrap_presence) and not all(bootstrap_presence):
+        raise ConfiguredBoardError(
+            "state-owner bootstrap descriptor and store must be paired"
+        )
+    if all(bootstrap_presence):
+        program = board.resolved_database_program()
+        if (
+            board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
+            or program.authority_mode != "quack"
+            or str(state_owner_bootstrap_store_id) != str(program.store_id)
+        ):
+            raise ConfiguredBoardError(
+                "state-owner bootstrap scope differs from the LGCVF Quack board"
+            )
+        from ..task_sources.state_owner_bootstrap import (
+            StateOwnerBootstrapError,
+            validate_state_owner_bootstrap_listener,
+        )
+
+        try:
+            validate_state_owner_bootstrap_listener(
+                int(state_owner_bootstrap_fd)
+            )
+        except StateOwnerBootstrapError as exc:
+            raise ConfiguredBoardError(
+                "state-owner bootstrap listener is invalid"
+            ) from exc
+        args.extend(
+            [
+                "--state-owner-bootstrap-fd",
+                str(state_owner_bootstrap_fd),
+                "--state-owner-bootstrap-store-id",
+                str(state_owner_bootstrap_store_id),
+            ]
+        )
     return tuple(args)
 
 
@@ -5132,8 +5261,53 @@ def configured_board_launch_plan(
     parallelism_receipt: ParallelismDecisionReceipt | None = None,
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    configured_board_live_capsule_pin_json: str = "",
+    configured_board_live_capsule_descriptor: int = -1,
+    configured_board_live_admission_json: str = "",
+    configured_board_live_native_launch_json: str = "",
+    configured_board_live_native_descriptor: int = -1,
+    state_owner_bootstrap_fd: int = -1,
+    state_owner_bootstrap_store_id: str = "",
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
+
+    live_values = (
+        bool(configured_board_live_capsule_pin_json),
+        configured_board_live_capsule_descriptor >= 3,
+        bool(configured_board_live_admission_json),
+        bool(configured_board_live_native_launch_json),
+        configured_board_live_native_descriptor >= 3,
+    )
+    if any(live_values) and not all(live_values):
+        raise ConfiguredBoardError(
+            "LGCVF configured-board live launch fields are incomplete"
+        )
+    bootstrap_values = (
+        state_owner_bootstrap_fd >= 3,
+        bool(str(state_owner_bootstrap_store_id or "").strip()),
+    )
+    if any(bootstrap_values) and not all(bootstrap_values):
+        raise ConfiguredBoardError(
+            "LGCVF state-owner bootstrap fields are incomplete"
+        )
+    if all(live_values) != all(bootstrap_values):
+        raise ConfiguredBoardError(
+            "LGCVF live capsule and state-owner bootstrap are bidirectional"
+        )
+    live_context = None
+    if all(live_values):
+        try:
+            live_context = verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=configured_board_live_capsule_pin_json,
+                capsule_descriptor=configured_board_live_capsule_descriptor,
+                admission_json=configured_board_live_admission_json,
+                native_launch_json=configured_board_live_native_launch_json,
+                native_descriptor=configured_board_live_native_descriptor,
+            )
+        except (OSError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                "LGCVF configured-board live launch binding is invalid"
+            ) from exc
 
     recovery_admission = _verify_fresh_recovery_launch_admission(board)
     implementation_branch = resolve_board_implementation_branch(
@@ -5148,6 +5322,59 @@ def configured_board_launch_plan(
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
     program = board.resolved_database_program()
     plan_bound = _plan_bound_profile(board)
+    if live_context is not None:
+        try:
+            config_relative = board.config_path.relative_to(
+                board.repo_root
+            ).as_posix()
+        except ValueError as exc:
+            raise ConfiguredBoardError(
+                "LGCVF live config path escapes the repository"
+            ) from exc
+        if (
+            detach
+            or plan_bound
+            or config_relative != LGCVF_LIVE_CONFIG_PATH.as_posix()
+            or board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
+            or board.max_lanes != 4
+            or not board.strict_task_sharding
+            or board.idle_lane_work_stealing != "virgin-transfer"
+            or board.configuration_root
+            != _identity(
+                {
+                    "bytes_sha256": str(
+                        live_context.capsule_pin.candidate_config_sha256
+                    ).removeprefix("sha256:")
+                }
+            )
+            or tuple(
+                str(lane.get("name") or "")
+                for lane in board.payload.get("lanes", ())
+                if isinstance(lane, Mapping)
+            )
+            != live_context.admission.lane_names
+            or board.payload.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "logic_governed_compositional_verification_fabric."
+                "scheduler_config@1"
+            )
+            or program.task_source_kind != "duckdb"
+            or program.authority_mode != "quack"
+            or program.schema_revision
+            != "datasets-authoritative-operational-v1"
+            or program.failover_policy != "fail_closed"
+            or str(state_owner_bootstrap_store_id) != str(program.store_id)
+            or state_owner_bootstrap_fd
+            in {
+                live_context.capsule_descriptor,
+                live_context.native_descriptor,
+            }
+        ):
+            raise ConfiguredBoardError(
+                "LGCVF live capsule does not match the exact foreground "
+                "four-lane Quack board"
+            )
     plan_bound_children: tuple[PlanBoundSupervisorChild, ...] = ()
     implementation_tracks: tuple[ImplementationSupervisorTrackConfig, ...] = ()
     if plan_bound and parallelism_receipt is not None:
@@ -5183,7 +5410,11 @@ def configured_board_launch_plan(
     elif not plan_bound:
         implementation_tracks = (
             ImplementationSupervisorTrackConfig(
-                name=board.board_namespace,
+                name=(
+                    "lgcvf-quack-lane"
+                    if live_context is not None
+                    else board.board_namespace
+                ),
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
@@ -5220,6 +5451,8 @@ def configured_board_launch_plan(
         common_args=configured_board_common_args(
             board,
             implement=implement,
+            state_owner_bootstrap_fd=state_owner_bootstrap_fd,
+            state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
         ),
         detach=(detach and not plan_bound),
         database_program=board.database_program,
@@ -5277,6 +5510,23 @@ def configured_board_launch_plan(
                 str(board.max_lanes),
             ]
         )
+        if live_context is not None:
+            runner_args.extend(
+                [
+                    "--require-lgcvf-configured-board-live-seal",
+                    LGCVF_LIVE_CONFIG_PATH.as_posix(),
+                    "--configured-board-live-capsule-pin-json",
+                    live_context.capsule_pin_json,
+                    "--configured-board-live-capsule-fd",
+                    str(live_context.capsule_descriptor),
+                    "--configured-board-live-admission-json",
+                    live_context.admission_json,
+                    "--configured-board-live-native-launch-json",
+                    live_context.native_launch_json,
+                    "--configured-board-live-native-fd",
+                    str(live_context.native_descriptor),
+                ]
+            )
     if board.strict_task_sharding and not plan_bound:
         runner_args.append(
             "--implementation-supervisor-strict-task-sharding"
@@ -5439,6 +5689,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "--accepted-control-plane-capsule-parent",
         type=Path,
         default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
@@ -5977,10 +6265,45 @@ def _bind_foreground_wave_pid(plan: dict[str, Any], board: ConfiguredBoard) -> N
 
 
 def _prepare_coordinator_lane_status_permissions(board: ConfiguredBoard) -> None:
-    """Make only safe pre-existing lane projections owner-private before reuse."""
+    """Prepare exact owner-private lane directories and status projections."""
 
     for path in _coordinator_lane_status_paths(board):
-        _ensure_plan_bound_runtime_directory(board.repo_root, path.parent)
+        lane_directory = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            path.parent,
+        )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_DIRECTORY", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise ConfiguredBoardError(
+                "private lane directory admission requires no-follow access"
+            )
+        flags |= nofollow
+        try:
+            directory_descriptor = os.open(lane_directory, flags)
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                "cannot open configured lane directory safely"
+            ) from exc
+        try:
+            opened_directory = os.fstat(directory_descriptor)
+            observed_directory = os.lstat(lane_directory)
+            if (
+                not stat.S_ISDIR(opened_directory.st_mode)
+                or stat.S_ISLNK(observed_directory.st_mode)
+                or int(opened_directory.st_uid) != os.geteuid()
+                or int(observed_directory.st_uid) != os.geteuid()
+                or (int(opened_directory.st_dev), int(opened_directory.st_ino))
+                != (int(observed_directory.st_dev), int(observed_directory.st_ino))
+                or stat.S_IMODE(opened_directory.st_mode) != 0o700
+                or stat.S_IMODE(observed_directory.st_mode) != 0o700
+            ):
+                raise ConfiguredBoardError(
+                    "configured lane directory must be an exact owner-private directory"
+                )
+        finally:
+            os.close(directory_descriptor)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
         try:
@@ -7458,18 +7781,135 @@ def _run_parsed_command(
     control_plane_pin: AgentImplementationControlPlanePin | None = None
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
+    live_context = None
     try:
-        projection_repair = _repair_authoritative_board_projection_before_launch(
-            config_path=args.config,
-            repo_root=args.repo_root,
-            command=str(args.command or ""),
-            dry_run=bool(getattr(args, "dry_run", False)),
+        live_values = (
+            bool(args.configured_board_live_capsule_pin_json),
+            args.configured_board_live_capsule_fd >= 3,
+            bool(args.configured_board_live_admission_json),
+            bool(args.configured_board_live_native_launch_json),
+            args.configured_board_live_native_fd >= 3,
         )
-        board = load_configured_board(
-            args.config,
-            repo_root=args.repo_root,
+        bootstrap_values = (
+            args.state_owner_bootstrap_fd >= 3,
+            bool(str(args.state_owner_bootstrap_store_id or "").strip()),
         )
-        preflight = preflight_configured_board(board)
+        root = Path(args.repo_root).resolve()
+        requested_config = Path(args.config)
+        if not requested_config.is_absolute():
+            requested_config = root / requested_config
+        exact_live_config = (
+            Path(os.path.abspath(requested_config))
+            == root / LGCVF_LIVE_CONFIG_PATH
+        )
+        if any(live_values) and not all(live_values):
+            raise ConfiguredBoardError(
+                "LGCVF configured-board live launch fields are incomplete"
+            )
+        if any(bootstrap_values) and not all(bootstrap_values):
+            raise ConfiguredBoardError(
+                "LGCVF state-owner bootstrap fields are incomplete"
+            )
+        if all(live_values) != all(bootstrap_values):
+            raise ConfiguredBoardError(
+                "LGCVF live capsule and state-owner bootstrap are bidirectional"
+            )
+        if exact_live_config and not all(live_values):
+            raise ConfiguredBoardError(
+                "the LGCVF Quack candidate requires its complete live capsule"
+            )
+        admitted_config_bytes: bytes | None = None
+        if all(live_values):
+            if not exact_live_config:
+                raise ConfiguredBoardError(
+                    "LGCVF live capsule cannot authorize a different config"
+                )
+            try:
+                live_context = verify_lgcvf_configured_board_live_context(
+                    capsule_pin_json=(
+                        args.configured_board_live_capsule_pin_json
+                    ),
+                    capsule_descriptor=(
+                        args.configured_board_live_capsule_fd
+                    ),
+                    admission_json=args.configured_board_live_admission_json,
+                    native_launch_json=(
+                        args.configured_board_live_native_launch_json
+                    ),
+                    native_descriptor=args.configured_board_live_native_fd,
+                )
+                from ...agent_implementation_route import (
+                    read_lgcvf_configured_board_live_capsule_member,
+                )
+
+                admitted_config_bytes = (
+                    read_lgcvf_configured_board_live_capsule_member(
+                        live_context.capsule_pin,
+                        live_context.capsule_descriptor,
+                        live_context.capsule_pin.candidate_config_path,
+                    )
+                )
+                disk_config_bytes, _disk_evidence = (
+                    _read_stable_regular_bytes(
+                        requested_config,
+                        max_bytes=4_194_304,
+                    )
+                )
+                if disk_config_bytes != admitted_config_bytes:
+                    raise ValueError(
+                        "repository config differs from its sealed capsule"
+                    )
+            except (OSError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "LGCVF configured-board live launch binding is invalid"
+                ) from exc
+            projection_repair = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "authoritative-board-projection-repair@1"
+                ),
+                "enabled": False,
+                "repaired": False,
+                "reason_code": "policy_absent_in_sealed_config",
+            }
+        else:
+            projection_repair = (
+                _repair_authoritative_board_projection_before_launch(
+                    config_path=args.config,
+                    repo_root=args.repo_root,
+                    command=str(args.command or ""),
+                    dry_run=bool(getattr(args, "dry_run", False)),
+                )
+            )
+        board = (
+            load_configured_board(
+                args.config,
+                repo_root=args.repo_root,
+                config_bytes=admitted_config_bytes,
+            )
+            if admitted_config_bytes is not None
+            else load_configured_board(
+                args.config,
+                repo_root=args.repo_root,
+            )
+        )
+        if live_context is not None and (
+            "authoritative_board_projection_repair" in board.payload
+            or board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
+        ):
+            raise ConfiguredBoardError(
+                "sealed LGCVF board identity differs from the live profile"
+            )
+        preflight = (
+            preflight_configured_board(
+                board,
+                admitted_live_validator_sha256=str(
+                    live_context.admission.validator_sha256
+                ),
+            )
+            if live_context is not None
+            else preflight_configured_board(board)
+        )
         has_control_plane = bool(args.accepted_control_plane_pin_json)
         has_descriptor = args.accepted_control_plane_fd >= 3
         has_parent = args.accepted_control_plane_capsule_parent is not None
@@ -7738,6 +8178,31 @@ def _run_parsed_command(
         implement=bool(args.implement),
         detach=detach,
         duration_seconds=float(args.duration_seconds),
+        configured_board_live_capsule_pin_json=(
+            live_context.capsule_pin_json if live_context is not None else ""
+        ),
+        configured_board_live_capsule_descriptor=(
+            live_context.capsule_descriptor if live_context is not None else -1
+        ),
+        configured_board_live_admission_json=(
+            live_context.admission_json if live_context is not None else ""
+        ),
+        configured_board_live_native_launch_json=(
+            live_context.native_launch_json if live_context is not None else ""
+        ),
+        configured_board_live_native_descriptor=(
+            live_context.native_descriptor if live_context is not None else -1
+        ),
+        state_owner_bootstrap_fd=(
+            args.state_owner_bootstrap_fd
+            if live_context is not None
+            else -1
+        ),
+        state_owner_bootstrap_store_id=(
+            args.state_owner_bootstrap_store_id
+            if live_context is not None
+            else ""
+        ),
     )
     plan["authoritative_board_projection_repair"] = projection_repair
     if has_coordinator_session:
@@ -7749,11 +8214,13 @@ def _run_parsed_command(
     from .multi_supervisor_runner import main as multi_supervisor_main
 
     previous_umask: int | None = None
+    private_lane_runtime = has_coordinator_session or live_context is not None
     try:
-        if has_coordinator_session:
-            assert args.coordinator_status_path is not None
+        if private_lane_runtime:
             previous_umask = os.umask(0o077)
             _prepare_coordinator_lane_status_permissions(board)
+        if has_coordinator_session:
+            assert args.coordinator_status_path is not None
             _publish_coordinator_launch_attestation(
                 board,
                 launch_session_id=args.coordinator_launch_session,
@@ -7774,9 +8241,13 @@ def _run_parsed_command(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    from .process_security import harden_state_authority_process
+    from .process_security import (
+        capture_state_authority_credentials,
+        harden_state_authority_process,
+    )
 
     harden_state_authority_process()
+    capture_state_authority_credentials()
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     receipt_only = bool(getattr(args, "launch_receipt_only", False))

@@ -26,6 +26,7 @@ from .control_plane_contracts import (
     canonical_json_bytes,
     content_identity,
 )
+from .control_plane_transactions import TransactionError
 from .database_task_source import (
     DATABASE_TASK_SOURCE_SCHEMA,
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
@@ -49,7 +50,12 @@ from .intent_repository import (
     IntentReceipt,
     QueueEntry,
 )
-from .quack_state_client import ClientSession, QuackStateClient, TransportMode
+from .quack_state_client import (
+    ClientSession,
+    QuackClientError,
+    QuackStateClient,
+    TransportMode,
+)
 from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
     TaskExecutionRouteBinding,
@@ -61,12 +67,15 @@ from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _validated_legacy_unstall_claim_receipt,
     _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
 )
@@ -77,7 +86,12 @@ TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
 )
 DEFAULT_QUERY_LIMIT: Final = 50
 _TRANSPORT_PAGE_LIMIT: Final = 500
-_HISTORY_TRANSPORT_PAGE_LIMIT: Final = 24
+# A history row can contain a body at the typed transport's one-megabyte
+# scalar ceiling before the stricter task-body bound is checked locally.  One
+# row per response therefore remains below the 16 MiB owner frame even for a
+# corrupt row whose JSON string is maximally escaped.  History is a recovery
+# surface, so bounded safety takes precedence over bulk throughput here.
+_HISTORY_TRANSPORT_PAGE_LIMIT: Final = 1
 _MAX_JSON_BYTES: Final = 262_144
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
@@ -125,6 +139,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_cas_task_status_receipt",
         "executor_insert_completion_receipt",
         "executor_insert_task_revision",
+        "executor_insert_task_revision_history",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
         "executor_insert_validation_run",
@@ -132,16 +147,48 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_insert_validation_evidence",
     }
 )
+# The canonical causal operator remains sealed to this predecessor profile.
+# LGCVF derives the extended profile below from the public helper.  Authority
+# binding admits exactly these two complete sets; arbitrary subsets, supersets,
+# and mixed profiles remain invalid.
+_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "task.status.cas",
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+            "task.claim.reservation.recover",
+            "task.validation.record.passed",
+            "task.validation.record.nonpassing",
+        }
+    )
+)
 _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
-        "task.status.cas",
-        "task.status.cas.receipt",
-        "task.retry.cooldown.record",
-        "task.claim.reservation.recover",
-        "task.validation.record.passed",
-        "task.validation.record.nonpassing",
+        *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     }
 )
+_DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
+    frozenset[frozenset[str]]
+] = frozenset(
+    {
+        _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
+    }
+)
+
+
+def daemon_required_owner_operations() -> tuple[str, ...]:
+    """Return the exact typed query/mutation grant required by one daemon."""
+
+    return tuple(sorted(_DAEMON_REQUIRED_OWNER_OPERATIONS))
+
+
+def daemon_required_owner_command_operations() -> tuple[str, ...]:
+    """Return the exact owner-command grant required by one daemon."""
+
+    return tuple(sorted(_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS))
 
 
 def _bounded_json(value: Any, *, noun: str) -> Any:
@@ -475,7 +522,7 @@ class TypedDatabaseTaskSource:
             or grant.get("process_birth_id") != process_instance_id
             or grant_operations != _DAEMON_REQUIRED_OWNER_OPERATIONS
             or grant_command_operations
-            != _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS
+            not in _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES
             or str(grant.get("tenant_id") or "").strip()
             or str(grant.get("federation_id") or "").strip()
             or not isinstance(grant_entity_scopes, Mapping)
@@ -509,22 +556,23 @@ class TypedDatabaseTaskSource:
                 "typed task authority differs from its process-bound bootstrap"
             )
         stable_body = {
-            "interface": "TypedDatabaseTaskSourceStableQuackAuthority@1",
+            "interface": "TypedDatabaseTaskSourceStableQuackAuthority@2",
             "store_id": store_identity.store_id,
             "database_uuid": store_identity.database_uuid,
             "schema_fingerprint": store_identity.schema_fingerprint,
             "repository_id": store_identity.repository_id,
             "schema_revision": int(store_identity.schema_revision),
-            "route_policy_id": route_policy.policy_id,
             "plan_root_cid": route_policy.plan_root_cid,
             "repository_tree_id": route_policy.repository_tree_id,
-            "source_projection_cid": route_policy.source_projection_cid,
         }
         return MappingProxyType(
             {
                 "interface": "TypedDatabaseTaskSourceQuackAuthorityBinding@1",
                 "stable_binding_id": content_identity(stable_body),
                 "stable_authority": MappingProxyType(stable_body),
+                "route_policy_id": route_policy.policy_id,
+                "source_revision": int(route_policy.source_revision),
+                "source_projection_cid": route_policy.source_projection_cid,
                 "endpoint": session.endpoint,
                 "server_id": session.server_id,
                 "session_id": session.session_id,
@@ -647,6 +695,108 @@ class TypedDatabaseTaskSource:
             return None
         return self._validated_retry_cooldown_row(rows[0], task_cid=task)
 
+    @staticmethod
+    def _legacy_unstall_claim_candidate(
+        task: TaskRecord,
+    ) -> Mapping[str, Any] | None:
+        """Return only the exact retained claim signature legacy unstall made."""
+
+        if task.status != "retrying":
+            return None
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping) or receipt.get("operation") not in {
+            "database_claim",
+            "database_attempt_admitted",
+        }:
+            return None
+        try:
+            _validated_legacy_unstall_claim_receipt(
+                receipt,
+                task_cid=task.task_cid,
+                expected_task_revision=task.revision,
+            )
+        except TypedStateOwnerError:
+            return None
+        return MappingProxyType(dict(receipt))
+
+    def _raise_unrepaired_retrying_integrity_error(
+        self,
+        task: TaskRecord,
+        cooldowns: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Surface the ordinary strict reader error for a rejected repair."""
+
+        cooldown = cooldowns.get(task.task_cid)
+        if cooldown is None:
+            raise TaskSourceIntegrityError(
+                "retrying task has no typed cooldown receipt"
+            )
+        self._validate_retrying_cooldown_binding(task, cooldown)
+        raise TaskSourceIntegrityError(
+            "retrying legacy unstall claim unexpectedly passed strict binding"
+        )
+
+    def _repair_legacy_unstalled_records(
+        self,
+        records: Sequence[tuple[TaskRecord, Mapping[str, Any]]],
+        cooldowns: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        """Repair all exact candidates, or fail closed through normal checks."""
+
+        candidates = tuple(
+            (record, receipt)
+            for record, _identity in records
+            if (
+                receipt := self._legacy_unstall_claim_candidate(record)
+            )
+            is not None
+        )
+        if not candidates:
+            return False
+        selected_now = self._clock_ms()
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        for record, receipt in candidates:
+            try:
+                result = self._client.recover_legacy_unstalled_claim(
+                    task_cid=record.task_cid,
+                    expected_task_revision=record.revision,
+                    task_body=record.body,
+                    claim_receipt=receipt,
+                    now_ms=selected_now,
+                )
+            except (QuackClientError, TransactionError):
+                current = self.get_task(record.task_cid)
+                current_receipt = (
+                    current.body.get("completion_receipt")
+                    if current is not None
+                    and isinstance(current.body, Mapping)
+                    else None
+                )
+                if (
+                    current is not None
+                    and current.status == "retrying"
+                    and current.revision > record.revision
+                    and isinstance(current_receipt, Mapping)
+                    and current_receipt.get("schema")
+                    == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+                    and current_receipt.get("operation")
+                    == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+                ):
+                    return True
+                self._raise_unrepaired_retrying_integrity_error(
+                    record,
+                    cooldowns,
+                )
+            if not result.accepted:
+                return True
+        return True
+
     def _stable_ready_material(
         self,
     ) -> tuple[
@@ -701,6 +851,11 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "retry cooldown projection contains a foreign task"
                     )
+                if self._repair_legacy_unstalled_records(
+                    records,
+                    cooldowns,
+                ):
+                    continue
                 for record, _identity in records:
                     if record.status == "retrying":
                         cooldown = cooldowns.get(record.task_cid)
@@ -943,7 +1098,36 @@ class TypedDatabaseTaskSource:
         """Validate an attempt binding and its exact shared claim lineage."""
 
         policy = self._require_execution_route_plan_root()
-        binding: TaskExecutionRouteBinding = policy.validate_binding(value)
+        binding = TaskExecutionRouteBinding.from_dict(value)
+        entry = policy.entries_by_cid.get(binding.task_cid)
+        current_policy_binding = (
+            binding.policy_id == policy.policy_id
+            and binding.plan_root_cid == policy.plan_root_cid
+            and binding.repository_tree_id == policy.repository_tree_id
+            and binding.source_revision == policy.source_revision
+            and entry is not None
+            and binding.task_alias == entry.task_alias
+            and binding.task_revision == entry.task_revision
+            and binding.task_contract_cid == entry.task_contract_cid
+            and binding.execution_mode == entry.execution_mode
+        )
+        historical_policy_binding = (
+            allow_claim_revision
+            and entry is not None
+            and binding.plan_root_cid == policy.plan_root_cid
+            and binding.repository_tree_id == policy.repository_tree_id
+            and binding.policy_id != policy.policy_id
+            and binding.source_revision < policy.source_revision
+            and binding.task_alias == entry.task_alias
+            and binding.task_contract_cid == entry.task_contract_cid
+            and binding.execution_mode == entry.execution_mode
+            and binding.task_revision < entry.task_revision
+            and binding.task_revision < task.revision
+        )
+        if not current_policy_binding and not historical_policy_binding:
+            raise TaskSourceIntegrityError(
+                "task execution route binding is not in the launch policy lineage"
+            )
         if (
             task.task_cid != binding.task_cid
             or task.task_alias != binding.task_alias
@@ -1006,7 +1190,12 @@ class TypedDatabaseTaskSource:
         self,
         task_cid_or_alias: str,
     ) -> Mapping[str, Any]:
-        """Return one stable, bounded canonical task lifecycle history."""
+        """Return canonical lifecycle history through bounded closed-owner reads.
+
+        Identity resolution and every history page are protected by a
+        store-generation sandwich. Concurrent transitions retry the complete
+        projection instead of combining different authoritative revisions.
+        """
 
         self._require_open()
         key = str(task_cid_or_alias or "").strip()
@@ -1025,9 +1214,19 @@ class TypedDatabaseTaskSource:
                 if not task_rows:
                     raise KeyError(key)
                 raise TaskSourceIntegrityError("task history identity is ambiguous")
+
             current = _record_from_row(task_rows[0])[0]
+            head_revision = current.revision
+            if (
+                type(head_revision) is not int
+                or not 1 <= head_revision <= MAX_PROJECTION_RECORDS
+            ):
+                raise TaskSourceBoundsError(
+                    "task revision head exceeds projection bound"
+                )
+
             revisions: list[dict[str, Any]] = []
-            projection_bytes = len(
+            material_bytes = len(
                 canonical_json_bytes(
                     {
                         "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
@@ -1037,104 +1236,101 @@ class TypedDatabaseTaskSource:
                 )
             )
             offset = 0
-            while len(revisions) <= MAX_PROJECTION_RECORDS:
-                limit = min(
+            while offset <= MAX_PROJECTION_RECORDS:
+                page_limit = min(
                     _HISTORY_TRANSPORT_PAGE_LIMIT,
-                    MAX_PROJECTION_RECORDS + 1 - len(revisions),
+                    MAX_PROJECTION_RECORDS + 1 - offset,
                 )
                 page = self._client.execute(
                     "executor_task_revision_history_page",
                     {
                         "task_cid": current.task_cid,
-                        "limit": limit,
+                        "limit": page_limit,
                         "offset": offset,
                     },
                 )
+                if len(page) > page_limit:
+                    raise TaskSourceIntegrityError(
+                        "typed task revision history page exceeds its request"
+                    )
+                if offset + len(page) > MAX_PROJECTION_RECORDS:
+                    raise TaskSourceBoundsError(
+                        "task revision history exceeds projection bound"
+                    )
                 if not page:
                     break
+
                 for row in page:
-                    if set(row) != {
+                    if not isinstance(row, Mapping) or set(row) != {
                         "task_cid",
                         "revision",
                         "status",
                         "body_json",
                     }:
                         raise TaskSourceIntegrityError(
-                            "typed task history differs from its closed projection"
-                        )
-                    if str(row.get("task_cid") or "") != current.task_cid:
-                        raise TaskSourceIntegrityError(
-                            "task history differs from its resolved canonical identity"
+                            "typed task revision history differs from its schema"
                         )
                     revision = row.get("revision")
                     status = row.get("status")
+                    expected_revision = offset + 1
                     if (
-                        type(revision) is not int
-                        or revision < 1
+                        str(row.get("task_cid") or "") != current.task_cid
+                        or type(revision) is not int
+                        or revision != expected_revision
                         or type(status) is not str
                         or not status
                     ):
                         raise TaskSourceIntegrityError(
-                            "typed task history lifecycle row is malformed"
+                            "typed task revision history has invalid identity"
                         )
-                    item = {
+                    entry = {
                         "revision": revision,
                         "status": status,
                         "body": _closed_history_mapping_json(
                             row.get("body_json")
                         ),
                     }
-                    projection_bytes += len(canonical_json_bytes(item))
+                    material_bytes += len(canonical_json_bytes(entry))
                     if revisions:
-                        projection_bytes += 1
-                    if projection_bytes > MAX_PLAN_PROJECTION_BYTES:
+                        material_bytes += 1
+                    if material_bytes > MAX_PLAN_PROJECTION_BYTES:
                         raise TaskSourceBoundsError(
-                            "task revision history exceeds projection byte bound"
+                            "task revision history projection exceeds byte bound"
                         )
-                    revisions.append(item)
-                    if len(revisions) > MAX_PROJECTION_RECORDS:
-                        raise TaskSourceBoundsError(
-                            "task revision history exceeds projection bound"
-                        )
-                offset += len(page)
-                if len(page) < limit:
+                    revisions.append(entry)
+                    offset += 1
+                if len(page) < page_limit:
                     break
+
             after = self._client.load_generation()
             if before.content_id != after.content_id:
                 continue
-            if not revisions:
+            if len(revisions) != head_revision:
                 raise TaskSourceIntegrityError(
-                    "task revision history is absent for an existing task"
-                )
-            if [item["revision"] for item in revisions] != list(
-                range(1, current.revision + 1)
-            ):
-                raise TaskSourceIntegrityError(
-                    "typed task history does not reach the current task revision"
+                    "typed task revision history does not reach its current head"
                 )
             if (
                 revisions[-1]["status"] != current.status
                 or revisions[-1]["body"] != dict(current.body)
             ):
                 raise TaskSourceIntegrityError(
-                    "typed task history tail differs from the current task"
+                    "typed task revision history differs from its current head"
                 )
             material = {
                 "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
                 "task_cid": current.task_cid,
                 "revisions": revisions,
             }
-            if len(canonical_json_bytes(material)) > MAX_PLAN_PROJECTION_BYTES:
+            if len(canonical_json_bytes(material)) != material_bytes:
                 raise TaskSourceBoundsError(
-                    "task revision history exceeds projection byte bound"
+                    "task revision history projection byte accounting differs"
                 )
             return MappingProxyType(
                 {**material, "projection_cid": content_identity(material)}
             )
         raise TaskSourceConflictError(
-            "typed task history changed during bounded projection"
+            "typed task revision history changed during bounded projection"
         )
-
     def list_tasks(
         self,
         status: str | Iterable[str] | None = None,
@@ -1423,6 +1619,87 @@ class TypedDatabaseTaskSource:
         return IntentReceipt(
             event_id=str(result.result_digest or content_identity(dict(details))),
             event_type="TASK_DEAD_CLAIM_RESERVATION_RECOVERED",
+            global_sequence=0,
+            recorded_at="typed-state-owner",
+            subject_id=prior.task_cid,
+            revision=int(updated.revision),
+            changed=bool(result.changed),
+            details=details,
+        )
+
+    def recover_legacy_unstalled_claim(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        now_ms: int | None = None,
+    ) -> IntentReceipt:
+        """Repair one exact retrying claim left by legacy startup unstall."""
+
+        prior = self.get(task_cid_or_alias)
+        if prior is None:
+            raise KeyError(str(task_cid_or_alias))
+        if (
+            prior.status != "retrying"
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or prior.revision != expected_task_revision
+        ):
+            raise TaskSourceConflictError(
+                "legacy unstall recovery task revision is stale"
+            )
+        claim_receipt = self._legacy_unstall_claim_candidate(prior)
+        if claim_receipt is None:
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery task has no exact retained claim"
+            )
+        selected_now = self._clock_ms() if now_ms is None else now_ms
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        result = self._client.recover_legacy_unstalled_claim(
+            task_cid=prior.task_cid,
+            expected_task_revision=expected_task_revision,
+            task_body=prior.body,
+            claim_receipt=claim_receipt,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "legacy unstall recovery was not accepted"
+                )
+            )
+        updated = self.get(prior.task_cid)
+        row = self._retry_cooldown_row(prior.task_cid)
+        if updated is None or updated.status != "retrying" or row is None:
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, row)
+        receipt = updated.body.get("completion_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation")
+            != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            or receipt.get("schema")
+            != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+            or receipt.get("attempt_number")
+            != claim_receipt.get("attempt_number")
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery receipt is inconsistent"
+            )
+        details = MappingProxyType(dict(result.result))
+        return IntentReceipt(
+            event_id=str(
+                result.result_digest or content_identity(dict(details))
+            ),
+            event_type="TASK_LEGACY_UNSTALL_CLAIM_RECOVERED",
             global_sequence=0,
             recorded_at="typed-state-owner",
             subject_id=prior.task_cid,
@@ -1788,4 +2065,6 @@ __all__ = [
     "TYPED_DATABASE_TASK_SOURCE_INTERFACE",
     "TYPED_DATABASE_TASK_SOURCE_SCHEMA",
     "TypedDatabaseTaskSource",
+    "daemon_required_owner_command_operations",
+    "daemon_required_owner_operations",
 ]

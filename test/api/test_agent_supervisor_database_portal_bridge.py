@@ -55,6 +55,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_e
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as database_portal_bridge_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
@@ -2954,13 +2957,13 @@ def test_bridge_polls_exact_inflight_process_on_same_claim_until_completion(
 
     clock = FakeClock()
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._monotonic_seconds",
+        database_portal_bridge_module,
+        "_monotonic_seconds",
         clock.monotonic,
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._sleep_seconds",
+        database_portal_bridge_module,
+        "_sleep_seconds",
         clock.sleep,
     )
     portals: list[InflightThenCompletingPortal] = []
@@ -3025,13 +3028,13 @@ def test_bridge_bounds_inflight_pass_preview_with_streaming_digest(
 
     clock = FakeClock()
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._monotonic_seconds",
+        database_portal_bridge_module,
+        "_monotonic_seconds",
         clock.monotonic,
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._sleep_seconds",
+        database_portal_bridge_module,
+        "_sleep_seconds",
         clock.sleep,
     )
     portals: list[LongInflightThenCompletingPortal] = []
@@ -3101,13 +3104,13 @@ def test_bridge_defers_exact_inflight_process_at_configured_timeout(
 
     clock = FakeClock()
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._monotonic_seconds",
+        database_portal_bridge_module,
+        "_monotonic_seconds",
         clock.monotonic,
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-        "database_portal_bridge._sleep_seconds",
+        database_portal_bridge_module,
+        "_sleep_seconds",
         clock.sleep,
     )
     portals: list[InflightPortal] = []

@@ -360,3 +360,71 @@ def test_multi_supervisor_wrapper_propagates_strict_task_sharding() -> None:
         ["--implementation-track", "T|worker.py|state|agent"]
     )
     assert "--strict-task-sharding" not in common_args_from_parsed_args(defaults)
+
+
+def test_multi_supervisor_wrapper_does_not_duplicate_explicit_strict_sharding() -> None:
+    parsed = build_multi_supervisor_arg_parser().parse_args(
+        [
+            "--implementation-track",
+            "T|worker.py|state|agent",
+            "--implementation-supervisor-lanes-per-track",
+            "2",
+            "--implementation-supervisor-strict-task-sharding",
+            "--common-arg=--strict-task-sharding",
+        ]
+    )
+
+    common_args = common_args_from_parsed_args(parsed)
+
+    assert common_args.count("--strict-task-sharding") == 1
+
+    parsed_with_defaults = build_multi_supervisor_arg_parser().parse_args(
+        [
+            "--implementation-track",
+            "T|worker.py|state|agent",
+            "--implementation-supervisor-defaults",
+            "--implementation-supervisor-strict-task-sharding",
+            "--common-arg=--strict-task-sharding",
+        ]
+    )
+    assert (
+        common_args_from_parsed_args(parsed_with_defaults).count(
+            "--strict-task-sharding"
+        )
+        == 1
+    )
+
+    duplicate_explicit = build_multi_supervisor_arg_parser().parse_args(
+        [
+            "--implementation-track",
+            "T|worker.py|state|agent",
+            "--implementation-supervisor-strict-task-sharding",
+            "--common-arg=--strict-task-sharding",
+            "--common-arg=--strict-task-sharding",
+        ]
+    )
+    assert (
+        common_args_from_parsed_args(duplicate_explicit).count(
+            "--strict-task-sharding"
+        )
+        == 2
+    )
+
+    explicit_work_stealing = build_multi_supervisor_arg_parser().parse_args(
+        [
+            "--implementation-track",
+            "T|worker.py|state|agent",
+            "--implementation-supervisor-idle-lane-work-stealing",
+            "virgin-transfer",
+            "--common-arg=--idle-lane-work-stealing",
+            "--common-arg=virgin-transfer",
+        ]
+    )
+    effective_work_stealing = common_args_from_parsed_args(
+        explicit_work_stealing
+    )
+    assert effective_work_stealing.count("--idle-lane-work-stealing") == 1
+    assert effective_work_stealing[-2:] == [
+        "--idle-lane-work-stealing",
+        "virgin-transfer",
+    ]

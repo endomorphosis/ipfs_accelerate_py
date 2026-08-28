@@ -57,7 +57,10 @@ QUALIFICATION_VALIDATOR_PATH: Final[Path] = (
 BENCHMARK_VALIDATOR_PATH: Final[Path] = (
     ROOT / "scripts/benchmark_lgcvf_symbolic_displacement.py"
 )
-PROTECTED_REPLAY_TIMEOUT_SECONDS: Final[int] = 900
+# An ordinary protected qualification worker has a 3,600-second ceiling.  The
+# outer judge also covers sandbox setup, teardown, and the benchmark fixture
+# replay that follows its nested qualification.
+PROTECTED_REPLAY_TIMEOUT_SECONDS: Final[int] = 4_200
 _EVIDENCE_ONLY_PATHS: Final[frozenset[str]] = frozenset(
     {
         "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json",

@@ -16,6 +16,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..core.wrapper_utils import with_exclusive_flag_default
@@ -96,7 +97,43 @@ class SupervisedChildSpec:
     env: Mapping[str, str] = field(default_factory=dict)
     stdin_devnull: bool = True
     start_new_session: bool = True
+    inherit_environment: bool = True
     pass_fds: tuple[int, ...] = ()
+    pre_popen_verify: Optional[
+        Callable[["SupervisedChildSpec"], None]
+    ] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "env",
+            MappingProxyType(
+                {
+                    str(name): str(value)
+                    for name, value in self.env.items()
+                }
+            ),
+        )
+        if not isinstance(self.inherit_environment, bool):
+            raise ValueError("inherit_environment must be boolean")
+        descriptors: list[int] = []
+        for descriptor in self.pass_fds:
+            if (
+                isinstance(descriptor, bool)
+                or not isinstance(descriptor, int)
+                or descriptor < 0
+            ):
+                raise ValueError("pass_fds must contain non-negative integers")
+            descriptors.append(descriptor)
+        object.__setattr__(
+            self,
+            "pass_fds",
+            tuple(sorted(set(descriptors))),
+        )
+        if self.pre_popen_verify is not None and not callable(
+            self.pre_popen_verify
+        ):
+            raise ValueError("pre_popen_verify must be callable")
 
     def resolve(self, path: Path) -> Path:
         return path if path.is_absolute() else self.repo_root / path
@@ -294,6 +331,7 @@ def launch_process_child(
     start_new_session: bool = True,
     text: bool = False,
     pass_fds: Sequence[int] = (),
+    pre_popen_verify: Callable[[], None] | None = None,
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults.
 
@@ -313,13 +351,19 @@ def launch_process_child(
         "stderr": stderr,
         "start_new_session": start_new_session,
     }
-    normalized_pass_fds = tuple(int(item) for item in pass_fds)
+    normalized_pass_fds = tuple(sorted({int(item) for item in pass_fds}))
     if normalized_pass_fds:
         # Preserve compatibility with injected/fake ``Popen`` callables and
         # non-POSIX launchers when no descriptor inheritance was requested.
         kwargs["pass_fds"] = normalized_pass_fds
     if text:
         kwargs["text"] = True
+    if pre_popen_verify is not None:
+        # Keep the authority check adjacent to the actual birth.  In
+        # particular, sealed-descriptor callers must re-fstat their immutable
+        # inputs for every restart generation rather than relying on the
+        # SupervisorLoopConfig construction-time observation.
+        pre_popen_verify()
     return subprocess.Popen([str(part) for part in command], **kwargs)
 
 
@@ -1817,6 +1861,15 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     env.pop(SUPERVISED_CHILD_OWNER_SCOPE_ENV, None)
     out_handle = log_path.open("ab")
     try:
+        launch_options: dict[str, Any] = {}
+        if not spec.inherit_environment:
+            launch_options["inherit_environment"] = False
+        if spec.pass_fds:
+            launch_options["pass_fds"] = spec.pass_fds
+        if spec.pre_popen_verify is not None:
+            launch_options["pre_popen_verify"] = lambda: (
+                spec.pre_popen_verify(spec)
+            )
         process = launch_process_child(
             spec.command,
             cwd=str(spec.repo_root),
@@ -1825,7 +1878,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=spec.start_new_session,
-            pass_fds=spec.pass_fds,
+            **launch_options,
         )
     finally:
         out_handle.close()

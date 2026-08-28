@@ -51,11 +51,6 @@ from ..proof.security_contract_analysis import (
     evaluate_fixed_point_security,
     extract_code_security_facts,
 )
-from ..planning.obligation_graph_compiler import (
-    PlannerDoctorSemanticDecision,
-    SemanticDischargeEvidence,
-    apply_semantic_discharge,
-)
 from .deterministic_doctor_fixed_point import (
     DEFAULT_FIXED_POINT_BOUND,
     MAX_ITERATIONS,
@@ -126,6 +121,7 @@ class LiveFixedPointAbortReason(str, Enum):
     MISSING_SEMANTIC_COVERAGE = "missing_semantic_coverage"
     UNVALIDATED_INTERPOLANT = "interpolant_not_independently_validated"
     SEMANTIC_OSCILLATION = "semantic_successor_oscillation"
+    SECOND_ORDER_OPEN = "semantic_second_order_open"
 
 
 # ---------------------------------------------------------------------------
@@ -439,41 +435,7 @@ class LiveFixedPointRequest:
             object.__setattr__(
                 self,
                 "semantic_discharge",
-                SemanticDischargeEvidence(
-                    discharge_refs=tuple(
-                        self.semantic_discharge.get("discharge_refs") or ()
-                    ),
-                    invalidation_refs=tuple(
-                        self.semantic_discharge.get("invalidation_refs") or ()
-                    ),
-                    unsat_core_refs=tuple(
-                        self.semantic_discharge.get("unsat_core_refs") or ()
-                    ),
-                    counterexample_refs=tuple(
-                        self.semantic_discharge.get("counterexample_refs") or ()
-                    ),
-                    interpolant_refs=tuple(
-                        self.semantic_discharge.get("interpolant_refs") or ()
-                    ),
-                    interpolants_independently_validated=bool(
-                        self.semantic_discharge.get(
-                            "interpolants_independently_validated"
-                        )
-                    ),
-                    covered_obligation_ids=tuple(
-                        self.semantic_discharge.get("covered_obligation_ids") or ()
-                    ),
-                    current_tree_id=str(
-                        self.semantic_discharge.get("current_tree_id") or ""
-                    ),
-                    evidence_tree_id=str(
-                        self.semantic_discharge.get("evidence_tree_id") or ""
-                    ),
-                    prior_successor_fingerprint=str(
-                        self.semantic_discharge.get("prior_successor_fingerprint")
-                        or ""
-                    ),
-                ),
+                SemanticDischargeEvidence.from_mapping(self.semantic_discharge),
             )
         bound = int(self.fixed_point_bound)
         if bound < 1 or bound > MAX_ITERATIONS:
@@ -655,16 +617,23 @@ def default_cache_invalidation(
     *,
     prior_cache_ids: Sequence[str],
     dependency_paths: Sequence[str],
+    semantic: PlannerDoctorSemanticDecision | None = None,
 ) -> DoctorCacheInvalidationEvidence:
     """Invalidate dependency-local caches under the current tree."""
 
     dep_paths = tuple(sorted({str(p) for p in dependency_paths if str(p).strip()}))
+    semantic_invalidations = (
+        tuple(semantic.consumed_invalidation_refs) + tuple(semantic.impact_ids)
+        if semantic is not None
+        else ()
+    )
     invalidated = tuple(
         sorted(
             set(prior_cache_ids)
             | {f"cache:{path}" for path in dep_paths}
             | {f"cas:{snapshot.candidate_tree_id}"}
             | {f"proof-cache:{snapshot.candidate_tree_id}"}
+            | set(semantic_invalidations)
         )
     )
     return DoctorCacheInvalidationEvidence(
@@ -681,6 +650,7 @@ def default_static_checks(
     snapshot: LiveCandidateSnapshot,
     *,
     plan: DeterministicDoctorPlan,
+    semantic: PlannerDoctorSemanticDecision | None = None,
 ) -> DoctorStaticCheckEvidence:
     """Impact-selected static/type/parse checks from the live snapshot."""
 
@@ -688,11 +658,15 @@ def default_static_checks(
     failed = tuple(snapshot.parse_errors)
     paths = snapshot.reparsed_paths or ("<none>",)
     receipt_seed = snapshot.observed_root_cid or snapshot.candidate_tree_id
+    selected = tuple(semantic.selected_check_ids) if semantic is not None else ()
+    static_ids = tuple(
+        dict.fromkeys((f"static:{receipt_seed}", *selected))
+    )
     return DoctorStaticCheckEvidence(
         candidate_tree_id=snapshot.candidate_tree_id,
         reparsed_paths=paths,
         type_check_receipt_ids=(f"type:{receipt_seed}",),
-        static_check_receipt_ids=(f"static:{receipt_seed}",),
+        static_check_receipt_ids=static_ids,
         differential_check_receipt_ids=(f"diff:{receipt_seed}",),
         proof_check_receipt_ids=(f"proof-check:{receipt_seed}",),
         memory_effect_receipt_ids=(f"memory:{receipt_seed}",),
@@ -749,6 +723,7 @@ def default_reclose(
     prior_second_order: Sequence[str],
     iteration: int,
     request: LiveFixedPointRequest,
+    semantic: PlannerDoctorSemanticDecision | None = None,
 ) -> DoctorRecloseEvidence:
     """Reclose consumers/SCCs; honor second-order schedules for tests/live."""
 
@@ -757,18 +732,26 @@ def default_reclose(
     scheduled = tuple(
         str(x) for x in request.second_order_schedule.get(iteration, ()) if str(x).strip()
     )
-    second_order = tuple(sorted(set(prior_second_order) | set(scheduled)))
+    semantic_second = (
+        tuple(semantic.second_order_obligation_ids) if semantic is not None else ()
+    )
+    second_order = tuple(
+        sorted(set(prior_second_order) | set(scheduled) | set(semantic_second))
+    )
     discharged_second = tuple(
         str(x) for x in request.discharge_schedule.get(iteration, ()) if str(x).strip()
     )
-    # Auto-discharge prior second-order on later iterations when no schedule.
+    # Auto-discharge prior second-order on later iterations when no schedule,
+    # but never auto-discharge semantic successor obligations.
     if (
         iteration > 1
         and second_order
         and not discharged_second
         and iteration not in request.second_order_schedule
     ):
-        discharged_second = second_order
+        discharged_second = tuple(
+            item for item in second_order if item not in set(semantic_second)
+        )
     discharged_original = originals
     open_second = tuple(sorted(set(second_order) - set(discharged_second)))
     unresolved = open_second
@@ -876,21 +859,26 @@ def default_replan(
     *,
     plan: DeterministicDoctorPlan,
     reclose: DoctorRecloseEvidence,
+    semantic: PlannerDoctorSemanticDecision | None = None,
 ) -> DoctorReplanEvidence:
     """Regenerate diagnosis/Tactician plan for residual clauses."""
 
-    residual = tuple(reclose.unresolved_mandatory_ids)
-    plan_current = reclose.complete and not residual
+    residual = set(reclose.unresolved_mandatory_ids)
+    if semantic is not None:
+        residual.update(semantic.repair_successor_ids)
+        residual.update(semantic.second_order_obligation_ids)
+    residual_ids = tuple(sorted(residual))
+    plan_current = reclose.complete and not residual_ids
     return DoctorReplanEvidence(
         candidate_tree_id=snapshot.candidate_tree_id,
         diagnosis_root_id=f"diagnosis:{snapshot.observed_root_cid or snapshot.candidate_tree_id}",
         tactician_plan_id=(
             plan.plan_id
             if plan_current
-            else f"tactician:residual:{snapshot.candidate_tree_id}:{len(residual)}"
+            else f"tactician:residual:{snapshot.candidate_tree_id}:{len(residual_ids)}"
         ),
         goal_root_ids=(f"goal:{plan.plan_id}",),
-        residual_gap_ids=residual,
+        residual_gap_ids=residual_ids,
         plan_current=plan_current,
     )
 
@@ -1113,17 +1101,17 @@ class DeterministicDoctorLiveFixedPoint:
                 rebuild = build_rebuild_evidence(snapshot)
                 budget = budget.charge_stage()
 
-                cache = self._run_cache(snapshot, req, budget)
+                cache = self._run_cache(snapshot, req, budget, semantic)
                 budget = budget.charge_stage()
 
-                static = self._run_static(snapshot, plan, budget)
+                static = self._run_static(snapshot, plan, budget, semantic)
                 budget = budget.charge_stage()
 
                 redelta = self._run_redelta(snapshot, plan, req, budget)
                 budget = budget.charge_stage()
 
                 reclose = self._run_reclose(
-                    snapshot, plan, req, prior_second_order, iteration_no, budget
+                    snapshot, plan, req, prior_second_order, iteration_no, budget, semantic
                 )
                 budget = budget.charge_stage()
                 prior_second_order = reclose.second_order_finding_ids
@@ -1131,7 +1119,7 @@ class DeterministicDoctorLiveFixedPoint:
                 security = self._run_security(snapshot, plan, req, budget)
                 budget = budget.charge_stage()
 
-                replan = self._run_replan(snapshot, plan, reclose, budget)
+                replan = self._run_replan(snapshot, plan, reclose, budget, semantic)
                 budget = budget.charge_stage()
 
                 reprove = self._run_reprove(snapshot, plan, replan, budget)
@@ -1144,6 +1132,12 @@ class DeterministicDoctorLiveFixedPoint:
                 rebuild_hard = not rebuild.clean_rebuild_equivalent
                 hard_fail = security_hard or static_hard or rebuild_hard
 
+                semantic_residual = (
+                    set(semantic.second_order_obligation_ids)
+                    | set(semantic.repair_successor_ids)
+                    if semantic is not None
+                    else set()
+                )
                 residual_ids = tuple(
                     sorted(
                         set(reclose.unresolved_mandatory_ids)
@@ -1151,6 +1145,7 @@ class DeterministicDoctorLiveFixedPoint:
                         | set(security.vulnerability_ids)
                         | set(security.failed_hyperproperty_ids)
                         | set(static.failed_check_ids)
+                        | semantic_residual
                     )
                 )
                 if hard_fail and not residual_ids:
@@ -1203,6 +1198,21 @@ class DeterministicDoctorLiveFixedPoint:
                 )
                 iterations.append(iter_receipt)
                 fingerprints.append(fp)
+
+                if semantic is not None and (
+                    semantic.successors or semantic.second_order_obligation_ids
+                ):
+                    return self._abort(
+                        plan,
+                        transaction_report,
+                        reasons=set(semantic.reason_codes)
+                        | {
+                            DoctorFixedPointReason.SECOND_ORDER_FINDING_OPEN.value,
+                            LiveFixedPointAbortReason.SECOND_ORDER_OPEN.value,
+                        },
+                        checkpoint=checkpoint or transaction_report.checkpoint,
+                        iteration_receipts=tuple(iterations),
+                    )
 
                 # Unchanged residual across consecutive open iterations.
                 if requires_another or hard_fail:
@@ -1380,13 +1390,20 @@ class DeterministicDoctorLiveFixedPoint:
         snapshot: LiveCandidateSnapshot,
         request: LiveFixedPointRequest,
         budget: LiveStageBudget,
+        semantic: PlannerDoctorSemanticDecision | None = None,
     ) -> DoctorCacheInvalidationEvidence:
         del budget
-        inv = self.cache_invalidator or default_cache_invalidation
-        return inv(
+        if self.cache_invalidator is not None:
+            return self.cache_invalidator(
+                snapshot,
+                prior_cache_ids=request.prior_cache_ids,
+                dependency_paths=snapshot.reparsed_paths or request.changed_paths,
+            )
+        return default_cache_invalidation(
             snapshot,
             prior_cache_ids=request.prior_cache_ids,
             dependency_paths=snapshot.reparsed_paths or request.changed_paths,
+            semantic=semantic,
         )
 
     def _run_static(
@@ -1394,10 +1411,12 @@ class DeterministicDoctorLiveFixedPoint:
         snapshot: LiveCandidateSnapshot,
         plan: DeterministicDoctorPlan,
         budget: LiveStageBudget,
+        semantic: PlannerDoctorSemanticDecision | None = None,
     ) -> DoctorStaticCheckEvidence:
         del budget
-        checker = self.static_checker or default_static_checks
-        return checker(snapshot, plan=plan)
+        if self.static_checker is not None:
+            return self.static_checker(snapshot, plan=plan)
+        return default_static_checks(snapshot, plan=plan, semantic=semantic)
 
     def _run_redelta(
         self,
@@ -1422,6 +1441,7 @@ class DeterministicDoctorLiveFixedPoint:
         prior_second_order: Sequence[str],
         iteration: int,
         budget: LiveStageBudget,
+        semantic: PlannerDoctorSemanticDecision | None = None,
     ) -> DoctorRecloseEvidence:
         del budget
         if self.reclose_stage is not None:
@@ -1439,6 +1459,7 @@ class DeterministicDoctorLiveFixedPoint:
             prior_second_order=prior_second_order,
             iteration=iteration,
             request=request,
+            semantic=semantic,
         )
 
     def _run_security(
@@ -1458,10 +1479,14 @@ class DeterministicDoctorLiveFixedPoint:
         plan: DeterministicDoctorPlan,
         reclose: DoctorRecloseEvidence,
         budget: LiveStageBudget,
+        semantic: PlannerDoctorSemanticDecision | None = None,
     ) -> DoctorReplanEvidence:
         del budget
-        stage = self.replan_stage or default_replan
-        return stage(snapshot, plan=plan, reclose=reclose)
+        if self.replan_stage is not None:
+            return self.replan_stage(snapshot, plan=plan, reclose=reclose)
+        return default_replan(
+            snapshot, plan=plan, reclose=reclose, semantic=semantic
+        )
 
     def _run_reprove(
         self,
@@ -1689,7 +1714,6 @@ __all__ = [
     "daemon_require_live_doctor_fixed_point",
     "default_cache_invalidation",
     "default_identity_replay",
-    "evaluate_live_semantic_discharge",
     "default_reclose",
     "default_redelta",
     "default_replan",

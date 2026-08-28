@@ -645,8 +645,19 @@ def ensure_board_implementation_branch(
     }
 
 
-def _try_load_extension(connection: Any, name: str) -> str:
-    """Load a locally installed extension; INSTALL only if LOAD fails.
+BOARD_EXTENSION_INSTALL_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
+)
+BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY = "load_only"
+
+
+def _try_load_extension(
+    connection: Any,
+    name: str,
+    *,
+    allow_install: bool = True,
+) -> str:
+    """Load a local extension, optionally permitting an explicit INSTALL fallback.
 
     The sealed :class:`DuckDBConnection` policy locks
     ``enable_external_access=false`` at connect time, which makes community
@@ -659,6 +670,11 @@ def _try_load_extension(connection: Any, name: str) -> str:
         connection.execute(f"LOAD {name}")
         return ""
     except Exception as load_exc:
+        if not allow_install:
+            return (
+                f"LOAD {type(load_exc).__name__}: {load_exc}; "
+                "INSTALL disabled by policy"
+            )
         try:
             connection.execute(f"INSTALL {name}")
             connection.execute(f"LOAD {name}")
@@ -1673,6 +1689,7 @@ def _open_extension_capable_connection(
     database_path: Path,
     *,
     timeout_seconds: float,
+    allow_extension_install: bool,
 ) -> DuckDBConnection:
     """Open the catalog with a raw DuckDB handle that can LOAD Quack/DuckLake."""
 
@@ -1693,6 +1710,9 @@ def _open_extension_capable_connection(
         raw = duckdb.connect(str(database_path))
         raw.execute("SET threads=1")
         raw.execute("SET memory_limit='128MB'")
+        if not allow_extension_install:
+            raw.execute("SET autoinstall_known_extensions = false")
+            raw.execute("SET autoload_known_extensions = false")
     except BaseException:
         lock_context.__exit__(None, None, None)
         raise
@@ -1707,8 +1727,21 @@ def open_board_control_plane(
     *,
     root: str | os.PathLike[str] | None = None,
     timeout_seconds: float = 30.0,
+    allow_extension_install: bool | None = None,
 ) -> BoardControlPlane:
     """Open (or create) the repo-wide DuckDB + Quack board control plane."""
+
+    configured_policy = str(
+        os.environ.get(BOARD_EXTENSION_INSTALL_POLICY_ENV, "") or ""
+    ).strip()
+    if configured_policy not in {"", BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY}:
+        raise BoardControlPlaneError("board extension installation policy is invalid")
+    if allow_extension_install is not None and type(allow_extension_install) is not bool:
+        raise BoardControlPlaneError("allow_extension_install must be boolean or None")
+    installation_allowed = (
+        configured_policy != BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
+        and allow_extension_install is not False
+    )
 
     catalog_root = Path(root) if root is not None else default_control_plane_root(
         Path(repo_root)
@@ -1719,6 +1752,7 @@ def open_board_control_plane(
         connection = _open_extension_capable_connection(
             database_path,
             timeout_seconds=timeout_seconds,
+            allow_extension_install=installation_allowed,
         )
     except ImportError as exc:
         raise BoardControlPlaneUnavailableError(
@@ -1733,12 +1767,20 @@ def open_board_control_plane(
     quack_loaded = False
     ducklake_loaded = False
     ducklake_attached = False
-    quack_error = _try_load_extension(connection, "quack")
+    quack_error = _try_load_extension(
+        connection,
+        "quack",
+        allow_install=installation_allowed,
+    )
     if quack_error:
         extension_errors.append(f"quack: {quack_error}")
     else:
         quack_loaded = True
-    ducklake_error = _try_load_extension(connection, "ducklake")
+    ducklake_error = _try_load_extension(
+        connection,
+        "ducklake",
+        allow_install=installation_allowed,
+    )
     if ducklake_error:
         extension_errors.append(f"ducklake: {ducklake_error}")
     else:
@@ -1772,6 +1814,17 @@ def open_board_control_plane(
 
 VALIDATION_PYTHON_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_BACKEND_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_BACKEND"
+VALIDATION_CONTAINER_IMAGE_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
+)
+AUTHORITY_VALIDATION_CONTAINER_BACKEND: Final = (
+    "authority_validation_container"
+)
+AUTHORITY_VALIDATION_CONTAINER_RUNTIME_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "authority-validation-container-runtime@1"
+)
 VALIDATION_PYTHON_MODULES_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
 )
@@ -1857,14 +1910,17 @@ def apply_board_validation_runtime(
     """
 
     target = os.environ if environ is None else environ
-    if str(target.get(VALIDATION_PYTHONPATH_ENV) or "").strip():
-        return {
-            "applied": False,
-            "reason": "already_configured",
-            "pythonpath": str(target.get(VALIDATION_PYTHONPATH_ENV) or ""),
-        }
+    existing_pythonpath = str(
+        target.get(VALIDATION_PYTHONPATH_ENV) or ""
+    ).strip()
     config_path = discover_board_scheduler_config(repo_root, todo_path)
     if config_path is None:
+        if existing_pythonpath:
+            return {
+                "applied": False,
+                "reason": "already_configured",
+                "pythonpath": existing_pythonpath,
+            }
         return {"applied": False, "reason": "scheduler_config_missing"}
     try:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1881,6 +1937,59 @@ def apply_board_validation_runtime(
             "applied": False,
             "reason": "validation_runtime_absent",
             "config_path": str(config_path),
+        }
+    backend = str(raw.get("backend") or "").strip()
+    if backend:
+        image = str(raw.get("container_image") or "").strip()
+        raw_modules = raw.get("required_modules")
+        if (
+            set(raw)
+            != {
+                "schema",
+                "backend",
+                "container_image",
+                "required_modules",
+            }
+            or raw.get("schema")
+            != AUTHORITY_VALIDATION_CONTAINER_RUNTIME_SCHEMA
+            or backend != AUTHORITY_VALIDATION_CONTAINER_BACKEND
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None
+            or not isinstance(raw_modules, list)
+            or not raw_modules
+            or not all(
+                type(item) is str
+                and item
+                and item.strip() == item
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", item)
+                for item in raw_modules
+            )
+            or len(raw_modules) != len(set(raw_modules))
+        ):
+            return {
+                "applied": False,
+                "reason": "validation_runtime_invalid",
+                "config_path": str(config_path),
+            }
+        target.pop(VALIDATION_PYTHON_ENV, None)
+        target.pop(VALIDATION_PYTHONPATH_ENV, None)
+        target[VALIDATION_BACKEND_ENV] = backend
+        target[VALIDATION_CONTAINER_IMAGE_ENV] = image
+        target[VALIDATION_PYTHON_MODULES_ENV] = ",".join(raw_modules)
+        target.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        target.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+        return {
+            "applied": True,
+            "reason": "bound_scheduler_validation_runtime",
+            "config_path": str(config_path),
+            "backend": backend,
+            "container_image": image,
+            "required_modules": list(raw_modules),
+        }
+    if existing_pythonpath:
+        return {
+            "applied": False,
+            "reason": "already_configured",
+            "pythonpath": existing_pythonpath,
         }
     executable = str(raw.get("python_executable") or "").strip()
     raw_paths = raw.get("pythonpath_entries")

@@ -2396,6 +2396,9 @@ def build_portal_implementation_daemon_from_args(
         task_shard_count=parsed.task_shard_count,
         task_shard_index=parsed.task_shard_index,
         strict_task_sharding=bool(getattr(parsed, "strict_task_sharding", False)),
+        idle_lane_work_stealing=str(
+            getattr(parsed, "idle_lane_work_stealing", "") or ""
+        ),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
         worker_network_launch_authority_json=str(
             getattr(parsed, "worker_network_launch_authority_json", "") or ""

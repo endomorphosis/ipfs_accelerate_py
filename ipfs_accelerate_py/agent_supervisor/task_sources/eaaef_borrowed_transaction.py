@@ -28,6 +28,10 @@ from .eaaef_bootstrap_daemon_gateway import (
     EAAEF_BOOTSTRAP_DAEMON_MISSING_OPERATIONS,
     EAAEF_BOOTSTRAP_DAEMON_OPERATIONS,
 )
+from .eaaef_execution_contracts import (
+    EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA,
+    EAAEF_IDEMPOTENT_RESERVATION_SCHEMA,
+)
 from .eaaef_operational_schema import (
     EAAEF_BOARD_SCHEDULER_LEASE_KIND,
     EAAEF_BOARD_SCHEDULER_LEASE_MODE,
@@ -55,10 +59,6 @@ EAAEF_BORROWED_TRANSACTION_HANDLER_SCHEMA: Final = (
 EAAEF_TASK_COMPLETION_PREPARATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-task-completion-preparation@1"
 )
-EAAEF_IDEMPOTENT_RESERVATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "eaaef-idempotent-operation-reservation@1"
-)
 EAAEF_TASK_OPERATION_AUTHORITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-task-operation-authority@2"
 )
@@ -73,9 +73,6 @@ EAAEF_RUNNING_RECOVERY_SNAPSHOT_SCHEMA: Final = (
 )
 EAAEF_DEAD_LANE_RECOVERY_AUTHORITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-dead-lane-recovery-authority@1"
-)
-EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/eaaef-container-validation-evidence@1"
 )
 COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/intent-completion-evidence@1"

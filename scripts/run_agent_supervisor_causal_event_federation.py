@@ -144,6 +144,7 @@ EXECUTOR_OWNER_TRANSACTION_OPERATIONS: Final = frozenset(
         "executor_cas_task_status_receipt",
         "executor_insert_completion_receipt",
         "executor_insert_task_revision",
+        "executor_insert_task_revision_history",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
         "executor_insert_validation_run",

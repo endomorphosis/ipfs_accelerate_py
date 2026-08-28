@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeerargsvp5fu26sule2auysdnvqswg4yurz4vmwhep5owypqmslb5dca",
-    "artifact_verification_receipt_cid": "baguqeera2gtm2e4efmm4ucltjwfas57zwn6wm5qskozy733dnpaly56des6q",
+    "artifact_cid": "baguqeeraixbgfp4wdv57yj2b5tytbbdnnsgqkc5i4fjlrvpxe3i32w4b7jxq",
+    "artifact_verification_receipt_cid": "baguqeeradiiezbfcixvef6c5m7tbv6hergktmph3h4limqfaeppcwgo3hm3a",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeerayjyzs2yvfmd56nlomg223y2csm5unulmzqqrgfurslc5avobq2va"
+    "vertical_result_cid": "baguqeera5f3pqfeqcvz7grpszaebuafdw42ibpedck6ghwmuq2phgtanmxba"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -66,7 +66,7 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeerayonwmoq5jsor5lychqotjn343jkcb4vjp3fk6olrf5muwhyxd3ra",
+  "report_cid": "baguqeera7b4dlpxlij5naillkvirupx5horml7bfqjvobyq6zrn6zomrekeq",
   "reproducible_projection_cid": "baguqeeravl7vjs4wl77t2ytmml4nfq2iwudp5z6oi64newxmtv2exr7aiipa",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {

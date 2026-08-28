@@ -22,6 +22,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     open_database_coordinator,
 )
@@ -31,6 +34,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     canonical_json_bytes,
@@ -43,6 +49,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskRecord,
+    TaskSourceBoundsError,
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
@@ -52,6 +59,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
     EAAEF_OPERATIONAL_PROFILE_ID,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    DATABASE_CLAIM_POLICY_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientError,
@@ -67,11 +79,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_polic
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
     TypedDatabaseTaskSource,
+    daemon_required_owner_command_operations,
+    daemon_required_owner_operations,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_database_task_source as typed_database_task_source_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
@@ -93,6 +111,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     _database_daemon_quack_sidecar_paths,
     _open_database_writer_lock,
+    _write_database_writer_lock_binding,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
@@ -181,6 +200,136 @@ def _typed_bootstrap_credentials(
         token=token,
         execution_route_policy=route_policy,
     )
+
+
+def _legacy_typed_quack_stable_binding(
+    binding: Mapping[str, Any],
+    **overrides: Any,
+) -> tuple[str, dict[str, Any]]:
+    current = dict(binding["stable_authority"])
+    authority = {
+        "interface": "TypedDatabaseTaskSourceStableQuackAuthority@1",
+        "store_id": current["store_id"],
+        "database_uuid": current["database_uuid"],
+        "schema_fingerprint": current["schema_fingerprint"],
+        "repository_id": current["repository_id"],
+        "schema_revision": current["schema_revision"],
+        "route_policy_id": binding["route_policy_id"],
+        "plan_root_cid": current["plan_root_cid"],
+        "repository_tree_id": current["repository_tree_id"],
+        "source_projection_cid": binding["source_projection_cid"],
+        **overrides,
+    }
+    return content_identity(authority), authority
+
+
+def _install_legacy_typed_quack_sidecar_binding(
+    *,
+    coordination_path: Path,
+    execution_path: Path,
+    binding_id: str,
+    authority: Mapping[str, Any],
+) -> None:
+    lock_paths = tuple(
+        sorted(
+            (
+                coordination_path.with_name(
+                    f".{coordination_path.name}.writer.lock"
+                ),
+                execution_path.with_name(
+                    f".{execution_path.name}.writer.lock"
+                ),
+            ),
+            key=str,
+        )
+    )
+    handles = [_open_database_writer_lock(path) for path in lock_paths]
+    connection = None
+    try:
+        connection = open_duckdb_connection(execution_path)
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES ('typed_quack_stable_binding_id', ?)",
+            [binding_id],
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES ('typed_quack_stable_authority', ?)",
+            [
+                json.dumps(
+                    dict(authority),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ],
+        )
+        connection.execute(
+            "DELETE FROM daemon_execution_metadata "
+            "WHERE key = 'typed_quack_stable_binding_migration'"
+        )
+        connection.execute("COMMIT")
+        for handle in handles:
+            _write_database_writer_lock_binding(handle, binding_id)
+    except BaseException:
+        if connection is not None:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    finally:
+        if connection is not None:
+            connection.close()
+        for handle in reversed(handles):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+
+
+def _replace_typed_quack_execution_metadata(
+    *,
+    coordination_path: Path,
+    execution_path: Path,
+    key: str,
+    value: str,
+) -> None:
+    lock_paths = tuple(
+        sorted(
+            (
+                coordination_path.with_name(
+                    f".{coordination_path.name}.writer.lock"
+                ),
+                execution_path.with_name(
+                    f".{execution_path.name}.writer.lock"
+                ),
+            ),
+            key=str,
+        )
+    )
+    handles = [_open_database_writer_lock(path) for path in lock_paths]
+    connection = None
+    try:
+        connection = open_duckdb_connection(execution_path)
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+            "VALUES (?, ?)",
+            [key, value],
+        )
+        connection.execute("COMMIT")
+    except BaseException:
+        if connection is not None:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    finally:
+        if connection is not None:
+            connection.close()
+        for handle in reversed(handles):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
 
 
 def _eventually(path: Path, process: subprocess.Popen[bytes]) -> dict[str, Any]:
@@ -1485,6 +1634,29 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             evidence_digests=[evidence_digest],
         )
         assert completed.task.status == "completed"
+        history = adapter.task_revision_history_projection("CASF-TYPED")
+        assert set(history) == {
+            "schema",
+            "task_cid",
+            "revisions",
+            "projection_cid",
+        }
+        assert history["task_cid"] == completed.task.task_cid
+        assert [entry["revision"] for entry in history["revisions"]] == [
+            1,
+            2,
+            3,
+            4,
+        ]
+        assert [entry["status"] for entry in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "completed",
+        ]
+        projection_body = dict(history)
+        projection_cid = projection_body.pop("projection_cid")
+        assert projection_cid == content_identity(projection_body)
         assert adapter.snapshot().terminal is True
         history = adapter.task_revision_history_projection("CASF-TYPED")
         assert history["task_cid"] == ready.task_cid
@@ -1719,6 +1891,26 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                     expected_process_instance_id=identity.process_birth_id,
                     bootstrap_credentials=bootstrap_credentials,
                 )
+        overbroad_command_grant = dict(exact_grant)
+        overbroad_command_grant["allowed_command_operations"] = [
+            *exact_grant["allowed_command_operations"],
+            "federation.create",
+        ]
+        with monkeypatch.context() as overbroad_command_capability:
+            overbroad_command_capability.setattr(
+                connection,
+                "grant",
+                overbroad_command_grant,
+            )
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="exact Quack authority",
+            ):
+                adapter.require_quack_authority_binding(
+                    expected_endpoint=identity.listen_uri,
+                    expected_process_instance_id=identity.process_birth_id,
+                    bootstrap_credentials=bootstrap_credentials,
+                )
         with monkeypatch.context() as closed_transport:
             closed_transport.setattr(connection, "_closed", True)
             with pytest.raises(
@@ -1836,22 +2028,70 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 require_real_execution=True,
             ).open()
 
+        initialize_stable_metadata = (
+            DatabaseImplementationDaemon
+            ._initialize_typed_quack_execution_stable_metadata
+        )
+
+        def fail_stable_metadata_initialization(
+            _self: DatabaseImplementationDaemon,
+        ) -> None:
+            raise DatabaseImplementationAuthorityError(
+                "simulated crash before stable metadata transaction"
+            )
+
+        with monkeypatch.context() as initialization_crash:
+            initialization_crash.setattr(
+                DatabaseImplementationDaemon,
+                "_initialize_typed_quack_execution_stable_metadata",
+                fail_stable_metadata_initialization,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="simulated crash before stable metadata transaction",
+            ):
+                open_lane("initialization-crash")
+        assert initialize_stable_metadata is (
+            DatabaseImplementationDaemon
+            ._initialize_typed_quack_execution_stable_metadata
+        )
+        initialization_recovery = open_lane("initialization-crash")
+        initialization_recovery.close()
+
         authority_lane = open_lane("authority-binding")
         authority_lane.close()
+        authority_coordination = (
+            tmp_path
+            / "typed-claim-barrier-authority-binding-coordination.duckdb"
+        )
+        authority_execution = (
+            tmp_path
+            / "typed-claim-barrier-authority-binding-execution.duckdb"
+        )
+        initial_authority_binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        legacy_binding_id, legacy_authority = (
+            _legacy_typed_quack_stable_binding(
+                initial_authority_binding,
+                route_policy_id="legacy-route-policy-☃",
+            )
+        )
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=authority_coordination,
+            execution_path=authority_execution,
+            binding_id=legacy_binding_id,
+            authority=legacy_authority,
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="reserved for a typed Quack stable control authority",
         ):
             DatabaseImplementationDaemon(
                 database_path=database,
-                coordination_path=(
-                    tmp_path
-                    / "typed-claim-barrier-authority-binding-coordination.duckdb"
-                ),
-                execution_path=(
-                    tmp_path
-                    / "typed-claim-barrier-authority-binding-execution.duckdb"
-                ),
+                coordination_path=authority_coordination,
+                execution_path=authority_execution,
                 owner_session_id="session:typed-claim-barrier",
                 authority_mode="embedded",
                 task_source_kind="duckdb",
@@ -1873,28 +2113,153 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             token=token,
             route_policy=alternate_policy,
         )
+        alternate_profile = {
+            "database_path": database,
+            "coordination_path": authority_coordination,
+            "execution_path": authority_execution,
+            "owner_session_id": "session:typed-claim-barrier",
+            "process_instance_id": identity.process_birth_id,
+            "authority_mode": "quack",
+            "task_source_kind": "duckdb",
+            "quack_uri": identity.listen_uri,
+            "task_source": alternate_adapter,
+            "close_task_source": False,
+            "state_owner_bootstrap_credentials": alternate_credentials,
+        }
+        write_lock_binding = (
+            implementation_daemon_module._write_database_writer_lock_binding
+        )
+        migrated_lock_count = 0
+
+        def crash_after_first_migrated_lock(
+            handle: Any,
+            binding_id: str,
+        ) -> None:
+            nonlocal migrated_lock_count
+            write_lock_binding(handle, binding_id)
+            migrated_lock_count += 1
+            if migrated_lock_count == 1:
+                raise DatabaseImplementationAuthorityError(
+                    "simulated crash after first migrated writer-lock pin"
+                )
+
+        with monkeypatch.context() as migration_crash:
+            migration_crash.setattr(
+                implementation_daemon_module,
+                "_write_database_writer_lock_binding",
+                crash_after_first_migrated_lock,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="simulated crash after first migrated writer-lock pin",
+            ):
+                DatabaseImplementationDaemon(**alternate_profile)
+        assert migrated_lock_count == 1
+        alternate_daemon = DatabaseImplementationDaemon(**alternate_profile)
+        migration_row = alternate_daemon._connection.execute(
+            "SELECT value FROM daemon_execution_metadata "
+            "WHERE key = 'typed_quack_stable_binding_migration'"
+        ).fetchone()
+        assert migration_row is not None
+        migration_receipt = json.loads(str(migration_row[0]))
+        assert migration_receipt["from_stable_binding_id"] == legacy_binding_id
+        assert migration_receipt["from_stable_authority"][
+            "route_policy_id"
+        ] == "legacy-route-policy-☃"
+        assert migration_receipt["to_stable_binding_id"] == (
+            alternate_adapter.require_quack_authority_binding(
+                expected_endpoint=identity.listen_uri,
+                expected_process_instance_id=identity.process_birth_id,
+            )["stable_binding_id"]
+        )
+        assert set(alternate_daemon._embedded_writer_lock_bindings.values()) == {
+            migration_receipt["to_stable_binding_id"]
+        }
+        alternate_daemon.close()
+        forged_migration_receipt = {
+            **migration_receipt,
+            "receipt_id": content_identity(
+                {"forged": "typed-stable-migration-receipt"}
+            ),
+        }
+        _replace_typed_quack_execution_metadata(
+            coordination_path=authority_coordination,
+            execution_path=authority_execution,
+            key="typed_quack_stable_binding_migration",
+            value=canonical_json_bytes(forged_migration_receipt).decode("utf-8"),
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
-            match="different stable control authority",
+            match="migration receipt is not authoritative",
         ):
-            DatabaseImplementationDaemon(
-                database_path=database,
-                coordination_path=(
-                    tmp_path / "typed-claim-barrier-authority-binding-coordination.duckdb"
-                ),
-                execution_path=(
-                    tmp_path / "typed-claim-barrier-authority-binding-execution.duckdb"
-                ),
-                owner_session_id="session:typed-claim-barrier",
-                process_instance_id=identity.process_birth_id,
-                authority_mode="quack",
-                task_source_kind="duckdb",
-                quack_uri=identity.listen_uri,
-                task_source=alternate_adapter,
-                close_task_source=False,
-                state_owner_bootstrap_credentials=alternate_credentials,
-            )
+            DatabaseImplementationDaemon(**alternate_profile)
         alternate_adapter.close()
+
+        divergent_lane = open_lane("legacy-core-divergence")
+        divergent_lane.close()
+        divergent_coordination = (
+            tmp_path
+            / "typed-claim-barrier-legacy-core-divergence-coordination.duckdb"
+        )
+        divergent_execution = (
+            tmp_path
+            / "typed-claim-barrier-legacy-core-divergence-execution.duckdb"
+        )
+        core_divergences = (
+            {"store_id": "store:forged-owner"},
+            {"database_uuid": "database:forged"},
+            {"schema_fingerprint": "schema:forged"},
+            {"repository_id": "repository:forged-owner"},
+            {
+                "schema_revision": (
+                    int(legacy_authority["schema_revision"]) + 1
+                )
+            },
+            {"plan_root_cid": "plan:forged"},
+            {"repository_tree_id": "tree:forged"},
+        )
+        for divergence in core_divergences:
+            divergent_id, divergent_authority = (
+                _legacy_typed_quack_stable_binding(
+                    initial_authority_binding,
+                    **divergence,
+                )
+            )
+            _install_legacy_typed_quack_sidecar_binding(
+                coordination_path=divergent_coordination,
+                execution_path=divergent_execution,
+                binding_id=divergent_id,
+                authority=divergent_authority,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="legacy sidecar authority cannot be migrated",
+            ):
+                open_lane("legacy-core-divergence")
+
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=divergent_coordination,
+            execution_path=divergent_execution,
+            binding_id=legacy_binding_id,
+            authority=legacy_authority,
+        )
+        mixed_pin_path = divergent_coordination.with_name(
+            f".{divergent_coordination.name}.writer.lock"
+        )
+        mixed_pin_handle = _open_database_writer_lock(mixed_pin_path)
+        try:
+            _write_database_writer_lock_binding(
+                mixed_pin_handle,
+                str(initial_authority_binding["stable_binding_id"]),
+            )
+        finally:
+            fcntl.flock(mixed_pin_handle.fileno(), fcntl.LOCK_UN)
+            mixed_pin_handle.close()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="legacy sidecar authority cannot be migrated",
+        ):
+            open_lane("legacy-core-divergence")
 
         daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission
@@ -1918,8 +2283,20 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert len(running) == 1
         reservation = adapter.get(running[0].task_cid)
         assert reservation is not None
-        assert reservation.body["completion_receipt"]["operation"] == (
-            "database_claim"
+        reservation_receipt = reservation.body["completion_receipt"]
+        assert reservation_receipt["operation"] == "database_claim"
+        assert reservation_receipt["attempt_number"] == (
+            running[0].attempt_number
+        )
+        assert reservation_receipt["claim_phase_schema"] == (
+            TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        )
+        assert reservation_receipt["claim_process_attestation"] == (
+            adapter.claim_process_attestation()
+        )
+        assert isinstance(
+            reservation_receipt["execution_route_binding"],
+            Mapping,
         )
         assert daemon._shared_claim_binding_for_this_owner(reservation) == {
             "claim_id": running[0].claim_id,
@@ -1987,6 +2364,12 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
         )
         assert rotated_receipt["claim_id"] == retry_attempt.claim_id
+        assert rotated_receipt["attempt_number"] == (
+            retry_attempt.attempt_number
+        )
+        assert rotated_receipt["claim_process_attestation"] == (
+            adapter.claim_process_attestation()
+        )
         assert rotated_receipt["admitted_from_revision"] == (
             rotated_receipt["claimed_from_revision"] + 1
         )
@@ -2157,6 +2540,1045 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
     finally:
         if daemon is not None:
             daemon.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+def test_real_typed_owner_starts_exact_four_virgin_transfer_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    aliases = ("LGCVF-051", "LGCVF-060", "LGCVF-070", "LGCVF-080")
+    database = tmp_path / "typed-four-lane-claim.duckdb"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-four-lane-claim",
+            "plan_root_cid": "plan:typed-four-lane-claim",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-four-lane-claim",
+                    "goal_alias": "LGCVF-G-TYPED-FOUR-LANE-CLAIM",
+                    "title": "Typed four-lane claim",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": f"task:typed-four-lane-claim:{alias}",
+                    "task_id": alias,
+                    "goal_cid": "goal:typed-four-lane-claim",
+                    "status": "ready",
+                    "priority": "P0" if index == 0 else "P1",
+                    "ordinal": index + 1,
+                    "title": alias,
+                }
+                for index, alias in enumerate(aliases)
+            ],
+        }
+    )
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-four-lane-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="lgcvf-typed-four-lane-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    operator = _operator()
+    client_id = "database-implementation-daemon:typed-four-lane"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps(
+            {
+                "claim_policy": {
+                    "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+                    "task_prefix": "LGCVF-",
+                    "task_shard_count": 4,
+                    "strict_task_sharding": True,
+                    "idle_lane_work_stealing": "virgin-transfer",
+                }
+            }
+        ),
+    )
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    clock = {"now_ms": 1_000}
+    adapter: TypedDatabaseTaskSource | None = None
+    refreshed_adapter: TypedDatabaseTaskSource | None = None
+    daemons: list[DatabaseImplementationDaemon] = []
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        unsealed = TypedDatabaseTaskSource(client, owns_client=False)
+        route_policy = unsealed.seal_execution_route_policy(
+            {
+                alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+                for alias in aliases
+            }
+        )
+        unsealed.close()
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        for lane_index in range(4):
+            daemons.append(
+                DatabaseImplementationDaemon(
+                    database_path=database,
+                    coordination_path=(
+                        tmp_path
+                        / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                    ),
+                    execution_path=(
+                        tmp_path
+                        / f"typed-four-lane-{lane_index}-execution.duckdb"
+                    ),
+                    owner_session_id=(
+                        f"session:typed-four-lane:{lane_index}"
+                    ),
+                    process_instance_id=identity.process_birth_id,
+                    authority_mode="quack",
+                    task_source_kind="duckdb",
+                    quack_uri=identity.listen_uri,
+                    task_source=adapter,
+                    close_task_source=False,
+                    state_owner_bootstrap_credentials=(
+                        bootstrap_credentials
+                    ),
+                    lease_ms=5_000,
+                    clock_ms=lambda: clock["now_ms"],
+                    task_shard_count=4,
+                    task_shard_index=lane_index,
+                    strict_task_sharding=True,
+                    idle_lane_work_stealing="virgin-transfer",
+                    task_prefix="LGCVF-",
+                    provider_fn=lambda _attempt: {
+                        "status": "ok",
+                        "accepted": True,
+                    },
+                    effect_fn=lambda _attempt, _provider: {
+                        "status": "applied"
+                    },
+                    validation_fn=lambda _attempt, _effect: {
+                        "outcome": "passed",
+                        "evidence_digest": "sha256:" + "a" * 64,
+                    },
+                    require_real_execution=True,
+                ).open()
+            )
+
+        compare_and_set_status = adapter.compare_and_set_status
+        reservation_requests: dict[str, dict[str, Any]] = {}
+
+        def capture_reservation_request(
+            task_cid_or_alias: Any,
+            expected_revision: int,
+            status: str,
+            receipt: Mapping[str, Any] | None = None,
+            *,
+            evidence_digests: Any = None,
+        ) -> Any:
+            prior = adapter.get(task_cid_or_alias)
+            if (
+                prior is not None
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation") == "database_claim"
+            ):
+                reservation_requests.setdefault(
+                    prior.task_alias,
+                    {
+                        "task_cid": prior.task_cid,
+                        "task_body": dict(prior.body),
+                        "expected_revision": expected_revision,
+                        "status": status,
+                        "receipt": dict(receipt),
+                        "evidence_digests": list(evidence_digests or ()),
+                    },
+                )
+            return compare_and_set_status(
+                task_cid_or_alias,
+                expected_revision,
+                status,
+                receipt,
+                evidence_digests=evidence_digests,
+            )
+
+        monkeypatch.setattr(
+            adapter,
+            "compare_and_set_status",
+            capture_reservation_request,
+        )
+        attempts = [daemon.claim_next() for daemon in daemons]
+        assert all(attempt is not None for attempt in attempts)
+        claimed = [attempt for attempt in attempts if attempt is not None]
+        assert [attempt.task_alias for attempt in claimed] == [
+            "LGCVF-080",
+            "LGCVF-051",
+            "LGCVF-060",
+            "LGCVF-070",
+        ]
+        assert len({attempt.task_cid for attempt in claimed}) == 4
+
+        initial_receipts: dict[str, dict[str, Any]] = {}
+        transferred: list[tuple[str, int]] = []
+        for lane_index, (daemon, attempt) in enumerate(
+            zip(daemons, claimed)
+        ):
+            task = adapter.get(attempt.task_cid)
+            assert task is not None
+            receipt = task.body["completion_receipt"]
+            initial_receipts[attempt.task_alias] = dict(receipt)
+            assert receipt["operation"] == "database_attempt_admitted"
+            assert receipt["claim_phase_schema"] == (
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            )
+            assert receipt["attempt_number"] == attempt.attempt_number == 1
+            assert receipt["task_shard_count"] == 4
+            assert receipt["task_shard_index"] == lane_index
+            assert receipt["strict_task_sharding"] is True
+            assert receipt["idle_lane_work_stealing"] == "virgin-transfer"
+            assert receipt["task_prefix"] == "LGCVF-"
+            assert receipt["claim_process_attestation"] == (
+                adapter.claim_process_attestation()
+            )
+            route = receipt["execution_route_binding"]
+            assert dict(
+                adapter.validate_execution_route_binding(
+                    route,
+                    task=task,
+                    allow_claim_revision=True,
+                )
+            ) == route
+            assert route["policy_id"] == route_policy.policy_id
+            assert route["task_cid"] == attempt.task_cid
+            assert route["task_alias"] == attempt.task_alias
+            assert receipt["execution_route_policy_id"] == route["policy_id"]
+            assert receipt["execution_route_origin_revision"] == (
+                route["task_revision"]
+            )
+            assert receipt["admitted_from_revision"] == (
+                receipt["claimed_from_revision"] + 1
+            )
+            assert task.revision == receipt["admitted_from_revision"] + 1
+            assert "virgin_task_transfer_request" not in receipt
+
+            home_lane = (
+                int(
+                    hashlib.sha256(
+                        attempt.task_alias.encode("utf-8")
+                    ).hexdigest()[:8],
+                    16,
+                )
+                % 4
+            )
+            if home_lane == lane_index:
+                assert "virgin_task_transfer" not in receipt
+                assert "virgin_task_transfer_claim_cursor" not in receipt
+            else:
+                transferred.append((attempt.task_alias, lane_index))
+                binding = receipt["virgin_task_transfer"]
+                cursor = receipt["virgin_task_transfer_claim_cursor"]
+                assert binding["schema"] == (
+                    DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA
+                )
+                assert binding["home_shard_index"] == home_lane
+                assert binding["recipient_shard_index"] == lane_index
+                assert binding["task_cid"] == attempt.task_cid
+                assert binding["binding_id"] == content_identity(
+                    {
+                        key: value
+                        for key, value in binding.items()
+                        if key != "binding_id"
+                    }
+                )
+                assert cursor["schema"] == (
+                    DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA
+                )
+                assert cursor["binding_id"] == binding["binding_id"]
+                for field in (
+                    "claim_id",
+                    "attempt_id",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "claimed_from_revision",
+                ):
+                    assert cursor[field] == receipt[field]
+                assert cursor["cursor_id"] == content_identity(
+                    {
+                        key: value
+                        for key, value in cursor.items()
+                        if key != "cursor_id"
+                    }
+                )
+            assert daemon._strict_resume_admission_result(attempt) is None
+        assert transferred == [("LGCVF-060", 2)]
+
+        clock["now_ms"] = 7_000
+        for lane_index in (0, 2):
+            daemon = daemons[lane_index]
+            original = claimed[lane_index]
+            original_receipt = initial_receipts[original.task_alias]
+            retry = daemon.claim_next()
+            assert retry is not None
+            assert retry.task_cid == original.task_cid
+            assert retry.task_alias == original.task_alias
+            assert retry.attempt_number == original.attempt_number + 1
+            assert retry.claim_id != original.claim_id
+            assert retry.attempt_id != original.attempt_id
+            assert retry.lease_id != original.lease_id
+            assert retry.fencing_token > original.fencing_token
+
+            rotated = adapter.get(retry.task_cid)
+            assert rotated is not None
+            rotated_receipt = rotated.body["completion_receipt"]
+            assert rotated_receipt["operation"] == "database_attempt_admitted"
+            assert rotated_receipt["claim_phase_schema"] == (
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            )
+            assert rotated_receipt["claim_id"] == retry.claim_id
+            assert rotated_receipt["attempt_id"] == retry.attempt_id
+            assert rotated_receipt["attempt_number"] == retry.attempt_number
+            assert rotated_receipt["lease_id"] == retry.lease_id
+            assert rotated_receipt["fencing_token"] == retry.fencing_token
+            assert rotated_receipt["task_shard_index"] == lane_index
+            assert "virgin_task_transfer_request" not in rotated_receipt
+            assert daemon._strict_resume_admission_result(retry) is None
+
+            if lane_index == 0:
+                assert "virgin_task_transfer" not in rotated_receipt
+                assert "virgin_task_transfer_claim_cursor" not in rotated_receipt
+            else:
+                assert rotated_receipt["virgin_task_transfer"] == (
+                    original_receipt["virgin_task_transfer"]
+                )
+                original_cursor = original_receipt[
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                rotated_cursor = rotated_receipt[
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                assert rotated_cursor["binding_id"] == (
+                    original_cursor["binding_id"]
+                )
+                assert rotated_cursor["cursor_id"] != (
+                    original_cursor["cursor_id"]
+                )
+                for field in (
+                    "claim_id",
+                    "attempt_id",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "claimed_from_revision",
+                ):
+                    assert rotated_cursor[field] == rotated_receipt[field]
+
+        request = reservation_requests["LGCVF-060"]
+        request_receipt = dict(request["receipt"])
+        assert "virgin_task_transfer_request" in request_receipt
+        assert "virgin_task_transfer" not in request_receipt
+        assert "virgin_task_transfer_claim_cursor" not in request_receipt
+        request_material = {
+            "task_cid": request["task_cid"],
+            "expected_revision": request["expected_revision"],
+            "status": request["status"],
+            "receipt": request_receipt,
+            "expected_control_receipt": None,
+            "evidence_digests": request["evidence_digests"],
+        }
+        request_digest = hashlib.sha256(
+            canonical_json_bytes(request_material)
+        ).hexdigest()
+        request_body = dict(request["task_body"])
+        request_body["completion_receipt"] = request_receipt
+        transferred_before_replay = adapter.get(request["task_cid"])
+        assert transferred_before_replay is not None
+        receipt_before_replay = transferred_before_replay.body[
+            "completion_receipt"
+        ]
+        binding_before_replay = dict(
+            receipt_before_replay["virgin_task_transfer"]
+        )
+        cursor_before_replay = dict(
+            receipt_before_replay["virgin_task_transfer_claim_cursor"]
+        )
+        generation_before_replay = client.load_generation()
+        replay = client.cas_task_status(
+            task_cid=request["task_cid"],
+            expected_task_revision=request["expected_revision"],
+            new_status=request["status"],
+            idempotency_key=f"executor-cas:{request_digest}",
+            command_id=f"executor-cas:{request_digest}",
+            body=request_body,
+        )
+        generation_after_replay = client.load_generation()
+        transferred_after_replay = adapter.get(request["task_cid"])
+        assert replay.outcome.value == "idempotent_replay"
+        assert replay.changed is False
+        assert replay.revision == generation_before_replay.revision
+        assert generation_after_replay.content_id == (
+            generation_before_replay.content_id
+        )
+        assert transferred_after_replay is not None
+        assert transferred_after_replay == transferred_before_replay
+        replayed_receipt = transferred_after_replay.body[
+            "completion_receipt"
+        ]
+        assert replayed_receipt["virgin_task_transfer"] == (
+            binding_before_replay
+        )
+        assert replayed_receipt["virgin_task_transfer_claim_cursor"] == (
+            cursor_before_replay
+        )
+
+        # A prior-release lane persists policy-dependent @1 custody.  After
+        # the board advances, all application attempts must survive an exact
+        # @1 -> @2 restart migration without rewriting their old routes.
+        old_attempt_bodies: dict[int, list[tuple[str, str]]] = {}
+        for lane_index, daemon in enumerate(daemons):
+            old_attempt_bodies[lane_index] = [
+                (str(row[0]), str(row[1]))
+                for row in daemon._connection.execute(
+                    "SELECT attempt_id, body_json FROM database_task_attempts "
+                    "ORDER BY attempt_id"
+                ).fetchall()
+            ]
+            assert old_attempt_bodies[lane_index]
+        old_authority_binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        legacy_binding_id, legacy_authority = (
+            _legacy_typed_quack_stable_binding(old_authority_binding)
+        )
+        for daemon in reversed(daemons):
+            daemon.close()
+        daemons.clear()
+        for lane_index in range(4):
+            _install_legacy_typed_quack_sidecar_binding(
+                coordination_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-execution.duckdb"
+                ),
+                binding_id=legacy_binding_id,
+                authority=legacy_authority,
+            )
+
+        refreshed_unsealed = TypedDatabaseTaskSource(
+            client,
+            owns_client=False,
+        )
+        refreshed_policy = refreshed_unsealed.seal_execution_route_policy(
+            {
+                alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+                for alias in aliases
+            }
+        )
+        refreshed_unsealed.close()
+        assert refreshed_policy.policy_id != route_policy.policy_id
+        assert refreshed_policy.source_revision > route_policy.source_revision
+        refreshed_adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=refreshed_policy,
+            owns_client=False,
+        )
+        refreshed_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=refreshed_policy,
+        )
+        refreshed_authority_binding = (
+            refreshed_adapter.require_quack_authority_binding(
+                expected_endpoint=identity.listen_uri,
+                expected_process_instance_id=identity.process_birth_id,
+            )
+        )
+        assert refreshed_authority_binding["stable_binding_id"] == (
+            old_authority_binding["stable_binding_id"]
+        )
+        assert refreshed_authority_binding["route_policy_id"] != (
+            old_authority_binding["route_policy_id"]
+        )
+
+        for alias in aliases:
+            current_task = refreshed_adapter.get(alias)
+            assert current_task is not None
+            carried_route = dict(
+                current_task.body["completion_receipt"][
+                    "execution_route_binding"
+                ]
+            )
+            assert dict(
+                refreshed_adapter.validate_execution_route_binding(
+                    carried_route,
+                    task=current_task,
+                    allow_claim_revision=True,
+                )
+            ) == carried_route
+            forged_routes = (
+                {
+                    **carried_route,
+                    "execution_mode": GROK_CODEX_EXECUTION_MODE,
+                },
+                {
+                    **carried_route,
+                    "policy_id": refreshed_policy.policy_id,
+                },
+                {
+                    **carried_route,
+                    "source_revision": refreshed_policy.source_revision,
+                },
+            )
+            for forged_route in forged_routes:
+                with pytest.raises(
+                    TaskSourceIntegrityError,
+                    match="launch policy lineage",
+                ):
+                    refreshed_adapter.validate_execution_route_binding(
+                        forged_route,
+                        task=current_task,
+                        allow_claim_revision=True,
+                    )
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="exact carried execution-route lineage",
+            ):
+                refreshed_adapter.validate_execution_route_binding(
+                    {
+                        **carried_route,
+                        "policy_id": "policy:forged-historical-lineage",
+                    },
+                    task=current_task,
+                    allow_claim_revision=True,
+                )
+
+        for lane_index in range(4):
+            daemon = DatabaseImplementationDaemon(
+                database_path=database,
+                coordination_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path
+                    / f"typed-four-lane-{lane_index}-execution.duckdb"
+                ),
+                owner_session_id=f"session:typed-four-lane:{lane_index}",
+                process_instance_id=identity.process_birth_id,
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri=identity.listen_uri,
+                task_source=refreshed_adapter,
+                close_task_source=False,
+                state_owner_bootstrap_credentials=refreshed_credentials,
+                lease_ms=5_000,
+                clock_ms=lambda: clock["now_ms"],
+                task_shard_count=4,
+                task_shard_index=lane_index,
+                strict_task_sharding=True,
+                idle_lane_work_stealing="virgin-transfer",
+                task_prefix="LGCVF-",
+                provider_fn=lambda _attempt: {
+                    "status": "ok",
+                    "accepted": True,
+                },
+                effect_fn=lambda _attempt, _provider: {
+                    "status": "applied"
+                },
+                validation_fn=lambda _attempt, _effect: {
+                    "outcome": "passed",
+                    "evidence_digest": "sha256:" + "a" * 64,
+                },
+                require_real_execution=True,
+            ).open()
+            assert [
+                (str(row[0]), str(row[1]))
+                for row in daemon._connection.execute(
+                    "SELECT attempt_id, body_json FROM database_task_attempts "
+                    "ORDER BY attempt_id"
+                ).fetchall()
+            ] == old_attempt_bodies[lane_index]
+            migration_row = daemon._connection.execute(
+                "SELECT value FROM daemon_execution_metadata "
+                "WHERE key = 'typed_quack_stable_binding_migration'"
+            ).fetchone()
+            assert migration_row is not None
+            migration_receipt = json.loads(str(migration_row[0]))
+            assert migration_receipt["from_stable_binding_id"] == (
+                legacy_binding_id
+            )
+            assert migration_receipt["to_stable_binding_id"] == (
+                refreshed_authority_binding["stable_binding_id"]
+            )
+            daemons.append(daemon)
+    finally:
+        for daemon in reversed(daemons):
+            daemon.close()
+        if refreshed_adapter is not None:
+            refreshed_adapter.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "historic_liveness",
+    (
+        OwnerLiveness.DEAD,
+        OwnerLiveness.ALIVE,
+        OwnerLiveness.UNKNOWN,
+    ),
+    ids=("dead-repair", "live-fail-closed", "unknown-fail-closed"),
+)
+def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historic_liveness: OwnerLiveness,
+) -> None:
+    database = tmp_path / "typed-legacy-unstall-recovery.duckdb"
+    client_id = "database-implementation-daemon:typed-legacy-unstall"
+    old_pid = 987_654_322
+    old_start = 19
+    old_boot = "boot:typed-legacy-unstall"
+    old_parent = 1
+    old_attestation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-process@1"
+        ),
+        "grant_id": "owner-grant:legacy-unstall-process",
+        "client_id": client_id,
+        "process_birth_id": _process_birth_content_id(
+            old_pid,
+            old_start,
+            old_boot,
+            old_parent,
+        ),
+        "pid": old_pid,
+        "uid": os.getuid(),
+        "start_time_ticks": old_start,
+        "boot_id": old_boot,
+        "parent_pid": old_parent,
+    }
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-legacy-unstall",
+            "plan_root_cid": "plan:typed-legacy-unstall",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "goal_alias": "CASF-G-TYPED-LEGACY-UNSTALL",
+                    "title": "Typed legacy unstall recovery",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:legacy-unstall-reservation",
+                    "task_id": "CASF-LEGACY-UNSTALL-RESERVATION",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:legacy-unstall-admission",
+                    "task_id": "CASF-LEGACY-UNSTALL-ADMISSION",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:legacy-unstall-older-cooldown",
+                    "task_id": "CASF-LEGACY-UNSTALL-OLDER-COOLDOWN",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+            ],
+        }
+    )
+    initial_tasks = source.list_tasks(limit=10).tasks
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=initial_tasks,
+        execution_modes={
+            task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+            for task in initial_tasks
+        },
+    )
+    poisoned: dict[str, TaskRecord] = {}
+    retained_receipts: dict[str, Mapping[str, Any]] = {}
+    older_cooldown_task: TaskRecord | None = None
+    older_cooldown_receipt: Mapping[str, Any] | None = None
+    for task in initial_tasks:
+        route = route_policy.binding_for_task(task).to_dict()
+        reservation = {
+            "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            "claim_process_attestation": old_attestation,
+            "claim_id": f"claim:{task.task_alias}:1",
+            "attempt_id": f"attempt:{task.task_alias}:1",
+            "attempt_number": 1,
+            "lease_id": f"lease:{task.task_alias}:1",
+            "owner_session_id": "session:typed-legacy-unstall",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "claimed_from_revision": int(task.revision),
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": int(route["task_revision"]),
+        }
+        source.compare_and_set_status(
+            task,
+            int(task.revision),
+            "in_progress",
+            reservation,
+        )
+        claimed = source.get(task.task_cid)
+        assert claimed is not None
+        if task.task_alias.endswith("OLDER-COOLDOWN"):
+            older_cooldown_task = claimed
+            older_cooldown_receipt = reservation
+            continue
+        retained: Mapping[str, Any] = reservation
+        if task.task_alias.endswith("ADMISSION"):
+            admission = {
+                **reservation,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": int(claimed.revision),
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            }
+            source.compare_and_set_status(
+                claimed,
+                int(claimed.revision),
+                # The legacy local fixture treats a same-status receipt
+                # replacement as a no-op.  Use a distinct running status so
+                # its revision lineage matches the typed owner's admitted
+                # in_progress -> in_progress CAS before startup unstall.
+                "running",
+                admission,
+            )
+            claimed = source.get(task.task_cid)
+            assert claimed is not None
+            retained = admission
+        source.compare_and_set_status(
+            claimed,
+            int(claimed.revision),
+            "retrying",
+            retained,
+        )
+        poisoned_task = source.get(task.task_cid)
+        assert poisoned_task is not None
+        poisoned[task.task_alias] = poisoned_task
+        retained_receipts[task.task_alias] = retained
+    source.close()
+
+    assert older_cooldown_task is not None
+    assert older_cooldown_receipt is not None
+    seed_server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-legacy-unstall-seed-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-legacy-unstall-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        allow_legacy_board_unstall=False,
+    )
+    seed_identity = seed_server.start()
+    seed_token, seed_grant = seed_server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=seed_identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=(
+            daemon_required_owner_command_operations()
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(seed_server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, seed_token)
+    seed_client = QuackStateClient(
+        owner_id=client_id,
+        store_id=seed_identity.store_id,
+        process_birth_id=seed_identity.process_birth_id,
+    )
+    try:
+        seed_client.attach(
+            seed_identity.listen_uri,
+            server_id=seed_identity.server_id,
+        )
+        seeded = seed_client.record_task_retry_cooldown(
+            task_cid=older_cooldown_task.task_cid,
+            expected_task_revision=older_cooldown_task.revision,
+            expected_task_status="in_progress",
+            attempt_id=str(older_cooldown_receipt["attempt_id"]),
+            claim_id=str(older_cooldown_receipt["claim_id"]),
+            lease_id=str(older_cooldown_receipt["lease_id"]),
+            owner_session_id=str(
+                older_cooldown_receipt["owner_session_id"]
+            ),
+            attempt_number=1,
+            fencing_token=1,
+            fence_epoch=1,
+            delay_ms=100,
+            reason="database_portal_retry:older-attempt",
+            now_ms=1_000,
+        )
+        assert seeded.accepted and seeded.changed
+    finally:
+        seed_client.close()
+        seed_server.revoke_typed_client_grant(seed_grant.grant_id)
+        seed_server.stop()
+
+    source = DatabaseTaskSource(database)
+    older = source.get(older_cooldown_task.task_cid)
+    assert older is not None and older.status == "in_progress"
+    attempt_two_receipt = {
+        **dict(older_cooldown_receipt),
+        "claim_id": "claim:legacy-unstall-older-cooldown:2",
+        "attempt_id": "attempt:legacy-unstall-older-cooldown:2",
+        "attempt_number": 2,
+        "lease_id": "lease:legacy-unstall-older-cooldown:2",
+        "fencing_token": 2,
+        "claimed_from_revision": int(older.revision),
+    }
+    source.compare_and_set_status(
+        older,
+        int(older.revision),
+        "running",
+        attempt_two_receipt,
+    )
+    attempt_two = source.get(older.task_cid)
+    assert attempt_two is not None
+    source.compare_and_set_status(
+        attempt_two,
+        int(attempt_two.revision),
+        "retrying",
+        attempt_two_receipt,
+    )
+    poisoned_older = source.get(older.task_cid)
+    assert poisoned_older is not None
+    poisoned[poisoned_older.task_alias] = poisoned_older
+    retained_receipts[poisoned_older.task_alias] = attempt_two_receipt
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-legacy-unstall-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-legacy-unstall-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: historic_liveness,
+    )
+    identity = server.start()
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=(
+            daemon_required_owner_command_operations()
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: 2_000,
+        )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+            bootstrap_credentials=bootstrap_credentials,
+        )
+        assert binding["route_policy_id"] == route_policy.policy_id
+        candidate = poisoned["CASF-LEGACY-UNSTALL-RESERVATION"]
+        candidate_receipt = dict(
+            candidate.body["completion_receipt"]
+        )
+        wrong_offset_receipt = {
+            **candidate_receipt,
+            "claimed_from_revision": (
+                int(candidate_receipt["claimed_from_revision"]) + 1
+            ),
+        }
+        wrong_offset = replace(
+            candidate,
+            body={
+                **dict(candidate.body),
+                "completion_receipt": wrong_offset_receipt,
+            },
+        )
+        assert adapter._legacy_unstall_claim_candidate(wrong_offset) is None
+        forged_attestation = {
+            **dict(candidate_receipt["claim_process_attestation"]),
+            "process_birth_id": "birth:" + "0" * 32,
+        }
+        forged = replace(
+            candidate,
+            body={
+                **dict(candidate.body),
+                "completion_receipt": {
+                    **candidate_receipt,
+                    "claim_process_attestation": forged_attestation,
+                },
+            },
+        )
+        assert adapter._legacy_unstall_claim_candidate(forged) is None
+        if historic_liveness is not OwnerLiveness.DEAD:
+            generation_before = client.load_generation()
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="retrying task has no typed cooldown receipt",
+            ):
+                adapter.ready_tasks(limit=10)
+            assert client.load_generation().revision == (
+                generation_before.revision
+            )
+            for task_alias, prior in poisoned.items():
+                assert adapter.get(task_alias) == prior
+                prior_cooldown = adapter._retry_cooldown_row(
+                    prior.task_cid
+                )
+                if task_alias.endswith("OLDER-COOLDOWN"):
+                    assert prior_cooldown is not None
+                    assert prior_cooldown["attempt"] == 1
+                    assert prior_cooldown["revision"] == 1
+                else:
+                    assert prior_cooldown is None
+            return
+
+        reservation_alias = "CASF-LEGACY-UNSTALL-RESERVATION"
+        assert adapter._legacy_unstall_claim_candidate(
+            poisoned["CASF-LEGACY-UNSTALL-ADMISSION"]
+        ) is not None
+        reservation_task = poisoned[reservation_alias]
+        original_body = dict(reservation_task.body)
+        original_receipt = retained_receipts[reservation_alias]
+        first = client.recover_legacy_unstalled_claim(
+            task_cid=reservation_task.task_cid,
+            expected_task_revision=reservation_task.revision,
+            task_body=original_body,
+            claim_receipt=original_receipt,
+            now_ms=2_000,
+        )
+        replay = client.recover_legacy_unstalled_claim(
+            task_cid=reservation_task.task_cid,
+            expected_task_revision=reservation_task.revision,
+            task_body=original_body,
+            claim_receipt=original_receipt,
+            now_ms=2_000,
+        )
+        assert first.accepted and first.changed
+        assert replay.accepted and not replay.changed
+        assert replay.result_digest == first.result_digest
+
+        ready = adapter.ready_tasks(limit=10)
+        assert {task.task_alias for task in ready.tasks} == set(poisoned)
+        for task_alias, prior in poisoned.items():
+            repaired = adapter.get(task_alias)
+            assert repaired is not None
+            assert repaired.status == "retrying"
+            assert repaired.revision == prior.revision + 1
+            receipt = repaired.body["completion_receipt"]
+            assert receipt["schema"] == (
+                TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+            )
+            assert receipt["operation"] == (
+                TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            )
+            assert receipt["recovered_claim_operation"] == (
+                "database_attempt_admitted"
+                if task_alias.endswith("ADMISSION")
+                else "database_claim"
+            )
+            cooldown = adapter._retry_cooldown_row(repaired.task_cid)
+            assert cooldown is not None
+            expected_attempt = (
+                2 if task_alias.endswith("OLDER-COOLDOWN") else 1
+            )
+            expected_queue_revision = (
+                2 if task_alias.endswith("OLDER-COOLDOWN") else 1
+            )
+            assert cooldown["attempt"] == expected_attempt
+            assert cooldown["revision"] == expected_queue_revision
+            assert cooldown["extension"]["expected_task_revision"] == (
+                prior.revision
+            )
+    finally:
         if adapter is not None:
             adapter.close()
         else:
@@ -2888,6 +4310,19 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             client_id=client_id,
             token=token,
             route_policy=route_policy,
+        )
+        preserved_authority = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+        )
+        preserved_binding_id, preserved_stable_authority = (
+            _legacy_typed_quack_stable_binding(preserved_authority)
+        )
+        _install_legacy_typed_quack_sidecar_binding(
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            binding_id=preserved_binding_id,
+            authority=preserved_stable_authority,
         )
         validated_cooldown_identities: list[dict[str, Any]] = []
         validate_cooldown = adapter.validate_retrying_task_cooldown
@@ -3903,6 +5338,239 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     ]
 
 
+def test_typed_task_revision_history_pages_one_closed_owner_read() -> None:
+    revision_count = 501
+    history_rows = [
+        {
+            "task_cid": "task:paged-history",
+            "revision": revision,
+            "status": "ready" if revision == 1 else "blocked",
+            "body_json": json.dumps({"revision": revision}),
+        }
+        for revision in range(1, revision_count + 1)
+    ]
+
+    class _PagedHistoryClient:
+        def __init__(self) -> None:
+            self.page_requests: list[dict[str, int | str]] = []
+
+        @staticmethod
+        def load_generation() -> SimpleNamespace:
+            return SimpleNamespace(content_id="generation:stable", revision=7)
+
+        def execute(
+            self, operation: str, parameters: Mapping[str, Any] | None = None
+        ) -> tuple[Mapping[str, Any], ...]:
+            request = dict(parameters or {})
+            if operation == "executor_task_projection_by_identity":
+                assert request == {
+                    "task_identity": "CASF-PAGED-HISTORY",
+                    "task_alias": "CASF-PAGED-HISTORY",
+                }
+                return (
+                    {
+                        "task_cid": "task:paged-history",
+                        "task_alias": "CASF-PAGED-HISTORY",
+                        "goal_cid": "goal:paged-history",
+                        "plan_cid": "plan:paged-history",
+                        "objective_id": "objective:paged-history",
+                        "ordinal": 1,
+                        "status": "blocked",
+                        "revision": revision_count,
+                        "priority": "normal",
+                        "identity_json": "{}",
+                        "body_json": json.dumps({"revision": revision_count}),
+                        "dependencies_json": "[]",
+                        "outputs_json": "[]",
+                        "acceptance_json": "[]",
+                        "validations_json": "[]",
+                    },
+                )
+            assert operation == "executor_task_revision_history_page"
+            self.page_requests.append(request)
+            offset = int(request["offset"])
+            limit = int(request["limit"])
+            return tuple(history_rows[offset : offset + limit])
+
+    client = _PagedHistoryClient()
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = client  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+
+    projection = adapter.task_revision_history_projection("CASF-PAGED-HISTORY")
+
+    assert projection["task_cid"] == "task:paged-history"
+    assert len(projection["revisions"]) == revision_count
+    assert projection["revisions"][-1] == {
+        "revision": revision_count,
+        "status": "blocked",
+        "body": {"revision": revision_count},
+    }
+    assert len(client.page_requests) == revision_count + 1
+    assert client.page_requests[0] == {
+        "task_cid": "task:paged-history",
+        "limit": 1,
+        "offset": 0,
+    }
+    assert client.page_requests[-1] == {
+        "task_cid": "task:paged-history",
+        "limit": 1,
+        "offset": revision_count,
+    }
+    projection_body = dict(projection)
+    projection_cid = projection_body.pop("projection_cid")
+    assert projection_cid == content_identity(projection_body)
+
+
+def _typed_history_fault_adapter(
+    *,
+    head_revision: int,
+    history_rows: list[Mapping[str, Any]],
+    current_status: str = "blocked",
+    current_body: Mapping[str, Any] | None = None,
+    generation_ids: list[str] | None = None,
+) -> tuple[TypedDatabaseTaskSource, Any]:
+    body = (
+        dict(current_body)
+        if current_body is not None
+        else {"revision": head_revision}
+    )
+
+    class _HistoryClient:
+        def __init__(self) -> None:
+            self.generation_index = 0
+            self.history_requests: list[dict[str, Any]] = []
+
+        def load_generation(self) -> SimpleNamespace:
+            values = generation_ids or ["generation:stable"]
+            value = values[min(self.generation_index, len(values) - 1)]
+            self.generation_index += 1
+            return SimpleNamespace(content_id=value, revision=7)
+
+        def execute(
+            self, operation: str, parameters: Mapping[str, Any] | None = None
+        ) -> tuple[Mapping[str, Any], ...]:
+            request = dict(parameters or {})
+            if operation == "executor_task_projection_by_identity":
+                return (
+                    {
+                        "task_cid": "task:fault-history",
+                        "task_alias": "CASF-FAULT-HISTORY",
+                        "goal_cid": "goal:fault-history",
+                        "plan_cid": "plan:fault-history",
+                        "objective_id": "objective:fault-history",
+                        "ordinal": 1,
+                        "status": current_status,
+                        "revision": head_revision,
+                        "priority": "normal",
+                        "identity_json": "{}",
+                        "body_json": json.dumps(body),
+                        "dependencies_json": "[]",
+                        "outputs_json": "[]",
+                        "acceptance_json": "[]",
+                        "validations_json": "[]",
+                    },
+                )
+            assert operation == "executor_task_revision_history_page"
+            self.history_requests.append(request)
+            offset = int(request["offset"])
+            limit = int(request["limit"])
+            return tuple(history_rows[offset : offset + limit])
+
+    client = _HistoryClient()
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = client  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+    return adapter, client
+
+
+def test_typed_task_revision_history_rejects_huge_head_before_query() -> None:
+    adapter, client = _typed_history_fault_adapter(
+        head_revision=10_001,
+        history_rows=[],
+    )
+
+    with pytest.raises(TaskSourceBoundsError, match="head exceeds"):
+        adapter.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    assert client.history_requests == []
+
+
+def test_typed_task_revision_history_rejects_gap_and_incremental_byte_overflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gapped, _client = _typed_history_fault_adapter(
+        head_revision=3,
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "ready",
+                "body_json": "{}",
+            },
+            {
+                "task_cid": "task:fault-history",
+                "revision": 3,
+                "status": "blocked",
+                "body_json": json.dumps({"revision": 3}),
+            },
+        ],
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="invalid identity"):
+        gapped.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    oversized, _client = _typed_history_fault_adapter(
+        head_revision=1,
+        current_body={"payload": "x" * 256},
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "blocked",
+                "body_json": json.dumps({"payload": "x" * 256}),
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        typed_database_task_source_module,
+        "MAX_PLAN_PROJECTION_BYTES",
+        256,
+    )
+    with pytest.raises(TaskSourceBoundsError, match="byte bound"):
+        oversized.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+
+def test_typed_task_revision_history_retries_generation_churn_then_conflicts() -> None:
+    adapter, client = _typed_history_fault_adapter(
+        head_revision=1,
+        current_status="ready",
+        current_body={},
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "ready",
+                "body_json": "{}",
+            }
+        ],
+        generation_ids=[
+            "generation:before-1",
+            "generation:after-1",
+            "generation:before-2",
+            "generation:after-2",
+            "generation:before-3",
+            "generation:after-3",
+            "generation:before-4",
+            "generation:after-4",
+        ],
+    )
+
+    with pytest.raises(TaskSourceConflictError, match="bounded projection"):
+        adapter.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    assert len(client.history_requests) == 8
+
+
 @pytest.mark.parametrize(
     "lease_kind",
     ("legacy", "malformed_typed", "forged_typed", "valid_old", "missing"),
@@ -4105,9 +5773,7 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "task_identity",
         "task_alias",
     )
-    assert catalog[
-        "executor_task_revision_history_page"
-    ].parameter_names == (
+    assert catalog["executor_task_revision_history_page"].parameter_names == (
         "task_cid",
         "limit",
         "offset",
@@ -4121,6 +5787,11 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "recorded_at",
     )
     assert catalog["executor_insert_task_revision"].mutation is True
+    assert catalog["executor_insert_task_revision_history"].parameter_names == (
+        "task_cid",
+        "task_revision",
+    )
+    assert catalog["executor_insert_task_revision_history"].mutation is True
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
     assert catalog["executor_retry_cooldown_by_task"].parameter_names == (
@@ -4507,7 +6178,12 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                         {"path": "README.md", "effect": {}},
                         {"path": "pyproject.toml", "effect": {}},
                     ],
-                    "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
+                    "validations": [
+                        {
+                            "argv": ["test", "-f", "pyproject.toml"],
+                            "policy": {},
+                        }
+                    ],
                 },
                 {
                     "task_cid": "task:managed-model",
@@ -4516,6 +6192,11 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                     "status": "ready",
                     "ordinal": 1,
                     "description": "Require configured provider execution",
+                    # Keep this hermetic route on its fake Grok primary. The
+                    # sealed quota fallback deliberately accepts only a
+                    # root-owned system Codex executable, never this test's
+                    # temporary PATH entry.
+                    "provider_role": "grok-only",
                     "dependencies": ["task:managed-deterministic"],
                     "outputs": [
                         {
@@ -4524,7 +6205,14 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                         }
                     ],
                     "validations": [
-                        {"argv": ["/usr/bin/true"], "policy": {}}
+                        {
+                            "argv": [
+                                "test",
+                                "-f",
+                                "data/casf-model-provider-output.txt",
+                            ],
+                            "policy": {},
+                        }
                     ],
                 }
             ],
@@ -4643,6 +6331,21 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
     )
     provider_bin = tmp_path / "provider-bin"
     provider_bin.mkdir()
+    # Keep the hermetic provider on the native-sandbox branch. Otherwise a
+    # host with Docker but no usable bwrap selects the signed-network Docker
+    # path before the fake Grok process can run.
+    fake_bwrap = provider_bin / "bwrap"
+    fake_bwrap.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$#\" -eq 5 ] && [ \"$1\" = --ro-bind ] "
+        "&& [ \"$2\" = / ] && [ \"$3\" = / ] && [ \"$4\" = -- ] "
+        "&& [ \"$5\" = /bin/true ]; then\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 97\n",
+        encoding="utf-8",
+    )
+    fake_bwrap.chmod(0o700)
     fake_grok = provider_bin / "grok"
     fake_grok.write_text(
         "#!/usr/bin/env python3\n"
@@ -4757,11 +6460,53 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
             ):
                 break
             time.sleep(0.25)
+        if (
+            deterministic is None
+            or deterministic.status != "completed"
+            or model is None
+            or model.status != "completed"
+        ):
+            pytest.fail(
+                "configured executor did not complete both routed tasks: "
+                + json.dumps(
+                    {
+                        "deterministic_status": (
+                            None if deterministic is None else deterministic.status
+                        ),
+                        "model_status": None if model is None else model.status,
+                        "supervisor_status": operator._read_optional_json(
+                            paths["executor_supervisor_status"]
+                        ),
+                        "log_tail": paths["executor_log"].read_text(
+                            encoding="utf-8", errors="replace"
+                        )[-8_000:],
+                    },
+                    sort_keys=True,
+                )
+            )
         current_generation = observer_client.load_generation()
         assert current_generation.generation == initial_generation.generation
         assert current_generation.database_uuid == initial_generation.database_uuid
         assert current_generation.revision > initial_generation.revision
-        current = json.loads(paths["executor_current"].read_text(encoding="utf-8"))
+        projection_deadline = time.monotonic() + 30.0
+        projection: Mapping[str, Any] = {}
+        while time.monotonic() < projection_deadline:
+            if supervisor.poll() is not None:
+                pytest.fail(
+                    "configured supervisor exited before stable runtime projection"
+                )
+            projection = operator._executor_runtime_projection(
+                paths,
+                expected_supervisor_birth=supervisor_birth,
+            )
+            if (
+                projection["supervisor_process_bound"] is True
+                and projection["executor_process_bound"] is True
+                and projection["clean_error_state"] is True
+            ):
+                break
+            time.sleep(0.05)
+        current = dict(projection.get("current") or {})
         executor_birth = current["executor_process_birth"]
         assert current["execution_route_policy"] == (
             managed_route_policy.public_summary()
@@ -4769,14 +6514,16 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         assert current["execution_route_policy"]["task_count"] == 2
         assert current["execution_route_policy"]["deterministic_task_count"] == 1
         assert current["execution_route_policy"]["model_task_count"] == 1
-        projection = operator._executor_runtime_projection(
-            paths,
-            expected_supervisor_birth=supervisor_birth,
-        )
         assert projection["supervisor_process_bound"] is True
         assert projection["executor_process_bound"] is True
         assert projection["clean_error_state"] is True
+        assert projection["birth_rotation_count"] == 1
         assert projection["task_state_path"].startswith(str(paths["executor_state"]))
+        full_supervisor_status = operator._read_optional_json(
+            paths["executor_supervisor_status"]
+        )
+        assert full_supervisor_status.get("restart_count") == 0
+        assert full_supervisor_status.get("last_exit_code") in {None, 0}
         assert operator._read_optional_json(paths["executor_readiness"])[
             "broker_failed"
         ] is False

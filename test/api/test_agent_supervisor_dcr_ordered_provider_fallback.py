@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+from ipfs_accelerate_py.agent_supervisor.runtime import provider_executable_trust
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -59,6 +60,11 @@ def _configure_quota_high_route(
         implementation_daemon.shutil,
         "which",
         lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
     )
     monkeypatch.setattr(
         grok_cli_runner,

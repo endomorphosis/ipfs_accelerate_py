@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import select
+import stat
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
     AgentCLIProviderResult,
     AgentCLIStderrSanitizer,
     LLMRouterError,
+    _grok_cli_auth_path,
     classify_grok_agent_cli_failure,
     probe_grok_codex_agent_route_readiness,
     route_agent_cli_failure,
@@ -46,6 +48,9 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
 )
 from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (  # noqa: E402
     TRUSTED_FAILURE_RECEIPT_FD_ENV,
+)
+from ipfs_accelerate_py.agent_supervisor.sealed_provider_module import (  # noqa: E402
+    sealed_provider_module_command_descriptor,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (  # noqa: E402
     PROOF_REUSE_STATE_ROOT_ENV,
@@ -71,6 +76,7 @@ classify_grok_failure = classify_grok_agent_cli_failure
 _ProviderStderrSanitizer = AgentCLIStderrSanitizer
 _PROVIDER_STDERR_LINE_LIMIT = AGENT_CLI_STDERR_LINE_LIMIT
 _PROVIDER_ROUTE_SCHEMA = AGENT_CLI_PROVIDER_ROUTE_SCHEMA
+_MAX_PROJECTED_GROK_AUTH_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -82,7 +88,7 @@ class _ProviderExecution:
 
 @dataclass
 class _ProviderBoundaryRuntime:
-    """Prepared child-only filesystem boundary for one route invocation."""
+    """Prepared child environment and optional boundary for one invocation."""
 
     command_prefix: tuple[str, ...]
     environment: dict[str, str]
@@ -101,13 +107,13 @@ def _provider_boundary_receipt_path(route_receipt_path: Path) -> Path:
 
 
 def _provider_profile_paths(original_home: Path) -> tuple[Path, ...]:
-    configured = (
-        os.environ.get("CODEX_HOME", "").strip(),
-        os.environ.get("GROK_HOME", "").strip(),
-    )
+    """Return legacy writable profiles; Grok auth is projected separately."""
+
+    configured_codex = os.environ.get("CODEX_HOME", "").strip()
     candidates = (
-        Path(configured[0]).expanduser() if configured[0] else original_home / ".codex",
-        Path(configured[1]).expanduser() if configured[1] else original_home / ".grok",
+        Path(configured_codex).expanduser()
+        if configured_codex
+        else original_home / ".codex",
     )
     profiles: list[Path] = []
     for candidate in candidates:
@@ -120,11 +126,134 @@ def _provider_profile_paths(original_home: Path) -> tuple[Path, ...]:
     return tuple(dict.fromkeys(profiles))
 
 
+def _project_private_grok_auth(private_home: Path) -> Path | None:
+    """Copy admitted file auth into the child-only provider home.
+
+    Live schedulers deliberately replace ``HOME`` with a DuckDB qualification
+    directory.  Router readiness can still find the operator's OAuth cache by
+    uid, but the provider Landlock boundary must not grant the whole operator
+    home merely to preserve that decision.  Project only a bounded, private,
+    owner-controlled ``auth.json`` into this invocation's ephemeral home.
+    """
+
+    source = Path(_grok_cli_auth_path()).expanduser()
+    if not source.is_absolute():
+        raise ValidationRuntimeError("Grok auth projection is not absolute")
+    try:
+        unresolved = source.absolute()
+        resolved = source.resolve(strict=True)
+        source_entry = source.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "Grok auth projection is unavailable"
+        ) from exc
+    if unresolved != resolved or not stat.S_ISREG(source_entry.st_mode):
+        raise ValidationRuntimeError(
+            "Grok auth projection must be a non-symlink regular file"
+        )
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "Grok auth projection could not be opened safely"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_nlink != 1
+            or before.st_size < 1
+            or before.st_size > _MAX_PROJECTED_GROK_AUTH_BYTES
+            or resolved.name != "auth.json"
+            or (before.st_dev, before.st_ino)
+            != (source_entry.st_dev, source_entry.st_ino)
+        ):
+            raise ValidationRuntimeError(
+                "Grok auth projection must be private, owned, and bounded"
+            )
+        chunks: list[bytes] = []
+        remaining = int(before.st_size)
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                raise ValidationRuntimeError(
+                    "Grok auth projection changed while it was read"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_uid,
+            before.st_size,
+            before.st_nlink,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_uid,
+            after.st_size,
+            after.st_nlink,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValidationRuntimeError(
+                "Grok auth projection changed while it was read"
+            )
+        payload = b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+    grok_home = private_home / ".grok"
+    grok_home.mkdir(mode=0o700)
+    destination = grok_home / "auth.json"
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        destination_descriptor = os.open(destination, write_flags, 0o600)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "private Grok auth projection could not be created"
+        ) from exc
+    try:
+        offset = 0
+        while offset < len(payload):
+            written = os.write(destination_descriptor, payload[offset:])
+            if written <= 0:
+                raise ValidationRuntimeError(
+                    "private Grok auth projection is incomplete"
+                )
+            offset += written
+        os.fchmod(destination_descriptor, 0o600)
+    finally:
+        os.close(destination_descriptor)
+    return grok_home
+
+
 def _prepare_provider_boundary_runtime(
     *,
     workspace: Path,
 ) -> _ProviderBoundaryRuntime:
-    """Prepare a private HOME and inherited child-only Landlock prefix."""
+    """Prepare private provider state and an optional Landlock prefix."""
 
     protected_text = str(
         os.environ.get(PROVIDER_PROTECTED_STATE_ROOT_ENV) or ""
@@ -142,7 +271,31 @@ def _prepare_provider_boundary_runtime(
     child_environment[PROOF_REUSE_STATE_ROOT_ENV] = ""
     child_environment[PROVIDER_PROTECTED_STATE_ROOT_ENV] = ""
     if not state_root_text:
-        return _ProviderBoundaryRuntime((), child_environment, None)
+        # The ordinary LGCVF route has no proof-reuse filesystem boundary,
+        # but its daemon HOME is still an immutable qualification directory.
+        # Grok 1.0.x treats GROK_HOME as the authoritative profile directory,
+        # so give it a writable invocation-private copy of the admitted auth
+        # file without changing HOME/XDG or Codex's inherited profile.
+        temporary_home = tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-provider-grok-home-"
+        )
+        private_home = Path(temporary_home.name).resolve(strict=True)
+        private_home.chmod(0o700)
+        try:
+            grok_profile = _project_private_grok_auth(private_home)
+        except Exception:
+            temporary_home.cleanup()
+            raise
+        if grok_profile is None:
+            temporary_home.cleanup()
+            return _ProviderBoundaryRuntime((), child_environment, None)
+        child_environment["GROK_HOME"] = str(grok_profile)
+        return _ProviderBoundaryRuntime(
+            (),
+            child_environment,
+            None,
+            temporary_home,
+        )
 
     original_home_text = str(os.environ.get("HOME") or "").strip()
     if not original_home_text:
@@ -163,7 +316,7 @@ def _prepare_provider_boundary_runtime(
     ):
         (private_home / relative).mkdir(mode=0o700, parents=True, exist_ok=True)
     profile_by_name = {profile.name: profile for profile in profiles}
-    for name in (".codex", ".grok"):
+    for name in (".codex",):
         profile = profile_by_name.get(name)
         if profile is not None:
             (private_home / name).symlink_to(profile, target_is_directory=True)
@@ -183,7 +336,8 @@ def _prepare_provider_boundary_runtime(
         }
     )
     codex_profile = profile_by_name.get(".codex")
-    grok_profile = profile_by_name.get(".grok")
+    grok_profile = _project_private_grok_auth(private_home)
+    child_environment.pop("GROK_HOME", None)
     if codex_profile is not None:
         child_environment["CODEX_HOME"] = str(codex_profile)
     if grok_profile is not None:
@@ -231,6 +385,11 @@ def _command_from_json(
 
 
 def _uses_packaged_grok_adapter(command: Sequence[str]) -> bool:
+    if sealed_provider_module_command_descriptor(
+        command,
+        module_name="ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    ) >= 3:
+        return True
     if len(command) < 2:
         return False
     expected_python = Path(sys.executable).resolve()
@@ -289,6 +448,9 @@ def _run_provider(
     popen_kwargs: dict[str, object] = {}
     child_env = dict(child_environment or os.environ)
     pass_fds: list[int] = []
+    sealed_provider_fd = sealed_provider_module_command_descriptor(command)
+    if sealed_provider_fd >= 3:
+        pass_fds.append(sealed_provider_fd)
     if provider_name.lower() == "grok" and _uses_packaged_grok_adapter(command):
         trusted_read_fd, trusted_write_fd = os.pipe()
         child_env[TRUSTED_FAILURE_RECEIPT_FD_ENV] = str(trusted_write_fd)

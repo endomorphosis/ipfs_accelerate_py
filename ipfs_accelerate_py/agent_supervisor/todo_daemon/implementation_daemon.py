@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import errno
 import fcntl
 import fnmatch
@@ -23,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+import zlib
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -41,7 +43,6 @@ from ...llm_router import (
     extract_agent_implementation_codex_capacity_receipts,
     extract_agent_implementation_route_outcomes,
     load_agent_implementation_route_authorization,
-    materialize_agent_implementation_control_plane_capsule,
     parse_agent_implementation_effect_authorization_context,
     parse_agent_implementation_quota_evidence,
     resolve_agent_implementation_private_state_path,
@@ -102,6 +103,9 @@ from ..runtime.provider_failure_policy import (
     valid_grok_failure_receipt,
     valid_grok_hard_quota_receipt,
     valid_grok_route_outcome,
+)
+from ..runtime.provider_command_environment import (
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
 )
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -189,6 +193,7 @@ from ..merge.merge_conflict_repair import (
 )
 from ..core.submodule_degradation import DegradationState
 from ..task_sources.board_control_plane import (
+    VALIDATION_PYTHON_MODULES_ENV,
     ensure_board_implementation_branch,
     infer_board_namespace,
     resolve_board_implementation_branch,
@@ -201,6 +206,14 @@ from ..task_sources.database_task_source import (
 )
 from ..task_sources.intent_repository import (
     TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+)
+from ..task_sources.intent_repository import (
+    DATABASE_CLAIM_POLICY_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+    DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+    database_task_alias_home_shard_index,
+    database_virgin_transfer_binding_for_task,
+    database_virgin_transfer_routes,
 )
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.control_plane_contracts import (
@@ -262,11 +275,17 @@ from ..task_sources.taskboard_store import (
     taskboard_revision,
 )
 from ..validation.project_dependency_preflight import (
+    MAX_PROBE_SOURCE_BYTES,
+    PROJECT_DEPENDENCY_PROBE_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
     PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+    _PROBE_ARGV_BOOTSTRAP,
+    _active_module_source_bytes,
+    _canonical_json as _canonical_dependency_json,
+    _run_bounded_probe_process,
     compact_project_dependency_preflight_receipt,
     canonical_project_dependency_preflight_receipt_bytes,
     project_dependency_preflight_for_event,
@@ -666,6 +685,12 @@ MANUAL_COMPLETION_AUTHORITY_RENEWAL_BASE_COOLDOWN_SECONDS = 300.0
 MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_COOLDOWN_SECONDS = 14400.0
 AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
     "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
+)
+AUTHORITY_VALIDATION_BACKEND_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_BACKEND"
+)
+AUTHORITY_VALIDATION_CONTAINER_BACKEND = (
+    "authority_validation_container"
 )
 AUTHORITY_VALIDATION_DOCKER_PATH = Path("/usr/bin/docker")
 AUTHORITY_VALIDATION_DOCKER_SHA256 = (
@@ -1332,6 +1357,62 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME = (
+    "interrupted-implementation-recovery.json"
+)
+INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "interrupted-implementation-recovery@1"
+)
+# Recovery embeds the bounded 8,192-task projection twice plus its marker,
+# lifecycle, start event, and proof.  Keep a finite stable-fd read bound while
+# leaving several KiB per projected task and ample fixed-record headroom.
+MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES = 64 * 1024 * 1024
+INTERRUPTED_IMPLEMENTATION_RECOVERY_EVENT_ENVELOPE_FIELDS = frozenset(
+    {
+        "type",
+        "timestamp",
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "position",
+        "event_id",
+        "previous_event_id",
+    }
+)
+INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS = frozenset(
+    {
+        "marker_tombstone_path",
+        "marker_cid",
+        "lifecycle_path",
+        "lifecycle_cid",
+        "lifecycle_index_path",
+        "lifecycle_index_cid",
+        "state_path",
+        "state_cid",
+        "task_claim_reason",
+        "task_claim_receipt_id",
+        "close_event_id",
+        "close_event_cid",
+        "state_recovered_event_id",
+        "state_recovered_event_cid",
+    }
+)
+
+
+def interrupted_recovery_content_identity(value: Any) -> str:
+    """Hash exact journal JSON, including lifecycle timestamp floats."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-path-recovery-guard@1"
@@ -1409,6 +1490,34 @@ class CrashFenceReconciler:
         recovery_io = self._protected_path_recovery_io
         verifier = recovery_io.get("verify") if isinstance(recovery_io, Mapping) else None
         return callable(verifier) and verifier() is True
+
+    def _retire_active_snapshot(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        reason: str,
+    ) -> bool:
+        recovery_io = self._protected_path_recovery_io
+        retire = (
+            recovery_io.get("retire_active_snapshot")
+            if isinstance(recovery_io, Mapping)
+            else None
+        )
+        if callable(retire):
+            return bool(
+                retire(
+                    task_id=task_id,
+                    attempt=attempt,
+                    reason=reason,
+                )
+            )
+        self._daemon._clear_implementation_protected_snapshot(
+            task_id=task_id,
+            attempt=attempt,
+            reason=reason,
+        )
+        return True
 
     def reconcile(self) -> dict[str, Any]:
         daemon = self._daemon
@@ -1932,11 +2041,16 @@ class CrashFenceReconciler:
                 attempt = int(plan.get("attempt") or 0)
             except (TypeError, ValueError):
                 attempt = 0
-            daemon._clear_implementation_protected_snapshot(
+            if not self._retire_active_snapshot(
                 task_id=task_id,
                 attempt=attempt,
                 reason="crash_reconciliation_device_renumbered",
-            )
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "crash_reconciliation_snapshot_retirement_changed",
+                }
             result = {
                 "blocked": False,
                 "reason": "crash_reconciliation_device_renumbered",
@@ -1955,11 +2069,16 @@ class CrashFenceReconciler:
             except (TypeError, ValueError):
                 attempt = 0
             reason = str(plan.get("reason") or "crash_reconciliation_unchanged")
-            daemon._clear_implementation_protected_snapshot(
+            if not self._retire_active_snapshot(
                 task_id=task_id,
                 attempt=attempt,
                 reason=reason,
-            )
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "crash_reconciliation_snapshot_retirement_changed",
+                }
             result = {
                 "blocked": False,
                 "reason": reason,
@@ -3036,6 +3155,24 @@ def _grok_cli_available() -> bool:
         return False
 
 
+def _trusted_codex_quota_fallback_executable(
+    *,
+    workspace_path: Path,
+) -> str:
+    """Resolve Codex through the same trust boundary used by the runner."""
+
+    from ..runtime.provider_executable_trust import (
+        resolve_codex_quota_fallback_executable,
+    )
+
+    return resolve_codex_quota_fallback_executable(
+        workspace=workspace_path.resolve(),
+        configured=str(
+            _host_cli_binary("codex") or shutil.which("codex") or ""
+        ),
+    )
+
+
 def _grok_cli_command(
     *,
     workspace_path: Path,
@@ -3110,10 +3247,8 @@ def _grok_cli_command(
         workspace=workspace_path.resolve(),
         python_executable=sys.executable,
         grok_bin=grok,
-        codex_bin=(
-            ("/opt/eaaef/bin/codex" if enable_codex_fallback else "")
-            if is_eaaef_route
-            else str(_host_cli_binary("codex") or shutil.which("codex") or "")
+        codex_bin=_trusted_codex_quota_fallback_executable(
+            workspace_path=workspace_path,
         ),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
@@ -3137,12 +3272,11 @@ def _grok_cli_command(
         eaaef_in_image_provider_binaries=is_eaaef_route,
     )
     if (
-        allow_auth_unavailable_fallback
-        and not is_eaaef_route
+        (allow_auth_unavailable_fallback or route_plan is not None)
         and "--codex-fallback-command-json" not in command
     ):
         raise RuntimeError(
-            "typed Grok authentication fallback requires a trusted Codex CLI"
+            "sealed Grok/Codex route requires a trusted Codex CLI"
         )
     # Preserve the requested model after the runner chooses its route-specific
     # default.  In particular, the compatibility preflight deliberately starts
@@ -3264,13 +3398,11 @@ def _grok_cli_trusted_failure_command(
     grok = _grok_binary()
     if not grok:
         raise RuntimeError("grok CLI is not installed")
-    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
-    if not runner_path.is_file():
+    runner_path = _TRUSTED_QUOTA_FALLBACK_SCRIPT
+    if not _trusted_packaged_sibling_is_available(runner_path):
         raise RuntimeError(f"packaged Grok adapter missing at {runner_path}")
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip()
-    return [
-        sys.executable,
-        str(runner_path),
+    arguments = [
         "--workspace",
         str(workspace_path.resolve()),
         "--model",
@@ -3283,6 +3415,13 @@ def _grok_cli_trusted_failure_command(
         "--grok-bin",
         grok,
     ]
+    return _packaged_provider_entry_command(
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+        ),
+        runner_path=runner_path,
+        arguments=arguments,
+    )
 
 
 def _copilot_has_auth() -> bool:
@@ -3423,9 +3562,124 @@ DEFAULT_CODEX_REASONING_EFFORT = "medium"
 _TRUSTED_QUOTA_FALLBACK_PYTHON_EXECUTABLE = Path(sys.executable).resolve(
     strict=True
 )
-_TRUSTED_QUOTA_FALLBACK_SCRIPT = (
-    Path(__file__).resolve(strict=True).parents[1] / "grok_cli_runner.py"
-).resolve(strict=True)
+
+
+_TRUSTED_PACKAGED_PROVIDER_SIBLINGS = frozenset(
+    {"grok_cli_runner.py", "provider_fallback_runner.py"}
+)
+_SEALED_IMPLEMENTATION_DAEMON_ORIGIN = re.compile(
+    r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
+    r"todo_daemon/implementation_daemon\.py"
+)
+_SEALED_PACKAGED_PROVIDER_SIBLING = re.compile(
+    r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
+    r"(grok_cli_runner|provider_fallback_runner)\.py"
+)
+
+
+def _trusted_packaged_sibling_script_path(
+    module_file: str | Path,
+    sibling_name: str,
+) -> Path:
+    """Return a trusted sibling without resolving a sealed ZIP member.
+
+    A live LGCVF module origin is a zipimport member below ``/proc/self/fd``.
+    Resolving that pseudo-path follows the descriptor to the kernel's deleted
+    memfd label, where no child member pathname exists.  The surrounding
+    bootstrap has already hash-verified and write-sealed that descriptor, so
+    retaining its exact unresolved member path is the fail-closed identity.
+    Ordinary filesystem imports keep the existing strict resolution checks.
+    """
+
+    if sibling_name not in _TRUSTED_PACKAGED_PROVIDER_SIBLINGS:
+        raise ValueError("packaged provider sibling name is not admitted")
+    origin = Path(module_file)
+    raw_origin = str(origin)
+    sealed = _SEALED_IMPLEMENTATION_DAEMON_ORIGIN.fullmatch(raw_origin)
+    if sealed is not None and int(sealed.group(1)) >= 3:
+        return origin.parents[1] / sibling_name
+    return (origin.resolve(strict=True).parents[1] / sibling_name).resolve(
+        strict=True
+    )
+
+
+def _trusted_quota_fallback_script_path(module_file: str | Path) -> Path:
+    """Return the exact packaged Grok adapter for this module origin."""
+
+    return _trusted_packaged_sibling_script_path(
+        module_file,
+        "grok_cli_runner.py",
+    )
+
+
+def _trusted_provider_fallback_script_path(module_file: str | Path) -> Path:
+    """Return the exact packaged ordered-route adapter for this origin."""
+
+    return _trusted_packaged_sibling_script_path(
+        module_file,
+        "provider_fallback_runner.py",
+    )
+
+
+def _trusted_packaged_sibling_is_available(path: Path) -> bool:
+    """Check ordinary siblings and trust only exact sealed-member identities.
+
+    A ZIP member below ``/proc/self/fd`` is not stat-able as a normal child
+    path.  Its containing archive and member inventory were already verified
+    and write-sealed by the LGCVF bootstrap, so only the exact lexical member
+    identity is admissible here.
+    """
+
+    sealed = _SEALED_PACKAGED_PROVIDER_SIBLING.fullmatch(str(path))
+    if sealed is not None:
+        return int(sealed.group(1)) >= 3
+    return path.is_file()
+
+
+def _trusted_packaged_sibling_argument_matches(
+    value: str | Path,
+    expected: Path,
+) -> bool:
+    """Match a command argument without dereferencing sealed ZIP members."""
+
+    expected_sealed = _SEALED_PACKAGED_PROVIDER_SIBLING.fullmatch(
+        str(expected)
+    )
+    if expected_sealed is not None:
+        return (
+            int(expected_sealed.group(1)) >= 3
+            and str(value) == str(expected)
+        )
+    try:
+        return Path(value).expanduser().resolve(strict=True) == expected
+    except (OSError, RuntimeError):
+        return False
+
+
+_TRUSTED_QUOTA_FALLBACK_SCRIPT = _trusted_quota_fallback_script_path(__file__)
+_TRUSTED_PROVIDER_FALLBACK_SCRIPT = _trusted_provider_fallback_script_path(
+    __file__
+)
+
+
+def _packaged_provider_entry_command(
+    *,
+    module_name: str,
+    runner_path: Path,
+    arguments: Sequence[str],
+) -> list[str]:
+    """Execute an admitted provider entry from disk or its sealed ZIP."""
+
+    from ..sealed_provider_module import build_sealed_provider_module_command
+
+    sealed = build_sealed_provider_module_command(
+        module_name,
+        arguments,
+        module_file=__file__,
+    )
+    if sealed is not None:
+        return sealed
+    return [sys.executable, str(runner_path), *(str(item) for item in arguments)]
 _CANONICAL_INVOCATION_NULL_GROK_ROUTE = resolve_agent_implementation_route(
     primary_provider_id="grok_cli",
     primary_model_id=DEFAULT_AUTOMATIC_GROK_MODEL,
@@ -5559,6 +5813,29 @@ RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "validation/implementation_auto_rescue.py",
     "task_sources/persistent_task_queue.py",
 )
+_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+)
+_CONTROL_PLANE_LOADER_SOURCE_MAX_BYTES = 4 * 1024 * 1024
+_CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME = (
+    ".agent-control-plane-manifest.json"
+)
+_CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES = 2 * 1024 * 1024
+_CONTROL_PLANE_IMPORTED_GENERATION_MANIFESTS = (
+    (
+        _CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME,
+        "ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1",
+        _CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES,
+    ),
+    (
+        ".lgcvf-configured-board-live-capsule-manifest.json",
+        (
+            "ipfs_accelerate_py.agent_supervisor."
+            "lgcvf-configured-board-live-capsule-manifest@1"
+        ),
+        8 * 1024 * 1024,
+    ),
+)
 RECONCILIATION_GUARDRAIL_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
 )
@@ -5731,6 +6008,142 @@ def is_retry_budget_repair_task(task: Any) -> bool:
     return bool(retry_budget_repair_source(task)[0])
 
 
+def _import_loader_control_plane_source_bytes(
+    relative_path: str,
+    *,
+    maximum_bytes: int = _CONTROL_PLANE_LOADER_SOURCE_MAX_BYTES,
+) -> bytes:
+    """Read one source member from the loader that imported this module.
+
+    A sealed zipapp is addressed through ``/proc/self/fd`` while it imports,
+    but resolving that path produces the kernel's deleted-memfd label.  Keep
+    the unresolved loader origin and ask the loader for the member directly;
+    this also returns the exact archive bytes rather than later checkout
+    contents.
+    """
+
+    relative = PurePosixPath(str(relative_path))
+    if (
+        relative.is_absolute()
+        or ".." in relative.parts
+        or not relative.parts
+        or relative.as_posix() != str(relative_path)
+    ):
+        raise OSError("control-plane loader source path is invalid")
+
+    specification = globals().get("__spec__")
+    loader = getattr(specification, "loader", None)
+    origin = str(
+        getattr(specification, "origin", None)
+        or globals().get("__file__")
+        or ""
+    )
+    get_data = getattr(loader, "get_data", None)
+    native_suffix = os.path.join(
+        *_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH.split("/")
+    )
+    suffix = next(
+        (
+            candidate
+            for candidate in (
+                _IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH,
+                native_suffix,
+            )
+            if origin.endswith(candidate)
+        ),
+        "",
+    )
+    if not suffix or not callable(get_data):
+        raise OSError("control-plane import loader source is unavailable")
+
+    prefix = origin[: -len(suffix)]
+    member = (
+        os.path.join(*relative.parts)
+        if suffix == native_suffix
+        else relative.as_posix()
+    )
+    try:
+        raw = get_data(prefix + member)
+    except (ImportError, OSError) as exc:
+        raise OSError("control-plane import loader source is unavailable") from exc
+    if not isinstance(raw, bytes) or len(raw) > maximum_bytes:
+        raise OSError("control-plane import loader source is invalid")
+    return raw
+
+
+def _import_loader_control_plane_source_generation() -> tuple[str, str] | None:
+    """Return the sealed archive's exact source HEAD/tree when available."""
+
+    for filename, expected_schema, maximum_bytes in (
+        _CONTROL_PLANE_IMPORTED_GENERATION_MANIFESTS
+    ):
+        try:
+            raw = _import_loader_control_plane_source_bytes(
+                filename,
+                maximum_bytes=maximum_bytes,
+            )
+        except OSError:
+            continue
+
+        def reject_duplicate_keys(
+            pairs: Sequence[tuple[str, object]],
+        ) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(
+                        "imported control-plane generation manifest is invalid"
+                    )
+                result[key] = value
+            return result
+
+        try:
+            manifest = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(
+                "imported control-plane generation manifest is invalid"
+            ) from exc
+        files = manifest.get("files") if isinstance(manifest, dict) else None
+        source_head = str(
+            manifest.get("source_head") if isinstance(manifest, dict) else ""
+        )
+        source_tree = str(
+            manifest.get("source_tree") if isinstance(manifest, dict) else ""
+        )
+        expected_implementation_digest = (
+            files.get(_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH)
+            if isinstance(files, dict)
+            else None
+        )
+        imported_implementation = (
+            _import_loader_control_plane_source_bytes(
+                _IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH
+            )
+        )
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema") != expected_schema
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", str(manifest.get("capsule_id")))
+            is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+            or not isinstance(files, dict)
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(expected_implementation_digest),
+            )
+            is None
+            or "sha256:"
+            + hashlib.sha256(imported_implementation).hexdigest()
+            != expected_implementation_digest
+        ):
+            raise ValueError(
+                "imported control-plane generation manifest is invalid"
+            )
+        return source_head, source_tree
+    return None
+
+
 def retry_budget_repair_runtime_revision(
     agent_supervisor_root: Path | None = None,
 ) -> str:
@@ -5745,16 +6158,22 @@ def retry_budget_repair_runtime_revision(
     root = (
         agent_supervisor_root.resolve()
         if agent_supervisor_root is not None
-        else Path(__file__).resolve().parents[1]
+        else None
     )
     digest = hashlib.sha256()
     digest.update(RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
     digest.update(b"\0")
     for relative in RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
-        path = root / relative
+        raw = (
+            (root / relative).read_bytes()
+            if root is not None
+            else _import_loader_control_plane_source_bytes(
+                "ipfs_accelerate_py/agent_supervisor/" + relative
+            )
+        )
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(raw)
         digest.update(b"\0")
     return "sha256:" + digest.hexdigest()
 
@@ -7575,10 +7994,7 @@ def transitive_task_dependents(
 def _task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
     """Return the shared deterministic alias-hash home lane."""
 
-    if shard_count <= 1:
-        return 0
-    digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
-    return int(digest[:8], 16) % shard_count
+    return database_task_alias_home_shard_index(task_alias, shard_count)
 
 
 class _TaskProjectionMergeQueueView:
@@ -7641,6 +8057,33 @@ class _TaskProjectionMergeQueueView:
         if not isinstance(rows, (list, tuple)):
             return ()
         return tuple(row for row in rows if self.matches(row))
+
+    def pending_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("pending_requests")[:requested]
+
+    def processing_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("processing_requests")[:requested]
+
+    def completed_requests(
+        self,
+        *,
+        limit: int = 32,
+        **_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("completed_requests")[:requested]
 
     def quarantined_requests(
         self,
@@ -7827,6 +8270,7 @@ class PortalImplementationDaemon:
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
         worker_network_launch_authority_json: str = "",
+        reclaim_dead_lifecycle_on_startup: bool | None = None,
     ) -> None:
         if type(isolate_merge_queue_to_task_projection) is not bool:
             raise TypeError(
@@ -8133,10 +8577,15 @@ class PortalImplementationDaemon:
             proc_root=self.worktree_lifecycle.proc_root,
         )
         self.worktree_lifecycle_restart_recovery = []
-        if _env_bool(
-            WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            True,
-        ):
+        reclaim_dead_lifecycle = (
+            _env_bool(
+                WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
+                True,
+            )
+            if reclaim_dead_lifecycle_on_startup is None
+            else bool(reclaim_dead_lifecycle_on_startup)
+        )
+        if reclaim_dead_lifecycle:
             self.worktree_lifecycle_restart_recovery = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
@@ -12898,6 +13347,7 @@ class PortalImplementationDaemon:
         canonical_task_cid: str,
         board_namespace: str,
         attempt: int,
+        interrupted_recovery_receipt: Mapping[str, Any] | None = None,
     ) -> tuple[WorkspaceLifecycleRecord | None, str, str]:
         """Prove the task revision and its exact worktree are terminal."""
 
@@ -12961,7 +13411,49 @@ class PortalImplementationDaemon:
             return record, "", "canonical_task_identity_mismatch"
         status = normalize_status(matches[0].status)
         if status not in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
-            return record, status, "canonical_task_not_terminal"
+            recovery_identity = (
+                interrupted_recovery_receipt.get("basis", {}).get(
+                    "identity"
+                )
+                if isinstance(interrupted_recovery_receipt, Mapping)
+                and isinstance(
+                    interrupted_recovery_receipt.get("basis"),
+                    Mapping,
+                )
+                else None
+            )
+            expected_lifecycle = (
+                interrupted_recovery_receipt.get("expected_after", {}).get(
+                    "lifecycle"
+                )
+                if isinstance(interrupted_recovery_receipt, Mapping)
+                and isinstance(
+                    interrupted_recovery_receipt.get("expected_after"),
+                    Mapping,
+                )
+                else None
+            )
+            if (
+                # ``normalize_status`` projects ready/todo/queued/pending to
+                # the single nonterminal scheduler status ``todo``.
+                status != "todo"
+                or not isinstance(interrupted_recovery_receipt, Mapping)
+                or interrupted_recovery_receipt.get("phase") != "prepared"
+                or not isinstance(recovery_identity, Mapping)
+                or recovery_identity.get("task_id") != task_id
+                or recovery_identity.get("canonical_task_cid")
+                != canonical_task_cid
+                or recovery_identity.get("attempt") != attempt
+                or normalize_workspace_path(
+                    recovery_identity.get("workspace_path") or ""
+                )
+                != normalize_workspace_path(workspace_path)
+                or not isinstance(expected_lifecycle, Mapping)
+                or expected_lifecycle.get("payload") != raw_record
+                or expected_lifecycle.get("cid")
+                != interrupted_recovery_content_identity(raw_record)
+            ):
+                return record, status, "canonical_task_not_terminal"
         projected_status = normalize_status(
             state.task_statuses.get(task_id, "")
         )
@@ -12988,6 +13480,131 @@ class PortalImplementationDaemon:
             / IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
             / f"canonical-task-{digest}-a{attempt}.json"
         )
+
+    def _interrupted_implementation_recovery_receipt_path(self) -> Path:
+        return (
+            self.state_path.parent
+            / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+        )
+
+    @staticmethod
+    def _interrupted_recovery_path_is_exactly_absent(path: Path) -> bool:
+        return bool(not path.exists() and not path.is_symlink())
+
+    def _completed_interrupted_recovery_receipt_archive_path(
+        self,
+        operation_id: str,
+    ) -> Path:
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", operation_id) is None:
+            raise ValueError("interrupted recovery operation id is invalid")
+        return self.state_path.parent / (
+            "interrupted-implementation-recovery-completed-"
+            f"{operation_id.removeprefix('sha256:')}.json"
+        )
+
+    def _interrupted_implementation_marker_tombstone_path(
+        self,
+        operation_id: str,
+    ) -> Path:
+        if not str(operation_id).strip():
+            raise ValueError("interrupted recovery operation id is invalid")
+        digest = hashlib.sha256(str(operation_id).encode("utf-8")).hexdigest()
+        return self.state_path.parent / (
+            f"interrupted-implementation-marker-{digest[:24]}.json"
+        )
+
+    @staticmethod
+    def _durable_private_json(path: Path, payload: Mapping[str, Any]) -> None:
+        """Publish one fsynced private receipt and its directory entry."""
+
+        rendered = (
+            json.dumps(dict(payload), indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        if (
+            len(rendered)
+            > MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+        ):
+            raise RuntimeError(
+                "interrupted recovery receipt exceeds its stable read bound"
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{secrets.token_hex(12)}.tmp"
+        )
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_CREAT
+                | os.O_EXCL
+                | os.O_WRONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            offset = 0
+            while offset < len(rendered):
+                written = os.write(descriptor, rendered[offset:])
+                if written <= 0:
+                    raise OSError("short write while publishing recovery receipt")
+                offset += written
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = -1
+            os.replace(temporary, path)
+            directory = os.open(
+                path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _rename_without_replace(source: Path, target: Path) -> None:
+        """Atomically move a marker into journal custody without replacement."""
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise OSError(errno.ENOSYS, "renameat2 is unavailable")
+        renameat2.argtypes = (
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        ctypes.set_errno(0)
+        if renameat2(
+            -100,
+            os.fsencode(source),
+            -100,
+            os.fsencode(target),
+            1,
+        ) != 0:
+            error_number = ctypes.get_errno() or errno.EIO
+            raise OSError(error_number, os.strerror(error_number), str(target))
+        directory = os.open(
+            source.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
     @staticmethod
     def _load_exact_json_object(path: Path) -> dict[str, Any] | None:
@@ -13030,6 +13647,7 @@ class PortalImplementationDaemon:
         attempt: int,
         display_attempt: int,
         canonical_attempt: int,
+        require_canonical_events: bool = False,
     ) -> dict[str, Any] | None:
         """Bind a decremented attempt counter to its exact recovery event.
 
@@ -13047,7 +13665,7 @@ class PortalImplementationDaemon:
             return None
 
         if (
-            attempt <= 1
+            attempt <= 0
             or display_attempt != attempt - 1
             or canonical_attempt != display_attempt
             or exact_int(claim.get("attempt")) != attempt
@@ -13061,14 +13679,30 @@ class PortalImplementationDaemon:
         raw_canonical_attempts = raw_state.get(
             "implementation_attempts_by_cid"
         )
+        exact_display = (
+            exact_int(raw_display_attempts.get(task_id))
+            if isinstance(raw_display_attempts, dict)
+            and task_id in raw_display_attempts
+            else 0
+        )
+        exact_canonical = (
+            exact_int(raw_canonical_attempts.get(canonical_task_cid))
+            if isinstance(raw_canonical_attempts, dict)
+            and canonical_task_cid in raw_canonical_attempts
+            else 0
+        )
         if (
             not isinstance(raw_display_attempts, dict)
-            or task_id not in raw_display_attempts
-            or exact_int(raw_display_attempts[task_id]) != display_attempt
             or not isinstance(raw_canonical_attempts, dict)
-            or canonical_task_cid not in raw_canonical_attempts
-            or exact_int(raw_canonical_attempts[canonical_task_cid])
-            != canonical_attempt
+            or exact_display != display_attempt
+            or exact_canonical != canonical_attempt
+            or (
+                display_attempt == 0
+                and (
+                    task_id in raw_display_attempts
+                    or canonical_task_cid in raw_canonical_attempts
+                )
+            )
         ):
             return None
 
@@ -13126,7 +13760,9 @@ class PortalImplementationDaemon:
             return None
 
         try:
-            events = self._iter_merge_lifecycle_events()
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=require_canonical_events,
+            )
         except CursorReplayError:
             return None
 
@@ -13274,6 +13910,8 @@ class PortalImplementationDaemon:
     def _reconcile_quiesced_implementation_task_claim(
         self,
         state: PortalTaskState,
+        *,
+        interrupted_recovery_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Release one exact dead claim after terminal lane/task proof."""
 
@@ -13308,6 +13946,35 @@ class PortalImplementationDaemon:
             if claim is None:
                 if claim_path.exists() or claim_path.is_symlink():
                     return blocked("task_claim_metadata_unreadable")
+                if interrupted_recovery_receipt is not None:
+                    released = (
+                        self._interrupted_recovery_released_claim_result(
+                            state,
+                            interrupted_recovery_receipt,
+                        )
+                    )
+                    if released is not None:
+                        return released
+                    resumed = (
+                        self._resume_interrupted_recovery_claim_release(
+                            state,
+                            interrupted_recovery_receipt,
+                            claim_path=claim_path,
+                        )
+                    )
+                    if resumed is not None:
+                        return resumed
+                    claim_before = interrupted_recovery_receipt.get(
+                        "basis",
+                        {},
+                    ).get("task_claim_before", {})
+                    if (
+                        isinstance(claim_before, Mapping)
+                        and claim_before.get("present") is True
+                    ):
+                        return blocked(
+                            "task_claim_release_receipt_invalid"
+                        )
                 return {
                     "reconciled": False,
                     "blocked": False,
@@ -13381,6 +14048,9 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         display_attempt=display_attempt,
                         canonical_attempt=canonical_attempt,
+                        require_canonical_events=(
+                            interrupted_recovery_receipt is not None
+                        ),
                     )
                 )
             if (
@@ -13480,6 +14150,9 @@ class PortalImplementationDaemon:
                         claim.get("board_namespace") or ""
                     ),
                     attempt=attempt,
+                    interrupted_recovery_receipt=(
+                        interrupted_recovery_receipt
+                    ),
                 )
             )
             if record is None or authority_reason:
@@ -13499,6 +14172,14 @@ class PortalImplementationDaemon:
                 )
 
             claim_id = content_identity(claim)
+            task_source_identity = self._task_source_identity_record()
+            if interrupted_recovery_receipt is not None:
+                interrupted_basis = dict(
+                    interrupted_recovery_receipt["basis"]
+                )
+                task_source_identity = dict(
+                    dict(interrupted_basis["start_event"])["payload"]
+                ).get("task_source_identity")
             basis = {
                 "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
                 "operation": "release_quiesced_implementation_task_claim",
@@ -13525,8 +14206,12 @@ class PortalImplementationDaemon:
                     "workspace_path": record.workspace_path,
                     "terminal_reason": record.terminal_reason,
                 },
-                "task_source_identity": self._task_source_identity_record(),
+                "task_source_identity": task_source_identity,
             }
+            if interrupted_recovery_receipt is not None:
+                basis["interrupted_recovery_operation_id"] = str(
+                    interrupted_recovery_receipt.get("operation_id") or ""
+                )
             if released_attempt_evidence is not None:
                 basis["released_unfinished_attempt"] = (
                     released_attempt_evidence
@@ -13537,7 +14222,12 @@ class PortalImplementationDaemon:
                 attempt=attempt,
                 lease_id=lease_id,
             )
-            existing_receipt = load_json_dict(receipt_path)
+            try:
+                existing_receipt = (
+                    self._load_private_recovery_json_object(receipt_path)
+                )
+            except RuntimeError:
+                existing_receipt = None
             if existing_receipt is None and (
                 receipt_path.exists() or receipt_path.is_symlink()
             ):
@@ -13559,7 +14249,7 @@ class PortalImplementationDaemon:
                 if existing_receipt is not None
                 else utc_now()
             )
-            write_json_atomic(
+            self._durable_private_json(
                 receipt_path,
                 {
                     **basis,
@@ -13583,6 +14273,20 @@ class PortalImplementationDaemon:
                     receipt_path=str(receipt_path),
                 )
             claim_path.unlink()
+            claim_directory = os.open(
+                claim_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(claim_directory)
+            finally:
+                os.close(claim_directory)
+            self._implementation_task_claim_release_checkpoint(
+                "claim_removed"
+            )
 
         released_at = utc_now()
         receipt_body = {
@@ -13593,7 +14297,7 @@ class PortalImplementationDaemon:
             "released_at": released_at,
         }
         receipt_id = content_identity(receipt_body)
-        write_json_atomic(
+        self._durable_private_json(
             receipt_path,
             {**receipt_body, "receipt_id": receipt_id},
         )
@@ -13602,7 +14306,14 @@ class PortalImplementationDaemon:
             "blocked": False,
             "reason": "quiesced_task_claim_released",
             "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
             "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": basis["task_source_identity"],
             "attempt": attempt,
             "task_status": task_status,
             "claim_path": str(claim_path),
@@ -13621,8 +14332,325 @@ class PortalImplementationDaemon:
             result["released_unfinished_attempt"] = (
                 released_attempt_evidence
             )
-        self._record_event("implementation_task_claim_released", result)
+        self._ensure_interrupted_task_claim_released_event(result)
         return result
+
+    def _implementation_task_claim_release_checkpoint(
+        self,
+        _phase: str,
+    ) -> None:
+        """Test seam for loss after claim removal or receipt publication."""
+
+    def _ensure_interrupted_task_claim_released_event(
+        self,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Publish or verify one exact claim-release event per operation."""
+
+        operation_id = str(payload.get("operation_id") or "")
+        receipt_id = str(payload.get("receipt_id") or "")
+        if not operation_id or not receipt_id:
+            raise RuntimeError(
+                "interrupted claim release event identity is missing"
+            )
+
+        def matching_events() -> list[dict[str, Any]]:
+            return [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type")
+                == "implementation_task_claim_released"
+                and event.get("operation_id") == operation_id
+            ]
+
+        matches = matching_events()
+        if not matches:
+            self._record_event(
+                "implementation_task_claim_released",
+                dict(payload),
+            )
+            matches = matching_events()
+        if (
+            len(matches) != 1
+            or matches[0].get("receipt_id") != receipt_id
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_task_claim_released",
+                expected=payload,
+            )
+        ):
+            raise RuntimeError(
+                "interrupted claim release event changed or duplicated"
+            )
+        return matches[0]
+
+    def _resume_interrupted_recovery_claim_release(
+        self,
+        state: PortalTaskState,
+        interrupted_recovery_receipt: Mapping[str, Any],
+        *,
+        claim_path: Path,
+    ) -> dict[str, Any] | None:
+        """Finish an exact prepared/released claim receipt after process loss."""
+
+        try:
+            interrupted_basis = dict(
+                interrupted_recovery_receipt["basis"]
+            )
+            interrupted_expected = dict(
+                interrupted_recovery_receipt["expected_after"]
+            )
+            claim_before = dict(interrupted_basis["task_claim_before"])
+            claim = dict(claim_before["payload"])
+            identity = dict(interrupted_basis["identity"])
+            expected_state = dict(interrupted_expected["state"])[
+                "payload"
+            ]
+            expected_lifecycle = dict(
+                interrupted_expected["lifecycle"]
+            )["payload"]
+            task_id = str(identity["task_id"])
+            canonical_task_cid = str(identity["canonical_task_cid"])
+            attempt = int(identity["attempt"])
+            claim_attempt = int(claim["attempt"])
+            pid = int(claim["pid"])
+            lease_id = str(claim["lease_id"])
+            claim_state_dir = normalize_workspace_path(claim["state_dir"])
+            claim_state_path = normalize_workspace_path(claim["state_path"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if (
+            interrupted_recovery_receipt.get("phase") != "prepared"
+            or claim_before.get("present") is not True
+            or claim_attempt != attempt
+            or claim_before.get("cid") != content_identity(claim)
+            or Path(str(claim_before.get("path") or "")) != claim_path
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
+            or claim_path.is_symlink()
+            or asdict(state) != expected_state
+            or self._load_exact_json_object(self.state_path)
+            != expected_state
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or pid <= 0
+            or not lease_id
+            or claim_state_dir
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or claim_state_path
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            return None
+        owner_payload = claim.get("owner_process_birth")
+        try:
+            owner = (
+                ProcessBirthIdentity.from_dict(owner_payload)
+                if isinstance(owner_payload, Mapping)
+                else ProcessBirthIdentity(pid=pid, start_time_ticks=0)
+            )
+        except (TypeError, ValueError):
+            return None
+        if (
+            owner.pid != pid
+            or (
+                isinstance(owner_payload, Mapping)
+                and owner.start_time_ticks <= 0
+            )
+            or owner_liveness(
+                owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            is not OwnerLiveness.DEAD
+            or implementation_task_claim_protected_fence_paths(claim)
+        ):
+            return None
+        released_attempt_evidence = (
+            self._released_unfinished_attempt_evidence(
+                state,
+                claim=claim,
+                task_id=task_id,
+                canonical_task_cid=canonical_task_cid,
+                attempt=attempt,
+                display_attempt=int(
+                    state.implementation_attempts.get(task_id, 0) or 0
+                ),
+                canonical_attempt=int(
+                    state.implementation_attempts_by_cid.get(
+                        canonical_task_cid,
+                        0,
+                    )
+                    or 0
+                ),
+                require_canonical_events=True,
+            )
+        )
+        if released_attempt_evidence is None:
+            return None
+        record, task_status, authority_reason = (
+            self._terminal_authority_for_quiesced_task_claim(
+                state,
+                task_id=task_id,
+                canonical_task_key=str(
+                    claim.get("canonical_task_key") or ""
+                ),
+                canonical_task_cid=canonical_task_cid,
+                board_namespace=str(claim.get("board_namespace") or ""),
+                attempt=attempt,
+                interrupted_recovery_receipt=(
+                    interrupted_recovery_receipt
+                ),
+            )
+        )
+        if (
+            record is None
+            or authority_reason
+            or record.to_dict() != expected_lifecycle
+            or record.branch != released_attempt_evidence["branch"]
+        ):
+            return None
+        expected_state_dir = normalize_workspace_path(
+            self.state_path.parent.resolve()
+        )
+        expected_state_path = normalize_workspace_path(
+            self.state_path.resolve()
+        )
+        claim_worktree_root = str(claim.get("worktree_root") or "")
+        task_source_identity = dict(
+            dict(interrupted_basis["start_event"])["payload"]
+        ).get("task_source_identity")
+        expected_basis = {
+            "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+            "operation": "release_quiesced_implementation_task_claim",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim": {
+                "path": str(claim_path),
+                "claim_id": claim_before["cid"],
+                "lease_id": lease_id,
+                "owner_pid": pid,
+                "state_dir": expected_state_dir,
+                "state_path": expected_state_path,
+                "legacy_worktree_root_missing": not bool(
+                    claim_worktree_root
+                ),
+            },
+            "worktree_lifecycle": {
+                "record_id": record.record_id,
+                "lease_id": record.lease_id,
+                "fence": record.fence,
+                "state": record.state.value,
+                "workspace_path": record.workspace_path,
+                "terminal_reason": record.terminal_reason,
+            },
+            "task_source_identity": task_source_identity,
+            "interrupted_recovery_operation_id": str(
+                interrupted_recovery_receipt.get("operation_id") or ""
+            ),
+            "released_unfinished_attempt": released_attempt_evidence,
+        }
+        operation_id = content_identity(expected_basis)
+        receipt_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        try:
+            existing = self._load_private_recovery_json_object(receipt_path)
+        except RuntimeError:
+            return None
+        if existing is None:
+            return None
+        phase = str(existing.get("phase") or "")
+        prepared_at = str(existing.get("prepared_at") or "")
+        if not prepared_at:
+            return None
+        if phase == "prepared":
+            if existing != {
+                **expected_basis,
+                "operation_id": operation_id,
+                "phase": "prepared",
+                "prepared_at": prepared_at,
+            }:
+                return None
+            released_at = utc_now()
+            receipt_body = {
+                **expected_basis,
+                "operation_id": operation_id,
+                "phase": "released",
+                "prepared_at": prepared_at,
+                "released_at": released_at,
+            }
+            receipt_id = content_identity(receipt_body)
+            self._durable_private_json(
+                receipt_path,
+                {**receipt_body, "receipt_id": receipt_id},
+            )
+            self._implementation_task_claim_release_checkpoint(
+                "released_receipt_published"
+            )
+        elif phase == "released":
+            released_at = str(existing.get("released_at") or "")
+            receipt_body = dict(existing)
+            receipt_id = str(receipt_body.pop("receipt_id", ""))
+            if (
+                not released_at
+                or receipt_body
+                != {
+                    **expected_basis,
+                    "operation_id": operation_id,
+                    "phase": "released",
+                    "prepared_at": prepared_at,
+                    "released_at": released_at,
+                }
+                or receipt_id != content_identity(receipt_body)
+            ):
+                return None
+        else:
+            return None
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": expected_basis[
+                "task_source_identity"
+            ],
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim_path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "claim_lease_id": lease_id,
+            "owner_pid": pid,
+            "state_dir": expected_state_dir,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+            "released_unfinished_attempt": released_attempt_evidence,
+        }
+        try:
+            self._ensure_interrupted_task_claim_released_event(result)
+        except (CursorReplayError, RuntimeError):
+            return None
+        return self._interrupted_recovery_released_claim_result(
+            state,
+            interrupted_recovery_receipt,
+        )
 
     def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
         """Reconcile only the repo-wide claim for already-clean lane state."""
@@ -13637,7 +14665,2090 @@ class PortalImplementationDaemon:
             )
         return result
 
-    def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+    @staticmethod
+    def _interrupted_recovery_pid_liveness(pid: int) -> str:
+        if pid <= 0:
+            return "unknown"
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "dead"
+        except PermissionError:
+            return "alive"
+        except OSError:
+            return "unknown"
+        return "alive"
+
+    def _interrupted_recovery_predecessor_liveness(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> str:
+        try:
+            pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return "unknown"
+        if "owner_process_birth" not in metadata:
+            return self._interrupted_recovery_pid_liveness(pid)
+        payload = metadata.get("owner_process_birth")
+        if not isinstance(payload, Mapping):
+            return "unknown"
+        try:
+            owner = ProcessBirthIdentity.from_dict(payload)
+        except (TypeError, ValueError):
+            return "unknown"
+        if owner.pid != pid or owner.start_time_ticks <= 0:
+            return "unknown"
+        observed = owner_liveness(
+            owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+        return observed.value
+
+    @staticmethod
+    def _parse_unique_json_object(text: str) -> dict[str, Any] | None:
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            payload = json.loads(text, object_pairs_hook=unique_object)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _validated_interrupted_recovery_custody(
+        self,
+        lease: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        custody = lease.get("predecessor_attempt_lock")
+        if not isinstance(custody, Mapping):
+            return None
+        custody_schema = custody.get("schema")
+        common_fields = {"schema", "raw_utf8", "sha256", "metadata"}
+        if custody_schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@1"
+        ):
+            if set(custody) != common_fields:
+                return None
+        elif custody_schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@2"
+        ):
+            if set(custody) != common_fields | {"mode"}:
+                return None
+            custody_mode = custody.get("mode")
+            if (
+                not isinstance(custody_mode, int)
+                or isinstance(custody_mode, bool)
+                or custody_mode not in {0o600, 0o644, 0o664}
+            ):
+                return None
+        else:
+            return None
+        raw_text = custody.get("raw_utf8")
+        metadata = custody.get("metadata")
+        if (
+            not isinstance(raw_text, str)
+            or not isinstance(metadata, Mapping)
+        ):
+            return None
+        parsed = self._parse_unique_json_object(raw_text)
+        raw = raw_text.encode("utf-8")
+        if (
+            parsed is None
+            or parsed != dict(metadata)
+            or custody.get("sha256")
+            != "sha256:" + hashlib.sha256(raw).hexdigest()
+        ):
+            return None
+        try:
+            pid = int(metadata.get("pid"))
+            attempt = int(metadata.get("attempt"))
+        except (TypeError, ValueError):
+            return None
+        owner_birth_payload = metadata.get("owner_process_birth")
+        if "owner_process_birth" in metadata:
+            if not isinstance(owner_birth_payload, Mapping):
+                return None
+            try:
+                owner_birth = ProcessBirthIdentity.from_dict(
+                    owner_birth_payload
+                )
+            except (TypeError, ValueError):
+                return None
+            owner_is_dead = bool(
+                owner_birth.pid == pid
+                and owner_birth.start_time_ticks > 0
+                and owner_liveness(
+                    owner_birth,
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+                is OwnerLiveness.DEAD
+            )
+        else:
+            # Narrow compatibility for legacy PID-only implementation locks.
+            owner_is_dead = (
+                self._interrupted_recovery_pid_liveness(pid) == "dead"
+            )
+        if (
+            str(metadata.get("kind") or "") != "implementation"
+            or str(metadata.get("lease_role") or "implementation_attempt")
+            != "implementation_attempt"
+            or not str(metadata.get("lease_id") or "")
+            or pid <= 0
+            or attempt <= 0
+            or not str(metadata.get("task_id") or "")
+            or not str(metadata.get("canonical_task_key") or "")
+            or not str(metadata.get("canonical_task_cid") or "")
+            or not str(metadata.get("board_namespace") or "")
+            or not str(metadata.get("started_at") or "")
+            or normalize_workspace_path(metadata.get("repo_root") or "")
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(metadata.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or not owner_is_dead
+        ):
+            return None
+        return dict(custody)
+
+    def _load_private_recovery_json_object(
+        self,
+        path: Path | None = None,
+        *,
+        maximum_bytes: int = (
+            MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+        ),
+        validate_interrupted_receipt: bool = False,
+    ) -> dict[str, Any] | None:
+        path = (
+            self._interrupted_implementation_recovery_receipt_path()
+            if path is None
+            else path
+        )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        try:
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt cannot be opened safely"
+            ) from exc
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or stat_module.S_IMODE(before.st_mode) != 0o600
+                or before.st_size <= 0
+                or before.st_size > maximum_bytes
+            ):
+                raise RuntimeError(
+                    "interrupted recovery receipt is not private"
+                )
+            chunks: list[bytes] = []
+            remaining = int(before.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw_receipt = b"".join(chunks)
+            grew = bool(os.read(descriptor, 1))
+            after = os.fstat(descriptor)
+            named = os.lstat(path)
+        except OSError as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt changed while reading"
+            ) from exc
+        finally:
+            os.close(descriptor)
+
+        def stable_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                value.st_dev,
+                value.st_ino,
+                value.st_mode,
+                value.st_uid,
+                value.st_gid,
+                value.st_nlink,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+
+        if (
+            grew
+            or remaining != 0
+            or len(raw_receipt) != before.st_size
+            or stable_identity(before) != stable_identity(after)
+            or stable_identity(after) != stable_identity(named)
+        ):
+            raise RuntimeError(
+                "interrupted recovery receipt changed while reading"
+            )
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            receipt = json.loads(
+                raw_receipt.decode("utf-8"),
+                object_pairs_hook=unique_object,
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt is malformed"
+            ) from exc
+        if not isinstance(receipt, dict):
+            raise RuntimeError("interrupted recovery receipt is malformed")
+        if not validate_interrupted_receipt:
+            return receipt
+        body = dict(receipt)
+        receipt_id = body.pop("receipt_id", None)
+        basis = receipt.get("basis")
+        expected_after = receipt.get("expected_after")
+        phase = receipt.get("phase")
+        common_fields = {
+            "schema",
+            "phase",
+            "operation_id",
+            "basis",
+            "expected_after",
+            "prepared_at",
+            "receipt_id",
+        }
+        if (
+            receipt.get("schema")
+            != INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA
+            or phase not in {"prepared", "completed"}
+            or not isinstance(basis, Mapping)
+            or not isinstance(expected_after, Mapping)
+            or receipt.get("operation_id")
+            != interrupted_recovery_content_identity(basis)
+            or receipt_id != interrupted_recovery_content_identity(body)
+            or not str(receipt.get("prepared_at") or "")
+        ):
+            raise RuntimeError("interrupted recovery receipt identity is invalid")
+        custody = basis.get("predecessor_attempt_lock")
+        raw_custody = (
+            custody.get("raw_utf8")
+            if isinstance(custody, Mapping)
+            else None
+        )
+        if (
+            not isinstance(custody, Mapping)
+            or not isinstance(raw_custody, str)
+            or self._parse_unique_json_object(raw_custody)
+            != custody.get("metadata")
+        ):
+            raise RuntimeError("interrupted recovery receipt custody is invalid")
+        if phase == "prepared" and set(receipt) != common_fields:
+            raise RuntimeError("interrupted recovery prepared receipt is invalid")
+        if phase == "completed":
+            completion = receipt.get("completion")
+            final_proof = (
+                completion.get("final_proof")
+                if isinstance(completion, Mapping)
+                else None
+            )
+            if (
+                set(receipt)
+                != common_fields | {"completed_at", "completion"}
+                or not str(receipt.get("completed_at") or "")
+                or not isinstance(completion, Mapping)
+                or set(completion) != {"final_proof", "final_proof_id"}
+                or not isinstance(final_proof, Mapping)
+                or set(final_proof)
+                != INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS
+                or completion.get("final_proof_id")
+                != interrupted_recovery_content_identity(final_proof)
+                or not str(final_proof.get("marker_cid") or "")
+                or not str(final_proof.get("lifecycle_cid") or "")
+                or not str(
+                    final_proof.get("lifecycle_index_cid") or ""
+                )
+                or not str(final_proof.get("state_cid") or "")
+                or not str(final_proof.get("close_event_id") or "")
+                or not str(final_proof.get("close_event_cid") or "")
+                or not str(
+                    final_proof.get("state_recovered_event_id") or ""
+                )
+                or not str(
+                    final_proof.get("state_recovered_event_cid") or ""
+                )
+            ):
+                raise RuntimeError(
+                    "interrupted recovery completed receipt is invalid"
+                )
+            if not self._completed_interrupted_recovery_is_current(receipt):
+                raise RuntimeError(
+                    "interrupted recovery completed proof is not current"
+                )
+        return receipt
+
+    def _load_private_interrupted_recovery_receipt(
+        self,
+        path: Path | None = None,
+    ) -> dict[str, Any] | None:
+        return self._load_private_recovery_json_object(
+            path,
+            maximum_bytes=(
+                MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+            ),
+            validate_interrupted_receipt=True,
+        )
+
+    def _archive_completed_interrupted_recovery_receipt(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> Path:
+        """Retire one fully revalidated proof without replacing history."""
+
+        if receipt.get("phase") != "completed":
+            raise RuntimeError(
+                "interrupted recovery archive source is not completed"
+            )
+        source = self._interrupted_implementation_recovery_receipt_path()
+        operation_id = str(receipt.get("operation_id") or "")
+        archive = self._completed_interrupted_recovery_receipt_archive_path(
+            operation_id
+        )
+        if self._load_private_interrupted_recovery_receipt() != dict(receipt):
+            raise RuntimeError(
+                "interrupted recovery archive source changed"
+            )
+        if archive.exists() or archive.is_symlink():
+            archived = self._load_private_interrupted_recovery_receipt(
+                archive
+            )
+            if archived != dict(receipt):
+                raise RuntimeError(
+                    "interrupted recovery completed archive conflicts"
+                )
+            if (
+                self._load_private_interrupted_recovery_receipt()
+                != dict(receipt)
+            ):
+                raise RuntimeError(
+                    "interrupted recovery archive source changed"
+                )
+            source.unlink()
+            directory = os.open(
+                source.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            if source.exists() or source.is_symlink():
+                raise RuntimeError(
+                    "interrupted recovery duplicate source was not retired"
+                )
+            return archive
+        self._rename_without_replace(source, archive)
+        if source.exists() or source.is_symlink():
+            raise RuntimeError(
+                "interrupted recovery completed receipt was not retired"
+            )
+        if (
+            self._load_private_interrupted_recovery_receipt(archive)
+            != dict(receipt)
+        ):
+            raise RuntimeError(
+                "interrupted recovery completed archive changed"
+            )
+        return archive
+
+    def _recovery_state_payload(
+        self,
+        state: PortalTaskState,
+        *,
+        reconciled_at: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        recovered = PortalTaskState(**asdict(state))
+        attempt_recovery = self._release_unfinished_active_attempt(
+            recovered,
+            task_id=state.active_task_id,
+            attempt=state.active_attempt,
+        )
+        if (
+            attempt_recovery.get("released") is not True
+            or attempt_recovery.get("consumed") is not False
+        ):
+            raise RuntimeError(
+                "interrupted recovery attempt is not rollback-eligible"
+            )
+        recovered.active_task_id = ""
+        recovered.active_task_key = ""
+        recovered.active_task_cid = ""
+        recovered.active_task_title = ""
+        recovered.active_task_track = ""
+        recovered.active_task_started_at = ""
+        recovered.recommended_task_id = ""
+        recovered.recommended_actions = []
+        recovered.active_attempt = 0
+        recovered.active_phase = ""
+        recovered.active_phase_started_at = ""
+        recovered.active_phase_detail = ""
+        recovered.active_log_path = ""
+        recovered.active_worktree_path = ""
+        recovered.active_branch = ""
+        recovered.implementation_in_progress = False
+        recovered.active_provider_runner = {}
+        recovered.heartbeat_at = reconciled_at
+        recovered.last_progress_at = reconciled_at
+        return asdict(recovered), attempt_recovery
+
+    def _interrupted_recovery_claim_evidence(
+        self,
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        owner_pid: int,
+        canonical_task_key: str,
+        board_namespace: str,
+        started_at: str,
+    ) -> dict[str, Any]:
+        claim_path = self._implementation_task_claim_path(
+            task_id,
+            canonical_task_cid=canonical_task_cid,
+        )
+        claim = self._load_exact_json_object(claim_path)
+        if claim is None:
+            if claim_path.exists() or claim_path.is_symlink():
+                raise RuntimeError("interrupted recovery task claim is malformed")
+            return {"present": False, "path": str(claim_path)}
+        try:
+            claim_attempt = int(claim.get("attempt"))
+            claim_pid = int(claim.get("pid"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "interrupted recovery task claim identity is malformed"
+            ) from exc
+        if (
+            str(claim.get("kind") or "")
+            != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or claim_attempt != attempt
+            or claim_pid != owner_pid
+            or str(claim.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(claim.get("board_namespace") or "")
+            != board_namespace
+            or str(claim.get("started_at") or "") != started_at
+            or normalize_workspace_path(claim.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or normalize_workspace_path(claim.get("state_path") or "")
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            raise RuntimeError("interrupted recovery task claim identity differs")
+        return {
+            "present": True,
+            "path": str(claim_path),
+            "cid": content_identity(claim),
+            "payload": claim,
+        }
+
+    def _interrupted_recovery_released_claim_result(
+        self,
+        state: PortalTaskState,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Rebind a crash-completed claim release to its exact receipt."""
+
+        try:
+            basis = dict(receipt["basis"])
+            identity = dict(basis["identity"])
+            claim_before = dict(basis["task_claim_before"])
+            claim = dict(claim_before["payload"])
+            expected_lifecycle = dict(
+                dict(receipt["expected_after"])["lifecycle"]
+            )["payload"]
+            task_id = str(identity["task_id"])
+            canonical_task_cid = str(identity["canonical_task_cid"])
+            attempt = int(identity["attempt"])
+            claim_attempt = int(claim["attempt"])
+            lease_id = str(claim["lease_id"])
+            claim_path = Path(str(claim_before["path"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+        if (
+            claim_before.get("present") is not True
+            or asdict(state)
+            != dict(receipt["expected_after"])["state"]["payload"]
+            or content_identity(claim) != claim_before.get("cid")
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or claim_attempt != attempt
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
+            or claim_path
+            != self._implementation_task_claim_path(
+                task_id,
+                canonical_task_cid=canonical_task_cid,
+            )
+        ):
+            return None
+        release_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        try:
+            released = self._load_private_recovery_json_object(release_path)
+        except RuntimeError:
+            return None
+        if released is None:
+            return None
+        evidence = released.get("released_unfinished_attempt")
+        start = dict(basis["start_event"])["payload"]
+        expected_recovery_event = (
+            self._interrupted_state_recovered_event_payload(receipt)
+        )
+        try:
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+        except CursorReplayError:
+            return None
+        recovered_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt.get("operation_id")
+        ]
+        if (
+            len(recovered_events) != 1
+            or not isinstance(evidence, Mapping)
+            or recovered_events[0].get("event_id")
+            != evidence.get("event_id")
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                recovered_events[0],
+                event_type="implementation_state_recovered",
+                expected=expected_recovery_event,
+            )
+        ):
+            return None
+        recovered_event = recovered_events[0]
+        expected_evidence = {
+            "event_id": recovered_event["event_id"],
+            "stream_id": recovered_event["stream_id"],
+            "snapshot_id": recovered_event["snapshot_id"],
+            "sequence": recovered_event["sequence"],
+            "timestamp": recovered_event["timestamp"],
+            "start_event_id": start["event_id"],
+            "start_sequence": start["sequence"],
+            "started_at": start["timestamp"],
+            "claim_started_at": claim["started_at"],
+            "canonical_task_key": claim["canonical_task_key"],
+            "board_namespace": claim["board_namespace"],
+            "released_from": attempt,
+            "released_to": dict(receipt["expected_after"])[
+                "attempt_recovery"
+            ]["released_to"],
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+        }
+        if evidence != expected_evidence:
+            return None
+        release_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_task_claim_released"
+            and event.get("operation_id") == released.get("operation_id")
+        ]
+        if len(release_events) != 1:
+            return None
+        release_body = dict(released)
+        receipt_id = release_body.pop("receipt_id", None)
+        release_basis = dict(release_body)
+        operation_id = release_basis.pop("operation_id", None)
+        phase = release_basis.pop("phase", None)
+        prepared_at = release_basis.pop("prepared_at", None)
+        released_at = release_basis.pop("released_at", None)
+        expected_fields = {
+            "schema",
+            "operation",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "task_status",
+            "claim",
+            "worktree_lifecycle",
+            "task_source_identity",
+            "interrupted_recovery_operation_id",
+            "released_unfinished_attempt",
+        }
+        claim_proof = release_basis.get("claim")
+        lifecycle_proof = release_basis.get("worktree_lifecycle")
+        expected_claim_proof = {
+            "path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "lease_id": lease_id,
+            "owner_pid": claim["pid"],
+            "state_dir": normalize_workspace_path(
+                self.state_path.parent.resolve()
+            ),
+            "state_path": normalize_workspace_path(
+                self.state_path.resolve()
+            ),
+            "legacy_worktree_root_missing": not bool(
+                str(claim.get("worktree_root") or "")
+            ),
+        }
+        expected_lifecycle_proof = {
+            "record_id": expected_lifecycle["record_id"],
+            "lease_id": expected_lifecycle["lease_id"],
+            "fence": expected_lifecycle["fence"],
+            "state": expected_lifecycle["state"],
+            "workspace_path": expected_lifecycle["workspace_path"],
+            "terminal_reason": expected_lifecycle["terminal_reason"],
+        }
+        if (
+            set(release_basis) != expected_fields
+            or release_basis.get("schema")
+            != IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA
+            or release_basis.get("operation")
+            != "release_quiesced_implementation_task_claim"
+            or release_basis.get("task_id") != task_id
+            or release_basis.get("canonical_task_cid")
+            != canonical_task_cid
+            or release_basis.get("attempt") != attempt
+            or normalize_status(release_basis.get("task_status") or "")
+            != "todo"
+            or claim_proof != expected_claim_proof
+            or lifecycle_proof != expected_lifecycle_proof
+            or release_basis.get("task_source_identity")
+            != start.get("task_source_identity")
+            or release_basis.get("interrupted_recovery_operation_id")
+            != receipt.get("operation_id")
+            or release_basis.get("released_unfinished_attempt") != evidence
+            or phase != "released"
+            or not isinstance(prepared_at, str)
+            or not prepared_at
+            or not isinstance(released_at, str)
+            or not released_at
+            or operation_id != content_identity(release_basis)
+            or receipt_id != content_identity(release_body)
+        ):
+            return None
+        event_payload = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": release_basis[
+                "task_source_identity"
+            ],
+            "attempt": attempt,
+            "task_status": str(release_basis["task_status"]),
+            "claim_path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "claim_lease_id": lease_id,
+            "owner_pid": int(claim["pid"]),
+            "state_dir": str(claim_proof["state_dir"]),
+            "lifecycle_record_id": expected_lifecycle["record_id"],
+            "lifecycle_fence": expected_lifecycle["fence"],
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(release_path),
+            "released_unfinished_attempt": evidence,
+        }
+        if (
+            release_events[0].get("receipt_id") != receipt_id
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                release_events[0],
+                event_type="implementation_task_claim_released",
+                expected=event_payload,
+            )
+        ):
+            return None
+        return event_payload
+
+    @staticmethod
+    def _interrupted_recovery_event_has_exact_semantics(
+        event: Mapping[str, Any],
+        *,
+        event_type: str,
+        expected: Mapping[str, Any],
+    ) -> bool:
+        """Match the whole logical payload after its physical envelope."""
+
+        semantic_payload = {
+            key: value
+            for key, value in event.items()
+            if key
+            not in INTERRUPTED_IMPLEMENTATION_RECOVERY_EVENT_ENVELOPE_FIELDS
+        }
+        return bool(
+            event.get("type") == event_type
+            and semantic_payload == dict(expected)
+        )
+
+    @staticmethod
+    def _interrupted_recovery_lifecycle_index_payload(
+        lifecycle: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "schema": str(lifecycle["schema"]),
+            "workspace_path": str(lifecycle["workspace_path"]),
+            "record_id": str(lifecycle["record_id"]),
+            "task_id": str(lifecycle["task_id"]),
+            "canonical_task_cid": str(
+                lifecycle["canonical_task_cid"]
+            ),
+            "attempt": int(lifecycle["attempt"]),
+            "fence": int(lifecycle["fence"]),
+            "lease_id": str(lifecycle["lease_id"]),
+            "state": str(lifecycle["state"]),
+        }
+
+    def _build_interrupted_recovery_receipt(
+        self,
+        custody: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        predecessor = dict(custody["metadata"])
+        task_id = str(predecessor["task_id"])
+        canonical_task_cid = str(predecessor["canonical_task_cid"])
+        attempt = int(predecessor["attempt"])
+        owner_pid = int(predecessor["pid"])
+        canonical_task_key = str(
+            predecessor.get("canonical_task_key") or ""
+        )
+        board_namespace = str(predecessor.get("board_namespace") or "")
+        started_at = str(predecessor.get("started_at") or "")
+        raw_state = self._load_exact_json_object(self.state_path)
+        state = PortalTaskState.load(self.state_path)
+        if raw_state is None or raw_state != asdict(state):
+            raise RuntimeError("interrupted recovery state is not exact")
+        active_path = self._implementation_protected_active_snapshot_path()
+        marker = self._load_exact_json_object(active_path)
+        if marker is None:
+            raise RuntimeError("interrupted recovery marker is not exact")
+        expected_marker_fields = {
+            "schema",
+            "recorded_at",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "ephemeral_worktree",
+            "protected_paths",
+            "snapshot",
+        }
+        workspace = str(marker.get("workspace_path") or "")
+        branch = str(state.active_branch or "").removeprefix("refs/heads/")
+        projected_identity = state.task_identities.get(task_id, {})
+        if (
+            set(marker) != expected_marker_fields
+            or marker.get("schema")
+            != "implementation-protected-path-active-v1"
+            or marker.get("task_id") != task_id
+            or type(marker.get("attempt")) is not int
+            or marker.get("attempt") != attempt
+            or not workspace
+            or not branch
+            or state.implementation_in_progress is not True
+            or state.active_task_id != task_id
+            or not canonical_task_key
+            or not board_namespace
+            or not started_at
+            or state.active_task_key != canonical_task_key
+            or state.active_task_cid != canonical_task_cid
+            or state.active_attempt != attempt
+            or normalize_workspace_path(state.active_worktree_path)
+            != normalize_workspace_path(workspace)
+            or state.active_branch.removeprefix("refs/heads/") != branch
+            or state.last_implementation_task_id != task_id
+            or state.last_implementation_task_key != canonical_task_key
+            or state.last_implementation_task_cid != canonical_task_cid
+            or state.last_implementation_started_at != started_at
+            or normalize_workspace_path(state.last_implementation_worktree_path)
+            != normalize_workspace_path(workspace)
+            or state.last_implementation_branch.removeprefix("refs/heads/")
+            != branch
+            or not isinstance(projected_identity, Mapping)
+            or projected_identity.get("display_task_id") != task_id
+            or projected_identity.get("canonical_task_key")
+            != canonical_task_key
+            or projected_identity.get("canonical_task_cid")
+            != canonical_task_cid
+            or projected_identity.get("board_namespace") != board_namespace
+        ):
+            raise RuntimeError("interrupted recovery state/marker identity differs")
+        if not self._interrupted_recovery_path_is_exactly_absent(
+            self._implementation_protected_incident_path()
+        ):
+            raise RuntimeError("interrupted recovery incident is already latched")
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(workspace)
+        lifecycle = self.worktree_lifecycle.load_workspace(workspace)
+        raw_lifecycle = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index_path = (
+            self.worktree_lifecycle.task_index_path_for(
+                canonical_task_cid=canonical_task_cid,
+                task_id=task_id,
+                attempt=attempt,
+            )
+        )
+        raw_lifecycle_index = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        if (
+            lifecycle is None
+            or raw_lifecycle is None
+            or raw_lifecycle != lifecycle.to_dict()
+            or raw_lifecycle_index
+            != self._interrupted_recovery_lifecycle_index_payload(
+                raw_lifecycle
+            )
+            or lifecycle.record_id != lifecycle.compute_record_id()
+            or lifecycle.task_id != task_id
+            or lifecycle.canonical_task_cid != canonical_task_cid
+            or lifecycle.attempt != attempt
+            or normalize_workspace_path(lifecycle.workspace_path)
+            != normalize_workspace_path(workspace)
+            or lifecycle.branch.removeprefix("refs/heads/") != branch
+            or normalize_workspace_path(lifecycle.repo_root)
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(lifecycle.state_dir)
+            != normalize_workspace_path(self.state_path.parent.resolve())
+        ):
+            raise RuntimeError("interrupted recovery lifecycle identity differs")
+        claim = self._interrupted_recovery_claim_evidence(
+            task_id=task_id,
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            owner_pid=owner_pid,
+            canonical_task_key=canonical_task_key,
+            board_namespace=board_namespace,
+            started_at=started_at,
+        )
+
+        def exact_owner_birth(
+            payload: Any,
+            *,
+            noun: str,
+        ) -> ProcessBirthIdentity:
+            if not isinstance(payload, Mapping):
+                raise TypeError(
+                    f"interrupted recovery {noun} birth is malformed"
+                )
+            try:
+                birth = ProcessBirthIdentity.from_dict(payload)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"interrupted recovery {noun} birth is malformed"
+                ) from exc
+            if birth.pid != owner_pid or birth.start_time_ticks <= 0:
+                raise RuntimeError(
+                    f"interrupted recovery {noun} birth identity differs"
+                )
+            return birth
+
+        def same_owner_birth(
+            left: ProcessBirthIdentity,
+            right: ProcessBirthIdentity,
+        ) -> bool:
+            return bool(
+                left.pid == right.pid
+                and left.start_time_ticks == right.start_time_ticks
+                and left.boot_id == right.boot_id
+            )
+
+        lock_birth = (
+            exact_owner_birth(
+                predecessor["owner_process_birth"],
+                noun="predecessor lock owner",
+            )
+            if "owner_process_birth" in predecessor
+            else None
+        )
+        claim_payload = (
+            claim.get("payload")
+            if claim.get("present") is True
+            else None
+        )
+        claim_birth = (
+            exact_owner_birth(
+                claim_payload["owner_process_birth"],
+                noun="task claim owner",
+            )
+            if isinstance(claim_payload, Mapping)
+            and "owner_process_birth" in claim_payload
+            else None
+        )
+        if (
+            lock_birth is not None
+            and claim_birth is not None
+            and not same_owner_birth(lock_birth, claim_birth)
+        ):
+            raise RuntimeError(
+                "interrupted recovery lock/claim owner births differ"
+            )
+        expected_owner_birth = lock_birth or claim_birth
+        if lifecycle.owner.pid != owner_pid:
+            raise RuntimeError(
+                "interrupted recovery lifecycle owner pid differs"
+            )
+        if expected_owner_birth is not None and not same_owner_birth(
+            lifecycle.owner,
+            expected_owner_birth,
+        ):
+            raise RuntimeError(
+                "interrupted recovery lifecycle owner birth differs"
+            )
+        lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
+            state,
+            terminalize=False,
+        )
+        safe_terminal = bool(
+            lifecycle.is_terminal
+            and lifecycle.terminal_reason
+            in INFLIGHT_CONTROLLED_RECOVERY_TERMINAL_REASONS
+        )
+        if not safe_terminal and (
+            lifecycle_preflight.get("reason")
+            != "worktree_lifecycle_dead_owner_reclaimable"
+            or lifecycle_preflight.get("owner_liveness")
+            != OwnerLiveness.DEAD.value
+        ):
+            raise RuntimeError("interrupted recovery lifecycle owner is not dead")
+        try:
+            strict_events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+        except CursorReplayError as exc:
+            raise RuntimeError(
+                "interrupted recovery event history is unverifiable"
+            ) from exc
+        starts = []
+        for event in strict_events:
+            raw_attempt = event.get("attempt")
+            if isinstance(raw_attempt, bool):
+                continue
+            try:
+                event_attempt = int(raw_attempt or 0)
+            except (TypeError, ValueError):
+                continue
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("task_id") or "") == task_id
+                and event_attempt == attempt
+            ):
+                starts.append(event)
+        if len(starts) != 1:
+            raise RuntimeError("interrupted recovery start event is not unique")
+        start = starts[0]
+        start_sequence = start.get("sequence")
+        if (
+            not isinstance(start_sequence, int)
+            or isinstance(start_sequence, bool)
+            or start_sequence <= 0
+        ):
+            raise RuntimeError(
+                "interrupted recovery start sequence is invalid"
+            )
+        conflicting_later = []
+        for event in strict_events:
+            event_sequence = event.get("sequence")
+            raw_attempt = event.get("attempt")
+            if (
+                not isinstance(event_sequence, int)
+                or isinstance(event_sequence, bool)
+                or event_sequence <= start_sequence
+                or isinstance(raw_attempt, bool)
+            ):
+                continue
+            try:
+                event_attempt = int(raw_attempt or 0)
+            except (TypeError, ValueError):
+                continue
+            if (
+                str(event.get("task_id") or "") == task_id
+                and event_attempt == attempt
+                and event.get("type")
+                in {
+                    "implementation_started",
+                    "implementation_finished",
+                    "implementation_provider_exhausted",
+                    "implementation_shutdown_recovery_closed",
+                    "implementation_state_recovered",
+                    "implementation_terminated",
+                    "implementation_timeout",
+                }
+            ):
+                conflicting_later.append(event)
+        if conflicting_later:
+            raise RuntimeError(
+                "interrupted recovery attempt already has a later outcome"
+            )
+        disposition = self._implementation_inflight_disposition(start)
+        if (
+            disposition.get("disposition")
+            != "controlled_restart_recovery"
+            or self._implementation_runner_process_active(start)
+        ):
+            raise RuntimeError("interrupted recovery worker is not quiescent")
+        if (
+            str(start.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or str(start.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(start.get("board_namespace") or "")
+            != board_namespace
+            or normalize_workspace_path(start.get("worktree_path") or "")
+            != normalize_workspace_path(workspace)
+            or str(start.get("branch") or "").removeprefix("refs/heads/")
+            != branch
+        ):
+            raise RuntimeError("interrupted recovery start identity differs")
+        recovery_clock = time.time()
+        reconciled_at = datetime.fromtimestamp(
+            recovery_clock,
+            tz=timezone.utc,
+        ).isoformat()
+        state_after, attempt_recovery = self._recovery_state_payload(
+            state,
+            reconciled_at=reconciled_at,
+        )
+        basis = {
+            "predecessor_attempt_lock": dict(custody),
+            "identity": {
+                "repo_root": str(self.repo_root.resolve()),
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": attempt,
+                "workspace_path": str(Path(workspace).resolve()),
+                "branch": branch,
+            },
+            "state_before": {
+                "cid": interrupted_recovery_content_identity(raw_state),
+                "payload": raw_state,
+            },
+            "marker_before": {
+                "cid": interrupted_recovery_content_identity(marker),
+                "payload": marker,
+            },
+            "lifecycle_before": {
+                "cid": interrupted_recovery_content_identity(raw_lifecycle),
+                "payload": raw_lifecycle,
+            },
+            "lifecycle_task_index_before": {
+                "path": str(lifecycle_index_path),
+                "cid": interrupted_recovery_content_identity(
+                    raw_lifecycle_index
+                ),
+                "payload": raw_lifecycle_index,
+            },
+            "task_claim_before": claim,
+            "start_event": {
+                "cid": interrupted_recovery_content_identity(start),
+                "payload": start,
+            },
+            "recovery_clock": recovery_clock,
+            "reconciled_at": reconciled_at,
+        }
+        operation_id = interrupted_recovery_content_identity(basis)
+        if lifecycle.is_terminal:
+            lifecycle_after = raw_lifecycle
+        else:
+            lifecycle_after = replace(
+                lifecycle,
+                state=WorkspaceLifecycleState.TERMINAL,
+                owner=lifecycle.owner,
+                lease_id=(
+                    "interrupted-recovery-"
+                    + hashlib.sha256(operation_id.encode("utf-8")).hexdigest()
+                ),
+                fence=lifecycle.fence + 1,
+                updated_at=recovery_clock,
+                expires_at=recovery_clock,
+                terminal_reason="controlled_shutdown_quiesced_owner",
+            ).to_dict()
+        lifecycle_index_after = (
+            self._interrupted_recovery_lifecycle_index_payload(
+                lifecycle_after
+            )
+        )
+        expected_after = {
+            "marker_tombstone_path": str(
+                self._interrupted_implementation_marker_tombstone_path(
+                    operation_id
+                )
+            ),
+            "marker_cid": interrupted_recovery_content_identity(marker),
+            "lifecycle": {
+                "cid": interrupted_recovery_content_identity(lifecycle_after),
+                "payload": lifecycle_after,
+            },
+            "lifecycle_task_index": {
+                "path": str(lifecycle_index_path),
+                "cid": interrupted_recovery_content_identity(
+                    lifecycle_index_after
+                ),
+                "payload": lifecycle_index_after,
+            },
+            "state": {
+                "cid": interrupted_recovery_content_identity(state_after),
+                "payload": state_after,
+            },
+            "attempt_recovery": attempt_recovery,
+        }
+        body = {
+            "schema": INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+            "phase": "prepared",
+            "operation_id": operation_id,
+            "basis": basis,
+            "expected_after": expected_after,
+            "prepared_at": reconciled_at,
+        }
+        receipt = {
+            **body,
+            "receipt_id": interrupted_recovery_content_identity(body),
+        }
+        self._durable_private_json(
+            self._interrupted_implementation_recovery_receipt_path(),
+            receipt,
+        )
+        if self._load_private_interrupted_recovery_receipt() != receipt:
+            raise RuntimeError("interrupted recovery receipt publication changed")
+        return receipt
+
+    def _validate_interrupted_recovery_intermediate(
+        self,
+        receipt: Mapping[str, Any],
+        custody: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if receipt.get("phase") != "prepared":
+            raise RuntimeError("interrupted recovery is not prepared")
+        basis = dict(receipt["basis"])
+        expected = dict(receipt["expected_after"])
+        if basis.get("predecessor_attempt_lock") != dict(custody):
+            raise RuntimeError("interrupted recovery predecessor custody changed")
+        identity = basis.get("identity")
+        if not isinstance(identity, Mapping):
+            raise RuntimeError("interrupted recovery identity is malformed")
+        if (
+            normalize_workspace_path(identity.get("repo_root") or "")
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(identity.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or normalize_workspace_path(identity.get("state_path") or "")
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            raise RuntimeError("interrupted recovery lane identity changed")
+        marker_before = dict(basis["marker_before"])
+        active_path = self._implementation_protected_active_snapshot_path()
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        active = self._load_exact_json_object(active_path)
+        tombstone = self._load_exact_json_object(tombstone_path)
+        marker_state = ""
+        if (
+            active == marker_before.get("payload")
+            and tombstone is None
+            and self._interrupted_recovery_path_is_exactly_absent(
+                tombstone_path
+            )
+        ):
+            marker_state = "before"
+        elif (
+            active is None
+            and self._interrupted_recovery_path_is_exactly_absent(
+                active_path
+            )
+            and tombstone == marker_before.get("payload")
+        ):
+            marker_state = "retired"
+        else:
+            raise RuntimeError("interrupted recovery marker state diverged")
+        state_current = self._load_exact_json_object(self.state_path)
+        state_before = dict(basis["state_before"])["payload"]
+        state_after = dict(expected["state"])["payload"]
+        if state_current == state_before:
+            state_phase = "before"
+        elif state_current == state_after:
+            state_phase = "after"
+        else:
+            raise RuntimeError("interrupted recovery task state diverged")
+        lifecycle_before = dict(basis["lifecycle_before"])["payload"]
+        lifecycle_after = dict(expected["lifecycle"])["payload"]
+        lifecycle_index_before = dict(
+            basis["lifecycle_task_index_before"]
+        )
+        lifecycle_index_after = dict(
+            expected["lifecycle_task_index"]
+        )
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+            str(identity["workspace_path"])
+        )
+        lifecycle_index_path = self.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=str(identity["canonical_task_cid"]),
+            task_id=str(identity["task_id"]),
+            attempt=int(identity["attempt"]),
+        )
+        if (
+            Path(str(lifecycle_index_before.get("path") or ""))
+            != lifecycle_index_path
+            or Path(str(lifecycle_index_after.get("path") or ""))
+            != lifecycle_index_path
+            or lifecycle_index_before.get("cid")
+            != interrupted_recovery_content_identity(
+                lifecycle_index_before.get("payload")
+            )
+            or lifecycle_index_after.get("cid")
+            != interrupted_recovery_content_identity(
+                lifecycle_index_after.get("payload")
+            )
+        ):
+            raise RuntimeError(
+                "interrupted recovery lifecycle index binding changed"
+            )
+        lifecycle_current = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index_current = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        if (
+            lifecycle_current == lifecycle_after
+            and lifecycle_index_current
+            == lifecycle_index_after.get("payload")
+        ):
+            lifecycle_phase = "after"
+        elif (
+            lifecycle_current == lifecycle_after
+            and lifecycle_index_current
+            == lifecycle_index_before.get("payload")
+        ):
+            lifecycle_phase = "record_after"
+        elif (
+            lifecycle_current == lifecycle_before
+            and lifecycle_index_current
+            == lifecycle_index_before.get("payload")
+        ):
+            lifecycle_phase = "before"
+        else:
+            raise RuntimeError("interrupted recovery lifecycle diverged")
+        claim_before = dict(basis["task_claim_before"])
+        claim_path = Path(str(claim_before["path"]))
+        claim_current = self._load_exact_json_object(claim_path)
+        if claim_before.get("present") is True:
+            if claim_current == claim_before.get("payload"):
+                claim_phase = "before"
+            elif (
+                claim_current is None
+                and self._interrupted_recovery_path_is_exactly_absent(
+                    claim_path
+                )
+            ):
+                claim_phase = "released"
+            else:
+                raise RuntimeError("interrupted recovery task claim diverged")
+        else:
+            if claim_current is not None or not (
+                self._interrupted_recovery_path_is_exactly_absent(
+                    claim_path
+                )
+            ):
+                raise RuntimeError("interrupted recovery task claim appeared")
+            claim_phase = "before"
+        close_events = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == receipt.get("operation_id")
+        ]
+        if len(close_events) > 1:
+            raise RuntimeError("interrupted recovery close event is duplicated")
+        close_phase = "after" if close_events else "before"
+        allowed = {
+            ("before", "before", "before", "before", "before"),
+            ("before", "after", "before", "before", "before"),
+            ("retired", "before", "before", "before", "before"),
+            ("retired", "record_after", "before", "before", "before"),
+            ("retired", "after", "before", "before", "before"),
+            ("retired", "after", "before", "before", "after"),
+            ("retired", "after", "after", "before", "after"),
+            ("retired", "after", "after", "released", "after"),
+        }
+        phases = (
+            marker_state,
+            lifecycle_phase,
+            state_phase,
+            claim_phase,
+            close_phase,
+        )
+        if phases not in allowed:
+            raise RuntimeError(
+                "interrupted recovery artifact phases are not monotonic: "
+                + repr(phases)
+            )
+        return {
+            "marker": marker_state,
+            "lifecycle": lifecycle_phase,
+            "state": state_phase,
+            "claim": claim_phase,
+            "close_event": close_phase,
+        }
+
+    def _retire_interrupted_recovery_marker(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        task_id: str,
+        attempt: int,
+        reason: str,
+    ) -> bool:
+        basis = dict(receipt["basis"])
+        expected = dict(receipt["expected_after"])
+        active_path = self._implementation_protected_active_snapshot_path()
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        before = dict(basis["marker_before"])["payload"]
+        if (
+            task_id != dict(basis["identity"])["task_id"]
+            or attempt != dict(basis["identity"])["attempt"]
+            or self._load_exact_json_object(active_path) != before
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                tombstone_path
+            )
+        ):
+            return False
+        self._rename_without_replace(active_path, tombstone_path)
+        if (
+            not self._interrupted_recovery_path_is_exactly_absent(
+                active_path
+            )
+            or self._load_exact_json_object(tombstone_path) != before
+        ):
+            return False
+        self._record_event(
+            "implementation_protected_path_snapshot_cleared",
+            {
+                "task_id": task_id,
+                "attempt": attempt,
+                "reason": reason,
+                "recovery_operation_id": receipt["operation_id"],
+                "tombstone_path": str(tombstone_path),
+            },
+        )
+        return True
+
+    def _ensure_interrupted_recovery_close_event(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        operation_id = str(receipt["operation_id"])
+        expected = self._interrupted_recovery_close_event_payload(receipt)
+        matches = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == operation_id
+        ]
+        if not matches:
+            self._record_event(
+                "implementation_shutdown_recovery_closed",
+                expected,
+            )
+            matches = [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type")
+                == "implementation_shutdown_recovery_closed"
+                and event.get("operation_id") == operation_id
+            ]
+        if len(matches) != 1 or not (
+            self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_shutdown_recovery_closed",
+                expected=expected,
+            )
+        ):
+            raise RuntimeError("interrupted recovery close event changed")
+        return matches[0]
+
+    @staticmethod
+    def _interrupted_recovery_close_event_payload(
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        basis = dict(receipt["basis"])
+        identity = basis["identity"]
+        start = dict(basis["start_event"])["payload"]
+        return {
+            "operation_id": str(receipt["operation_id"]),
+            "task_id": identity["task_id"],
+            "canonical_task_key": start.get("canonical_task_key"),
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": start.get("board_namespace"),
+            "task_source_identity": start.get("task_source_identity"),
+            "attempt": identity["attempt"],
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+            "predecessor_lock_sha256": dict(
+                dict(receipt["basis"])["predecessor_attempt_lock"]
+            )["sha256"],
+        }
+
+    def _ensure_interrupted_state_recovered_event(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected = self._interrupted_state_recovered_event_payload(receipt)
+        matches = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt["operation_id"]
+        ]
+        if not matches:
+            self._record_event("implementation_state_recovered", expected)
+            matches = [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type") == "implementation_state_recovered"
+                and event.get("interrupted_recovery_operation_id")
+                == receipt["operation_id"]
+            ]
+        if len(matches) != 1 or not (
+            self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_state_recovered",
+                expected=expected,
+            )
+        ):
+            raise RuntimeError("interrupted state recovery event changed")
+        return matches[0]
+
+    @staticmethod
+    def _interrupted_state_recovered_event_payload(
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        basis = dict(receipt["basis"])
+        identity = dict(basis["identity"])
+        start = dict(basis["start_event"])["payload"]
+        predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
+        return {
+            "task_id": identity["task_id"],
+            "canonical_task_key": str(
+                predecessor.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": str(
+                predecessor.get("board_namespace") or ""
+            ),
+            "task_source_identity": start.get("task_source_identity"),
+            "attempt": identity["attempt"],
+            "reason": "inflight_process_missing",
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+            "attempt_recovery": dict(receipt["expected_after"])[
+                "attempt_recovery"
+            ],
+            "finished_attempt": False,
+            "interrupted_recovery_operation_id": receipt["operation_id"],
+        }
+
+    def _complete_interrupted_recovery_receipt(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        task_claim_reconciliation: Mapping[str, Any],
+        close_event: Mapping[str, Any],
+        state_recovered_event: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected = dict(receipt["expected_after"])
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        tombstone = self._load_exact_json_object(tombstone_path)
+        identity = dict(receipt["basis"])["identity"]
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+            str(identity["workspace_path"])
+        )
+        lifecycle_index_path = self.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=str(identity["canonical_task_cid"]),
+            task_id=str(identity["task_id"]),
+            attempt=int(identity["attempt"]),
+        )
+        lifecycle = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        state = self._load_exact_json_object(self.state_path)
+        if (
+            tombstone is None
+            or interrupted_recovery_content_identity(tombstone)
+            != expected["marker_cid"]
+            or lifecycle != dict(expected["lifecycle"])["payload"]
+            or lifecycle_index
+            != dict(expected["lifecycle_task_index"])["payload"]
+            or state != dict(expected["state"])["payload"]
+            or task_claim_reconciliation.get("blocked") is True
+            or task_claim_reconciliation.get("reason")
+            not in {"quiesced_task_claim_released", "no_task_claim"}
+        ):
+            raise RuntimeError("interrupted recovery final proof is incomplete")
+        final_proof = {
+            "marker_tombstone_path": str(tombstone_path),
+            "marker_cid": interrupted_recovery_content_identity(tombstone),
+            "lifecycle_path": str(lifecycle_path),
+            "lifecycle_cid": interrupted_recovery_content_identity(lifecycle),
+            "lifecycle_index_path": str(lifecycle_index_path),
+            "lifecycle_index_cid": interrupted_recovery_content_identity(
+                lifecycle_index
+            ),
+            "state_path": str(self.state_path),
+            "state_cid": interrupted_recovery_content_identity(state),
+            "task_claim_reason": str(
+                task_claim_reconciliation.get("reason") or ""
+            ),
+            "task_claim_receipt_id": str(
+                task_claim_reconciliation.get("receipt_id") or ""
+            ),
+            "close_event_id": str(close_event.get("event_id") or ""),
+            "close_event_cid": interrupted_recovery_content_identity(
+                close_event
+            ),
+            "state_recovered_event_id": str(
+                state_recovered_event.get("event_id") or ""
+            ),
+            "state_recovered_event_cid": (
+                interrupted_recovery_content_identity(
+                    state_recovered_event
+                )
+            ),
+        }
+        completion = {
+            "final_proof": final_proof,
+            "final_proof_id": interrupted_recovery_content_identity(
+                final_proof
+            ),
+        }
+        body = {
+            "schema": INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+            "phase": "completed",
+            "operation_id": receipt["operation_id"],
+            "basis": receipt["basis"],
+            "expected_after": receipt["expected_after"],
+            "prepared_at": receipt["prepared_at"],
+            "completed_at": utc_now(),
+            "completion": completion,
+        }
+        completed = {
+            **body,
+            "receipt_id": interrupted_recovery_content_identity(body),
+        }
+        self._durable_private_json(
+            self._interrupted_implementation_recovery_receipt_path(),
+            completed,
+        )
+        if self._load_private_interrupted_recovery_receipt() != completed:
+            raise RuntimeError("interrupted recovery completion changed")
+        return completed
+
+    def _completed_interrupted_recovery_is_current(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        try:
+            basis = dict(receipt["basis"])
+            expected = dict(receipt["expected_after"])
+            identity = dict(basis["identity"])
+            completion = dict(receipt["completion"])
+            final_proof = dict(completion["final_proof"])
+            tombstone_path = Path(str(expected["marker_tombstone_path"]))
+            lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+                str(identity["workspace_path"])
+            )
+            lifecycle_index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=str(
+                        identity["canonical_task_cid"]
+                    ),
+                    task_id=str(identity["task_id"]),
+                    attempt=int(identity["attempt"]),
+                )
+            )
+            state = self._load_exact_json_object(self.state_path)
+            lifecycle = self._load_exact_json_object(lifecycle_path)
+            lifecycle_index = self._load_exact_json_object(
+                lifecycle_index_path
+            )
+            marker = self._load_exact_json_object(tombstone_path)
+            claim_before = dict(basis["task_claim_before"])
+            claim_path = Path(str(claim_before["path"]))
+            start_before = dict(basis["start_event"])
+            start_payload = dict(start_before["payload"])
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            claim_release = (
+                self._interrupted_recovery_released_claim_result(
+                    PortalTaskState(**state),
+                    receipt,
+                )
+                if claim_before.get("present") is True
+                else None
+            )
+        except (CursorReplayError, KeyError, OSError, TypeError, ValueError):
+            return False
+        close_expected = self._interrupted_recovery_close_event_payload(
+            receipt
+        )
+        recovered_expected = (
+            self._interrupted_state_recovered_event_payload(receipt)
+        )
+        starts = [
+            event
+            for event in events
+            if event == start_payload
+            and event.get("event_id") == start_payload.get("event_id")
+            and interrupted_recovery_content_identity(event)
+            == start_before.get("cid")
+        ]
+        close_for_operation = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == receipt.get("operation_id")
+        ]
+        recovered_for_operation = [
+            event
+            for event in events
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt.get("operation_id")
+        ]
+        close_proof_matches = bool(
+            len(close_for_operation) == 1
+            and close_for_operation[0].get("event_id")
+            == final_proof.get("close_event_id")
+            and interrupted_recovery_content_identity(
+                close_for_operation[0]
+            )
+            == final_proof.get("close_event_cid")
+            and self._interrupted_recovery_event_has_exact_semantics(
+                close_for_operation[0],
+                event_type="implementation_shutdown_recovery_closed",
+                expected=close_expected,
+            )
+        )
+        recovered_proof_matches = bool(
+            len(recovered_for_operation) == 1
+            and recovered_for_operation[0].get("event_id")
+            == final_proof.get("state_recovered_event_id")
+            and interrupted_recovery_content_identity(
+                recovered_for_operation[0]
+            )
+            == final_proof.get("state_recovered_event_cid")
+            and self._interrupted_recovery_event_has_exact_semantics(
+                recovered_for_operation[0],
+                event_type="implementation_state_recovered",
+                expected=recovered_expected,
+            )
+        )
+        expected_claim_reason = (
+            "quiesced_task_claim_released"
+            if claim_before.get("present") is True
+            else "no_task_claim"
+        )
+        return bool(
+            self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_active_snapshot_path()
+            )
+            and self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_incident_path()
+            )
+            and self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
+            and len(starts) == 1
+            and str(tombstone_path)
+            == final_proof.get("marker_tombstone_path")
+            and marker == dict(basis["marker_before"])["payload"]
+            and interrupted_recovery_content_identity(marker)
+            == expected["marker_cid"]
+            == final_proof.get("marker_cid")
+            and lifecycle == dict(expected["lifecycle"])["payload"]
+            and str(lifecycle_path) == final_proof.get("lifecycle_path")
+            and interrupted_recovery_content_identity(lifecycle)
+            == dict(expected["lifecycle"])["cid"]
+            == final_proof.get("lifecycle_cid")
+            and lifecycle_index
+            == dict(expected["lifecycle_task_index"])["payload"]
+            and str(lifecycle_index_path)
+            == final_proof.get("lifecycle_index_path")
+            and interrupted_recovery_content_identity(lifecycle_index)
+            == dict(expected["lifecycle_task_index"])["cid"]
+            == final_proof.get("lifecycle_index_cid")
+            and state == dict(expected["state"])["payload"]
+            and str(self.state_path) == final_proof.get("state_path")
+            and interrupted_recovery_content_identity(state)
+            == dict(expected["state"])["cid"]
+            == final_proof.get("state_cid")
+            and close_proof_matches
+            and recovered_proof_matches
+            and final_proof.get("task_claim_reason")
+            == expected_claim_reason
+            and (
+                (
+                    isinstance(claim_release, Mapping)
+                    and final_proof.get("task_claim_receipt_id")
+                    == claim_release.get("receipt_id")
+                )
+                if claim_before.get("present") is True
+                else not final_proof.get("task_claim_receipt_id")
+            )
+            and completion.get("final_proof_id")
+            == interrupted_recovery_content_identity(final_proof)
+        )
+
+    def _interrupted_recovery_checkpoint(self, _phase: str) -> None:
+        """Test seam for injected process loss between durable phases."""
+
+    def reconcile_quiesced_active_attempt(
+        self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Journal and resume one exactly bound dead implementation attempt."""
+
+        # Compatibility path for historical, non-journaled supervisor state.
+        # The strict restart protocol is selected only when acquisition has
+        # captured an exact private predecessor lock. Direct callers and
+        # legacy markers retain the established fail-closed reconciliation
+        # semantics and result reasons.
+        if not isinstance(preacquired_implementation_lock, Mapping) or not (
+            preacquired_implementation_lock.get("predecessor_attempt_lock")
+        ):
+            return self._legacy_reconcile_quiesced_active_attempt(
+                preacquired_implementation_lock=(
+                    preacquired_implementation_lock
+                ),
+            )
+
+        lock_path = self._implementation_lock_path()
+        lock = self._load_exact_json_object(lock_path)
+        expected_lock = dict(preacquired_implementation_lock or {})
+        try:
+            expected_pid = int(expected_lock.get("pid") or 0)
+        except (TypeError, ValueError):
+            expected_pid = 0
+        if (
+            not expected_lock
+            or lock != expected_lock
+            or expected_lock.get("lease_role") != "supervisor_maintenance"
+            or not str(expected_lock.get("lease_id") or "")
+            or expected_pid != os.getpid()
+            or not self._implementation_lock_owner_is_active(expected_lock)
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_mismatch",
+                "lock_path": str(lock_path),
+            }
+        custody = self._validated_interrupted_recovery_custody(
+            expected_lock
+        )
+        if custody is None:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "predecessor_implementation_lock_custody_invalid",
+                "lock_path": str(lock_path),
+            }
+        receipt = self._load_private_interrupted_recovery_receipt()
+        if receipt is None:
+            receipt = self._build_interrupted_recovery_receipt(custody)
+        elif dict(receipt["basis"]).get(
+            "predecessor_attempt_lock"
+        ) != dict(custody):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_recovery_predecessor_custody_changed",
+                "lock_path": str(lock_path),
+            }
+        if receipt.get("phase") == "completed":
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "quiesced_active_attempt_already_reconciled",
+                "operation_id": str(receipt.get("operation_id") or ""),
+                "receipt_id": str(receipt.get("receipt_id") or ""),
+                "receipt_path": str(
+                    self._interrupted_implementation_recovery_receipt_path()
+                ),
+                "completed_receipt_pending_archive": True,
+            }
+
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        basis = dict(receipt["basis"])
+        expected_after = dict(receipt["expected_after"])
+        identity = dict(basis["identity"])
+        start_event = dict(basis["start_event"])["payload"]
+        predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
+        if (
+            self._interrupted_recovery_predecessor_liveness(predecessor)
+            != "dead"
+            or self._implementation_runner_process_active(start_event)
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_incident_path()
+            )
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_implementation_owner_not_quiescent",
+                "operation_id": receipt["operation_id"],
+            }
+
+        if phases["marker"] == "before":
+            protected_path_reconciliation = (
+                self._reconcile_implementation_protected_path_fence(
+                    protected_path_recovery_io={
+                        "retire_active_snapshot": (
+                            lambda **kwargs: (
+                                self._retire_interrupted_recovery_marker(
+                                    receipt,
+                                    **kwargs,
+                                )
+                            )
+                        )
+                    },
+                )
+            )
+            if protected_path_reconciliation.get("blocked", False):
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "protected_path_reconciliation_blocked",
+                    "protected_path_reconciliation": (
+                        protected_path_reconciliation
+                    ),
+                    "operation_id": receipt["operation_id"],
+                }
+            self._interrupted_recovery_checkpoint("marker_retired")
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+        else:
+            protected_path_reconciliation = {
+                "blocked": False,
+                "reason": "crash_reconciliation_marker_already_retired",
+            }
+
+        if phases["lifecycle"] == "before":
+            lifecycle_before = dict(basis["lifecycle_before"])["payload"]
+            expected_lifecycle = dict(expected_after["lifecycle"])[
+                "payload"
+            ]
+            if lifecycle_before != expected_lifecycle:
+                terminal = (
+                    self.worktree_lifecycle
+                    .reclaim_dead_owner_for_controlled_restart(
+                        identity["workspace_path"],
+                        expected_state_dir=identity["state_dir"],
+                        reclaimer_lease_id=str(
+                            expected_lifecycle["lease_id"]
+                        ),
+                        reclaimer=ProcessBirthIdentity.from_dict(
+                            lifecycle_before["owner"]
+                        ),
+                        reason="controlled_shutdown_quiesced_owner",
+                        now=float(basis["recovery_clock"]),
+                    )
+                )
+                if terminal is None or terminal.to_dict() != expected_lifecycle:
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "worktree_lifecycle_reconciliation_blocked",
+                        "operation_id": receipt["operation_id"],
+                    }
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+
+        if phases["lifecycle"] == "record_after":
+            lifecycle_index_before = dict(
+                basis["lifecycle_task_index_before"]
+            )
+            lifecycle_index_after = dict(
+                expected_after["lifecycle_task_index"]
+            )
+            lifecycle_index_path = Path(
+                str(lifecycle_index_after["path"])
+            )
+            with serialized_lock_update(lifecycle_index_path):
+                if self._load_exact_json_object(
+                    lifecycle_index_path
+                ) != lifecycle_index_before["payload"]:
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": (
+                            "worktree_lifecycle_index_reconciliation_blocked"
+                        ),
+                        "operation_id": receipt["operation_id"],
+                    }
+                write_json_atomic(
+                    lifecycle_index_path,
+                    lifecycle_index_after["payload"],
+                )
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+
+        close_event = self._ensure_interrupted_recovery_close_event(receipt)
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        if phases["state"] == "before":
+            write_json_atomic(
+                self.state_path,
+                dict(expected_after["state"])["payload"],
+            )
+            if self._load_exact_json_object(self.state_path) != dict(
+                expected_after["state"]
+            )["payload"]:
+                raise RuntimeError("interrupted recovery state CAS changed")
+            self._interrupted_recovery_checkpoint("state_cleared")
+        state_recovered_event = (
+            self._ensure_interrupted_state_recovered_event(receipt)
+        )
+        state = PortalTaskState.load(self.state_path)
+        task_claim_reconciliation = (
+            self._reconcile_quiesced_implementation_task_claim(
+                state,
+                interrupted_recovery_receipt=receipt,
+            )
+        )
+        if task_claim_reconciliation.get("blocked", False):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "task_claim_reconciliation_blocked",
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "operation_id": receipt["operation_id"],
+            }
+        self._interrupted_recovery_checkpoint("claim_released")
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        completed_receipt = self._complete_interrupted_recovery_receipt(
+            receipt,
+            task_claim_reconciliation=task_claim_reconciliation,
+            close_event=close_event,
+            state_recovered_event=state_recovered_event,
+        )
+        self._interrupted_recovery_checkpoint("completion_published")
+        if self._load_exact_json_object(lock_path) != expected_lock:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_changed",
+                "operation_id": receipt["operation_id"],
+            }
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_active_attempt_reconciled",
+            "operation_id": receipt["operation_id"],
+            "receipt_id": completed_receipt["receipt_id"],
+            "receipt_path": str(
+                self._interrupted_implementation_recovery_receipt_path()
+            ),
+            "completed_receipt_pending_archive": True,
+            "task_id": identity["task_id"],
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "attempt": identity["attempt"],
+            "attempt_recovery": expected_after["attempt_recovery"],
+            "task_claim_reconciliation": task_claim_reconciliation,
+            "protected_path_reconciliation": protected_path_reconciliation,
+            "worktree_lifecycle_reconciliation": {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "worktree_lifecycle_dead_owner_terminalized",
+                "record_id": dict(expected_after["lifecycle"])["payload"][
+                    "record_id"
+                ],
+            },
+            "recovery_phases": phases,
+            "stale_lock_cleared": False,
+        }
+        self._record_event("implementation_shutdown_reconciled", result)
+        return result
+
+    def _legacy_reconcile_quiesced_active_attempt(
+        self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
         Supervisor shutdown can terminate the daemon between provider exit and
@@ -13681,7 +16792,33 @@ class PortalImplementationDaemon:
                 result,
             )
             return result
-        if lock is not None and self._implementation_lock_owner_is_active(lock):
+        borrowed_maintenance_lock = preacquired_implementation_lock is not None
+        if borrowed_maintenance_lock:
+            expected_lock = dict(preacquired_implementation_lock or {})
+            try:
+                expected_pid = int(expected_lock.get("pid") or 0)
+            except (TypeError, ValueError):
+                expected_pid = 0
+            if (
+                lock != expected_lock
+                or expected_lock.get("lease_role") != "supervisor_maintenance"
+                or not str(expected_lock.get("lease_id") or "")
+                or expected_pid != os.getpid()
+                or lock is None
+                or not self._implementation_lock_owner_is_active(lock)
+            ):
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "preacquired_implementation_lock_mismatch",
+                    "lock_path": str(lock_path),
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
+        elif lock is not None and self._implementation_lock_owner_is_active(lock):
             result = {
                 "reconciled": False,
                 "blocked": True,
@@ -13809,12 +16946,38 @@ class PortalImplementationDaemon:
             return result
 
         stale_lock_cleared = False
-        if lock_path.exists():
+        if lock_path.exists() and not borrowed_maintenance_lock:
             stale_lock_cleared = self._clear_stale_lock(
                 lock_path,
                 lock_kind="implementation",
                 metadata=lock,
             )
+
+        if borrowed_maintenance_lock and load_json_dict(lock_path) != dict(
+            preacquired_implementation_lock or {}
+        ):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_changed",
+                "lock_path": str(lock_path),
+                "reconciled_at": reconciled_at,
+                "task_id": task_id,
+                "attempt": attempt,
+                "attempt_recovery": attempt_recovery,
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
 
         result = {
             "reconciled": True,
@@ -20815,32 +23978,40 @@ class PortalImplementationDaemon:
                 protected_checkout_recovery.get("reason")
                 or "protected_checkout_recovery_required"
             )
-            implementation_result = (
-                self._external_protected_recovery_deferral(
-                    protected_checkout_recovery
-                )
-            )
-            if implementation_result is None:
-                implementation_result = {
-                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
-                    "deferred": True,
-                    "retryable": True,
-                    "attempt_consumed": False,
-                    "failure_kind": "lifecycle_setup",
-                    "provider_dispatched": False,
-                    "provider_call_allowed": False,
-                    "reason": blocked_reason,
-                }
+            if (
+                self.manual_completion_authority_revalidation_only
+                or blocked_reason == "protected_checkout_recovery_forbidden"
+            ):
+                # Revalidation-only must not replay a retained lease, and a
+                # forbidden recovery is not a retryable Portal deferral.
+                implementation_result = None
             else:
-                # Keep the MAIN portal-retry classifier while preserving the
-                # closed verified-live reason and backoff.
-                implementation_result = {
-                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
-                    "retryable": True,
-                    "failure_kind": "lifecycle_setup",
-                    "provider_call_allowed": False,
-                    **implementation_result,
-                }
+                implementation_result = (
+                    self._external_protected_recovery_deferral(
+                        protected_checkout_recovery
+                    )
+                )
+                if implementation_result is None:
+                    implementation_result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "deferred": True,
+                        "retryable": True,
+                        "attempt_consumed": False,
+                        "failure_kind": "lifecycle_setup",
+                        "provider_dispatched": False,
+                        "provider_call_allowed": False,
+                        "reason": blocked_reason,
+                    }
+                else:
+                    # Keep the MAIN portal-retry classifier while preserving
+                    # the closed verified-live reason and backoff.
+                    implementation_result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "retryable": True,
+                        "failure_kind": "lifecycle_setup",
+                        "provider_call_allowed": False,
+                        **implementation_result,
+                    }
             result = {
                 "blocked": True,
                 "reason": blocked_reason,
@@ -23237,8 +26408,10 @@ class PortalImplementationDaemon:
             try:
                 script_runner = bool(
                     len(command_items) >= 2
-                    and Path(command_items[1]).expanduser().resolve(strict=True)
-                    == _TRUSTED_QUOTA_FALLBACK_SCRIPT
+                    and _trusted_packaged_sibling_argument_matches(
+                        command_items[1],
+                        _TRUSTED_QUOTA_FALLBACK_SCRIPT,
+                    )
                 )
             except (OSError, RuntimeError):
                 script_runner = False
@@ -24302,7 +27475,13 @@ class PortalImplementationDaemon:
         )
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
-        if self._board_task_is_completed(task.task_id):
+        authority_revalidation_only = (
+            self._manual_completion_authority_revalidation_only_task(task)
+        )
+        if (
+            self._board_task_is_completed(task.task_id)
+            and not authority_revalidation_only
+        ):
             result = {
                 "skipped": True,
                 "reason": "completed_task_leftover",
@@ -24313,9 +27492,6 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        authority_revalidation_only = (
-            self._manual_completion_authority_revalidation_only_task(task)
-        )
         if (
             self.manual_completion_authority_revalidation_only
             and not authority_revalidation_only
@@ -26524,17 +29700,36 @@ class PortalImplementationDaemon:
                 task,
                 target_commit=target_before,
             )
-            lifecycle_record = self.worktree_lifecycle.begin_preparing(
-                task_id=task.task_id,
-                canonical_task_cid=self._canonical_ref(task),
-                attempt=attempt,
-                lane_id=self._worktree_lifecycle_lane_id(),
-                workspace_path=worktree_path,
-                branch=branch_name,
-                merge_target=target_branch,
-                state_dir=str(self.state_path.parent.resolve()),
-                allow_replace_stale=False,
-            )
+            try:
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=target_branch,
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
+            except DuplicateAttemptError:
+                predecessor_recovery = (
+                    self._finalize_dead_predecessor_worktree_lifecycle_claim(
+                        task=task,
+                        attempt=attempt,
+                    )
+                )
+                if predecessor_recovery.get("finalized") is not True:
+                    raise
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=target_branch,
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
             self._active_worktree_lifecycle = lifecycle_record
             baseline_ref = self._create_seeded_worktree(
                 worktree_path,
@@ -31342,6 +34537,146 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def _database_portal_merge_lane_affinity_mismatch(
+        self,
+        request: Any,
+        metadata: Mapping[str, Any],
+        request_todo_path: Path,
+    ) -> dict[str, Any] | None:
+        """Identify a valid same-plan request owned by another active lane.
+
+        This classifier grants no merge or completion authority.  It is used
+        only before a shared-queue claim so a lane projecting task B leaves a
+        valid task-A request pending for an A-compatible consumer.  Every
+        malformed, foreign-plan, or otherwise unproved request remains
+        consumable and therefore reaches the existing cross-board authority
+        rejection in :meth:`_merge_train_callback`.
+        """
+
+        if (
+            request_todo_path == self.todo_path
+            or request_todo_path.name != "task-projection.md"
+            or self.todo_path.name != "task-projection.md"
+            or str(metadata.get("schema") or "")
+            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            or metadata.get("bundle_work_order") is not None
+            or str(metadata.get("target_binding_schema") or "")
+            != MERGE_TARGET_BINDING_SCHEMA
+            or str(
+                getattr(request, "target_repository_id", "")
+                or metadata.get("target_repository_id")
+                or ""
+            ).strip()
+            != self.merge_target_repository_id
+            or str(
+                getattr(request, "target_branch", "")
+                or metadata.get("target_branch")
+                or ""
+            ).strip()
+            != self.resolved_merge_target_branch
+        ):
+            return None
+
+        task_id = str(getattr(request, "task_id", "") or "").strip()
+        task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        ).strip()
+        task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        ).strip()
+        completion_task_cids = metadata.get("completion_task_cids")
+        if (
+            not task_id
+            or not task_cid
+            or not task_key
+            or not isinstance(completion_task_cids, Mapping)
+            or {
+                str(alias): str(cid)
+                for alias, cid in completion_task_cids.items()
+            }
+            != {task_id: task_cid}
+        ):
+            return None
+
+        try:
+            from .database_portal_bridge import (
+                verify_database_portal_attempt_projection,
+            )
+
+            producer = verify_database_portal_attempt_projection(
+                request_todo_path,
+                expected_task_alias=task_id,
+                expected_task_cid=task_cid,
+                allowed_root=self.repo_root,
+            )
+            queued_task = self._portal_task_from_merge_request(request)
+            queued_identity = self._identity_for_task(queued_task)
+            current_tasks = self._load_tasks()
+            if len(current_tasks) != 1:
+                return None
+            current_task = current_tasks[0]
+            current_identity = self._identity_for_task(current_task)
+            consumer = verify_database_portal_attempt_projection(
+                self.todo_path,
+                expected_task_alias=current_task.task_id,
+                expected_task_cid=current_identity.canonical_task_cid,
+                allowed_root=self.repo_root,
+            )
+        except Exception:
+            # Failure to prove exact producer and consumer projections must not
+            # suppress the ordinary authority checks after dequeue.
+            return None
+
+        if (
+            producer.get("task_alias") != task_id
+            or producer.get("task_cid") != task_cid
+            or producer.get("canonical_task_key") != task_key
+            or queued_identity.canonical_task_cid != task_cid
+            or queued_identity.canonical_task_key != task_key
+            or consumer.get("task_alias") != current_task.task_id
+            or consumer.get("task_cid")
+            != current_identity.canonical_task_cid
+            or consumer.get("canonical_task_key")
+            != current_identity.canonical_task_key
+            or current_task.task_id == task_id
+            or current_identity.canonical_task_cid == task_cid
+            or current_identity.canonical_task_key == task_key
+            or consumer.get("goal_cid") != producer.get("goal_cid")
+            or consumer.get("plan_cid") != producer.get("plan_cid")
+            or consumer.get("binding_id") == producer.get("binding_id")
+        ):
+            return None
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-merge-lane-affinity@1"
+            ),
+            "verified": True,
+            "authority_created": False,
+            "reason": "merge_request_active_lane_task_mismatch",
+            "request_task_id": task_id,
+            "request_task_cid": task_cid,
+            "active_task_id": current_task.task_id,
+            "active_task_cid": current_identity.canonical_task_cid,
+            "goal_cid": str(producer["goal_cid"]),
+            "plan_cid": str(producer["plan_cid"]),
+            "producer_binding_id": str(producer["binding_id"]),
+            "consumer_binding_id": str(consumer["binding_id"]),
+        }
+
+    def _merge_request_matches_active_lane(self, request: Any) -> bool:
+        """Return false only for a proved different-task lane projection."""
+
+        metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        request_todo_path = Path(
+            str(metadata.get("todo_path") or self.todo_path)
+        )
+        return self._database_portal_merge_lane_affinity_mismatch(
+            request,
+            metadata,
+            request_todo_path,
+        ) is None
+
     @staticmethod
     def _false_positive_completion_reopen_lineage(
         metadata: Mapping[str, Any],
@@ -35918,51 +39253,6 @@ class PortalImplementationDaemon:
                     "request_todo_path": str(request_todo_path),
                     "consumer_todo_path": str(self.todo_path),
                 }
-        if (
-            foreign_cross_board_request
-            and self.todo_path.name != "task-projection.md"
-        ):
-            from ..merge.merge_train import MergeTrain
-
-            try:
-                queued_task = self._portal_task_from_merge_request(request)
-            except Exception:
-                queued_task = None
-            output_identity = (
-                self._declared_outputs_match_current_target(
-                    request,
-                    queued_task,
-                )
-                if queued_task is not None
-                else False
-            )
-            if output_identity is None:
-                return {
-                    "attempted": False,
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "declared_output_identity_unavailable",
-                }
-            if (
-                queued_task is not None
-                and MergeTrain._request_is_database_portal_projection_candidate(
-                    request
-                )
-                and MergeTrain._request_has_invalid_completion_authority_metadata(
-                    request
-                )
-                and output_identity is True
-                and false_reopen_lineage is None
-            ):
-                return {
-                    "attempted": True,
-                    "merged": False,
-                    "already_merged": True,
-                    "returncode": 0,
-                    "reason": "declared_outputs_already_on_target",
-                    "request_todo_path": str(request_todo_path),
-                    "consumer_todo_path": str(self.todo_path),
-                }
         authority_metadata_fields = {
             "manual_completion_authority_context_id",
             "manual_completion_authority_task_ids",
@@ -35985,6 +39275,45 @@ class PortalImplementationDaemon:
                 "consumer_todo_path": str(self.todo_path),
                 "missing_metadata_fields": missing_authority_metadata_fields,
             }
+        if (
+            foreign_cross_board_request
+            and self.todo_path.name != "task-projection.md"
+        ):
+            from ..merge.merge_train import MergeTrain
+
+            try:
+                queued_task = self._portal_task_from_merge_request(request)
+            except Exception:
+                queued_task = None
+            output_identity = (
+                self._declared_outputs_match_current_target(
+                    request,
+                    queued_task,
+                )
+                if queued_task is not None
+                else False
+            )
+            if (
+                queued_task is not None
+                and getattr(request, "canonical_task_id", None)
+                and MergeTrain._request_is_database_portal_projection_candidate(
+                    request
+                )
+                and MergeTrain._request_has_invalid_completion_authority_metadata(
+                    request
+                )
+                and output_identity is True
+                and false_reopen_lineage is None
+            ):
+                return {
+                    "attempted": True,
+                    "merged": False,
+                    "already_merged": True,
+                    "returncode": 0,
+                    "reason": "declared_outputs_already_on_target",
+                    "request_todo_path": str(request_todo_path),
+                    "consumer_todo_path": str(self.todo_path),
+                }
         raw_authority_task_ids = metadata.get(
             "manual_completion_authority_task_ids"
         )
@@ -37621,6 +40950,7 @@ class PortalImplementationDaemon:
             queue=merge_queue,
             target_branch=target_branch,
             max_attempts=int(getattr(merge_queue, "max_attempts", 3)),
+            request_filter=self._merge_request_matches_active_lane,
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
@@ -39097,6 +42427,283 @@ class PortalImplementationDaemon:
             prior_fingerprints,
         )
 
+    @staticmethod
+    def _configured_validation_backend() -> str:
+        """Return the exact configured backend or reject ambient drift."""
+
+        backend = str(
+            os.environ.get(AUTHORITY_VALIDATION_BACKEND_ENV) or ""
+        ).strip()
+        if backend not in {"", AUTHORITY_VALIDATION_CONTAINER_BACKEND}:
+            raise ValidationRuntimeError(
+                "configured validation backend is unsupported"
+            )
+        return backend
+
+    @staticmethod
+    def _authority_validation_dependency_probe(
+        payload: Mapping[str, Any],
+        *,
+        workspace_path: Path,
+        environment: Mapping[str, object] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate dependency metadata in the pinned authority image."""
+
+        del environment
+        source = _active_module_source_bytes()
+        source_sha256 = hashlib.sha256(source).hexdigest()
+        source_delivery = {
+            "mode": "compressed_argv_copy",
+            "sha256": source_sha256,
+            "bytes": len(source),
+        }
+        if len(source) > MAX_PROBE_SOURCE_BYTES:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_source_exceeded_bound",
+                "source_bytes": len(source),
+                "maximum_source_bytes": MAX_PROBE_SOURCE_BYTES,
+                "preflight_source_sha256": source_sha256,
+            }
+        contract = (
+            PortalImplementationDaemon._authority_validation_isolation_contract()
+        )
+        if contract.get("available") is not True:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_isolation_unavailable",
+                "authority_validation_isolation": contract,
+                "preflight_source_delivery": source_delivery,
+            }
+        try:
+            workspace = workspace_path.resolve(strict=True)
+        except OSError as exc:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_workspace_invalid",
+                "error_type": type(exc).__name__,
+                "preflight_source_delivery": source_delivery,
+            }
+        if not workspace.is_dir():
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_workspace_invalid",
+                "preflight_source_delivery": source_delivery,
+            }
+
+        encoded_source = base64.b85encode(
+            zlib.compress(source, level=9)
+        ).decode("ascii")
+        docker_path = str(contract["docker_path"])
+        docker_endpoint = str(contract["docker_endpoint"])
+        image_id = str(contract["image_id"])
+        docker_prefix = [docker_path, "--host", docker_endpoint]
+        container_name = (
+            f"ipfs-accelerate-dependency-probe-{os.getpid()}-"
+            f"{time.time_ns()}"
+        )
+        user_identity = (
+            "0:0"
+            if contract.get("rootless") is True
+            else f"{os.getuid()}:{os.getgid()}"
+        )
+        docker_command = [
+            *docker_prefix,
+            "run",
+            "--rm",
+            "--interactive",
+            "--pull=never",
+            f"--name={container_name}",
+            "--init",
+            "--stop-timeout=1",
+            "--network=none",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true",
+            "--log-driver=none",
+            f"--pids-limit={AUTHORITY_VALIDATION_PIDS_LIMIT}",
+            f"--cpus={AUTHORITY_VALIDATION_CPU_LIMIT:g}",
+            f"--memory={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--memory-swap={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--shm-size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES}",
+            f"--user={user_identity}",
+            (
+                "--tmpfs=/tmp:rw,nosuid,nodev,exec,"
+                f"size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES},mode=1777"
+            ),
+            "--workdir=/tmp",
+            "--env=HOME=/tmp/validation-home",
+            "--env=PYTHONDONTWRITEBYTECODE=1",
+            "--env=PYTHONNOUSERSITE=1",
+            "--env=PYTHONPATH="
+            + AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES,
+            "--entrypoint=/usr/bin/python",
+            image_id,
+            "-c",
+            _PROBE_ARGV_BOOTSTRAP,
+            encoded_source,
+            "--probe",
+        ]
+        docker_environment = {
+            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+            "DOCKER_HOST": docker_endpoint,
+            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+            "PATH": os.defpath,
+        }
+        try:
+            returncode, output_bytes, process_error = (
+                _run_bounded_probe_process(
+                    docker_command,
+                    input_payload=_canonical_dependency_json(payload).encode(
+                        "utf-8"
+                    ),
+                    environment=docker_environment,
+                )
+            )
+        except OSError as exc:
+            returncode, output_bytes, process_error = None, b"", {
+                "reason": "dependency_probe_process_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        try:
+            subprocess.run(
+                [*docker_prefix, "container", "rm", "--force", container_name],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            listed = subprocess.run(
+                [
+                    *docker_prefix,
+                    "container",
+                    "ls",
+                    "--all",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.ID}}",
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            container_removed = (
+                listed.returncode == 0 and not listed.stdout.strip()
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            container_removed = False
+
+        isolation = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-dependency-probe@1"
+            ),
+            "contract_id": str(contract.get("contract_id") or ""),
+            "backend": "docker-local-metadata",
+            "image_id": image_id,
+            "docker_endpoint": docker_endpoint,
+            "rootless": contract.get("rootless") is True,
+            "network_mode": "none",
+            "workspace_mounted": False,
+            "container_root_read_only": True,
+            "capabilities_dropped": "all",
+            "no_new_privileges": True,
+            "container_removed": container_removed,
+        }
+        launcher_identity = hashlib.sha256(
+            (
+                image_id
+                + "|/usr/bin/python|"
+                + AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES
+            ).encode("utf-8")
+        ).hexdigest()
+        launcher = {
+            "content_sha256": launcher_identity,
+            "interpreter_sha256": launcher_identity,
+            "mode": "authority-validation-container",
+            "policy_sha256": hashlib.sha256(
+                _canonical_dependency_json(isolation).encode("utf-8")
+            ).hexdigest(),
+            "sealed": True,
+        }
+        if not container_removed:
+            process_error = {
+                "reason": "authority_validation_container_not_quiesced"
+            }
+        if process_error:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                **process_error,
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if returncode != 0:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_process_failed",
+                "returncode": int(returncode or 0),
+                "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "output_bytes": len(output_bytes),
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        try:
+            result = json.loads(output_bytes.decode("utf-8"))
+        except (UnicodeError, ValueError) as exc:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_output_invalid",
+                "error_type": type(exc).__name__,
+                "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "output_bytes": len(output_bytes),
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if (
+            not isinstance(result, dict)
+            or result.get("schema") != PROJECT_DEPENDENCY_PROBE_SCHEMA
+            or not isinstance(result.get("passed"), bool)
+        ):
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_receipt_invalid",
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if result.get("probe_source_sha256") != source_sha256:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_source_attestation_mismatch",
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        result["preflight_source_delivery"] = source_delivery
+        result["validation_python_launcher"] = launcher
+        result["authority_validation_isolation"] = isolation
+        return result
+
     def _require_validation_project_dependency_preflight(
         self,
         *,
@@ -39122,6 +42729,17 @@ class PortalImplementationDaemon:
             if prior_seed_authority is not None:
                 preflight_kwargs["prior_seed_authority"] = dict(
                     prior_seed_authority
+                )
+            backend = self._configured_validation_backend()
+            if backend == AUTHORITY_VALIDATION_CONTAINER_BACKEND:
+                preflight_kwargs["probe_runner"] = (
+                    lambda payload, **runner_kwargs: (
+                        self._authority_validation_dependency_probe(
+                            payload,
+                            workspace_path=workspace_path,
+                            **runner_kwargs,
+                        )
+                    )
                 )
             raw_receipt = preflight_validation_project_dependencies(
                 workspace_path,
@@ -39377,8 +42995,8 @@ class PortalImplementationDaemon:
             # worktree exists so peer lanes cannot classify a branch-at-merge-
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
-            try:
-                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+            def begin_lifecycle_claim() -> WorkspaceLifecycleRecord:
+                return self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
                     canonical_task_cid=self._canonical_ref(task),
                     attempt=attempt,
@@ -39392,18 +43010,48 @@ class PortalImplementationDaemon:
                     # task-attempt claim, never an ambiguous nonterminal one.
                     allow_replace_stale=False,
                 )
+
+            try:
+                lifecycle_record = begin_lifecycle_claim()
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
-                return lifecycle_race_result(
-                    reason="worktree_lifecycle_claim_exists",
-                    task_id=task.task_id,
-                    attempt=attempt,
-                    extra={
-                        "error": str(exc)[-1000:],
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                    },
+                predecessor_recovery = (
+                    self._finalize_dead_predecessor_worktree_lifecycle_claim(
+                        task=task,
+                        attempt=attempt,
+                    )
                 )
+                if predecessor_recovery.get("finalized") is True:
+                    try:
+                        # One retry only.  A peer that wins after the exact
+                        # dead-owner finalization remains authoritative.
+                        lifecycle_record = begin_lifecycle_claim()
+                        self._active_worktree_lifecycle = lifecycle_record
+                    except DuplicateAttemptError as retry_exc:
+                        return lifecycle_race_result(
+                            reason="worktree_lifecycle_claim_exists",
+                            task_id=task.task_id,
+                            attempt=attempt,
+                            extra={
+                                "error": str(retry_exc)[-1000:],
+                                "initial_error": str(exc)[-1000:],
+                                "worktree_path": str(worktree_path),
+                                "branch": branch_name,
+                                "predecessor_recovery": predecessor_recovery,
+                            },
+                        )
+                else:
+                    return lifecycle_race_result(
+                        reason="worktree_lifecycle_claim_exists",
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        extra={
+                            "error": str(exc)[-1000:],
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                            "predecessor_recovery": predecessor_recovery,
+                        },
+                    )
             seed_plan = (
                 {"reuse_prior_attempt": False}
                 if retry_no_change_probe_only
@@ -49903,7 +53551,7 @@ class PortalImplementationDaemon:
         proposal_validation: Any,
         task: PortalTask,
     ) -> list[dict[str, str]]:
-        """Project exact added task outputs without retaining candidate source."""
+        """Project exact added or modified outputs without retaining source."""
 
         proposal = getattr(proposal_validation, "proposal", None)
         entries = tuple(getattr(proposal, "candidate_diff", ()) or ())
@@ -49919,18 +53567,36 @@ class PortalImplementationDaemon:
                 or ""
             )
             path = str(getattr(entry, "new_path", "") or "")
+            old_path = str(getattr(entry, "old_path", "") or "")
             source = getattr(entry, "after_source", None)
+            before_source = getattr(entry, "before_source", None)
             blob_id = str(getattr(entry, "after_blob_id", "") or "")
-            if not (
+            before_blob_id = str(
+                getattr(entry, "before_blob_id", "") or ""
+            )
+            exact_text_add = bool(
                 change_kind == "add"
                 and path in declared_outputs
-                and not str(getattr(entry, "old_path", "") or "")
-                and getattr(entry, "before_source", None) is None
-                and not str(getattr(entry, "before_blob_id", "") or "")
+                and not old_path
+                and before_source is None
+                and not before_blob_id
                 and isinstance(source, str)
                 and not bool(getattr(entry, "binary", False))
                 and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
-            ):
+            )
+            exact_text_modify = bool(
+                change_kind == "modify"
+                and path in declared_outputs
+                and old_path == path
+                and isinstance(before_source, str)
+                and isinstance(source, str)
+                and not bool(getattr(entry, "binary", False))
+                and re.fullmatch(
+                    r"[0-9a-f]{40}|[0-9a-f]{64}", before_blob_id
+                )
+                and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
+            )
+            if not (exact_text_add or exact_text_modify):
                 continue
             attestations.append(
                 {
@@ -57328,6 +60994,20 @@ class PortalImplementationDaemon:
         if result.get("auto_rescue") and result.get("auto_rescue_terminal"):
             return result
 
+        # Capture the narrowly bound replay exception while the trusted live
+        # ProposalValidationResult is still present.  Failure sanitization
+        # deliberately removes that non-JSON object before planning, but a
+        # same-attempt revalidation may need to admit the identical proposal
+        # again after staging or materializing its already-declared outputs.
+        same_attempt_replayable_proposal_ids = (
+            self._same_attempt_replayable_proposal_ids(
+                result,
+                task_id=task.task_id,
+                repository_tree_id=baseline_ref,
+                seed_proposal_ids=replayable_consumed_proposal_ids,
+            )
+        )
+
         stage_used = False
         materialize_used = False
         strip_helpers_used = False
@@ -57476,15 +61156,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -57552,9 +61235,19 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -57618,15 +61311,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -57698,6 +61394,9 @@ class PortalImplementationDaemon:
                             input_text=rescue_prompt,
                             env=provider_environment,
                             inherit_environment=False,
+                            pass_fds=self._accepted_control_plane_pass_fds(
+                                command
+                            ),
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
@@ -57747,15 +61446,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -57929,14 +61631,23 @@ class PortalImplementationDaemon:
         external_validation_isolation = bool(
             os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "").strip()
         )
-        if force_uncached or external_validation_isolation:
+        configured_validation_backend = self._configured_validation_backend()
+        authority_container_backend = (
+            configured_validation_backend
+            == AUTHORITY_VALIDATION_CONTAINER_BACKEND
+        )
+        if (
+            force_uncached
+            or external_validation_isolation
+            or authority_container_backend
+        ):
             scheduled_commands = tuple(
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
             )
         validation_runner = (
             self._authority_validation_command_runner
-            if authority_revalidation_required
+            if authority_revalidation_required or authority_container_backend
             else self._validation_command_runner
         )
 
@@ -58449,8 +62160,33 @@ class PortalImplementationDaemon:
             "started_at": started_at,
             "authority_validation_isolation": contract,
         }
+        try:
+            explicit_board_backend = (
+                PortalImplementationDaemon._configured_validation_backend()
+                == AUTHORITY_VALIDATION_CONTAINER_BACKEND
+            )
+        except ValidationRuntimeError as exc:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": f"{type(exc).__name__}: {exc}\n",
+                "error": "validation_backend_invalid",
+                "reason": "configured_validation_backend_unsupported",
+                "infrastructure_failure": True,
+            }
         raw_no_site = validation_python_profile(environment) == "raw-no-site"
         if not __class__._unix_stream_socket_permitted():
+            if explicit_board_backend:
+                return {
+                    **base,
+                    "finished_at": utc_now(),
+                    "returncode": 75,
+                    "output": "",
+                    "error": "authority_validation_isolation_unavailable",
+                    "reason": "authority_validation_docker_socket_denied",
+                    "infrastructure_failure": True,
+                }
             try:
                 local_environment = validation_environment_for_runner(
                     environment,
@@ -58599,6 +62335,7 @@ class PortalImplementationDaemon:
                     "/sbin:/bin"
                 ),
                 "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
                 "PYTHONPATH": os.pathsep.join(allowed_python_paths),
                 "TMPDIR": "/tmp",
                 "XDG_CACHE_HOME": "/tmp/validation-home/.cache",
@@ -62343,8 +66080,9 @@ class PortalImplementationDaemon:
         *,
         target_scope: str,
         full_relative: str,
+        target_base_commit: str = "",
     ) -> str:
-        """Return a ref isolated by superproject repository, target, and path."""
+        """Return a target cursor, optionally isolated to one gitlink base."""
 
         target_identity = hashlib.sha256(
             (
@@ -62357,9 +66095,19 @@ class PortalImplementationDaemon:
             .strip("/.-")
             or "submodule"
         )
+        base_suffix = (
+            "/bases/"
+            + hashlib.sha256(
+                target_base_commit.encode(
+                    "utf-8", errors="surrogateescape"
+                )
+            ).hexdigest()[:24]
+            if target_base_commit
+            else ""
+        )
         return (
             "refs/agent-supervisor/submodule-targets/"
-            f"{target_identity[:24]}/{safe_path[:120]}"
+            f"{target_identity[:24]}{base_suffix}/{safe_path[:120]}"
         )
 
     @staticmethod
@@ -62412,7 +66160,11 @@ class PortalImplementationDaemon:
         The integration ref is a compare-and-swap cursor for exactly one
         superproject target and child path.  A cursor behind the authoritative
         target gitlink may advance monotonically with a compare-and-swap.
-        Target-behind, divergent, and raced cursors fail closed.
+        Target-behind, divergent, and raced cursors fail closed.  A legacy
+        cursor that diverged from the authoritative gitlink is preserved and
+        superseded by a cursor scoped to that exact target base.  This keeps
+        abandoned, unpublished integrations as evidence without letting them
+        permanently block a later authoritative board generation.
         """
 
         integration_ref = self._submodule_target_integration_ref(
@@ -62449,18 +66201,50 @@ class PortalImplementationDaemon:
         target_base_commit = base_result.stdout.strip()
         branch_commit = branch_result.stdout.strip()
 
-        current_ref_result = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", integration_ref],
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        current_ref = (
-            current_ref_result.stdout.strip()
-            if current_ref_result.returncode == 0
-            else ""
-        )
+        def read_integration_ref(ref: str) -> str:
+            observed = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", ref],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            return (
+                observed.stdout.strip()
+                if observed.returncode == 0
+                else ""
+            )
+
+        current_ref = read_integration_ref(integration_ref)
+        integration_ref_recovery: dict[str, Any] = {}
+        if (
+            current_ref
+            and current_ref != target_base_commit
+            and not self._git_ref_is_ancestor_in_repo(
+                source,
+                current_ref,
+                target_base_commit,
+            )
+            and not self._git_ref_is_ancestor_in_repo(
+                source,
+                target_base_commit,
+                current_ref,
+            )
+        ):
+            superseded_ref = integration_ref
+            superseded_commit = current_ref
+            integration_ref = self._submodule_target_integration_ref(
+                target_scope=target_scope,
+                full_relative=full_relative,
+                target_base_commit=target_base_commit,
+            )
+            current_ref = read_integration_ref(integration_ref)
+            integration_ref_recovery = {
+                "superseded_integration_ref": superseded_ref,
+                "superseded_integration_ref_commit": superseded_commit,
+                "superseded_integration_ref_drift_kind": "diverged",
+                "base_scoped_integration_ref": integration_ref,
+            }
         if not current_ref:
             initialize = subprocess.run(
                 [
@@ -62476,18 +66260,7 @@ class PortalImplementationDaemon:
                 check=False,
             )
             if initialize.returncode != 0:
-                current_ref_result = subprocess.run(
-                    ["git", "rev-parse", "--verify", "--quiet", integration_ref],
-                    cwd=source,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                current_ref = (
-                    current_ref_result.stdout.strip()
-                    if current_ref_result.returncode == 0
-                    else ""
-                )
+                current_ref = read_integration_ref(integration_ref)
             else:
                 current_ref = target_base_commit
         integration_ref_fast_forward: dict[str, Any] = {}
@@ -62552,6 +66325,7 @@ class PortalImplementationDaemon:
                             fast_forward.stderr[-4000:]
                         ),
                         "retryable": True,
+                        **integration_ref_recovery,
                     }
                 integration_ref_fast_forward = {
                     "integration_ref_fast_forwarded_from": current_ref,
@@ -62580,6 +66354,7 @@ class PortalImplementationDaemon:
                         else "diverged"
                     ),
                     "retryable": True,
+                    **integration_ref_recovery,
                 }
 
         worktree_root = self._submodule_target_worktree_root()
@@ -62771,6 +66546,7 @@ class PortalImplementationDaemon:
             "cleanup_returncode": remove.returncode,
             "cleanup_stderr": remove.stderr[-4000:],
             **integration_ref_fast_forward,
+            **integration_ref_recovery,
         }
         if not merged:
             result["reason"] = (
@@ -64171,6 +67947,588 @@ class PortalImplementationDaemon:
         state_dir = str(self.state_path.parent.resolve())
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
+
+    def _finalize_dead_predecessor_worktree_lifecycle_claim(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Release one exact dead task-attempt claim before a bounded retry.
+
+        Lifecycle records are shared by every preserved supervisor generation
+        in the same Git common directory.  A successor generation deliberately
+        uses a new state directory, so its same-lane startup recovery cannot
+        retire an unexpired claim left by a stopped predecessor.  Only the
+        store's fully locked, exact-identity dead-owner CAS may bridge that
+        boundary; live, uninspectable, foreign-repository, and foreign-target
+        claims remain fenced.
+        """
+
+        canonical_task_cid = self._canonical_ref(task)
+        record = self.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=canonical_task_cid,
+            task_id=task.task_id,
+            attempt=attempt,
+        )
+        base: dict[str, Any] = {
+            "attempted": record is not None,
+            "finalized": False,
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": int(attempt),
+        }
+        if record is None:
+            return {**base, "reason": "task_attempt_claim_unavailable"}
+        base.update(
+            {
+                "record_id": record.record_id,
+                "workspace_path": record.workspace_path,
+                "predecessor_state_dir": record.state_dir,
+                "predecessor_owner_pid": record.owner.pid,
+                "predecessor_fence": record.fence,
+            }
+        )
+        if record.is_terminal:
+            return {**base, "reason": "task_attempt_claim_already_terminal"}
+
+        current_repo_root = str(self.repo_root.resolve(strict=False))
+        current_merge_target = self._main_branch_name().removeprefix(
+            "refs/heads/"
+        )
+        try:
+            record_repo_root = str(
+                Path(record.repo_root).resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            record_repo_root = ""
+        current_generation = self._state_dir_generation_binding(
+            self.state_path.parent
+        )
+        predecessor_generation = self._state_dir_generation_binding(
+            record.state_dir
+        )
+        predecessor_is_older = bool(
+            current_generation is not None
+            and predecessor_generation is not None
+            and predecessor_generation[0] == current_generation[0]
+            and predecessor_generation[1] < current_generation[1]
+        )
+        mismatched_fields = [
+            field_name
+            for field_name, matches in (
+                ("task_id", record.task_id == task.task_id),
+                (
+                    "canonical_task_cid",
+                    record.canonical_task_cid == canonical_task_cid,
+                ),
+                ("attempt", int(record.attempt) == int(attempt)),
+                ("repo_root", record_repo_root == current_repo_root),
+                (
+                    "merge_target",
+                    record.merge_target.removeprefix("refs/heads/")
+                    == current_merge_target,
+                ),
+                ("predecessor_generation", predecessor_is_older),
+            )
+            if not matches
+        ]
+        if mismatched_fields:
+            return {
+                **base,
+                "reason": "task_attempt_claim_identity_mismatch",
+                "mismatched_fields": mismatched_fields,
+            }
+        assert current_generation is not None
+        assert predecessor_generation is not None
+        base.update(
+            {
+                "current_generation": current_generation[1],
+                "predecessor_generation": predecessor_generation[1],
+            }
+        )
+
+        liveness = owner_liveness(
+            record.owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+        base["predecessor_owner_liveness"] = liveness.value
+        if liveness is OwnerLiveness.ALIVE:
+            return {**base, "reason": "task_attempt_claim_owner_alive"}
+        if liveness is OwnerLiveness.UNKNOWN:
+            return {
+                **base,
+                "reason": "task_attempt_claim_owner_liveness_unknown",
+            }
+
+        quiescence = self._predecessor_worktree_dispatch_quiescence(record)
+        base["predecessor_dispatch_quiescence"] = quiescence
+        if quiescence.get("quiescent") is not True:
+            return {
+                **base,
+                "reason": str(
+                    quiescence.get("reason")
+                    or "task_attempt_claim_dispatch_quiescence_unproven"
+                ),
+            }
+
+        try:
+            terminal = self.worktree_lifecycle.finalize_exact_dead_owner(
+                record.workspace_path,
+                expected_record_id=record.record_id,
+                expected_fence=record.fence,
+                expected_lease_id=record.lease_id,
+                expected_owner=record.owner,
+                expected_task_id=record.task_id,
+                expected_canonical_task_cid=record.canonical_task_cid,
+                expected_attempt=record.attempt,
+                expected_branch=record.branch,
+                expected_merge_target=record.merge_target,
+                expected_repo_root=record.repo_root,
+                expected_state_dir=record.state_dir,
+                reason="successor_generation_dead_owner_superseded",
+            )
+        except (
+            FenceMismatchError,
+            OwnershipError,
+            WorktreeLifecycleError,
+            OSError,
+        ) as exc:
+            return {
+                **base,
+                "reason": "task_attempt_claim_finalization_race",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-500:],
+            }
+
+        finalized = {
+            **base,
+            "finalized": True,
+            "reason": "successor_generation_dead_owner_superseded",
+            "terminal_fence": terminal.fence,
+            "terminal_state": terminal.state.value,
+        }
+        self._record_event(
+            "worktree_lifecycle_dead_predecessor_claim_finalized",
+            finalized,
+        )
+        return finalized
+
+    @staticmethod
+    def _state_dir_generation_binding(
+        state_dir: str | Path,
+    ) -> tuple[tuple[str, ...], int] | None:
+        """Return the program-root identity and numeric ``run-vN`` generation."""
+
+        raw = str(state_dir or "").strip()
+        if not raw:
+            return None
+        try:
+            parts = Path(raw).resolve(strict=False).parts
+        except (OSError, RuntimeError, ValueError):
+            return None
+        matches = [
+            (index, match)
+            for index, part in enumerate(parts)
+            if (match := re.fullmatch(r"run-v([1-9][0-9]*)", part))
+            is not None
+        ]
+        if len(matches) != 1:
+            return None
+        index, match = matches[0]
+        if index + 1 >= len(parts) or parts[index + 1] != "state":
+            return None
+        return tuple(parts[:index]), int(match.group(1))
+
+    def _predecessor_worktree_dispatch_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Prove no runner or isolation container still owns a dead claim."""
+
+        workspace = normalize_workspace_path(record.workspace_path)
+        age_seconds = max(
+            0.0,
+            float(self.worktree_lifecycle.clock())
+            - float(record.updated_at),
+        )
+        if age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_recent_activity_grace",
+                "age_seconds": age_seconds,
+                "required_age_seconds": (
+                    INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS
+                ),
+            }
+
+        def worktree_process_active() -> tuple[
+            bool | None,
+            int,
+            int,
+            dict[str, Any] | None,
+        ]:
+            process_lines = self._list_process_commands()
+            if not process_lines:
+                return None, 0, 0, None
+            # Cross-generation recovery is deliberately stricter than normal
+            # inflight classification: any process still naming the preserved
+            # workspace keeps its lifecycle fence, including custom runners
+            # and validation/MCP descendants unknown to the provider regex.
+            if any(workspace in line for line in process_lines):
+                return True, len(process_lines), 0, None
+
+            proc_root = self.worktree_lifecycle.proc_root
+            try:
+                entries = tuple(proc_root.iterdir())
+            except OSError:
+                return None, len(process_lines), 0, None
+            workspace_path = Path(workspace)
+            observed_cwds = 0
+            denied_cwds = 0
+            for entry in entries:
+                if not entry.name.isdigit():
+                    continue
+                try:
+                    if entry.stat().st_uid != os.getuid():
+                        continue
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    denied_cwds += 1
+                    continue
+                try:
+                    cwd = Path(os.readlink(entry / "cwd"))
+                except FileNotFoundError:
+                    # The process exited, is a zombie, or has no cwd.
+                    continue
+                except PermissionError:
+                    # With Yama ptrace_scope=1 a successor cannot read an
+                    # unrelated predecessor's cwd even when both have the same
+                    # uid.  Keep scanning readable descendants first, then
+                    # require an exact generation-cgroup proof below.
+                    denied_cwds += 1
+                    continue
+                except OSError:
+                    continue
+                observed_cwds += 1
+                try:
+                    cwd.resolve(strict=False).relative_to(workspace_path)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                return True, len(process_lines), observed_cwds, None
+            if denied_cwds:
+                cgroup_proof = (
+                    self._predecessor_generation_cgroup_quiescence(record)
+                )
+                if cgroup_proof.get("quiescent") is not True:
+                    return (
+                        None,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                return (
+                    False,
+                    len(process_lines),
+                    observed_cwds,
+                    cgroup_proof,
+                )
+            return False, len(process_lines), observed_cwds, None
+
+        (
+            process_active,
+            process_count,
+            cwd_count,
+            cgroup_proof,
+        ) = worktree_process_active()
+        if process_active is None:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_process_inspection_unavailable",
+                "generation_cgroup_proof": cgroup_proof,
+            }
+        if process_active:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_worktree_process_still_active",
+                "observed_process_count": process_count,
+                "observed_process_cwd_count": cwd_count,
+            }
+
+        container_ids: set[str] = set()
+        for label in IMPLEMENTATION_DOCKER_ISOLATION_LABELS:
+            try:
+                listed = subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"label={label}",
+                        "--format",
+                        "{{.ID}}",
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "error_type": type(exc).__name__,
+                }
+            if listed.returncode != 0:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "returncode": listed.returncode,
+                }
+            container_ids.update(
+                item.strip()
+                for item in listed.stdout.splitlines()
+                if item.strip()
+            )
+
+        for container_id in sorted(container_ids):
+            try:
+                inspected = subprocess.run(
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{json .Mounts}}",
+                        container_id,
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "container_id": container_id,
+                    "error_type": type(exc).__name__,
+                }
+            if inspected.returncode != 0:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "container_id": container_id,
+                    "returncode": inspected.returncode,
+                }
+            try:
+                mounts = json.loads(inspected.stdout)
+            except (TypeError, ValueError):
+                mounts = None
+            if not isinstance(mounts, list):
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_malformed"
+                    ),
+                    "container_id": container_id,
+                }
+            if any(
+                isinstance(mount, Mapping)
+                and normalize_workspace_path(str(mount.get("Source") or ""))
+                == workspace
+                for mount in mounts
+            ):
+                return {
+                    "quiescent": False,
+                    "reason": "task_attempt_claim_container_still_active",
+                    "container_id": container_id,
+                }
+
+        (
+            process_active,
+            process_count_after,
+            cwd_count_after,
+            cgroup_proof_after,
+        ) = worktree_process_active()
+        if process_active is None:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_process_inspection_unavailable",
+                "generation_cgroup_proof": cgroup_proof_after,
+            }
+        if process_active:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_worktree_process_still_active",
+                "observed_process_count": process_count_after,
+                "observed_process_cwd_count": cwd_count_after,
+            }
+        return {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+            "age_seconds": age_seconds,
+            "observed_process_count": process_count_after,
+            "observed_process_cwd_count": cwd_count_after,
+            "observed_isolation_container_count": len(container_ids),
+            "generation_cgroup_proof": (
+                cgroup_proof_after or cgroup_proof
+            ),
+        }
+
+    def _predecessor_generation_cgroup_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        cgroup_root: Path = Path("/sys/fs/cgroup"),
+    ) -> dict[str, Any]:
+        """Prove a versioned predecessor systemd cgroup has no processes.
+
+        Linux Yama can deny ``/proc/<pid>/cwd`` for same-uid processes that
+        are not descendants of the inspecting successor.  A systemd service's
+        descendants cannot leave its cgroup merely by forking or creating a
+        new session, so bind the current ``run-vN`` state generation to the
+        current service component and inspect the exact older component.
+        """
+
+        current = self._state_dir_generation_binding(self.state_path.parent)
+        predecessor = self._state_dir_generation_binding(record.state_dir)
+        base: dict[str, Any] = {"quiescent": False}
+        if (
+            current is None
+            or predecessor is None
+            or current[0] != predecessor[0]
+            or predecessor[1] >= current[1]
+        ):
+            return {**base, "reason": "generation_cgroup_identity_unavailable"}
+
+        proc_root = self.worktree_lifecycle.proc_root
+        try:
+            own_cgroups = (proc_root / "self" / "cgroup").read_text(
+                encoding="utf-8"
+            )
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "generation_cgroup_inspection_unavailable",
+                "error_type": type(exc).__name__,
+            }
+
+        current_token = re.compile(
+            rf"(?<![A-Za-z0-9])v{current[1]}(?![0-9])"
+        )
+        bindings: list[tuple[str, str]] = []
+        for line in own_cgroups.splitlines():
+            fields = line.split(":", 2)
+            if len(fields) != 3 or not fields[2].startswith("/"):
+                continue
+            cgroup_path = fields[2].rstrip("/") or "/"
+            components = tuple(Path(cgroup_path).parts[1:])
+            matching = [
+                component
+                for component in components
+                if current_token.search(component) is not None
+            ]
+            if len(matching) == 1 and matching[0] == components[-1]:
+                bindings.append((cgroup_path, matching[0]))
+        if len(bindings) != 1:
+            return {
+                **base,
+                "reason": "generation_cgroup_binding_unavailable",
+                "binding_count": len(bindings),
+            }
+
+        current_path, current_component = bindings[0]
+        predecessor_component, substitutions = current_token.subn(
+            f"v{predecessor[1]}",
+            current_component,
+        )
+        if substitutions != 1 or predecessor_component == current_component:
+            return {**base, "reason": "generation_cgroup_binding_invalid"}
+        predecessor_path = str(
+            Path(current_path).parent / predecessor_component
+        )
+
+        try:
+            entries = tuple(proc_root.iterdir())
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "generation_cgroup_inspection_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        observed_processes = 0
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                process_cgroups = (entry / "cgroup").read_text(
+                    encoding="utf-8"
+                )
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                return {
+                    **base,
+                    "reason": "generation_cgroup_inspection_unavailable",
+                    "error_type": type(exc).__name__,
+                }
+            observed_processes += 1
+            for line in process_cgroups.splitlines():
+                fields = line.split(":", 2)
+                if len(fields) != 3:
+                    return {
+                        **base,
+                        "reason": "generation_cgroup_inspection_malformed",
+                    }
+                process_path = fields[2].rstrip("/") or "/"
+                if process_path == predecessor_path or process_path.startswith(
+                    predecessor_path + "/"
+                ):
+                    return {
+                        **base,
+                        "reason": "generation_cgroup_process_still_active",
+                        "predecessor_cgroup": predecessor_path,
+                        "process_pid": int(entry.name),
+                    }
+
+        exact_cgroup = cgroup_root / predecessor_path.lstrip("/")
+        if exact_cgroup.exists():
+            try:
+                events = (exact_cgroup / "cgroup.events").read_text(
+                    encoding="utf-8"
+                )
+            except OSError as exc:
+                return {
+                    **base,
+                    "reason": "generation_cgroup_inspection_unavailable",
+                    "error_type": type(exc).__name__,
+                }
+            parsed_events = {
+                fields[0]: fields[1]
+                for line in events.splitlines()
+                if len(fields := line.split()) == 2
+            }
+            if parsed_events.get("populated") != "0":
+                return {
+                    **base,
+                    "reason": "generation_cgroup_population_unproven",
+                    "predecessor_cgroup": predecessor_path,
+                }
+        return {
+            "quiescent": True,
+            "reason": "generation_cgroup_quiescent",
+            "current_cgroup": current_path,
+            "predecessor_cgroup": predecessor_path,
+            "observed_process_count": observed_processes,
+        }
 
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle
@@ -68302,6 +72660,9 @@ class PortalImplementationDaemon:
             "kind": "implementation",
             "lease_id": hashlib.sha1(lease_seed.encode("utf-8")).hexdigest(),
             "pid": os.getpid(),
+            "owner_process_birth": (
+                self._implementation_dispatch_process_birth.to_dict()
+            ),
             "owner_script": Path(sys.argv[0]).name,
             "repo_root": str(self.repo_root.resolve()),
             "state_dir": str(self.state_path.parent.resolve()),
@@ -68501,6 +72862,31 @@ class PortalImplementationDaemon:
         state_dir = str(metadata.get("state_dir") or "")
         if state_dir and Path(state_dir).resolve() != self.state_path.parent.resolve():
             return False
+        if "owner_process_birth" in metadata:
+            payload = metadata.get("owner_process_birth")
+            if not isinstance(payload, Mapping):
+                return True
+            try:
+                owner = ProcessBirthIdentity.from_dict(payload)
+                metadata_pid = int(metadata.get("pid") or 0)
+            except (TypeError, ValueError):
+                return True
+            if (
+                owner.pid <= 0
+                or owner.start_time_ticks <= 0
+                or owner.pid != metadata_pid
+            ):
+                return True
+            # UNKNOWN remains active so unavailable process inspection never
+            # becomes lock-stealing authority. A mismatched exact birth proves
+            # PID reuse and permits automatic stale-lock recovery.
+            return (
+                owner_liveness(
+                    owner,
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+                is not OwnerLiveness.DEAD
+            )
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
@@ -71241,7 +75627,15 @@ class PortalImplementationDaemon:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         for _ in range(2):
             try:
-                return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
+                return (
+                    os.open(
+                        lock_path,
+                        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                        0o600,
+                    ),
+                    "acquired",
+                    None,
+                )
             except FileExistsError:
                 existing = load_json_dict(lock_path)
                 if existing is not None and owner_active(existing):
@@ -71781,6 +76175,7 @@ class PortalImplementationDaemon:
                 "implementation_finished",
                 "implementation_provider_exhausted",
                 "implementation_state_recovered",
+                "implementation_shutdown_recovery_closed",
             }:
                 inflight.pop(key, None)
 
@@ -72378,7 +76773,11 @@ class PortalImplementationDaemon:
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        require_canonical_raw: bool = False,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -72440,6 +76839,7 @@ class PortalImplementationDaemon:
             ) from exc
 
         cache_key = (
+            require_canonical_raw,
             str(manifest.get("manifest_digest") or ""),
             tuple(source_cache_key),
         )
@@ -72460,6 +76860,17 @@ class PortalImplementationDaemon:
         event_ids_by_sequence: dict[int, str] = {}
         latest_sequence = 0
         latest_event_id = ""
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
         try:
             for source in sources:
                 record = manifest_records[source.name]
@@ -72478,10 +76889,18 @@ class PortalImplementationDaemon:
                             continue
                         source_event_count += 1
                         try:
-                            raw_event = json.loads(raw_line)
+                            raw_event = json.loads(
+                                raw_line,
+                                object_pairs_hook=(
+                                    unique_object
+                                    if require_canonical_raw
+                                    else None
+                                ),
+                            )
                         except (
                             UnicodeDecodeError,
                             json.JSONDecodeError,
+                            ValueError,
                         ) as exc:
                             raise CursorReplayError(
                                 "merge lifecycle event source contains "
@@ -72506,6 +76925,18 @@ class PortalImplementationDaemon:
                             and str(raw_event.get("snapshot_id") or "")
                             == snapshot_id
                         )
+                        if require_canonical_raw and not canonical:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains a "
+                                "non-canonical event envelope"
+                            )
+                        if require_canonical_raw and str(
+                            raw_event.get("previous_event_id") or ""
+                        ) != source_previous_event_id:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains a "
+                                "broken physical hash chain"
+                            )
                         sequence = (
                             int(raw_sequence)
                             if canonical
@@ -72550,6 +76981,11 @@ class PortalImplementationDaemon:
                             + hashlib.sha256(identity_bytes).hexdigest()
                         )
                         event_id = str(event.get("event_id") or "")
+                        if require_canonical_raw and not event_id:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains an "
+                                "event without an original event_id"
+                            )
                         if event_id and event_id != expected_event_id:
                             raise CursorReplayError(
                                 f"merge lifecycle event {sequence} has "
@@ -73266,18 +77702,18 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            codex = shutil.which("codex")
+            codex = _trusted_codex_quota_fallback_executable(
+                workspace_path=Path(self.repo_root),
+            )
             if not codex:
                 raise ImplementationRetryDeferred(
-                    "sealed quota-only route requires the Codex CLI fallback",
+                    "sealed quota-only route requires the trusted Codex CLI "
+                    "fallback",
                     backoff_seconds=300,
                 )
             # Quota-only routing must run the primary agent before quota can
-            # authorize fallback.  A ``grok models`` network probe can itself
-            # return quota exhaustion, but that pre-dispatch response is not
-            # terminal-correlated provider evidence.  Admit only from local
-            # binary/auth construction here; the packaged adapter emits the
-            # trusted receipt after the real Grok process terminates.
+            # authorize fallback. A readiness probe cannot stand in for the
+            # terminal-correlated receipt produced by the packaged adapter.
             if not (_grok_binary() and _grok_cli_available()):
                 raise ImplementationRetryDeferred(
                     "sealed quota-only route requires a ready Grok primary",
@@ -73297,7 +77733,7 @@ class PortalImplementationDaemon:
                     "IMPLEMENTATION_DAEMON_COMMAND override",
                     backoff_seconds=300,
                 )
-            route_authorization = getattr(route_plan, "authorization", None)
+            route_authorization = route_plan.authorization
             is_eaaef_route = bool(
                 route_authorization is not None
                 and route_authorization.board_namespace == EAAEF_BOARD_NAMESPACE
@@ -73335,14 +77771,15 @@ class PortalImplementationDaemon:
                     backoff_seconds=300,
                 )
             if is_eaaef_route:
-                # Provider binaries are supplied only by the exact qualified
-                # worker image; host discovery/authentication is not authority.
+                # Exact worker-image provider pins, not host discovery, are
+                # authoritative for the EAAEF route.
                 return
-            if _grok_binary() and shutil.which("codex"):
+            if _grok_binary() and _trusted_codex_quota_fallback_executable(
+                workspace_path=Path(self.repo_root),
+            ):
                 # Authentication is intentionally not a readiness condition
-                # for this exact route. The fixed runner preflight turns a
-                # missing/expired credential into a typed, nonce-bound receipt
-                # before the task prompt and may then enter Terra/high.
+                # for this reviewed route. Its fixed runner may mint a typed,
+                # nonce-bound unavailable-credential receipt before fallback.
                 return
             raise ImplementationRetryDeferred(
                 "sealed Grok/Codex route requires both pinned provider CLIs",
@@ -74049,6 +78486,13 @@ class PortalImplementationDaemon:
             for launch in launches
             if launch is not None and launch.executable_path in command[:3]
         }
+        from ..sealed_provider_module import (
+            sealed_provider_module_command_descriptor,
+        )
+
+        sealed_provider_fd = sealed_provider_module_command_descriptor(command)
+        if sealed_provider_fd >= 3:
+            matches.add(sealed_provider_fd)
         if len(matches) > 1:
             raise ImplementationRetryDeferred(
                 "accepted control-plane command is ambiguous",
@@ -74186,10 +78630,12 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            codex = shutil.which("codex")
+            codex = _trusted_codex_quota_fallback_executable(
+                workspace_path=workspace_path,
+            )
             if not codex:
                 raise ImplementationRetryDeferred(
-                    "sealed quota-only route requires the Codex CLI fallback",
+                    "sealed Grok/Codex route requires a trusted Codex CLI",
                     backoff_seconds=300,
                 )
             # Do not turn a pre-dispatch ``grok models`` quota response into
@@ -74351,7 +78797,9 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 model_override=route_plan.primary_model_id,
                 failure_receipt_nonce=secrets.token_hex(32),
-                allow_auth_unavailable_fallback=True,
+                allow_auth_unavailable_fallback=(
+                    route_plan.permits_authentication_unavailable
+                ),
                 fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                 route_plan=route_plan,
                 sealed_runner_path=sealed_runner_path,
@@ -78392,12 +82840,85 @@ class PortalImplementationDaemon:
 
     @staticmethod
     def _authoritative_validation_environment_guidance() -> str:
-        """Render the exact final validation PATH and private-home contract.
+        """Render the configured final-validation environment contract.
 
-        This is prompt guidance only. It delegates PATH/Python calculation to
-        the same fail-closed builder used by :class:`ValidationScheduler` and
-        does not add executable directories or relax writable-path checks.
+        This is prompt guidance only. Host validation delegates PATH/Python
+        calculation to the same fail-closed builder used by
+        :class:`ValidationScheduler`. Container validation instead describes
+        the scheduler-bound immutable image without probing or exposing its
+        runtime to the provider process.
         """
+
+        try:
+            backend = PortalImplementationDaemon._configured_validation_backend()
+        except ValidationRuntimeError as exc:
+            return (
+                "## Authoritative validation environment (fail-closed)\n"
+                "- The configured validation backend is currently invalid: "
+                f"{type(exc).__name__}: {exc}\n"
+                "- Authoritative validation will reject this configuration. "
+                "Do not weaken product assertions or tests to hide it."
+            )
+
+        wrapper_guidance = (
+            "- Grok shell tools may seal their own `PATH`. When "
+            f"`${PROVIDER_COMMAND_ENV_WRAPPER_ENV}` is present, use "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" --preflight "
+            "<bare-command>` and "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" -- <command> ...` "
+            "only for provider-side host discovery or evidence generation. "
+            "The digest-bound wrapper restores only the declared non-secret "
+            "provider command environment; it does not bypass or replace "
+            "authoritative validation."
+        )
+
+        if backend == AUTHORITY_VALIDATION_CONTAINER_BACKEND:
+            image = str(
+                os.environ.get(AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV) or ""
+            ).strip()
+            raw_modules = str(
+                os.environ.get(VALIDATION_PYTHON_MODULES_ENV) or ""
+            )
+            modules = tuple(raw_modules.split(",")) if raw_modules else ()
+            modules_valid = bool(modules) and all(
+                item
+                and item.strip() == item
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", item)
+                is not None
+                for item in modules
+            ) and len(modules) == len(set(modules))
+            if image not in AUTHORITY_VALIDATION_CONTAINER_IDS or not modules_valid:
+                return (
+                    "## Authoritative validation environment (fail-closed)\n"
+                    "- The scheduler-bound authority container environment "
+                    "is currently invalid; its immutable image and required "
+                    "module inventory must match the admitted runtime "
+                    "contract.\n"
+                    "- Authoritative validation will reject this "
+                    "configuration. Do not infer dependency gaps from the "
+                    "provider shell or weaken product assertions or tests to "
+                    "hide it."
+                )
+            image_text = json.dumps(image, ensure_ascii=True)
+            modules_text = json.dumps(list(modules), ensure_ascii=True)
+            return (
+                "## Authoritative validation environment (fail-closed)\n"
+                "- Final validation uses the scheduler-bound "
+                f"`{AUTHORITY_VALIDATION_CONTAINER_BACKEND}` image exactly "
+                f"{image_text}. That immutable container is authoritative; "
+                "the provider shell is not.\n"
+                "- The scheduler-declared required Python module inventory "
+                f"is exactly {modules_text}. Availability is decided only by "
+                "final validation in that image.\n"
+                "- The provider shell is intentionally separate. A "
+                "provider-side `python: command not found`, missing Python "
+                "module, or missing prover is not evidence of an authority-"
+                "container dependency gap. Continue from repository evidence "
+                "and leave the final availability decision to authoritative "
+                "validation; never weaken mandatory tests.\n"
+                f"{wrapper_guidance} The wrapper does not emulate the "
+                "authority container."
+            )
 
         try:
             contract = canonical_validation_environment_contract()
@@ -78417,6 +82938,10 @@ class PortalImplementationDaemon:
             str(contract["path_override_environment_variable"]),
             ensure_ascii=True,
         )
+        formal_toolchain_identity = json.dumps(
+            str(contract["formal_toolchain_contract_sha256"]),
+            ensure_ascii=True,
+        )
         return (
             "## Authoritative validation environment (fail-closed)\n"
             f"- `PATH` is exactly {path}. The provider/implementer process's "
@@ -78434,11 +82959,18 @@ class PortalImplementationDaemon:
             f"through {override} before supervisor dispatch. Every entry and "
             "ancestor must pass the existing non-writable toolchain check; "
             "user-writable tool directories are rejected.\n"
+            "- The provider preflight and authoritative validation formal-"
+            "toolchain deployment identity must both equal "
+            f"{formal_toolchain_identity}. A mismatch, missing required "
+            "executable, or writable managed root blocks before evidence "
+            "generation; stage reviewed toolchains under a root-owned/read-"
+            "only root rather than using a profile-home installation.\n"
             "- Judge external-tool availability and write semantic assertions "
             "against this exact environment, not a successful provider-side "
             "probe. If a required prover is absent, report a dependency/"
             "capability gap or add an approved digest-bound deployment; never "
-            "claim usability or weaken mandatory tests."
+            "claim usability or weaken mandatory tests.\n"
+            f"{wrapper_guidance}"
         )
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
@@ -81978,6 +86510,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+    TYPED_RETRYING_RECEIPT_OPERATIONS,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
 )
@@ -81997,6 +86530,45 @@ DATABASE_PROCESS_INSTANCE_ID_MAX_BYTES = 512
 _DATABASE_PROCESS_INSTANCE_ID_PATTERN = re.compile(
     r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,511}\Z"
 )
+_TYPED_QUACK_STABLE_AUTHORITY_V1 = (
+    "TypedDatabaseTaskSourceStableQuackAuthority@1"
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V2 = (
+    "TypedDatabaseTaskSourceStableQuackAuthority@2"
+)
+_TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-quack-stable-binding-migration@1"
+)
+_TYPED_QUACK_STABLE_BINDING_ID_KEY = "typed_quack_stable_binding_id"
+_TYPED_QUACK_STABLE_AUTHORITY_KEY = "typed_quack_stable_authority"
+_TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY = (
+    "typed_quack_stable_binding_migration"
+)
+_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS = (
+    "store_id",
+    "database_uuid",
+    "schema_fingerprint",
+    "repository_id",
+    "schema_revision",
+    "plan_root_cid",
+    "repository_tree_id",
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V1_FIELDS = frozenset(
+    {
+        "interface",
+        *_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS,
+        "route_policy_id",
+        "source_projection_cid",
+    }
+)
+_TYPED_QUACK_STABLE_AUTHORITY_V2_FIELDS = frozenset(
+    {"interface", *_TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS}
+)
+_TYPED_QUACK_STABLE_BINDING_CID_PATTERN = re.compile(
+    r"baguqeera[a-z2-7]{52}\Z", re.ASCII
+)
+_TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES = 128
 DATABASE_PORTAL_RETRYABLE_FAILURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-retryable-failure@1"
 )
@@ -82090,6 +86662,10 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
     }
 )
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
+_DUCKDB_UNCERTAIN_TRANSACTION_UNUSABLE = (
+    "DuckDB connection is unusable after an uncertain transaction"
+)
+_MAX_CONSECUTIVE_EMBEDDED_SIDECAR_REOPENS = 2
 DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-declared-output-rearm@1"
 )
@@ -82395,6 +86971,11 @@ _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS = frozenset(
         "fence_epoch",
         "attempt_number",
         "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
         "post_merge_completion_recovery_source_attempt_id",
         "post_merge_completion_recovery_seed",
     }
@@ -82463,6 +87044,11 @@ _DATABASE_ORDINARY_CLAIM_FIELDS = frozenset(
         "fence_epoch",
         "attempt_number",
         "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
     }
 )
 _DATABASE_COMPLETE_RECEIPT_FIELDS = frozenset(
@@ -82509,28 +87095,7 @@ _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
     "in_progress": frozenset(
         {"database_claim", "database_attempt_admitted"}
     ),
-    "retrying": frozenset(
-        {
-            "database_portal_retry",
-            "database_portal_validation_retry",
-            "database_portal_validation_retry_recovery",
-            "database_portal_capacity_retry",
-            "database_portal_protected_preservation_retry",
-            "database_portal_protected_preservation_retry_recovery",
-            (
-                "database_portal_protected_preservation_"
-                "reconciliation_retry_recovery"
-            ),
-            "database_portal_superseded_consumed_attempt_recovery",
-            "database_portal_post_merge_declared_output_recovery",
-            "database_post_merge_declared_outputs_repair_recovery",
-            "database_post_merge_declared_outputs_requalification_recovery",
-            (
-                "database_post_merge_declared_outputs_"
-                "callback_integration_recovery"
-            ),
-        }
-    ),
+    "retrying": TYPED_RETRYING_RECEIPT_OPERATIONS,
     "blocked": frozenset(
         {
             "database_portal_terminal_failure",
@@ -82545,6 +87110,42 @@ _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
 
 def _database_daemon_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
+
+
+def _require_validation_retry_transfer_cursor_advance(
+    source: Mapping[str, Any],
+    successor: Mapping[str, Any],
+) -> None:
+    """Require the exact owner contract for a transferred retry claim."""
+
+    integer_fields = ("claimed_from_revision", "fencing_token", "fence_epoch")
+    if any(
+        isinstance(cursor.get(field), bool)
+        or not isinstance(cursor.get(field), int)
+        for cursor in (source, successor)
+        for field in integer_fields
+    ) or any(
+        not str(cursor.get(field) or "")
+        for cursor in (source, successor)
+        for field in ("claim_id", "attempt_id", "lease_id")
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "validation retry successor virgin-transfer cursor is malformed"
+        )
+    if (
+        int(successor["claimed_from_revision"])
+        <= int(source["claimed_from_revision"])
+        or any(
+            successor.get(field) == source.get(field)
+            for field in ("claim_id", "attempt_id", "lease_id")
+        )
+        or int(successor["fencing_token"]) <= int(source["fencing_token"])
+        or int(successor["fence_epoch"]) < int(source["fence_epoch"])
+    ):
+        raise DatabaseImplementationConflictError(
+            "validation retry successor virgin-transfer claim cursor did not "
+            "advance"
+        )
 
 
 def _database_daemon_evidence_digest(value: Mapping[str, Any]) -> str:
@@ -82697,7 +87298,7 @@ def _database_daemon_eaaef_validation_phase_body(
 ) -> dict[str, Any]:
     """Close the container validation receipt before its one owner write."""
 
-    from ..task_sources.eaaef_borrowed_transaction import (
+    from ..task_sources.eaaef_execution_contracts import (
         EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA,
     )
 
@@ -82732,12 +87333,27 @@ def _database_daemon_exact_container_callback(
 ) -> bool:
     """Recognize only the reviewed dispatcher bound-method implementation."""
 
+    owner = getattr(callback, "__self__", None)
+    function = getattr(callback, "__func__", None)
+    dispatcher_module = __package__ + ".external_agent_container_dispatcher"
+    # Portal callbacks are the ordinary database-authoritative execution
+    # path.  Do not import the EAAEF dispatcher (and its independently
+    # qualified native-cryptography closure) merely to prove that a Portal
+    # callback is not that dispatcher.  This string check can only reject a
+    # callback; the exact type and function identity below remain the sole
+    # positive admission authority.
+    if (
+        getattr(type(owner), "__module__", "") != dispatcher_module
+        or getattr(type(owner), "__qualname__", "")
+        != "ExternalAgentContainerWorkerDispatcher"
+        or getattr(function, "__module__", "") != dispatcher_module
+    ):
+        return False
+
     from .external_agent_container_dispatcher import (
         ExternalAgentContainerWorkerDispatcher,
     )
 
-    owner = getattr(callback, "__self__", None)
-    function = getattr(callback, "__func__", None)
     return (
         type(owner) is ExternalAgentContainerWorkerDispatcher
         and function is getattr(ExternalAgentContainerWorkerDispatcher, method_name)
@@ -82813,6 +87429,222 @@ def _open_or_create_database_lock_parent(path: Path) -> tuple[int, str]:
         os.close(parent_descriptor)
         raise
     return parent_descriptor, lexical.name
+
+
+def _validated_typed_quack_stable_authority(
+    value: Mapping[str, Any],
+    *,
+    expected_interface: str,
+) -> dict[str, Any]:
+    """Return one exact, bounded stable-authority body or fail closed."""
+
+    if type(value) is not dict:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority is not an exact object"
+        )
+    expected_fields = (
+        _TYPED_QUACK_STABLE_AUTHORITY_V1_FIELDS
+        if expected_interface == _TYPED_QUACK_STABLE_AUTHORITY_V1
+        else _TYPED_QUACK_STABLE_AUTHORITY_V2_FIELDS
+        if expected_interface == _TYPED_QUACK_STABLE_AUTHORITY_V2
+        else frozenset()
+    )
+    if not expected_fields or set(value) != expected_fields:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority shape is invalid"
+        )
+    if value.get("interface") != expected_interface:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority interface is invalid"
+        )
+    text_fields = expected_fields - {"interface", "schema_revision"}
+    if any(
+        type(value.get(field)) is not str
+        or not value[field]
+        or len(value[field].encode("utf-8")) > 4_096
+        for field in text_fields
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority identity is invalid"
+        )
+    schema_revision = value.get("schema_revision")
+    if (
+        type(schema_revision) is not int
+        or schema_revision < 0
+        or schema_revision > 2**63 - 1
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority schema revision is invalid"
+        )
+    authority = dict(value)
+    if len(canonical_json(authority).encode("utf-8")) > 32_768:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority exceeds its size bound"
+        )
+    return authority
+
+
+def _validated_typed_quack_stable_binding(
+    binding_id: Any,
+    authority: Mapping[str, Any],
+    *,
+    expected_interface: str,
+) -> tuple[str, dict[str, Any]]:
+    """Validate the exact typed stable authority and its canonical CID."""
+
+    body = _validated_typed_quack_stable_authority(
+        authority,
+        expected_interface=expected_interface,
+    )
+    expected_binding_id = content_identity(body)
+    if (
+        type(binding_id) is not str
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(binding_id) is None
+        or binding_id != expected_binding_id
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable authority binding ID is invalid"
+        )
+    return binding_id, body
+
+
+def _typed_quack_stable_authority_core(
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: authority[field]
+        for field in _TYPED_QUACK_STABLE_AUTHORITY_CORE_FIELDS
+    }
+
+
+def _legacy_typed_quack_stable_authority_json(
+    authority: Mapping[str, Any],
+) -> str:
+    """Render the exact JSON emitted by the retired @1 metadata writer."""
+
+    return json.dumps(dict(authority), sort_keys=True, separators=(",", ":"))
+
+
+def _typed_quack_stable_binding_migration_receipt(
+    *,
+    from_binding_id: str,
+    from_authority: Mapping[str, Any],
+    to_binding_id: str,
+    to_authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    body = {
+        "schema": _TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA,
+        "from_stable_binding_id": from_binding_id,
+        "from_stable_authority": dict(from_authority),
+        "to_stable_binding_id": to_binding_id,
+        "to_stable_authority": dict(to_authority),
+    }
+    return {**body, "receipt_id": content_identity(body)}
+
+
+def _validated_typed_quack_stable_binding_migration_receipt(
+    value: Mapping[str, Any],
+    *,
+    expected_to_binding_id: str,
+    expected_to_authority: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Validate an exact deterministic legacy-to-current migration receipt."""
+
+    required = {
+        "schema",
+        "receipt_id",
+        "from_stable_binding_id",
+        "from_stable_authority",
+        "to_stable_binding_id",
+        "to_stable_authority",
+    }
+    if (
+        type(value) is not dict
+        or set(value) != required
+        or value.get("schema")
+        != _TYPED_QUACK_STABLE_BINDING_MIGRATION_SCHEMA
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-binding migration receipt is malformed"
+        )
+    from_binding_id, from_authority = _validated_typed_quack_stable_binding(
+        value.get("from_stable_binding_id"),
+        value.get("from_stable_authority"),
+        expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V1,
+    )
+    to_binding_id, to_authority = _validated_typed_quack_stable_binding(
+        value.get("to_stable_binding_id"),
+        value.get("to_stable_authority"),
+        expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+    )
+    receipt_body = {
+        key: value[key]
+        for key in required
+        if key != "receipt_id"
+    }
+    if (
+        type(value.get("receipt_id")) is not str
+        or value["receipt_id"] != content_identity(receipt_body)
+        or to_binding_id != expected_to_binding_id
+        or to_authority != dict(expected_to_authority)
+        or _typed_quack_stable_authority_core(from_authority)
+        != _typed_quack_stable_authority_core(to_authority)
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-binding migration receipt is not authoritative"
+        )
+    return from_binding_id, from_authority
+
+
+def _read_database_writer_lock_binding(handle: Any) -> str:
+    """Read one exact empty-or-CID lock pin from an already-held inode."""
+
+    handle.seek(0)
+    encoded = handle.read(_TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES + 1)
+    if len(encoded) > _TYPED_QUACK_STABLE_BINDING_LOCK_MAX_BYTES:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is oversized"
+        )
+    if not encoded:
+        return ""
+    try:
+        text = encoded.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is malformed"
+        ) from exc
+    if (
+        not text.endswith("\n")
+        or text.count("\n") != 1
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(text[:-1]) is None
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock pin is malformed"
+        )
+    return text[:-1]
+
+
+def _write_database_writer_lock_binding(handle: Any, binding_id: str) -> None:
+    """Durably replace and verify one held writer-lock authority pin."""
+
+    if (
+        type(binding_id) is not str
+        or _TYPED_QUACK_STABLE_BINDING_CID_PATTERN.fullmatch(binding_id) is None
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock target is malformed"
+        )
+    expected = (binding_id + "\n").encode("ascii")
+    handle.seek(0)
+    handle.write(expected)
+    handle.truncate()
+    handle.flush()
+    os.fsync(handle.fileno())
+    handle.seek(0)
+    if handle.read(len(expected) + 1) != expected:
+        raise DatabaseImplementationAuthorityError(
+            "typed Quack stable-authority writer-lock rotation did not persist"
+        )
 
 
 def _open_database_writer_lock(lock_path: Path) -> Any:
@@ -83248,6 +88080,8 @@ def _is_quack_attach_error(exc: BaseException) -> bool:
     sibling-lane wait that used to traceback and kill the daemon.
     """
 
+    if _is_duckdb_uncertain_transaction_unusable(exc):
+        return False
     detail = str(exc)
     name = type(exc).__name__
     lowered = detail.lower()
@@ -83269,6 +88103,31 @@ def _is_quack_attach_error(exc: BaseException) -> bool:
             )
         )
     )
+
+
+def _is_duckdb_uncertain_transaction_unusable(exc: BaseException) -> bool:
+    """Return whether a bounded cause chain contains the exact poison marker."""
+
+    from ..task_sources.duckdb_state import DuckDBConnectionPolicyError
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _depth in range(8):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if (
+            isinstance(current, DuckDBConnectionPolicyError)
+            and str(current) == _DUCKDB_UNCERTAIN_TRANSACTION_UNUSABLE
+        ):
+            return True
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return False
 
 
 class DatabaseImplementationDaemon:
@@ -83558,10 +88417,27 @@ class DatabaseImplementationDaemon:
         self.idle_lane_work_stealing = str(
             idle_lane_work_stealing or ""
         ).strip().lower()
-        if self.idle_lane_work_stealing:
+        if self.idle_lane_work_stealing not in IDLE_LANE_WORK_STEALING_MODES:
+            raise ValueError(
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+            )
+        if self.idle_lane_work_stealing and not self.strict_task_sharding:
             raise DatabaseImplementationAuthorityError(
-                "database authority does not support idle-lane work stealing; "
-                "use exact slices or deterministic strict sharding"
+                "database idle-lane work stealing requires strict task sharding"
+            )
+        if self.idle_lane_work_stealing and self.task_shard_count <= 1:
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing requires at least two task shards"
+            )
+        if self.idle_lane_work_stealing and not self.task_prefix:
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing requires a task prefix"
+            )
+        if self.idle_lane_work_stealing and (
+            self.execution_slice_task_ids or self.execution_slice_task_cids
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing cannot combine with exact slices"
             )
         if (
             self.authority_mode == "quack"
@@ -83726,6 +88602,7 @@ class DatabaseImplementationDaemon:
             f".{self.coordination_path.name}.writer.lock"
         )
         self._embedded_writer_lock_handles: dict[Path, Any] = {}
+        self._embedded_writer_lock_bindings: dict[Path, str] = {}
         self._embedded_sidecar_identities: dict[
             Path,
             tuple[tuple[int, int], tuple[int, int] | None],
@@ -83738,6 +88615,7 @@ class DatabaseImplementationDaemon:
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
         self._idle_recovery_prefix: dict[str, Any] | None = None
+        self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -83813,31 +88691,14 @@ class DatabaseImplementationDaemon:
             )
         )
         acquired: dict[Path, Any] = {}
+        observed_bindings: dict[Path, str] = {}
         try:
             for lock_path in lock_paths:
                 handle = _open_database_writer_lock(lock_path)
                 try:
                     binding = self._typed_quack_authority_binding
-                    expected = b""
-                    if binding is not None:
-                        expected = (
-                            str(binding["stable_binding_id"]) + "\n"
-                        ).encode("utf-8")
-                    handle.seek(0)
-                    observed = handle.read(len(expected) + 1)
-                    if binding is not None:
-                        if not observed:
-                            handle.seek(0)
-                            handle.write(expected)
-                            handle.truncate()
-                            handle.flush()
-                            os.fsync(handle.fileno())
-                        elif observed != expected:
-                            raise DatabaseImplementationAuthorityError(
-                                "typed Quack sidecar belongs to a different "
-                                "stable control authority"
-                            )
-                    elif observed:
+                    observed = _read_database_writer_lock_binding(handle)
+                    if binding is None and observed:
                         raise DatabaseImplementationAuthorityError(
                             "embedded sidecar is reserved for a typed Quack "
                             "stable control authority"
@@ -83846,6 +88707,7 @@ class DatabaseImplementationDaemon:
                     handle.close()
                     raise
                 acquired[lock_path] = handle
+                observed_bindings[lock_path] = observed
         except Exception as exc:
             for handle in reversed(tuple(acquired.values())):
                 try:
@@ -83859,6 +88721,7 @@ class DatabaseImplementationDaemon:
                 ) from exc
             raise
         self._embedded_writer_lock_handles = acquired
+        self._embedded_writer_lock_bindings = observed_bindings
         self._embedded_writer_lock_handle = acquired.get(
             self._embedded_writer_lock_path
         )
@@ -83925,6 +88788,7 @@ class DatabaseImplementationDaemon:
     def _release_embedded_writer_lock(self) -> None:
         handles = self._embedded_writer_lock_handles
         self._embedded_writer_lock_handles = {}
+        self._embedded_writer_lock_bindings = {}
         self._embedded_writer_lock_handle = None
         self._embedded_sidecar_identities = {}
         if not handles:
@@ -83934,6 +88798,472 @@ class DatabaseImplementationDaemon:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
             finally:
                 handle.close()
+
+    def _current_typed_quack_stable_binding(
+        self,
+    ) -> tuple[str, dict[str, Any]]:
+        binding = self._typed_quack_authority_binding
+        if not isinstance(binding, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority is unavailable"
+            )
+        authority = binding.get("stable_authority")
+        if not isinstance(authority, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority is unavailable"
+            )
+        return _validated_typed_quack_stable_binding(
+            binding.get("stable_binding_id"),
+            dict(authority),
+            expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+        )
+
+    @staticmethod
+    def _decode_typed_quack_metadata_json(
+        value: Any,
+        *,
+        description: str,
+        allow_legacy_stable_authority: bool = False,
+    ) -> dict[str, Any]:
+        if (
+            type(value) is not str
+            or not value
+            or len(value.encode("utf-8")) > 131_072
+        ):
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is invalid"
+            )
+        try:
+            decoded = json.loads(value)
+        except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is invalid"
+            ) from exc
+        if type(decoded) is not dict:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is not canonical"
+            )
+        expected = canonical_json(decoded)
+        if (
+            allow_legacy_stable_authority
+            and decoded.get("interface")
+            == _TYPED_QUACK_STABLE_AUTHORITY_V1
+        ):
+            expected = _legacy_typed_quack_stable_authority_json(decoded)
+        if expected != value:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is not canonical"
+            )
+        return decoded
+
+    def _prepare_typed_quack_writer_lock_bindings(
+        self,
+        *,
+        execution_sidecar_exists: bool,
+    ) -> None:
+        """Initialize only a fresh sidecar; existing pins need DB proof first."""
+
+        if self._typed_quack_authority_binding is None:
+            return
+        current_binding_id, _current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        expected_paths = {
+            self._coordination_writer_lock_path,
+            self._embedded_writer_lock_path,
+        }
+        if (
+            set(self._embedded_writer_lock_handles) != expected_paths
+            or set(self._embedded_writer_lock_bindings) != expected_paths
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable authority does not hold both writer locks"
+            )
+        if execution_sidecar_exists:
+            return
+        if any(
+            observed not in {"", current_binding_id}
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack writer-lock pin has no execution-sidecar authority"
+            )
+        for lock_path in sorted(expected_paths, key=str):
+            if self._embedded_writer_lock_bindings[lock_path] == current_binding_id:
+                continue
+            _write_database_writer_lock_binding(
+                self._embedded_writer_lock_handles[lock_path],
+                current_binding_id,
+            )
+            self._embedded_writer_lock_bindings[lock_path] = current_binding_id
+
+    def _typed_quack_execution_stable_metadata(
+        self,
+    ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution metadata requires an open sidecar"
+            )
+        keys = (
+            _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+            _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+            _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+        )
+        try:
+            rows = connection.execute(
+                "SELECT key, value FROM daemon_execution_metadata "
+                "WHERE key IN (?, ?, ?)",
+                list(keys),
+            ).fetchall()
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution sidecar lacks stable authority metadata"
+            ) from exc
+        metadata: dict[str, Any] = {}
+        for row in rows:
+            key = row[0]
+            if type(key) is not str or key not in keys or key in metadata:
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack execution stable authority metadata is malformed"
+                )
+            metadata[key] = row[1]
+        if (
+            frozenset(metadata)
+            not in (
+                frozenset(
+                    {
+                        _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                        _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    }
+                ),
+                frozenset(keys),
+            )
+            or type(metadata.get(_TYPED_QUACK_STABLE_BINDING_ID_KEY)) is not str
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution sidecar stable authority is incomplete"
+            )
+        authority = self._decode_typed_quack_metadata_json(
+            metadata[_TYPED_QUACK_STABLE_AUTHORITY_KEY],
+            description="stable-authority",
+            allow_legacy_stable_authority=True,
+        )
+        migration = None
+        if _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY in metadata:
+            migration = self._decode_typed_quack_metadata_json(
+                metadata[_TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY],
+                description="stable-binding migration receipt",
+            )
+        return (
+            metadata[_TYPED_QUACK_STABLE_BINDING_ID_KEY],
+            authority,
+            migration,
+        )
+
+    def _typed_quack_stable_metadata_presence(self) -> int:
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable metadata probe requires an open sidecar"
+            )
+        try:
+            table = connection.execute(
+                "SELECT COUNT(*) FROM duckdb_tables() "
+                "WHERE schema_name = 'main' "
+                "AND table_name = 'daemon_execution_metadata'"
+            ).fetchone()
+            if table is None or type(table[0]) is not int:
+                raise ValueError("invalid metadata table count")
+            if int(table[0]) == 0:
+                return 0
+            if int(table[0]) != 1:
+                raise ValueError("ambiguous metadata table")
+            row = connection.execute(
+                "SELECT COUNT(*) FROM daemon_execution_metadata "
+                "WHERE key IN (?, ?, ?)",
+                [
+                    _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+                ],
+            ).fetchone()
+            if row is None or type(row[0]) is not int:
+                raise ValueError("invalid stable metadata count")
+            return int(row[0])
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable metadata cannot be inspected"
+            ) from exc
+
+    def _require_uninitialized_typed_quack_execution_sidecar(self) -> None:
+        """Prove a current-pinned crash remnant has no application state."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack initialization recovery requires an open sidecar"
+            )
+        allowed_tables = {
+            "daemon_execution_metadata",
+            "database_task_attempts",
+            "attempt_phases",
+            "provider_invocations",
+            "effect_claims",
+            "daemon_execution_events",
+        }
+        try:
+            table_rows = connection.execute(
+                "SELECT table_name FROM duckdb_tables() "
+                "WHERE schema_name = 'main' ORDER BY table_name"
+            ).fetchall()
+            tables = {str(row[0]) for row in table_rows}
+            view_row = connection.execute(
+                "SELECT COUNT(*) FROM duckdb_views() "
+                "WHERE schema_name = 'main' AND internal = false"
+            ).fetchone()
+            if (
+                not tables.issubset(allowed_tables)
+                or view_row is None
+                or type(view_row[0]) is not int
+                or int(view_row[0]) != 0
+            ):
+                raise ValueError("unexpected execution schema")
+            for table in sorted(tables):
+                row = connection.execute(
+                    f'SELECT COUNT(*) FROM "{table}"'
+                ).fetchone()
+                if (
+                    row is None
+                    or type(row[0]) is not int
+                    or int(row[0]) != 0
+                ):
+                    raise ValueError("nonempty execution table")
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack current-pinned execution sidecar is not an "
+                "uninitialized crash remnant"
+            ) from exc
+
+    def _initialize_typed_quack_execution_stable_metadata(self) -> None:
+        """Atomically install the execution schema and its current custody."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution initialization requires an open sidecar"
+            )
+        current_binding_id, current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        if any(
+            observed != current_binding_id
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution initialization lacks current lock custody"
+            )
+        self._require_uninitialized_typed_quack_execution_sidecar()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                connection.execute(statement)
+            for key, value in (
+                (_TYPED_QUACK_STABLE_BINDING_ID_KEY, current_binding_id),
+                (
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    canonical_json(current_authority),
+                ),
+            ):
+                connection.execute(
+                    "INSERT INTO daemon_execution_metadata(key, value) "
+                    "VALUES (?, ?)",
+                    [key, value],
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        stored_id, stored_authority, migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        if (
+            stored_id != current_binding_id
+            or stored_authority != current_authority
+            or migration is not None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable initialization did not persist"
+            )
+
+    def _commit_typed_quack_stable_binding_migration(
+        self,
+        *,
+        expected_legacy_binding_id: str,
+        expected_legacy_authority: Mapping[str, Any],
+        current_binding_id: str,
+        current_authority: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+    ) -> None:
+        """Atomically publish current metadata and its durable migration proof."""
+
+        connection = self._connection
+        if connection is None:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack stable-binding migration requires an open sidecar"
+            )
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            observed_id, observed_authority, observed_receipt = (
+                self._typed_quack_execution_stable_metadata()
+            )
+            if (
+                observed_id != expected_legacy_binding_id
+                or observed_authority != dict(expected_legacy_authority)
+                or observed_receipt is not None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack legacy authority changed during migration"
+                )
+            for key, value in (
+                (_TYPED_QUACK_STABLE_BINDING_ID_KEY, current_binding_id),
+                (
+                    _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                    canonical_json(dict(current_authority)),
+                ),
+                (
+                    _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY,
+                    canonical_json(dict(receipt)),
+                ),
+            ):
+                connection.execute(
+                    "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
+                    "VALUES (?, ?)",
+                    [key, value],
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+
+    def _admit_or_migrate_typed_quack_stable_binding(self) -> None:
+        """Admit current @2 metadata or migrate exact legacy @1 custody."""
+
+        current_binding_id, current_authority = (
+            self._current_typed_quack_stable_binding()
+        )
+        stored_binding_id, stored_authority, migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        interface = stored_authority.get("interface")
+        legacy_binding_id = ""
+        if interface == _TYPED_QUACK_STABLE_AUTHORITY_V1:
+            legacy_binding_id, legacy_authority = (
+                _validated_typed_quack_stable_binding(
+                    stored_binding_id,
+                    stored_authority,
+                    expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V1,
+                )
+            )
+            if (
+                migration is not None
+                or _typed_quack_stable_authority_core(legacy_authority)
+                != _typed_quack_stable_authority_core(current_authority)
+                or any(
+                    observed != legacy_binding_id
+                    for observed in self._embedded_writer_lock_bindings.values()
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack legacy sidecar authority cannot be migrated"
+                )
+            receipt = _typed_quack_stable_binding_migration_receipt(
+                from_binding_id=legacy_binding_id,
+                from_authority=legacy_authority,
+                to_binding_id=current_binding_id,
+                to_authority=current_authority,
+            )
+            self._commit_typed_quack_stable_binding_migration(
+                expected_legacy_binding_id=legacy_binding_id,
+                expected_legacy_authority=legacy_authority,
+                current_binding_id=current_binding_id,
+                current_authority=current_authority,
+                receipt=receipt,
+            )
+            migration = receipt
+        elif interface == _TYPED_QUACK_STABLE_AUTHORITY_V2:
+            validated_id, validated_authority = (
+                _validated_typed_quack_stable_binding(
+                    stored_binding_id,
+                    stored_authority,
+                    expected_interface=_TYPED_QUACK_STABLE_AUTHORITY_V2,
+                )
+            )
+            if (
+                validated_id != current_binding_id
+                or validated_authority != current_authority
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "execution sidecar belongs to a different stable typed "
+                    "Quack authority"
+                )
+        else:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack execution stable authority version is unsupported"
+            )
+
+        if migration is None:
+            if any(
+                observed != current_binding_id
+                for observed in self._embedded_writer_lock_bindings.values()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack current sidecar has divergent writer-lock pins"
+                )
+            return
+
+        reread_binding_id, reread_authority, reread_migration = (
+            self._typed_quack_execution_stable_metadata()
+        )
+        if (
+            reread_binding_id != current_binding_id
+            or reread_authority != current_authority
+            or reread_migration != migration
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack migration metadata changed before lock rotation"
+            )
+        receipt_from_binding_id, _receipt_from_authority = (
+            _validated_typed_quack_stable_binding_migration_receipt(
+                reread_migration,
+                expected_to_binding_id=current_binding_id,
+                expected_to_authority=current_authority,
+            )
+        )
+        allowed_pins = {receipt_from_binding_id, current_binding_id}
+        if any(
+            observed not in allowed_pins
+            for observed in self._embedded_writer_lock_bindings.values()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack migration receipt does not authorize writer-lock pins"
+            )
+        self._inspect_embedded_sidecars(require_exists=False)
+        for lock_path in sorted(self._embedded_writer_lock_handles, key=str):
+            if self._embedded_writer_lock_bindings[lock_path] == current_binding_id:
+                continue
+            _write_database_writer_lock_binding(
+                self._embedded_writer_lock_handles[lock_path],
+                current_binding_id,
+            )
+            self._embedded_writer_lock_bindings[lock_path] = current_binding_id
+            self._inspect_embedded_sidecars(require_exists=False)
 
     def _require_typed_quack_authority_binding(self) -> None:
         """Revalidate the exact typed owner pinned during construction."""
@@ -84063,35 +89393,44 @@ class DatabaseImplementationDaemon:
                 # symlink, multi-link inode, non-regular file, or path in a
                 # peer-writable/changed parent.
                 self._inspect_embedded_sidecars(require_exists=False)
+                execution_sidecar_exists = (
+                    self._embedded_sidecar_identities[self.execution_path][1]
+                    is not None
+                )
+                self._prepare_typed_quack_writer_lock_bindings(
+                    execution_sidecar_exists=execution_sidecar_exists,
+                )
                 self._connection = open_duckdb_connection(self.execution_path)
                 self._inspect_embedded_sidecar(
                     self.execution_path,
                     require_exists=True,
                 )
-                for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
-                    self._connection.execute(statement)
+                typed_schema_initialized = False
+                if self._typed_quack_authority_binding is not None:
+                    stable_metadata_presence = (
+                        self._typed_quack_stable_metadata_presence()
+                    )
+                    if stable_metadata_presence == 0:
+                        self._initialize_typed_quack_execution_stable_metadata()
+                        typed_schema_initialized = True
+                    else:
+                        self._admit_or_migrate_typed_quack_stable_binding()
+                if not typed_schema_initialized:
+                    for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
+                        self._connection.execute(statement)
                 typed_binding_metadata: tuple[tuple[str, str], ...] = ()
                 if self._typed_quack_authority_binding is not None:
+                    current_binding_id, current_authority = (
+                        self._current_typed_quack_stable_binding()
+                    )
                     typed_binding_metadata = (
                         (
-                            "typed_quack_stable_binding_id",
-                            str(
-                                self._typed_quack_authority_binding[
-                                    "stable_binding_id"
-                                ]
-                            ),
+                            _TYPED_QUACK_STABLE_BINDING_ID_KEY,
+                            current_binding_id,
                         ),
                         (
-                            "typed_quack_stable_authority",
-                            json.dumps(
-                                dict(
-                                    self._typed_quack_authority_binding[
-                                        "stable_authority"
-                                    ]
-                                ),
-                                sort_keys=True,
-                                separators=(",", ":"),
-                            ),
+                            _TYPED_QUACK_STABLE_AUTHORITY_KEY,
+                            canonical_json(current_authority),
                         ),
                     )
                     for key, expected_value in typed_binding_metadata:
@@ -87067,6 +92406,7 @@ class DatabaseImplementationDaemon:
         # projection that coordination will consume.
         self._recover_lost_typed_claim_reservations()
         tasks, ready_cids = self._stable_authoritative_task_projection()
+        ready_routes = self._database_virgin_transfer_routes(tasks, ready_cids)
         synchronize = getattr(
             self.coordinator,
             "synchronize_authoritative_task",
@@ -87081,7 +92421,10 @@ class DatabaseImplementationDaemon:
             str(task.task_cid)
             for task in tasks
             if str(task.task_cid) in ready_cids
-            and self._database_task_is_eligible(task)
+            and self._database_task_is_eligible(
+                task,
+                ready_routes=ready_routes,
+            )
             and not self._automatic_claim_forbidden(task)
             and self._typed_deferral_claim_is_admitted(task)
         }
@@ -87240,6 +92583,36 @@ class DatabaseImplementationDaemon:
 
         return _task_alias_home_shard_index(task_alias, self.task_shard_count)
 
+    @staticmethod
+    def _database_task_status_receipt(task: Any) -> Mapping[str, Any]:
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        return receipt if isinstance(receipt, Mapping) else {}
+
+    def _database_virgin_transfer_routes(
+        self,
+        tasks: Sequence[Any],
+        ready_cids: Iterable[str],
+    ) -> Mapping[str, int]:
+        """Retain one home task and route virgin surplus to idle lanes."""
+
+        if (
+            not self.strict_task_sharding
+            or self.idle_lane_work_stealing
+            != IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+        ):
+            return MappingProxyType({})
+        return database_virgin_transfer_routes(
+            tasks,
+            ready_cids,
+            shard_count=self.task_shard_count,
+            task_prefix=self.task_prefix,
+        )
+
     def _task_belongs_to_strict_shard(self, task: Any) -> bool:
         """Return whether ``task`` is admitted to this strict database lane.
 
@@ -87253,6 +92626,12 @@ class DatabaseImplementationDaemon:
         task_alias = str(getattr(task, "task_alias", "") or "").strip()
         if not task_alias:
             return False
+        binding = database_virgin_transfer_binding_for_task(
+            task,
+            shard_count=self.task_shard_count,
+        )
+        if binding is not None:
+            return int(binding["recipient_shard_index"]) == self.task_shard_index
         return self._task_home_shard_index(task_alias) == self.task_shard_index
 
     def _database_task_is_in_execution_slice(self, task: Any) -> bool:
@@ -87267,11 +92646,22 @@ class DatabaseImplementationDaemon:
             return False
         return True
 
-    def _database_task_is_eligible(self, task: Any) -> bool:
+    def _database_task_is_eligible(
+        self,
+        task: Any,
+        *,
+        ready_routes: Mapping[str, int] | None = None,
+    ) -> bool:
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        shard_admitted = (
+            ready_routes.get(task_cid) == self.task_shard_index
+            if ready_routes is not None and task_cid in ready_routes
+            else self._task_belongs_to_strict_shard(task)
+        )
         return bool(
             self._database_task_is_in_execution_slice(task)
             and self._task_matches_prefix(task)
-            and self._task_belongs_to_strict_shard(task)
+            and shard_admitted
         )
 
     def _automatic_claim_exclusions(self) -> set[str]:
@@ -87287,15 +92677,26 @@ class DatabaseImplementationDaemon:
         # revision-history proof is what makes it safe to exclude; replacing
         # it with the current inventory object loses the crash fence.
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        excluded.update(
-            str(task.task_cid)
-            for task in ready.tasks
-            if self._post_merge_completion_crash_recovery_context(
-                task,
-                require_current_blocked=False,
-            )
-            is not None
-        )
+        for task in ready.tasks:
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            if not task_cid:
+                continue
+            try:
+                recovery_context = (
+                    self._post_merge_completion_crash_recovery_context(
+                        task,
+                        require_current_blocked=False,
+                    )
+                )
+            except DatabaseImplementationAuthorityError:
+                # This history read is a denial-only discovery fence.  A
+                # legacy task whose canonical revision history is incomplete
+                # must remain unclaimable, but it must not prevent unrelated
+                # tasks with intact authority from reaching another lane.
+                excluded.add(task_cid)
+                continue
+            if recovery_context is not None:
+                excluded.add(task_cid)
         return excluded
 
     def _remember_control_claim_rejection(self, task: Any) -> None:
@@ -88442,6 +93843,10 @@ class DatabaseImplementationDaemon:
             current_tasks, authoritative_ready_cids = (
                 self._stable_authoritative_task_projection()
             )
+            current_ready_routes = self._database_virgin_transfer_routes(
+                current_tasks,
+                authoritative_ready_cids,
+            )
             current_by_cid = {str(item.task_cid): item for item in current_tasks}
             task = current_by_cid.get(str(claim.task_cid))
             task_status = str(getattr(task, "status", "") or "").lower()
@@ -88493,7 +93898,11 @@ class DatabaseImplementationDaemon:
                 and self._task_matches_prefix(task)
             )
             shard_admitted = bool(
-                task is not None and self._task_belongs_to_strict_shard(task)
+                task is not None
+                and self._database_task_is_eligible(
+                    task,
+                    ready_routes=current_ready_routes,
+                )
             )
             recovery_admitted = bool(
                 task is not None
@@ -88516,7 +93925,13 @@ class DatabaseImplementationDaemon:
                         "unavailable"
                     ),
                 )
-                raise
+                # The projection changed (or proved incomplete) after the
+                # local lease was taken.  Release that lease, quarantine only
+                # this candidate for the current bounded claim pass, and keep
+                # looking.  No recovery or execution authority is derived
+                # from the unavailable history.
+                excluded.add(str(claim.task_cid))
+                continue
             ready = (
                 task is not None
                 and projection_matches
@@ -88579,8 +93994,8 @@ class DatabaseImplementationDaemon:
                     # claim/attempt/lease/fence tuple.  Rotate the durable
                     # receipt through the same shared revision CAS before
                     # exposing that attempt so downstream typed mutations
-                    # can bind to the live fence instead of the expired one.
-                    reservation_receipt = {
+                    # bind to the live fence instead of the expired one.
+                    claim_receipt: dict[str, Any] = {
                         "operation": "database_claim",
                         "claim_id": claim.claim_id,
                         "attempt_id": claim.attempt_id,
@@ -88590,6 +94005,13 @@ class DatabaseImplementationDaemon:
                         "fencing_token": int(claim.fencing_token),
                         "fence_epoch": int(claim.fence_epoch),
                         "claimed_from_revision": int(task.revision),
+                        "task_shard_count": self.task_shard_count,
+                        "task_shard_index": self.task_shard_index,
+                        "strict_task_sharding": self.strict_task_sharding,
+                        "idle_lane_work_stealing": (
+                            self.idle_lane_work_stealing
+                        ),
+                        "task_prefix": self.task_prefix,
                         **(
                             {
                                 "claim_phase_schema": (
@@ -88612,11 +94034,27 @@ class DatabaseImplementationDaemon:
                             else {}
                         ),
                     }
+                    if (
+                        ready
+                        and self.idle_lane_work_stealing
+                        == IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+                        and self._task_home_shard_index(task_alias)
+                        != self.task_shard_index
+                    ):
+                        claim_receipt["virgin_task_transfer_request"] = {
+                            "schema": (
+                                DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA
+                            ),
+                            "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                            "task_shard_count": self.task_shard_count,
+                            "recipient_shard_index": self.task_shard_index,
+                            "task_prefix": self.task_prefix,
+                        }
                     self._cas_task_status_database(
                         task.task_cid,
                         expected_revision=int(task.revision),
                         new_status="in_progress",
-                        receipt=reservation_receipt,
+                        receipt=claim_receipt,
                     )
                     if claim_process_attestation is not None:
                         reserved_task = self.task_source.get(task.task_cid)
@@ -89346,7 +94784,7 @@ class DatabaseImplementationDaemon:
             attempt_id=attempt.attempt_id,
             idempotency_key=idempotency_key,
         )
-        from ..task_sources.eaaef_borrowed_transaction import (
+        from ..task_sources.eaaef_execution_contracts import (
             EAAEF_IDEMPOTENT_RESERVATION_SCHEMA,
         )
 
@@ -90181,6 +95619,70 @@ class DatabaseImplementationDaemon:
             body={},
         )
 
+    def _database_virgin_transfer_lineage_for_transition(
+        self,
+        task: Any,
+    ) -> dict[str, Any]:
+        """Reproduce an owner-stamped transfer binding without rotating it."""
+
+        receipt = self._database_task_status_receipt(task)
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        carried = set(receipt) & transfer_fields
+        if not carried:
+            return {}
+        expected_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        binding_raw = receipt.get("virgin_task_transfer")
+        cursor_raw = receipt.get("virgin_task_transfer_claim_cursor")
+        if (
+            carried != expected_fields
+            or not isinstance(binding_raw, Mapping)
+            or not isinstance(cursor_raw, Mapping)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database status transition found incomplete virgin-transfer "
+                "lineage"
+            )
+        try:
+            binding = database_virgin_transfer_binding_for_task(
+                task,
+                shard_count=self.task_shard_count,
+            )
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "database status transition found invalid virgin-transfer "
+                "lineage"
+            ) from exc
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        # Retrying/blocked receipts may omit claim identity.  The owner-stamped
+        # binding and cursor are the lineage; compare them to the live lane,
+        # not to whatever optional identity the current receipt carries.
+        if (
+            binding is None
+            or binding.get("mode") != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            or binding.get("task_cid") != task_cid
+            or binding.get("task_alias") != task_alias
+            or binding.get("task_prefix") != self.task_prefix
+            or binding.get("task_shard_count") != self.task_shard_count
+            or binding.get("recipient_shard_index") != self.task_shard_index
+            or cursor_raw.get("binding_id") != binding.get("binding_id")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database status transition changed its virgin-transfer "
+                "lineage"
+            )
+        return {
+            "virgin_task_transfer": dict(binding_raw),
+            "virgin_task_transfer_claim_cursor": dict(cursor_raw),
+        }
+
     def _cas_task_status_database(
         self,
         task_cid: str,
@@ -90237,6 +95739,69 @@ class DatabaseImplementationDaemon:
             if isinstance(prior_status_receipt, Mapping)
             else {}
         )
+        lineage_for_transition = getattr(
+            self, "_database_virgin_transfer_lineage_for_transition", None
+        )
+        transfer_lineage = (
+            lineage_for_transition(task)
+            if task is not None and callable(lineage_for_transition)
+            else {}
+        )
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        supplied_transfer_fields = set(receipt_payload) & transfer_fields
+        database_claim = bool(
+            new_status == "in_progress"
+            and receipt_payload.get("operation") == "database_claim"
+        )
+        if transfer_lineage:
+            request = receipt_payload.get("virgin_task_transfer_request")
+            if request is not None:
+                expected_request = {
+                    "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "task_prefix": self.task_prefix,
+                }
+                # Retry claims still emit the original request.  The owner
+                # pops it and advances the claim cursor; non-claim writes
+                # must not re-propose a transfer.
+                if (
+                    not database_claim
+                    or not isinstance(request, Mapping)
+                    or dict(request) != expected_request
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "task status transition tried to rotate its "
+                        "virgin-transfer lineage"
+                    )
+            if any(
+                field in receipt_payload
+                and dict(receipt_payload[field]) != value
+                for field, value in transfer_lineage.items()
+                if isinstance(receipt_payload.get(field), Mapping)
+            ) or any(
+                field in receipt_payload
+                and not isinstance(receipt_payload.get(field), Mapping)
+                for field in transfer_lineage
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "task status transition tried to rotate its "
+                    "virgin-transfer lineage"
+                )
+            receipt_payload.update(transfer_lineage)
+        elif supplied_transfer_fields & {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }:
+            raise DatabaseImplementationAuthorityError(
+                "task status transition supplied owner-reserved "
+                "virgin-transfer lineage"
+            )
         supplied_route = receipt_payload.get("execution_route_binding")
         prior_route = prior_status_receipt.get("execution_route_binding")
         if (
@@ -91272,60 +96837,26 @@ class DatabaseImplementationDaemon:
                 != str(new_status).strip().lower()
             ):
                 raise
-            current_body = getattr(current, "body", None)
-            current_receipt = (
-                current_body.get("completion_receipt")
-                if isinstance(current_body, Mapping)
-                else None
-            )
-            replay_identity_valid = bool(
-                isinstance(current_receipt, Mapping)
-                and receipt_payload.get("operation")
-                and _database_daemon_json(dict(current_receipt))
-                == _database_daemon_json(receipt_payload)
-            )
-            normalized_replay_status = str(new_status).strip().lower()
-            if normalized_replay_status in {
-                "in_progress",
-                "retrying",
-            }:
-                required_identity = {
-                    "attempt_id": str(receipt_payload.get("attempt_id") or ""),
-                    "claim_id": str(receipt_payload.get("claim_id") or ""),
-                    "owner_session_id": str(
-                        receipt_payload.get("owner_session_id") or ""
-                    ),
-                    "lease_id": str(receipt_payload.get("lease_id") or ""),
-                }
-                attempt_number = receipt_payload.get("attempt_number")
-                fencing_token = receipt_payload.get("fencing_token")
-                fence_epoch = receipt_payload.get("fence_epoch")
-                replay_identity_valid = bool(
-                    replay_identity_valid
-                    and all(required_identity.values())
-                    and not isinstance(attempt_number, bool)
-                    and isinstance(attempt_number, int)
-                    and attempt_number > 0
-                    and not isinstance(fencing_token, bool)
-                    and isinstance(fencing_token, int)
-                    and fencing_token > 0
-                    and not isinstance(fence_epoch, bool)
-                    and isinstance(fence_epoch, int)
-                    and fence_epoch >= 0
-                    and (
-                        normalized_replay_status != "in_progress"
-                        or receipt_payload.get("operation") == "database_claim"
+            if (
+                new_status == "in_progress"
+                and receipt_payload.get("operation") == "database_claim"
+            ):
+                current_receipt = self._database_task_status_receipt(current)
+                if any(
+                    current_receipt.get(field) != receipt_payload.get(field)
+                    for field in (
+                        "operation",
+                        "claim_id",
+                        "attempt_id",
+                        "owner_session_id",
                     )
-                )
-            if not replay_identity_valid:
-                raise DatabaseImplementationConflictError(
-                    "control status replay conflicts with a foreign durable "
-                    "receipt"
-                ) from exc
-            # The exact receipt already holds the requested status.  Replay at
-            # the observed revision only to obtain the task source's durable
-            # idempotent result; a foreign same-status receipt never reaches
-            # this call.
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database task was claimed by a different fenced attempt"
+                    ) from exc
+            # The owner already holds the requested status.  Replay the CAS at
+            # the observed revision so a no-op receipt is admitted instead of
+            # crash-looping the daemon on transition_invalid.
             return cas(
                 current.task_cid,
                 expected_revision=int(current.revision),
@@ -91550,28 +97081,199 @@ class DatabaseImplementationDaemon:
             quack_attach_error_is_contention,
         )
 
-        if isinstance(exc, (QuackTransportContentionError, DuckDBConnectionPolicyError)):
-            return True
-        if quack_attach_error_is_contention(exc):
-            return True
-        detail = str(exc)
-        name = type(exc).__name__
-        lowered = detail.lower()
-        return (
-            "authorization failed" in lowered
-            or "attach.lock" in lowered
-            or "timed out acquiring duckdb process lock" in lowered
-            or "timed out acquiring duckdb thread lock" in lowered
-            or (
-                name in {"TimeoutError", "InvalidInputException"}
-                and (
-                    "timed out" in lowered
-                    or "timeout" in lowered
-                    or "authentication failed" in lowered
-                    or "authorization failed" in lowered
+        if _is_duckdb_uncertain_transaction_unusable(exc):
+            return False
+        current: BaseException | None = exc
+        seen: set[int] = set()
+        for _depth in range(8):
+            if current is None or id(current) in seen:
+                break
+            seen.add(id(current))
+            if isinstance(
+                current,
+                (QuackTransportContentionError, DuckDBConnectionPolicyError),
+            ):
+                return True
+            if quack_attach_error_is_contention(current):
+                return True
+            detail = str(current)
+            name = type(current).__name__
+            lowered = detail.lower()
+            if (
+                "authorization failed" in lowered
+                or "attach.lock" in lowered
+                or "timed out acquiring duckdb process lock" in lowered
+                or "timed out acquiring duckdb thread lock" in lowered
+                or (
+                    name in {"TimeoutError", "InvalidInputException"}
+                    and (
+                        "timed out" in lowered
+                        or "timeout" in lowered
+                        or "authentication failed" in lowered
+                        or "authorization failed" in lowered
+                    )
                 )
+            ):
+                return True
+            if current.__cause__ is not None:
+                current = current.__cause__
+            elif not current.__suppress_context__:
+                current = current.__context__
+            else:
+                current = None
+        return False
+
+    def _poisoned_embedded_sidecars_unlocked(self) -> tuple[str, ...]:
+        """Return exact unusable local handles after read-only liveness probes."""
+
+        coordinator = self._coordinator
+        execution = self._connection
+        if coordinator is None or execution is None:
+            return ()
+        poisoned: list[str] = []
+        projection = getattr(coordinator, "coordination_registry_projection", None)
+        if not callable(projection):
+            raise DatabaseImplementationAuthorityError(
+                "lane-sidecar recovery requires an owned coordination projection"
             )
-        )
+        try:
+            projection()
+        except Exception as probe_error:
+            if not _is_duckdb_uncertain_transaction_unusable(probe_error):
+                raise DatabaseImplementationAuthorityError(
+                    "coordination sidecar failed its recovery liveness probe"
+                ) from probe_error
+            poisoned.append("coordination")
+        try:
+            execution.execute("SELECT 1")
+        except Exception as probe_error:
+            if not _is_duckdb_uncertain_transaction_unusable(probe_error):
+                raise DatabaseImplementationAuthorityError(
+                    "execution sidecar failed its recovery liveness probe"
+                ) from probe_error
+            poisoned.append("execution")
+
+        coordination_connection = getattr(coordinator, "_connection", None)
+        for name, connection in (
+            ("coordination", coordination_connection),
+            ("execution", execution),
+        ):
+            if name in poisoned:
+                continue
+            if getattr(connection, "in_transaction", None) is not False:
+                raise DatabaseImplementationAuthorityError(
+                    f"{name} sidecar is not idle for lane-local recovery"
+                )
+        return tuple(poisoned)
+
+    def _reopen_unusable_embedded_sidecars(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any] | None:
+        """Reopen only the owned lane sidecars while retaining typed authority."""
+
+        if not _is_duckdb_uncertain_transaction_unusable(exc):
+            return None
+        with self._lock:
+            if (
+                self._uses_quack_command_gateway()
+                or not self._owns_coordinator
+                or self._execution_repository is not None
+                or self._coordinator is None
+                or self._connection is None
+            ):
+                return None
+            expected_lock_paths = {
+                self._coordination_writer_lock_path,
+                self._embedded_writer_lock_path,
+            }
+            if (
+                set(self._embedded_writer_lock_handles) != expected_lock_paths
+                or set(self._embedded_writer_lock_bindings) != expected_lock_paths
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery requires both held writer locks"
+                )
+            self._require_typed_quack_authority_binding()
+            self._inspect_embedded_sidecars(require_exists=True)
+            poisoned = self._poisoned_embedded_sidecars_unlocked()
+            if not poisoned:
+                return None
+            if (
+                self._consecutive_embedded_sidecar_reopens
+                >= _MAX_CONSECUTIVE_EMBEDDED_SIDECAR_REOPENS
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "consecutive embedded lane-sidecar reopen bound exhausted"
+                ) from exc
+
+            writer_handles = dict(self._embedded_writer_lock_handles)
+            writer_bindings = dict(self._embedded_writer_lock_bindings)
+            for lock_path, handle in writer_handles.items():
+                if handle.closed or (
+                    _read_database_writer_lock_binding(handle)
+                    != writer_bindings[lock_path]
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "lane-sidecar recovery writer-lock custody changed"
+                    )
+            task_source = self._task_source
+            typed_binding = self._typed_quack_authority_binding
+            owner_session_id = self.owner_session_id
+            process_instance_id = self.process_instance_id
+            coordinator = self._coordinator
+            execution = self._connection
+
+            # Do not call close(): it would close task authority and release
+            # both writer locks.  Detach only the two lane-local handles while
+            # this daemon lock and their independent writer locks remain held.
+            self._coordinator = None
+            self._connection = None
+            self._closed = True
+            close_coordinator = getattr(coordinator, "close", None)
+            if callable(close_coordinator):
+                close_coordinator()
+            close_execution = getattr(execution, "close", None)
+            if callable(close_execution):
+                close_execution()
+
+            self.open()
+            if (
+                self._task_source is not task_source
+                or self._typed_quack_authority_binding is not typed_binding
+                or self.owner_session_id != owner_session_id
+                or self.process_instance_id != process_instance_id
+                or self._coordinator is None
+                or self._coordinator is coordinator
+                or self._connection is None
+                or self._connection is execution
+                or set(self._embedded_writer_lock_handles) != expected_lock_paths
+                or any(
+                    self._embedded_writer_lock_handles[path] is not handle
+                    for path, handle in writer_handles.items()
+                )
+                or self._embedded_writer_lock_bindings != writer_bindings
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery changed stable daemon authority"
+                )
+            self._require_typed_quack_authority_binding()
+            self._inspect_embedded_sidecars(require_exists=True)
+            if self._poisoned_embedded_sidecars_unlocked():
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery returned an unusable connection"
+                )
+            self._consecutive_embedded_sidecar_reopens += 1
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "lane-sidecar-uncertain-transaction-recovery@1"
+                ),
+                "reason": "duckdb_uncertain_transaction_sidecar_reopened",
+                "poisoned_sidecars": list(poisoned),
+                "reopened_sidecars": ["coordination", "execution"],
+                "recovery_attempt": self._consecutive_embedded_sidecar_reopens,
+            }
 
     def _run_reconciliation_step(
         self,
@@ -95023,6 +100725,303 @@ class DatabaseImplementationDaemon:
                 )
             return lineage
 
+        claim_policy_fields = {
+            "task_prefix",
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+        }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        preserved_owner_fields = {"unknown_callback_reopen_count"}
+
+        def trusted_store_claim_authority() -> tuple[str, str]:
+            """Return the exact policy/generation stamped by the state owner."""
+
+            from ..runtime.multi_supervisor_runner import DATABASE_PROGRAM_JSON_ENV
+
+            expected_policy = {
+                "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+                "task_prefix": self.task_prefix,
+                "task_shard_count": self.task_shard_count,
+                "strict_task_sharding": self.strict_task_sharding,
+                "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            }
+            raw_program = str(
+                os.environ.get(DATABASE_PROGRAM_JSON_ENV, "") or ""
+            ).strip()
+            policy_id = ""
+            if raw_program:
+                try:
+                    program = json.loads(raw_program)
+                except json.JSONDecodeError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "validation retry successor store program is malformed"
+                    ) from exc
+                policy = (
+                    program.get("claim_policy")
+                    if isinstance(program, Mapping)
+                    else None
+                )
+                if policy is not None:
+                    if (
+                        not isinstance(policy, Mapping)
+                        or dict(policy) != expected_policy
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "validation retry successor claim policy differs "
+                            "from the trusted store policy"
+                        )
+                    policy_id = content_identity(expected_policy)
+            generation = str(
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+                    "",
+                )
+                or ""
+            ).strip()
+            return policy_id, generation
+
+        trusted_claim_policy_id, trusted_store_generation = (
+            trusted_store_claim_authority()
+        )
+
+        def verified_owner_preserved_fields(
+            receipt: Mapping[str, Any],
+            *,
+            label: str,
+        ) -> tuple[set[str], int | None]:
+            carried = set(receipt) & preserved_owner_fields
+            if not carried:
+                return set(), None
+            reopen_count = receipt.get("unknown_callback_reopen_count")
+            if (
+                carried != preserved_owner_fields
+                or isinstance(reopen_count, bool)
+                or not isinstance(reopen_count, int)
+                or reopen_count < 0
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has an "
+                    "invalid preserved callback-reopen count"
+                )
+            return carried, int(reopen_count)
+
+        def verified_transfer_authority(
+            receipt: Mapping[str, Any],
+            receipt_body: Mapping[str, Any],
+            *,
+            label: str,
+            require_claim_route: bool,
+        ) -> tuple[set[str], dict[str, Any] | None]:
+            carried = set(receipt) & transfer_fields
+            request = receipt.get("virgin_task_transfer_request")
+            raw_binding = receipt.get("virgin_task_transfer")
+            raw_cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            task_alias = str(attempt.task_alias or "").strip()
+            home_shard_index = database_task_alias_home_shard_index(
+                task_alias,
+                self.task_shard_count,
+            )
+            foreign_lane = home_shard_index != self.task_shard_index
+            transfer_policy = bool(
+                self.strict_task_sharding
+                and self.task_shard_count > 1
+                and self.idle_lane_work_stealing
+                == DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            )
+
+            if request is not None:
+                expected_request = {
+                    "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "task_prefix": self.task_prefix,
+                }
+                if (
+                    not require_claim_route
+                    or carried != {"virgin_task_transfer_request"}
+                    or not isinstance(request, Mapping)
+                    or dict(request) != expected_request
+                    or not transfer_policy
+                    or not foreign_lane
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "invalid virgin-transfer request"
+                    )
+                # This is the exact client-side request emitted before the
+                # owner CAS.  A durable revision must contain the owner's
+                # content-addressed binding and cursor instead; accepting the
+                # request here would turn an unstamped proposal into replay
+                # authority.
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt retained an "
+                    "unstamped virgin-transfer request"
+                )
+
+            binding_carried = {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            if raw_binding is not None or raw_cursor is not None:
+                if (
+                    carried != binding_carried
+                    or not isinstance(raw_binding, Mapping)
+                    or not isinstance(raw_cursor, Mapping)
+                    or not transfer_policy
+                    or not foreign_lane
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "incomplete virgin-transfer binding"
+                    )
+                historical_task = {
+                    "task_cid": attempt.task_cid,
+                    "task_alias": task_alias,
+                    "status": "in_progress",
+                    "revision": 1,
+                    "body": dict(receipt_body),
+                }
+                try:
+                    binding = database_virgin_transfer_binding_for_task(
+                        historical_task,
+                        shard_count=self.task_shard_count,
+                    )
+                except Exception as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "invalid virgin-transfer binding"
+                    ) from exc
+                if binding is None:
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt lost its "
+                        "virgin-transfer binding"
+                    )
+                expected_binding = {
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_cid": attempt.task_cid,
+                    "task_alias": task_alias,
+                    "task_prefix": self.task_prefix,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "claim_policy_id": trusted_claim_policy_id,
+                    "store_generation": trusted_store_generation,
+                }
+                if any(
+                    binding.get(name) != value
+                    for name, value in expected_binding.items()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer store authority"
+                    )
+                cursor_identity = {
+                    "binding_id": binding.get("binding_id"),
+                    "claim_id": receipt.get("claim_id"),
+                    "attempt_id": receipt.get("attempt_id"),
+                    "owner_session_id": receipt.get("owner_session_id"),
+                    "lease_id": receipt.get("lease_id"),
+                    "fencing_token": receipt.get("fencing_token"),
+                    "fence_epoch": receipt.get("fence_epoch"),
+                }
+                if any(
+                    raw_cursor.get(name) != value
+                    for name, value in cursor_identity.items()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer claim cursor"
+                    )
+                claimed_from_revision = receipt.get("claimed_from_revision")
+                if (
+                    claimed_from_revision is not None
+                    and raw_cursor.get("claimed_from_revision")
+                    != claimed_from_revision
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer claim revision"
+                    )
+                return carried, {
+                    "kind": "binding",
+                    "binding": dict(binding),
+                    "cursor": dict(raw_cursor),
+                }
+
+            if carried:
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has malformed "
+                    "virgin-transfer authority"
+                )
+            if require_claim_route and transfer_policy and foreign_lane:
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has no exact "
+                    "foreign-lane transfer authority"
+                )
+            return set(), None
+
+        def verified_claim_policy(
+            receipt: Mapping[str, Any],
+            receipt_body: Mapping[str, Any],
+            *,
+            label: str,
+        ) -> tuple[set[str], dict[str, Any] | None, int | None]:
+            expected_policy = {
+                "task_prefix": self.task_prefix,
+                "task_shard_count": self.task_shard_count,
+                "task_shard_index": self.task_shard_index,
+                "strict_task_sharding": self.strict_task_sharding,
+                "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            }
+            if any(
+                type(receipt.get(name)) is not type(value)
+                or receipt.get(name) != value
+                for name, value in expected_policy.items()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt changed its "
+                    "database claim policy"
+                )
+            task_alias = str(attempt.task_alias or "").strip()
+            if self.task_prefix and not task_alias.startswith(self.task_prefix):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt is outside "
+                    "its database task prefix"
+                )
+            transfer_carried, transfer = verified_transfer_authority(
+                receipt,
+                receipt_body,
+                label=label,
+                require_claim_route=True,
+            )
+            if (
+                self.strict_task_sharding
+                and transfer is None
+                and database_task_alias_home_shard_index(
+                    task_alias,
+                    self.task_shard_count,
+                )
+                != self.task_shard_index
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt changed its "
+                    "strict task shard"
+                )
+            preserved_carried, reopen_count = (
+                verified_owner_preserved_fields(receipt, label=label)
+            )
+            return (
+                claim_policy_fields | transfer_carried | preserved_carried,
+                transfer,
+                reopen_count,
+            )
+
         history = self._task_revision_history_for_recovery(attempt.task_cid)
         history_by_revision = {
             int(item["revision"]): item
@@ -95084,6 +101083,23 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor terminal receipt is malformed"
             )
+        terminal_transfer_fields, terminal_transfer = (
+            verified_transfer_authority(
+                terminal_receipt,
+                terminal_body,
+                label="terminal",
+                require_claim_route=False,
+            )
+        )
+        terminal_preserved_fields, terminal_reopen_count = (
+            verified_owner_preserved_fields(
+                terminal_receipt,
+                label="terminal",
+            )
+        )
+        terminal_fields.update(
+            terminal_transfer_fields | terminal_preserved_fields
+        )
         terminal_route = verified_route_lineage(
             terminal_receipt,
             terminal_fields,
@@ -95149,7 +101165,7 @@ class DatabaseImplementationDaemon:
             "lease_id",
             "validation_retry_source_attempt_id",
             "validation_retry_seed",
-        }
+        } | claim_policy_fields
         claim_operation = (
             str(claim_receipt.get("operation") or "")
             if isinstance(claim_receipt, Mapping)
@@ -95184,6 +101200,20 @@ class DatabaseImplementationDaemon:
                     "attempt_execution_revision",
                 }
             )
+        claim_transfer: dict[str, Any] | None = None
+        claim_reopen_count: int | None = None
+        claim_policy_carried: set[str] = set()
+        if isinstance(claim_receipt, Mapping) and isinstance(claim_body, Mapping):
+            (
+                claim_policy_carried,
+                claim_transfer,
+                claim_reopen_count,
+            ) = verified_claim_policy(
+                claim_receipt,
+                claim_body,
+                label="claim",
+            )
+            claim_fields.update(claim_policy_carried)
         if (
             claim_record is None
             or claim_record.get("status") != "in_progress"
@@ -95220,8 +101250,7 @@ class DatabaseImplementationDaemon:
                 claim_operation == "database_claim"
                 and (
                     (modern_claim and claimed_from_revision != claim_revision - 1)
-                    or claim_phase_schema
-                    not in {"", TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA}
+                    or claim_phase_schema != ""
                 )
             )
             or (
@@ -95247,6 +101276,85 @@ class DatabaseImplementationDaemon:
             claim_fields,
             label="claim",
         )
+        if typed_claim:
+            reservation_revision = claim_revision - 1
+            reservation_record = history_by_revision.get(
+                reservation_revision
+            )
+            reservation_body = (
+                reservation_record.get("body")
+                if reservation_record is not None
+                else None
+            )
+            reservation_receipt = (
+                reservation_body.get("completion_receipt")
+                if isinstance(reservation_body, Mapping)
+                else None
+            )
+            if (
+                reservation_record is None
+                or reservation_record.get("status") != "in_progress"
+                or not isinstance(reservation_body, Mapping)
+                or not isinstance(reservation_receipt, Mapping)
+                or reservation_receipt.get("operation") != "database_claim"
+                or reservation_receipt.get("claim_phase_schema")
+                != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                or reservation_receipt.get("claimed_from_revision")
+                != claim_revision - 2
+                or not isinstance(
+                    reservation_receipt.get("claim_process_attestation"),
+                    Mapping,
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed claim has no exact "
+                    "reservation revision"
+                )
+            (
+                reservation_policy_carried,
+                reservation_transfer,
+                reservation_reopen_count,
+            ) = verified_claim_policy(
+                reservation_receipt,
+                reservation_body,
+                label="claim reservation",
+            )
+            if (
+                reservation_policy_carried != claim_policy_carried
+                or reservation_transfer != claim_transfer
+                or reservation_reopen_count != claim_reopen_count
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed admission changed its "
+                    "reservation claim authority"
+                )
+            reservation_fields = claim_fields - {
+                "admitted_from_revision",
+                "attempt_execution_phase",
+                "attempt_execution_revision",
+            }
+            reservation_route = verified_route_lineage(
+                reservation_receipt,
+                reservation_fields,
+                label="claim reservation",
+            )
+            expected_admission = {
+                **dict(reservation_receipt),
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": reservation_revision,
+                "attempt_execution_phase": ATTEMPT_PHASE_CLAIMED,
+                "attempt_execution_revision": 1,
+            }
+            if (
+                _database_daemon_json(dict(claim_receipt))
+                != _database_daemon_json(expected_admission)
+                or reservation_route != claim_route
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed admission differs from "
+                    "its exact reservation"
+                )
         source_attempt_id = str(
             claim_receipt.get("validation_retry_source_attempt_id") or ""
         )
@@ -95362,6 +101470,28 @@ class DatabaseImplementationDaemon:
         expected_source_retry_revision = claim_revision - (
             2 if typed_claim else 1
         )
+        source_retry_body = source_retry_record.get("body")
+        if not isinstance(source_retry_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor source control body is malformed"
+            )
+        source_transfer_fields, source_transfer = (
+            verified_transfer_authority(
+                source_retry_receipt,
+                source_retry_body,
+                label="source retry",
+                require_claim_route=False,
+            )
+        )
+        source_preserved_fields, source_reopen_count = (
+            verified_owner_preserved_fields(
+                source_retry_receipt,
+                label="source retry",
+            )
+        )
+        source_retry_fields.update(
+            source_transfer_fields | source_preserved_fields
+        )
         source_retry_route = verified_route_lineage(
             source_retry_receipt,
             source_retry_fields,
@@ -95427,6 +101557,58 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationConflictError(
                 "validation retry successor execution-route lineage changed"
+            )
+        transfer_lineages = (
+            source_transfer,
+            claim_transfer,
+            terminal_transfer,
+        )
+        bound_transfers = [
+            transfer
+            for transfer in transfer_lineages
+            if transfer is not None and transfer.get("kind") == "binding"
+        ]
+        if bound_transfers:
+            if (
+                len(bound_transfers) != len(transfer_lineages)
+                or not all(
+                    transfer.get("binding")
+                    == bound_transfers[0].get("binding")
+                    for transfer in bound_transfers[1:]
+                )
+                or claim_transfer.get("cursor")
+                != terminal_transfer.get("cursor")
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor virgin-transfer lineage changed"
+                )
+            source_cursor = source_transfer.get("cursor")
+            claim_cursor = claim_transfer.get("cursor")
+            if (
+                not isinstance(source_cursor, Mapping)
+                or not isinstance(claim_cursor, Mapping)
+                or claim_cursor.get("claimed_from_revision")
+                != claimed_from_revision
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor virgin-transfer claim cursor "
+                    "did not advance"
+                )
+            _require_validation_retry_transfer_cursor_advance(
+                source_cursor,
+                claim_cursor,
+            )
+        reopen_counts = (
+            source_reopen_count,
+            claim_reopen_count,
+            terminal_reopen_count,
+        )
+        if any(value is not None for value in reopen_counts) and (
+            any(value is None for value in reopen_counts)
+            or len(set(reopen_counts)) != 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor callback-reopen lineage changed"
             )
 
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
@@ -96278,7 +102460,16 @@ class DatabaseImplementationDaemon:
             "execution_route_policy_id",
             "execution_route_origin_revision",
         }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
         carried_route_fields = set(receipt) & route_fields
+        carried_transfer_fields = set(receipt) & transfer_fields
+        expected_transfer_lineage = (
+            self._database_virgin_transfer_lineage_for_transition(task)
+        )
         operation = receipt.get("operation")
         operation_contracts = {
             "database_portal_validation_retry": {
@@ -96295,7 +102486,13 @@ class DatabaseImplementationDaemon:
         if (
             operation not in operation_contracts
             or carried_route_fields not in (set(), route_fields)
-            or set(receipt) != base_fields | carried_route_fields
+            or carried_transfer_fields != set(expected_transfer_lineage)
+            or any(
+                receipt.get(field) != value
+                for field, value in expected_transfer_lineage.items()
+            )
+            or set(receipt)
+            != base_fields | carried_route_fields | carried_transfer_fields
         ):
             raise DatabaseImplementationAuthorityError(
                 "validation retry control receipt has an invalid operation "
@@ -97261,8 +103458,23 @@ class DatabaseImplementationDaemon:
             "fencing_token",
             "fence_epoch",
         }
+        claim_policy_fields = {
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+            "task_prefix",
+        }
+        expected_claim_policy = {
+            "task_shard_count": self.task_shard_count,
+            "task_shard_index": self.task_shard_index,
+            "strict_task_sharding": self.strict_task_sharding,
+            "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            "task_prefix": self.task_prefix,
+        }
         source_claim_expected_fields = {
             *claim_identity_fields,
+            *claim_policy_fields,
             "attempt_number",
             "claimed_from_revision",
             "consumed_attempt_retry_source_attempt_id",
@@ -97270,6 +103482,7 @@ class DatabaseImplementationDaemon:
         }
         target_claim_expected_fields = {
             *claim_identity_fields,
+            *claim_policy_fields,
             "attempt_number",
             "claimed_from_revision",
             "protected_preservation_source_attempt_id",
@@ -97389,6 +103602,11 @@ class DatabaseImplementationDaemon:
             or any(
                 source_claim_receipt.get(field) != expected
                 for field, expected in source_identity.items()
+            )
+            or any(
+                type(source_claim_receipt.get(field)) is not type(expected)
+                or source_claim_receipt.get(field) != expected
+                for field, expected in expected_claim_policy.items()
             )
             or source_claim_receipt.get("attempt_number")
             != int(source_attempt.attempt_number)
@@ -97526,6 +103744,11 @@ class DatabaseImplementationDaemon:
             or any(
                 target_claim_receipt.get(field) != expected
                 for field, expected in target_identity.items()
+            )
+            or any(
+                type(target_claim_receipt.get(field)) is not type(expected)
+                or target_claim_receipt.get(field) != expected
+                for field, expected in expected_claim_policy.items()
             )
             or target_claim_receipt.get("attempt_number")
             != int(target_attempt.attempt_number)
@@ -98265,12 +104488,81 @@ class DatabaseImplementationDaemon:
             "execution_route_policy_id",
             "execution_route_origin_revision",
         }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        owner_preserved_fields = {"unknown_callback_reopen_count"}
         receipt_fields = set(receipt) if isinstance(receipt, Mapping) else set()
         carried_route_fields = receipt_fields & route_fields
+        carried_transfer_fields = receipt_fields & transfer_fields
+        carried_owner_fields = receipt_fields & owner_preserved_fields
+        if carried_transfer_fields:
+            if (
+                carried_transfer_fields
+                != {
+                    "virgin_task_transfer",
+                    "virgin_task_transfer_claim_cursor",
+                }
+                or not isinstance(receipt, Mapping)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt retained an "
+                    "unstamped or incomplete virgin-transfer request"
+                )
+            try:
+                current_transfer = database_virgin_transfer_binding_for_task(
+                    task,
+                    shard_count=self.task_shard_count,
+                )
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt has an invalid "
+                    "virgin-transfer binding"
+                ) from exc
+            if (
+                current_transfer is None
+                or current_transfer.get("mode")
+                != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+                or current_transfer.get("task_cid") != attempt.task_cid
+                or current_transfer.get("task_alias") != attempt.task_alias
+                or current_transfer.get("task_prefix") != self.task_prefix
+                or current_transfer.get("task_shard_count")
+                != self.task_shard_count
+                or current_transfer.get("recipient_shard_index")
+                != self.task_shard_index
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt changed its "
+                    "virgin-transfer policy"
+                )
+        if carried_owner_fields:
+            reopen_count = (
+                receipt.get("unknown_callback_reopen_count")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            if (
+                carried_owner_fields != owner_preserved_fields
+                or isinstance(reopen_count, bool)
+                or not isinstance(reopen_count, int)
+                or reopen_count < 0
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt has an invalid "
+                    "preserved callback-reopen count"
+                )
         if (
             not isinstance(receipt, Mapping)
             or carried_route_fields not in (set(), route_fields)
-            or receipt_fields != expected_fields | carried_route_fields
+            or receipt_fields
+            != (
+                expected_fields
+                | carried_route_fields
+                | carried_transfer_fields
+                | carried_owner_fields
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor control receipt is malformed"
@@ -98355,9 +104647,41 @@ class DatabaseImplementationDaemon:
             and set(terminal_receipt) & route_fields == route_fields
             else None
         )
+        historical_transfer_fields = (
+            set(terminal_receipt) & transfer_fields
+            if isinstance(terminal_receipt, Mapping)
+            else set()
+        )
+        historical_owner_fields = (
+            set(terminal_receipt) & owner_preserved_fields
+            if isinstance(terminal_receipt, Mapping)
+            else set()
+        )
         if current_route != historical_route:
             raise DatabaseImplementationConflictError(
                 "validation retry successor recovery rotated its execution route"
+            )
+        if (
+            carried_transfer_fields != historical_transfer_fields
+            or any(
+                receipt.get(field) != terminal_receipt.get(field)
+                for field in carried_transfer_fields
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery rotated its "
+                "virgin-transfer lineage"
+            )
+        if (
+            carried_owner_fields != historical_owner_fields
+            or any(
+                receipt.get(field) != terminal_receipt.get(field)
+                for field in carried_owner_fields
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery changed its preserved "
+                "callback-reopen count"
             )
         if (
             expected_recovery_evidence is not None
@@ -100297,6 +106621,14 @@ class DatabaseImplementationDaemon:
                 "typed blocked recovery is unavailable without "
                 "coordination-coupled owner authority"
             )
+        lineage_for_transition = getattr(
+            self, "_database_virgin_transfer_lineage_for_transition", None
+        )
+        retry_transfer_lineage = (
+            lineage_for_transition(task)
+            if callable(lineage_for_transition)
+            else {}
+        )
         prior_route_fields = (
             set(prior_control_receipt) & route_fields
             if isinstance(prior_control_receipt, Mapping)
@@ -100349,6 +106681,45 @@ class DatabaseImplementationDaemon:
                     "retry control receipt changed its execution-route lineage"
                 )
 
+        retry_operation = (
+            "database_portal_protected_preservation_retry_recovery"
+            if blocked_recovery
+            and protected_preservation_evidence is not None
+            else "database_portal_capacity_retry"
+            if capacity_retry_evidence is not None
+            else "database_portal_protected_preservation_retry"
+            if protected_preservation_evidence is not None
+            else "database_portal_landed_completion_revalidation"
+            if landed_completion_recovery_evidence is not None
+            else "database_portal_validation_retry_successor_recovery"
+            if validation_retry_successor_evidence is not None
+            else "database_portal_protected_path_retry_recovery"
+            if protected_path_recovery_evidence is not None
+            else "database_portal_external_protected_checkout_retry_recovery"
+            if external_protected_checkout_recovery_evidence is not None
+            else "database_portal_inflight_process_retry_recovery"
+            if inflight_process_recovery_evidence is not None
+            else "database_portal_validation_retry_seed_conflict_retry_recovery"
+            if validation_retry_seed_conflict_recovery_evidence is not None
+            else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            if leftover_wait_deferral_budget_recovery_evidence is not None
+            else "database_portal_pooled_worktree_create_retry_recovery"
+            if pooled_worktree_create_recovery_evidence is not None
+            else "database_portal_inflight_deferral_unstall"
+            if inflight_deferral_unstall_evidence is not None
+            else "database_portal_validation_retry_recovery"
+            if blocked_recovery
+            else "database_portal_validation_retry"
+            if validation_retry_evidence is not None
+            else "database_portal_retry"
+        )
+        if retry_operation not in TYPED_RETRYING_RECEIPT_OPERATIONS:
+            # Keep a future writer/reader vocabulary drift from persisting a
+            # retrying control row that every sealed lane rejects on restart.
+            raise DatabaseImplementationAuthorityError(
+                "retry control operation is absent from typed admission"
+            )
+
         def retry_control_receipt(
             *,
             retry_not_before_ms: int,
@@ -100364,38 +106735,7 @@ class DatabaseImplementationDaemon:
                 else dict(queue_receipt)
             )
             return {
-                "operation": (
-                    "database_portal_protected_preservation_retry_recovery"
-                    if blocked_recovery
-                    and protected_preservation_evidence is not None
-                    else "database_portal_capacity_retry"
-                    if capacity_retry_evidence is not None
-                    else "database_portal_protected_preservation_retry"
-                    if protected_preservation_evidence is not None
-                    else "database_portal_landed_completion_revalidation"
-                    if landed_completion_recovery_evidence is not None
-                    else "database_portal_validation_retry_successor_recovery"
-                    if validation_retry_successor_evidence is not None
-                    else "database_portal_protected_path_retry_recovery"
-                    if protected_path_recovery_evidence is not None
-                    else "database_portal_external_protected_checkout_retry_recovery"
-                    if external_protected_checkout_recovery_evidence is not None
-                    else "database_portal_inflight_process_retry_recovery"
-                    if inflight_process_recovery_evidence is not None
-                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
-                    if validation_retry_seed_conflict_recovery_evidence is not None
-                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else "database_portal_pooled_worktree_create_retry_recovery"
-                    if pooled_worktree_create_recovery_evidence is not None
-                    else "database_portal_inflight_deferral_unstall"
-                    if inflight_deferral_unstall_evidence is not None
-                    else "database_portal_validation_retry_recovery"
-                    if blocked_recovery
-                    else "database_portal_validation_retry"
-                    if validation_retry_evidence is not None
-                    else "database_portal_retry"
-                ),
+                "operation": retry_operation,
                 "attempt_id": attempt.attempt_id,
                 "claim_id": attempt.claim_id,
                 "lease_id": attempt.lease_id,
@@ -100423,6 +106763,7 @@ class DatabaseImplementationDaemon:
                     }
                 ),
                 **retry_route_lineage,
+                **retry_transfer_lineage,
                 **(
                     {
                         "validation_retry_seed": dict(
@@ -100831,6 +107172,24 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "typed retry repair has no exact cooldown validator"
                     )
+                admitted_delay_ms = (
+                    prior_control_receipt.get("backoff_ms")
+                    if isinstance(prior_control_receipt, Mapping)
+                    else None
+                )
+                if (
+                    isinstance(admitted_delay_ms, bool)
+                    or not isinstance(admitted_delay_ms, int)
+                    or admitted_delay_ms < delay_ms
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "retrying task has no reproducible admitted cooldown delay"
+                    )
+                admitted_delay_ms = (
+                    self._database_portal_capacity_backoff_ms(admitted_delay_ms)
+                    if capacity_retry_evidence is not None
+                    else self._database_portal_backoff_ms(admitted_delay_ms)
+                )
                 existing_entry = validate_retrying_cooldown(
                     attempt.task_cid,
                     expected_attempt_identity={
@@ -100843,7 +107202,11 @@ class DatabaseImplementationDaemon:
                         "fence_epoch": int(attempt.fence_epoch),
                     },
                     expected_reason=queue_reason,
-                    expected_delay_ms=delay_ms,
+                    # ``delay_ms`` is the remaining window reconstructed from
+                    # the failed phase and therefore shrinks on every replay.
+                    # The task receipt and typed cooldown instead seal the
+                    # immutable delay admitted by the original transition.
+                    expected_delay_ms=admitted_delay_ms,
                 )
                 queue_receipt_dict = {}
             elif existing_entry is None:
@@ -111254,13 +117617,73 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
-        self._require_typed_quack_authority_binding()
-        if self._embedded_writer_lock_handles:
-            self._inspect_embedded_sidecars(require_exists=True)
         self._idle_recovery_prefix = None
         try:
-            return self._run_once_impl()
+            self._require_typed_quack_authority_binding()
+            if self._embedded_writer_lock_handles:
+                self._inspect_embedded_sidecars(require_exists=True)
+            result = self._run_once_impl()
+            with self._lock:
+                self._consecutive_embedded_sidecar_reopens = 0
+            return result
         except Exception as exc:
+            recovered = self._reopen_unusable_embedded_sidecars(exc)
+            if recovered is not None:
+                # A poisoned connection proves that a prior transaction's
+                # outcome is uncertain.  Re-entering _run_once_impl here could
+                # repeat provider/effect work before durable replay state is
+                # reread.  Yield this tick; the next tick starts from freshly
+                # opened lane sidecars and reconciles the durable journals.
+                prefix = self._idle_recovery_prefix or {}
+                result: dict[str, Any] = {
+                    "unchanged": False,
+                    "write_count": max(
+                        1,
+                        int((prefix.get("output_rearm") or {}).get("write_count") or 0)
+                        + int(
+                            (prefix.get("merge_quarantine_settlement") or {}).get(
+                                "write_count"
+                            )
+                            or 0
+                        )
+                        + int(
+                            (prefix.get("post_merge_recovery") or {}).get(
+                                "write_count"
+                            )
+                            or 0
+                        ),
+                    ),
+                    "deferred": True,
+                    "skipped": True,
+                    "reason": "embedded_sidecar_reopened",
+                    "selection_idle_reason": "embedded_sidecar_reopened",
+                    "implementation_result": None,
+                    "active_task_id": "",
+                    "attempt_consumed": "unknown",
+                    "provider_dispatched": "unknown",
+                    "recovery_attempt_consumed": False,
+                    "recovery_provider_dispatched": False,
+                    "backoff_seconds": 0,
+                    "portal_retryable_failure": True,
+                    "portal_terminal_failure": False,
+                    "durable_state_uncertain": True,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "lane_sidecar_recovery": dict(recovered),
+                }
+                if prefix.get("output_rearm") is not None:
+                    result["declared_output_rearm"] = dict(
+                        prefix["output_rearm"]
+                    )
+                if prefix.get("merge_quarantine_settlement") is not None:
+                    result["merge_quarantine_settlement"] = dict(
+                        prefix["merge_quarantine_settlement"]
+                    )
+                if prefix.get("post_merge_recovery") is not None:
+                    result["post_merge_recovery"] = dict(
+                        prefix["post_merge_recovery"]
+                    )
+                return result
             if self._is_quack_attach_contention(exc):
                 prefix = self._idle_recovery_prefix or {}
                 return self._quack_attach_contention_deferral(
@@ -112289,11 +118712,268 @@ TodoTaskState = PortalTaskState
 TodoImplementationDaemon = PortalImplementationDaemon
 
 
-def main(argv: list[str] | None = None) -> None:
-    from ..runtime.process_security import harden_state_authority_process
+_LGCVF_DAEMON_DIAGNOSTIC_PHASES = frozenset(
+    {
+        "argument_parse",
+        "credential_capture",
+        "daemon_construct",
+        "owner_attach",
+        "owner_bootstrap",
+        "path_resolution",
+        "portal_bind",
+        "process_security",
+        "program_config",
+        "runtime_pass",
+    }
+)
+_LGCVF_DAEMON_DIAGNOSTIC_TYPES = frozenset(
+    {
+        "AssertionError",
+        "AttributeError",
+        "BrokenPipeError",
+        "ConfiguredBoardError",
+        "ConnectionError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "DatabaseImplementationAuthorityError",
+        "DatabaseImplementationDaemonError",
+        "DatabaseProgramConfigError",
+        "EOFError",
+        "FileNotFoundError",
+        "ImportError",
+        "IsADirectoryError",
+        "KeyError",
+        "LookupError",
+        "ModuleNotFoundError",
+        "NotADirectoryError",
+        "NotImplementedError",
+        "OSError",
+        "OverflowError",
+        "PermissionError",
+        "ProcessLookupError",
+        "QuackClientError",
+        "QuackClientIdentityError",
+        "QuackClientTransportError",
+        "RuntimeError",
+        "StateAuthorityProcessIsolationError",
+        "StateOwnerBootstrapError",
+        "SupervisorSchedulerConfigError",
+        "TimeoutError",
+        "TransactionError",
+        "TypeError",
+        "TypedStateOwnerError",
+        "UnboundLocalError",
+        "ValueError",
+    }
+)
 
-    harden_state_authority_process()
-    args = parse_args(argv)
+
+def _lgcvf_daemon_diagnostic_site(exc: BaseException) -> str:
+    """Return one bounded source site proven to belong to a sealed module."""
+
+    trusted_site = ""
+    try:
+        traceback = exc.__traceback__
+        while traceback is not None:
+            namespace = traceback.tb_frame.f_globals
+            module_name = namespace.get("__name__")
+            module = (
+                sys.modules.get(module_name)
+                if type(module_name) is str
+                else None
+            )
+            module_namespace = getattr(module, "__dict__", None)
+            component = (
+                module_name.rsplit(".", 1)[-1]
+                if type(module_name) is str
+                else ""
+            )
+            line = traceback.tb_lineno
+            sealed_self_namespace = (
+                namespace.get("_lgcvf_daemon_diagnostic_site")
+                is _lgcvf_daemon_diagnostic_site
+                and namespace.get("_emit_lgcvf_daemon_diagnostic")
+                is _emit_lgcvf_daemon_diagnostic
+            )
+            if sealed_self_namespace and type(line) is int and 0 < line <= 1_000_000:
+                module_name = (
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_daemon"
+                )
+                module_digest = hashlib.sha256(
+                    module_name.encode("ascii")
+                ).hexdigest()[:12]
+                trusted_site = f"implementation_daemon:{line}:{module_digest}"
+            elif (
+                type(module_name) is str
+                and len(module_name) <= 256
+                and module_name.isascii()
+                and module_name.startswith(
+                    "ipfs_accelerate_py.agent_supervisor."
+                )
+                and type(module_namespace) is dict
+                and module_namespace is namespace
+                and type(component) is str
+                and 0 < len(component) <= 64
+                and component.isascii()
+                and component.isidentifier()
+                and type(line) is int
+                and 0 < line <= 1_000_000
+            ):
+                module_digest = hashlib.sha256(
+                    module_name.encode("ascii")
+                ).hexdigest()[:12]
+                trusted_site = f"{component}:{line}:{module_digest}"
+            traceback = traceback.tb_next
+    except BaseException:
+        return ""
+    return trusted_site
+
+
+def _lgcvf_daemon_diagnostic_type(exc: BaseException) -> str:
+    """Return one allowlisted exception type without consulting its message."""
+
+    exception_type = type(exc)
+    safe_type = exception_type.__name__
+    if (
+        type(safe_type) is not str
+        or (
+            safe_type not in _LGCVF_DAEMON_DIAGNOSTIC_TYPES
+            and not (
+                len(safe_type) <= 64
+                and safe_type.isascii()
+                and safe_type.isidentifier()
+                and type(exception_type.__module__) is str
+                and exception_type.__module__.startswith(
+                    "ipfs_accelerate_py.agent_supervisor."
+                )
+                and type(
+                    getattr(
+                        sys.modules.get(exception_type.__module__),
+                        "__dict__",
+                        None,
+                    )
+                )
+                is dict
+                and sys.modules[exception_type.__module__].__dict__.get(
+                    safe_type
+                )
+                is exception_type
+            )
+        )
+    ):
+        return "BaseException"
+    return safe_type
+
+
+def _lgcvf_daemon_diagnostic_causes(
+    exc: BaseException,
+) -> tuple[BaseException, ...]:
+    """Return a bounded, cycle-free explicit/implicit exception chain."""
+
+    causes: list[BaseException] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _depth in range(6):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        causes.append(current)
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return tuple(causes)
+
+
+def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
+    """Emit one bounded, detail-free failure class for sealed live recovery."""
+
+    safe_phase = (
+        phase if phase in _LGCVF_DAEMON_DIAGNOSTIC_PHASES else "unknown"
+    )
+    safe_type = _lgcvf_daemon_diagnostic_type(exc)
+    safe_site = _lgcvf_daemon_diagnostic_site(exc)
+    site_field = f" site={safe_site}" if safe_site else ""
+    record = (
+        "lgcvf-daemon-diagnostic@1 "
+        f"phase={safe_phase} type={safe_type}{site_field}\n"
+    ).encode("ascii")
+    if len(record) > 160:
+        record = (
+            b"lgcvf-daemon-diagnostic@1 "
+            b"phase=unknown type=BaseException\n"
+        )
+    try:
+        os.write(2, record)
+        for depth, cause in enumerate(
+            _lgcvf_daemon_diagnostic_causes(exc)[1:],
+            start=1,
+        ):
+            cause_type = _lgcvf_daemon_diagnostic_type(cause)
+            cause_site = _lgcvf_daemon_diagnostic_site(cause)
+            cause_site_field = f" site={cause_site}" if cause_site else ""
+            remote_fields = ""
+            if cause_type == "TypedStateOwnerRemoteError":
+                error_code = getattr(cause, "error_code", None)
+                error_type = getattr(cause, "error_type", None)
+                if (
+                    type(error_code) is str
+                    and 0 < len(error_code) <= 64
+                    and error_code.isascii()
+                    and error_code.replace("_", "a").isalnum()
+                    and type(error_type) is str
+                    and 0 < len(error_type) <= 64
+                    and error_type.isascii()
+                    and error_type.isidentifier()
+                ):
+                    remote_fields = f" code={error_code} remote={error_type}"
+            cause_record = (
+                "lgcvf-daemon-cause@1 "
+                f"depth={depth} type={cause_type}{cause_site_field}"
+                f"{remote_fields}\n"
+            ).encode("ascii")
+            if len(cause_record) > 160:
+                cause_record = (
+                    b"lgcvf-daemon-cause@1 depth=0 type=BaseException\n"
+                )
+            os.write(2, cause_record)
+    except BaseException:
+        pass
+
+
+def _lgcvf_daemon_call(phase: str, operation: Callable[[], Any]) -> Any:
+    """Run one daemon boundary and preserve a secret-free failure stage."""
+
+    try:
+        return operation()
+    except SystemExit:
+        raise
+    except BaseException as exc:
+        _emit_lgcvf_daemon_diagnostic(phase, exc)
+        raise
+
+
+def main(argv: list[str] | None = None) -> None:
+    # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
+    # the in-memory attach credential, so re-establish the kernel boundary
+    # before argument parsing, state access, or any provider-capable path.
+    from ..runtime.process_security import (
+        capture_state_authority_credentials,
+        harden_state_authority_process,
+    )
+
+    _lgcvf_daemon_call(
+        "process_security",
+        harden_state_authority_process,
+    )
+    _lgcvf_daemon_call(
+        "credential_capture",
+        capture_state_authority_credentials,
+    )
+    args = _lgcvf_daemon_call("argument_parse", lambda: parse_args(argv))
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -112303,10 +118983,18 @@ def main(argv: list[str] | None = None) -> None:
     if args.llm_merge_resolver_timeout_seconds is not None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
 
-    program = database_program_from_daemon_namespace(args)
-    db_paths = resolve_database_implementation_paths(
-        args,
-        authority_mode=program.authority_mode if program is not None else "",
+    program = _lgcvf_daemon_call(
+        "program_config",
+        lambda: database_program_from_daemon_namespace(args),
+    )
+    db_paths = _lgcvf_daemon_call(
+        "path_resolution",
+        lambda: resolve_database_implementation_paths(
+            args,
+            authority_mode=(
+                program.authority_mode if program is not None else ""
+            ),
+        ),
     )
     database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
@@ -112405,11 +119093,21 @@ def main(argv: list[str] | None = None) -> None:
                 request_state_owner_bootstrap,
             )
 
-            credentials = request_state_owner_bootstrap(
-                bootstrap_fd,
-                client_id=f"database-implementation-daemon:{owner_session_id}",
-                store_id=str(
-                    getattr(args, "state_owner_bootstrap_store_id", "") or ""
+            credentials = _lgcvf_daemon_call(
+                "owner_bootstrap",
+                lambda: request_state_owner_bootstrap(
+                    bootstrap_fd,
+                    client_id=(
+                        f"database-implementation-daemon:{owner_session_id}"
+                    ),
+                    store_id=str(
+                        getattr(
+                            args,
+                            "state_owner_bootstrap_store_id",
+                            "",
+                        )
+                        or ""
+                    ),
                 ),
             )
             state_owner_bootstrap_credentials = credentials
@@ -112430,13 +119128,20 @@ def main(argv: list[str] | None = None) -> None:
                 TYPED_STATE_OWNER_TOKEN_ENV,
             )
 
-            credentials.install_environment()
-            client = QuackStateClient(
-                owner_id=credentials.client_id,
-                store_id=credentials.store_id,
-                process_birth_id=credentials.process_birth_id,
-            )
+            client: Any = None
             try:
+                # Credential installation and client construction are part of
+                # the same attach boundary.  In particular, a constructor
+                # signature/configuration failure must not escape as the
+                # capsule's undifferentiated ``daemon_main`` failure, and the
+                # bootstrap values must be scrubbed even when no client was
+                # constructed.
+                credentials.install_environment()
+                client = QuackStateClient(
+                    owner_id=credentials.client_id,
+                    store_id=credentials.store_id,
+                    process_birth_id=credentials.process_birth_id,
+                )
                 client.attach(
                     credentials.endpoint,
                     server_id=credentials.server_id,
@@ -112445,8 +119150,10 @@ def main(argv: list[str] | None = None) -> None:
                     client,
                     execution_route_policy=credentials.execution_route_policy,
                 )
-            except BaseException:
-                client.close()
+            except BaseException as exc:
+                _emit_lgcvf_daemon_diagnostic("owner_attach", exc)
+                if client is not None:
+                    client.close()
                 raise
             finally:
                 # The authenticated socket is already bound to this birth.
@@ -112498,16 +119205,20 @@ def main(argv: list[str] | None = None) -> None:
                 ),
                 quack_command_gateway=quack_command_gateway,
             )
-        except BaseException:
+        except BaseException as exc:
+            _emit_lgcvf_daemon_diagnostic("daemon_construct", exc)
             if typed_task_source is not None:
                 typed_task_source.close()
             raise
-        bind_database_portal_execution_from_args(
-            daemon,
-            args,
-            repo_root=REPO_ROOT,
-            portal_daemon_class=PortalImplementationDaemon,
-            external_agent_container_dispatcher_factory=dispatcher_factory,
+        _lgcvf_daemon_call(
+            "portal_bind",
+            lambda: bind_database_portal_execution_from_args(
+                daemon,
+                args,
+                repo_root=REPO_ROOT,
+                portal_daemon_class=PortalImplementationDaemon,
+                external_agent_container_dispatcher_factory=dispatcher_factory,
+            ),
         )
     else:
         daemon = PortalImplementationDaemon(
@@ -112623,7 +119334,7 @@ def main(argv: list[str] | None = None) -> None:
             return
         last_idle_info_at: float | None = None
         while True:
-            result = daemon.run_once()
+            result = _lgcvf_daemon_call("runtime_pass", daemon.run_once)
             materialize_database_task_state_compatibility_projection(
                 daemon,
                 state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -112669,24 +119380,265 @@ def main(argv: list[str] | None = None) -> None:
                 signal.signal(signal.SIGINT, previous_int)
 
 
-def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
-    """Seal the generation that finished importing this daemon module."""
+_IMPORTED_CONTROL_PLANE_MATERIALIZE_BOOTSTRAP = r"""
+import json
+import sys
+from pathlib import Path
 
-    source_root = Path(__file__).resolve(strict=True).parents[3]
-    head_before, tree_before = (
-        agent_implementation_control_plane_source_generation(source_root)
+source_root = Path(sys.argv[1])
+capsule_parent = Path(sys.argv[2])
+source_head = sys.argv[3]
+source_tree = sys.argv[4]
+sys.path.insert(0, str(source_root))
+from ipfs_accelerate_py import llm_router
+
+pin = llm_router.materialize_agent_implementation_control_plane_capsule(
+    source_root=source_root,
+    capsule_parent=capsule_parent,
+    source_head=source_head,
+    source_tree=source_tree,
+)
+print(json.dumps(pin.as_dict(), sort_keys=True))
+"""
+
+
+def _imported_control_plane_materializer_environment() -> dict[str, str]:
+    """Return the complete non-secret environment for the verifier child."""
+
+    git_executable = shutil.which("git")
+    if not git_executable:
+        raise OSError("accepted control-plane Git executable is unavailable")
+    try:
+        resolved_git = Path(git_executable).resolve(strict=True)
+        metadata = resolved_git.stat()
+    except OSError as exc:
+        raise OSError(
+            "accepted control-plane Git executable is unavailable"
+        ) from exc
+    if not stat_module.S_ISREG(metadata.st_mode) or not os.access(
+        resolved_git,
+        os.X_OK,
+    ):
+        raise OSError("accepted control-plane Git executable is unavailable")
+    return {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": str(resolved_git.parent),
+    }
+
+
+def _materialize_imported_control_plane_capsule(
+    *,
+    source_root: Path,
+    capsule_parent: Path,
+    source_head: str,
+    source_tree: str,
+) -> Any:
+    """Materialize HEAD in a disk-rooted verifier, then rebuild its pin.
+
+    The importing process may itself be running from a sealed zipapp.  The
+    route materializer intentionally rejects those deleted-memfd module
+    origins, so a fresh isolated interpreter performs its ordinary strict
+    origin, clean-tree, stable-file, and immutable-Git-blob checks.  This
+    process accepts only the resulting capsule after independently rebuilding
+    its pin.
+    """
+
+    environment = _imported_control_plane_materializer_environment()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _IMPORTED_CONTROL_PLANE_MATERIALIZE_BOOTSTRAP,
+            str(source_root),
+            str(capsule_parent),
+            source_head,
+            source_tree,
+        ],
+        cwd=source_root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
     )
+    if completed.returncode != 0 or len(completed.stdout.encode("utf-8")) > 64 * 1024:
+        raise ValueError("accepted control-plane materializer subprocess failed")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "accepted control-plane materializer receipt is invalid"
+                )
+            result[key] = value
+        return result
+
+    try:
+        receipt = json.loads(
+            completed.stdout,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "accepted control-plane materializer receipt is invalid"
+        ) from exc
+    expected_fields = {
+        "schema",
+        "runner_path",
+        "runner_sha256",
+        "capsule_root",
+        "capsule_id",
+        "source_head",
+        "source_tree",
+        "archive_sha256",
+    }
+    if (
+        not isinstance(receipt, dict)
+        or set(receipt) != expected_fields
+        or any(not isinstance(receipt[field], str) for field in expected_fields)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", receipt["capsule_id"])
+        is None
+    ):
+        raise ValueError("accepted control-plane materializer receipt is invalid")
+
+    capsule_root = (
+        capsule_parent / receipt["capsule_id"].removeprefix("sha256:")
+    )
+    runner_path = (
+        capsule_root
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "runtime"
+        / "grok_cli_runner.py"
+    )
+    pin = build_agent_implementation_control_plane_pin(
+        runner_path=runner_path,
+        capsule_root=capsule_root,
+    )
+    if (
+        pin.as_dict() != receipt
+        or pin.source_head != source_head
+        or pin.source_tree != source_tree
+    ):
+        raise ValueError("accepted control-plane materializer receipt drifted")
+    return pin
+
+
+def _verify_import_loader_control_plane_generation(pin: Any) -> None:
+    """Require every protected source byte to match this import's loader."""
+
+    verified = build_agent_implementation_control_plane_pin(
+        runner_path=pin.runner_path,
+        capsule_root=pin.capsule_root,
+    )
+    if verified != pin:
+        raise ValueError("accepted control-plane pin drifted before import binding")
+    capsule_root = Path(pin.capsule_root)
+    manifest_raw = (
+        capsule_root / _CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME
+    ).read_bytes()
+    if len(manifest_raw) > _CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES:
+        raise ValueError("accepted control-plane import manifest is invalid")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "accepted control-plane import manifest is invalid"
+                )
+            result[key] = value
+        return result
+
+    try:
+        manifest = json.loads(
+            manifest_raw,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "accepted control-plane import manifest is invalid"
+        ) from exc
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    if (
+        not isinstance(files, dict)
+        or not files
+        or manifest.get("capsule_id") != pin.capsule_id
+        or manifest.get("source_head") != pin.source_head
+        or manifest.get("source_tree") != pin.source_tree
+    ):
+        raise ValueError("accepted control-plane import manifest is invalid")
+    for relative, expected_digest in sorted(files.items()):
+        source_relative = PurePosixPath(str(relative))
+        if (
+            not isinstance(relative, str)
+            or source_relative.is_absolute()
+            or ".." in source_relative.parts
+            or source_relative.suffix != ".py"
+            or source_relative.as_posix() != relative
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(expected_digest),
+            )
+            is None
+        ):
+            raise ValueError("accepted control-plane import manifest is invalid")
+        imported_raw = _import_loader_control_plane_source_bytes(relative)
+        if (
+            "sha256:" + hashlib.sha256(imported_raw).hexdigest()
+            != expected_digest
+        ):
+            raise ValueError(
+                "accepted control-plane differs from imported loader generation"
+            )
+    if (
+        build_agent_implementation_control_plane_pin(
+            runner_path=pin.runner_path,
+            capsule_root=pin.capsule_root,
+        )
+        != pin
+    ):
+        raise ValueError("accepted control-plane pin drifted during import binding")
+
+
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
+    """Seal the exact loader generation that finished importing this module."""
+
+    unresolved_source_root = REPO_ROOT
+    head_before, tree_before = (
+        agent_implementation_control_plane_source_generation(
+            unresolved_source_root
+        )
+    )
+    imported_generation = _import_loader_control_plane_source_generation()
+    if (
+        imported_generation is not None
+        and imported_generation != (head_before, tree_before)
+    ):
+        raise ValueError(
+            "imported control-plane generation differs from verified source"
+        )
+    source_root = unresolved_source_root.resolve(strict=True)
     parent = Path(
         tempfile.mkdtemp(prefix="asref-imported-control-plane-")
     )
     try:
-        pin = materialize_agent_implementation_control_plane_capsule(
+        pin = _materialize_imported_control_plane_capsule(
             source_root=source_root,
             capsule_parent=parent,
             source_head=head_before,
             source_tree=tree_before,
         )
-        launch = seal_agent_implementation_control_plane_capsule(pin)
+        _verify_import_loader_control_plane_generation(pin)
         head_after, tree_after = (
             agent_implementation_control_plane_source_generation(source_root)
         )
@@ -112694,6 +119646,7 @@ def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
             raise ValueError(
                 "accepted control-plane changed while import was sealed"
             )
+        launch = seal_agent_implementation_control_plane_capsule(pin)
         return pin, launch, parent
     except Exception:
         try:
@@ -112818,12 +119771,10 @@ def _ordered_provider_fallback_command(
 ) -> list[str]:
     """Build the no-shell ordered provider runner command."""
 
-    runner_path = Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
-    if not runner_path.is_file():
+    runner_path = _TRUSTED_PROVIDER_FALLBACK_SCRIPT
+    if not _trusted_packaged_sibling_is_available(runner_path):
         raise RuntimeError(f"provider_fallback_runner missing at {runner_path}")
-    command = [
-        sys.executable,
-        str(runner_path),
+    arguments = [
         "--workspace",
         str(workspace_path.resolve()),
         "--primary-provider",
@@ -112838,16 +119789,22 @@ def _ordered_provider_fallback_command(
         fallback_policy,
     ]
     if primary_unavailable_kind:
-        command.extend(["--primary-unavailable-kind", primary_unavailable_kind])
+        arguments.extend(["--primary-unavailable-kind", primary_unavailable_kind])
     if route_receipt_path is not None:
-        command.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
+        arguments.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
     if route_task_id:
-        command.extend(["--route-task-id", route_task_id])
+        arguments.extend(["--route-task-id", route_task_id])
     if route_attempt is not None:
-        command.extend(["--route-attempt", str(route_attempt)])
+        arguments.extend(["--route-attempt", str(route_attempt)])
     if route_stage:
-        command.extend(["--route-stage", route_stage])
-    return command
+        arguments.extend(["--route-stage", route_stage])
+    return _packaged_provider_entry_command(
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner"
+        ),
+        runner_path=runner_path,
+        arguments=arguments,
+    )
 
 
 def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
@@ -112859,23 +119816,31 @@ def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
         return False
     if not command:
         return False
-    expected = (
-        Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
-    ).resolve()
-    try:
-        executable = Path(command[0]).expanduser().resolve()
-    except (OSError, RuntimeError):
-        return False
-    if executable == expected:
+    from ..sealed_provider_module import (
+        sealed_provider_module_command_descriptor,
+    )
+
+    if sealed_provider_module_command_descriptor(
+        command,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner"
+        ),
+    ) >= 3:
         return True
-    if len(command) < 2:
-        return False
+    expected = _TRUSTED_PROVIDER_FALLBACK_SCRIPT
+    if _trusted_packaged_sibling_argument_matches(command[0], expected):
+        return True
     try:
         interpreter = Path(sys.executable).resolve(strict=True)
-        script = Path(command[1]).expanduser().resolve()
+        executable = Path(command[0]).expanduser().resolve(strict=True)
     except (OSError, RuntimeError):
         return False
-    return executable == interpreter and script == expected
+    if len(command) < 2:
+        return False
+    return executable == interpreter and _trusted_packaged_sibling_argument_matches(
+        command[1],
+        expected,
+    )
 
 
 def _provider_state_boundary_required() -> bool:

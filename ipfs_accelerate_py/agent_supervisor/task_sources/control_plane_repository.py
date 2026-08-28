@@ -1,7 +1,7 @@
 """Path-independent control-plane state repository adapters (DQP-008).
 
 Interfaces: ``StateRepository@1``, ``EmbeddedStateRepository@1``,
-``QuackStateRepository@1``
+``QuackStateRepository@1``, ``TypedOperationalReferenceStore@1``
 
 Joins schema installation/verification, the typed Quack client, transaction
 primitives, and existing DuckDB store access behind one repository protocol.
@@ -17,12 +17,24 @@ Local and Quack adapters project the same canonical population so conformance
 tests can prove parity without rewriting ``DuckDBTaskSource``,
 ``LeaseCoordinator``, or ``MergeQueue`` in this change.
 
-Import is side-effect free. Opening a repository is the first I/O boundary.
+Typed operational persistence (LGCVF-101) stores append-only CID references
+with CAS, leases, fences, operation IDs, outbox cursors, and restart
+reconciliation. Single-writer enforcement is truthful: Quack is not
+qualified. Durable journals are file-backed; this layer does not add agent
+SQL, a second DuckDB abstraction, or operational fields on datasets
+semantic roots.
+
+Import is side-effect free. Opening a repository or typed operational store
+is the first I/O boundary.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import json
+import os
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -34,6 +46,7 @@ from types import MappingProxyType
 from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from .control_plane_contracts import (
+    MAX_ID_BYTES,
     ControlPlaneContractError,
     ControlPlaneStoreIdentity,
     StateAuthorityClass,
@@ -1620,6 +1633,20 @@ TYPED_OPERATIONAL_STORE_INTERFACE: Final = "TypedOperationalReferenceStore@1"
 TYPED_OPERATIONAL_STORE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-operational-reference-store@1"
 )
+TYPED_OPERATIONAL_REFERENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-operational-reference@1"
+)
+TYPED_OPERATIONAL_WRITER_STATE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-operational-writer-state@1"
+)
+TYPED_OPERATIONAL_LIVE_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-operational-live-claim@1"
+)
+
+_OPERATIONAL_LOG_NAME: Final = "operational-references.jsonl"
+_OPERATIONAL_STATE_NAME: Final = "writer-state.json"
+_OPERATIONAL_LIVE_NAME: Final = "writer-live.json"
+_OPERATIONAL_LOCK_NAME: Final = "writer.lock"
 
 
 class TypedOperationalStoreError(StateRepositoryError):
@@ -1628,6 +1655,10 @@ class TypedOperationalStoreError(StateRepositoryError):
 
 @dataclass(frozen=True)
 class OperationalReference:
+    """One append-only CID reference head at a given outbox sequence."""
+
+    SCHEMA: ClassVar[str] = TYPED_OPERATIONAL_REFERENCE_SCHEMA
+
     key: str
     cid: str
     operation_id: str
@@ -1640,12 +1671,180 @@ class OperationalReference:
         return {
             "cas_token": self.cas_token,
             "cid": self.cid,
-            "fence": self.fence,
+            "fence": int(self.fence),
             "key": self.key,
             "operation_id": self.operation_id,
-            "sequence": self.sequence,
+            "schema": self.SCHEMA,
+            "sequence": int(self.sequence),
             "writer_id": self.writer_id,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "OperationalReference":
+        sequence = payload.get("sequence")
+        fence = payload.get("fence")
+        if type(sequence) is not int or type(fence) is not int:
+            raise TypedOperationalStoreError(
+                "operational reference fence and sequence must be integers"
+            )
+        if sequence <= 0 or fence < 0:
+            raise TypedOperationalStoreError(
+                "operational reference fence/sequence out of range"
+            )
+        key = _require_operational_identity(payload.get("key"), "key")
+        cid = _require_operational_identity(payload.get("cid"), "cid")
+        operation_id = _require_operational_identity(
+            payload.get("operation_id"), "operation_id"
+        )
+        cas_token = _require_operational_identity(
+            payload.get("cas_token"), "cas_token"
+        )
+        writer_id = _require_operational_identity(
+            payload.get("writer_id"), "writer_id"
+        )
+        return cls(
+            key=key,
+            cid=cid,
+            operation_id=operation_id,
+            cas_token=cas_token,
+            fence=fence,
+            writer_id=writer_id,
+            sequence=sequence,
+        )
+
+
+def _require_operational_identity(value: Any, field_name: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise TypedOperationalStoreError(f"{field_name} is required")
+    if "\n" in text or "\r" in text:
+        raise TypedOperationalStoreError(
+            f"{field_name} must be a CID/identity reference, not an inline body"
+        )
+    if len(text.encode("utf-8")) > MAX_ID_BYTES:
+        raise TypedOperationalStoreError(f"{field_name} exceeds identity bound")
+    return text
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _reject_operational_symlink(path: Path) -> None:
+    if path.is_symlink():
+        raise TypedOperationalStoreError(f"symlink rejected: {path}")
+
+
+def _fsync_directory(path: Path) -> None:
+    directory_fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _write_all(handle: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(handle, view)
+        if written <= 0:
+            raise TypedOperationalStoreError("operational store write returned no bytes")
+        view = view[written:]
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    _reject_operational_symlink(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    data = canonical_json_bytes(dict(payload))
+    temporary = path.parent / f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        handle = os.open(temporary, flags, 0o644)
+        try:
+            _write_all(handle, data)
+            os.fsync(handle)
+        finally:
+            os.close(handle)
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
+    _reject_operational_symlink(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    line = canonical_json_bytes(dict(payload)) + b"\n"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    handle = os.open(path, flags, 0o644)
+    try:
+        _write_all(handle, line)
+        os.fsync(handle)
+    finally:
+        os.close(handle)
+    _fsync_directory(path.parent)
+
+
+def _load_json_object(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    _reject_operational_symlink(path)
+    try:
+        payload = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TypedOperationalStoreError(
+            f"corrupt operational writer state: {path}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise TypedOperationalStoreError(
+            f"operational writer state must be an object: {path}"
+        )
+    return payload
+
+
+def _load_jsonl_objects(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    _reject_operational_symlink(path)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise TypedOperationalStoreError(
+            f"unable to read operational reference log: {path}"
+        ) from exc
+    records: list[dict[str, Any]] = []
+    lines = raw.split(b"\n")
+    last_index = len(lines) - 1
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            tail = index == last_index or (
+                index == last_index - 1 and not lines[last_index].strip()
+            )
+            if tail:
+                break
+            raise TypedOperationalStoreError(
+                "corrupt operational reference log"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise TypedOperationalStoreError(
+                "operational log entry must be an object"
+            )
+        records.append(payload)
+    return records
 
 
 class TypedOperationalReferenceStore:
@@ -1653,23 +1852,66 @@ class TypedOperationalReferenceStore:
 
     Single-writer enforcement is truthful: Quack is not claimed as qualified.
     Operational fields stay in this accelerator store, never a datasets root.
+    Optional ``directory`` journals the append-only log and writer fence so a
+    later process can reconcile heads, operation IDs, and the outbox cursor.
     """
 
     INTERFACE: ClassVar[str] = TYPED_OPERATIONAL_STORE_INTERFACE
+    SCHEMA: ClassVar[str] = TYPED_OPERATIONAL_STORE_SCHEMA
     quack_qualified: ClassVar[bool] = False
 
-    def __init__(self, *, writer_id: str = "writer:primary") -> None:
-        self._writer_id = str(writer_id)
+    def __init__(
+        self,
+        *,
+        writer_id: str = "writer:primary",
+        directory: str | Path | None = None,
+    ) -> None:
+        self._configure(
+            writer_id=writer_id,
+            directory=directory,
+            claim=True,
+        )
+        try:
+            if self._directory is not None:
+                self._replay_durable_files()
+        except BaseException:
+            self.close()
+            raise
+
+    def _configure(
+        self,
+        *,
+        writer_id: str,
+        directory: str | Path | None,
+        claim: bool,
+    ) -> None:
+        self._writer_id = _require_operational_identity(writer_id, "writer_id")
+        self._directory = Path(directory) if directory is not None else None
         self._log: list[OperationalReference] = []
         self._heads: dict[str, OperationalReference] = {}
         self._seen_operations: set[str] = set()
         self._lease_holder: str | None = None
         self._fence = 0
         self._outbox_cursor = 0
+        self._closed = False
+        self._owns_claim = False
+        self._instance_id = uuid.uuid4().hex
+        self._lock = threading.RLock()
+        self._lock_fd: int | None = None
+        if self._directory is not None and claim:
+            self._claim_directory()
 
     @property
     def single_writer(self) -> bool:
         return True
+
+    @property
+    def directory(self) -> Path | None:
+        return self._directory
+
+    @property
+    def lease_holder(self) -> str | None:
+        return self._lease_holder
 
     @property
     def outbox_cursor(self) -> int:
@@ -1680,18 +1922,35 @@ class TypedOperationalReferenceStore:
         return self._fence
 
     def acquire_lease(self, writer_id: str, *, fence: int | None = None) -> int:
-        if self._lease_holder not in {None, writer_id}:
-            raise TypedOperationalStoreError("single-writer lease held by another worker")
-        self._lease_holder = writer_id
-        if fence is not None and fence < self._fence:
-            raise TypedOperationalStoreError("stale fence")
-        self._fence = fence if fence is not None else self._fence + 1
-        return self._fence
+        with self._lock:
+            self._require_open()
+            holder = _require_operational_identity(writer_id, "writer_id")
+            if self._lease_holder not in {None, holder}:
+                raise TypedOperationalStoreError(
+                    "single-writer lease held by another worker"
+                )
+            if fence is not None:
+                if type(fence) is not int:
+                    raise TypedOperationalStoreError("fence must be an integer")
+                if fence < self._fence:
+                    raise TypedOperationalStoreError("stale fence")
+                self._fence = fence
+            else:
+                self._fence += 1
+            self._lease_holder = holder
+            self._persist_writer_state()
+            return self._fence
 
     def release_lease(self, writer_id: str) -> None:
-        if self._lease_holder not in {None, writer_id}:
-            raise TypedOperationalStoreError("cannot release another worker's lease")
-        self._lease_holder = None
+        with self._lock:
+            self._require_open()
+            holder = _require_operational_identity(writer_id, "writer_id")
+            if self._lease_holder not in {None, holder}:
+                raise TypedOperationalStoreError(
+                    "cannot release another worker's lease"
+                )
+            self._lease_holder = None
+            self._persist_writer_state()
 
     def append_reference(
         self,
@@ -1703,55 +1962,89 @@ class TypedOperationalReferenceStore:
         writer_id: str | None = None,
         fence: int | None = None,
     ) -> OperationalReference:
-        writer = writer_id or self._writer_id
-        if self._lease_holder is None:
-            self.acquire_lease(writer)
-        if writer != self._lease_holder:
-            raise TypedOperationalStoreError("stale-worker: writer does not hold lease")
-        if fence is not None and fence != self._fence:
-            raise TypedOperationalStoreError("fence mismatch")
-        if operation_id in self._seen_operations:
-            raise TypedOperationalStoreError("duplicate completion")
-        head = self._heads.get(key)
-        if expected_cas:
-            if head is None or head.cas_token != expected_cas:
-                raise TypedOperationalStoreError("CAS mismatch")
-        elif head is not None:
-            raise TypedOperationalStoreError("CAS required for existing key")
-        cas_token = content_identity(
-            {
-                "cid": cid,
-                "key": key,
-                "operation_id": operation_id,
-                "previous": None if head is None else head.cas_token,
-                "sequence": len(self._log) + 1,
-            }
-        )
-        record = OperationalReference(
-            key=key,
-            cid=cid,
-            operation_id=operation_id,
-            cas_token=cas_token,
-            fence=self._fence,
-            writer_id=writer,
-            sequence=len(self._log) + 1,
-        )
-        self._log.append(record)
-        self._heads[key] = record
-        self._seen_operations.add(operation_id)
-        self._outbox_cursor = record.sequence
-        return record
+        with self._lock:
+            self._require_open()
+            ref_key = _require_operational_identity(key, "key")
+            ref_cid = _require_operational_identity(cid, "cid")
+            op_id = _require_operational_identity(operation_id, "operation_id")
+            writer = (
+                _require_operational_identity(writer_id, "writer_id")
+                if writer_id is not None
+                else self._writer_id
+            )
+            if self._lease_holder is None:
+                self.acquire_lease(writer)
+            if writer != self._lease_holder:
+                raise TypedOperationalStoreError(
+                    "stale-worker: writer does not hold lease"
+                )
+            if fence is not None:
+                if type(fence) is not int:
+                    raise TypedOperationalStoreError("fence must be an integer")
+                if fence != self._fence:
+                    raise TypedOperationalStoreError("fence mismatch")
+            if op_id in self._seen_operations:
+                raise TypedOperationalStoreError("duplicate completion")
+            head = self._heads.get(ref_key)
+            if expected_cas:
+                if head is None or head.cas_token != expected_cas:
+                    raise TypedOperationalStoreError("CAS mismatch")
+            elif head is not None:
+                raise TypedOperationalStoreError("CAS required for existing key")
+            sequence = len(self._log) + 1
+            previous = None if head is None else head.cas_token
+            cas_token = self._cas_token(
+                key=ref_key,
+                cid=ref_cid,
+                operation_id=op_id,
+                previous=previous,
+                sequence=sequence,
+            )
+            record = OperationalReference(
+                key=ref_key,
+                cid=ref_cid,
+                operation_id=op_id,
+                cas_token=cas_token,
+                fence=self._fence,
+                writer_id=writer,
+                sequence=sequence,
+            )
+            if self._directory is not None:
+                _append_jsonl(self._log_path, record.to_dict())
+            self._log.append(record)
+            self._heads[ref_key] = record
+            self._seen_operations.add(op_id)
+            self._outbox_cursor = record.sequence
+            self._persist_writer_state()
+            return record
 
     def restart(self) -> "TypedOperationalReferenceStore":
-        """Replay the append-only log into a fresh single-writer store."""
+        """Replay the append-only log into a fresh single-writer store.
 
-        restored = TypedOperationalReferenceStore(writer_id=self._writer_id)
-        restored._fence = self._fence
-        for record in self._log:
-            restored._log.append(record)
-            restored._heads[record.key] = record
-            restored._seen_operations.add(record.operation_id)
-            restored._outbox_cursor = record.sequence
+        Restart expires the live lease (the previous worker is gone) while
+        preserving fences, CAS heads, operation IDs, and the outbox cursor.
+        Durable stores flush then reconstruct from the journal, not process
+        dictionaries alone.
+        """
+
+        with self._lock:
+            self._persist_writer_state()
+            log_snapshot = list(self._log)
+            fence = self._fence
+            directory = self._directory
+            writer_id = self._writer_id
+        restored = TypedOperationalReferenceStore.__new__(
+            TypedOperationalReferenceStore
+        )
+        restored._configure(
+            writer_id=writer_id,
+            directory=directory,
+            claim=False,
+        )
+        if directory is not None:
+            restored._replay_durable_files()
+        else:
+            restored._install_records(log_snapshot, fence=fence)
         restored._lease_holder = None
         return restored
 
@@ -1759,7 +2052,217 @@ class TypedOperationalReferenceStore:
         return self._heads.get(key)
 
     def outbox(self, *, after: int = 0) -> tuple[OperationalReference, ...]:
+        if type(after) is not int:
+            raise TypedOperationalStoreError("outbox cursor must be an integer")
+        if after < 0:
+            raise TypedOperationalStoreError("outbox cursor out of range")
         return tuple(item for item in self._log if item.sequence > after)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._release_directory_claim()
+
+    def __enter__(self) -> "TypedOperationalReferenceStore":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:  # pragma: no cover - interpreter teardown
+        try:
+            self.close()
+        except Exception:
+            return
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise TypedOperationalStoreError("typed operational store is closed")
+
+    @staticmethod
+    def _cas_token(
+        *,
+        key: str,
+        cid: str,
+        operation_id: str,
+        previous: str | None,
+        sequence: int,
+    ) -> str:
+        return content_identity(
+            {
+                "cid": cid,
+                "key": key,
+                "operation_id": operation_id,
+                "previous": previous,
+                "sequence": sequence,
+            }
+        )
+
+    def _install_records(
+        self,
+        records: Sequence[OperationalReference],
+        *,
+        fence: int,
+    ) -> None:
+        self._log = []
+        self._heads = {}
+        self._seen_operations = set()
+        self._outbox_cursor = 0
+        previous_by_key: dict[str, str] = {}
+        for record in records:
+            if record.sequence != len(self._log) + 1:
+                raise TypedOperationalStoreError("append-only sequence gap")
+            if record.operation_id in self._seen_operations:
+                raise TypedOperationalStoreError(
+                    "duplicate completion in operational log"
+                )
+            expected = self._cas_token(
+                key=record.key,
+                cid=record.cid,
+                operation_id=record.operation_id,
+                previous=previous_by_key.get(record.key),
+                sequence=record.sequence,
+            )
+            if record.cas_token != expected:
+                raise TypedOperationalStoreError("CAS token failed log replay")
+            self._log.append(record)
+            self._heads[record.key] = record
+            self._seen_operations.add(record.operation_id)
+            self._outbox_cursor = record.sequence
+            previous_by_key[record.key] = record.cas_token
+        self._fence = int(fence)
+        if self._fence < 0:
+            raise TypedOperationalStoreError("fence out of range")
+
+    def _replay_durable_files(self) -> None:
+        if self._directory is None:
+            return
+        payloads = _load_jsonl_objects(self._log_path)
+        records = tuple(OperationalReference.from_dict(item) for item in payloads)
+        state = _load_json_object(self._state_path)
+        fence = 0
+        if state is not None:
+            stored_fence = state.get("fence")
+            if type(stored_fence) is not int or stored_fence < 0:
+                raise TypedOperationalStoreError("durable fence must be an integer")
+            fence = stored_fence
+        if records:
+            fence = max(fence, max(item.fence for item in records))
+        self._install_records(records, fence=fence)
+
+    def _persist_writer_state(self) -> None:
+        if self._directory is None or self._closed:
+            return
+        _atomic_write_json(
+            self._state_path,
+            {
+                "fence": int(self._fence),
+                "outbox_cursor": int(self._outbox_cursor),
+                "schema": TYPED_OPERATIONAL_WRITER_STATE_SCHEMA,
+                "writer_id": self._writer_id,
+            },
+        )
+
+    @property
+    def _log_path(self) -> Path:
+        assert self._directory is not None
+        return self._directory / _OPERATIONAL_LOG_NAME
+
+    @property
+    def _state_path(self) -> Path:
+        assert self._directory is not None
+        return self._directory / _OPERATIONAL_STATE_NAME
+
+    @property
+    def _live_path(self) -> Path:
+        assert self._directory is not None
+        return self._directory / _OPERATIONAL_LIVE_NAME
+
+    @property
+    def _lock_path(self) -> Path:
+        assert self._directory is not None
+        return self._directory / _OPERATIONAL_LOCK_NAME
+
+    def _claim_directory(self) -> None:
+        directory = self._directory
+        if directory is None:
+            return
+        _reject_operational_symlink(directory)
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not directory.is_dir():
+            raise TypedOperationalStoreError(
+                f"operational store directory is not a directory: {directory}"
+            )
+        self._acquire_lockfile()
+        live = _load_json_object(self._live_path)
+        if live is not None and str(live.get("state") or "") == "active":
+            pid = live.get("pid")
+            instance_id = str(live.get("instance_id") or "")
+            if type(pid) is int and instance_id and instance_id != self._instance_id:
+                if pid == os.getpid() or _pid_is_alive(pid):
+                    self._release_lockfile()
+                    raise TypedOperationalStoreError(
+                        "single-writer lease held by another worker"
+                    )
+        _atomic_write_json(
+            self._live_path,
+            {
+                "instance_id": self._instance_id,
+                "pid": int(os.getpid()),
+                "schema": TYPED_OPERATIONAL_LIVE_CLAIM_SCHEMA,
+                "state": "active",
+                "writer_id": self._writer_id,
+            },
+        )
+        self._owns_claim = True
+
+    def _acquire_lockfile(self) -> None:
+        _reject_operational_symlink(self._lock_path)
+        handle = os.open(
+            self._lock_path,
+            os.O_RDWR | os.O_CREAT,
+            0o644,
+        )
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(handle)
+            raise TypedOperationalStoreError(
+                "single-writer lock held by another worker"
+            ) from None
+        self._lock_fd = handle
+
+    def _release_lockfile(self) -> None:
+        handle = self._lock_fd
+        self._lock_fd = None
+        if handle is None:
+            return
+        try:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            os.close(handle)
+
+    def _release_directory_claim(self) -> None:
+        if self._owns_claim and self._directory is not None:
+            live = _load_json_object(self._live_path)
+            if live is not None and live.get("instance_id") == self._instance_id:
+                try:
+                    self._live_path.unlink()
+                except OSError:
+                    _atomic_write_json(
+                        self._live_path,
+                        {
+                            "instance_id": self._instance_id,
+                            "pid": int(os.getpid()),
+                            "schema": TYPED_OPERATIONAL_LIVE_CLAIM_SCHEMA,
+                            "state": "released",
+                            "writer_id": self._writer_id,
+                        },
+                    )
+        self._owns_claim = False
+        self._release_lockfile()
 
 
 def populations_equivalent(
@@ -1797,7 +2300,11 @@ __all__ = [
     "StateRepositoryMaintenanceError",
     "StateRepositoryNotOpenError",
     "OperationalReference",
+    "TYPED_OPERATIONAL_LIVE_CLAIM_SCHEMA",
+    "TYPED_OPERATIONAL_REFERENCE_SCHEMA",
     "TYPED_OPERATIONAL_STORE_INTERFACE",
+    "TYPED_OPERATIONAL_STORE_SCHEMA",
+    "TYPED_OPERATIONAL_WRITER_STATE_SCHEMA",
     "TypedOperationalReferenceStore",
     "TypedOperationalStoreError",
     "acquire_maintenance_lease",

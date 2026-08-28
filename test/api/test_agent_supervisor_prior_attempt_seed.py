@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -61,6 +66,59 @@ def _authorize_seed(
             "changed_paths": list(changed_paths),
         },
     )
+
+
+def test_prior_seed_output_attestations_admit_exact_text_modify() -> None:
+    path = "test/api/test_retry_target.py"
+    task = _task(path)
+    valid_modify = SimpleNamespace(
+        change_kind=SimpleNamespace(value="modify"),
+        old_path=path,
+        new_path=path,
+        before_source="def test_old():\n    assert False\n",
+        after_source="def test_new():\n    assert True\n",
+        before_blob_id="b" * 40,
+        after_blob_id="a" * 40,
+        binary=False,
+    )
+    renamed = SimpleNamespace(
+        change_kind=SimpleNamespace(value="modify"),
+        old_path="test/api/old_name.py",
+        new_path=path,
+        before_source="old\n",
+        after_source="new\n",
+        before_blob_id="c" * 40,
+        after_blob_id="d" * 40,
+        binary=False,
+    )
+    binary = SimpleNamespace(
+        change_kind=SimpleNamespace(value="modify"),
+        old_path=path,
+        new_path=path,
+        before_source="old\n",
+        after_source="new\n",
+        before_blob_id="e" * 40,
+        after_blob_id="f" * 40,
+        binary=True,
+    )
+    validation = SimpleNamespace(
+        proposal=SimpleNamespace(
+            candidate_diff=(valid_modify, renamed, binary)
+        )
+    )
+
+    assert PortalImplementationDaemon._prior_seed_output_attestations(
+        validation,
+        task,
+    ) == [
+        {
+            "path": path,
+            "sha256": hashlib.sha256(
+                valid_modify.after_source.encode("utf-8")
+            ).hexdigest(),
+            "git_blob_id": "a" * 40,
+        }
+    ]
 
 
 def _git(repo: Path, *args: str) -> str:

@@ -4,15 +4,21 @@ import hashlib
 import json
 import os
 import subprocess
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     ProcessBirthIdentity,
     WorktreeLifecycleStore,
     current_process_birth,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    supervisor as worker_watchdog,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
@@ -25,6 +31,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     CONTROL_PLANE_RELOAD_STATUS,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+    SupervisorLoop,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
@@ -184,6 +193,8 @@ def _seed_active_database_pool_lease(
         active_task_cid=task_cid,
         active_attempt=1,
         active_phase="validating",
+        active_phase_detail="bounded qualification",
+        active_phase_started_at=datetime.now(timezone.utc).isoformat(),
         active_worktree_path=str(workspace),
         active_branch=branch,
         implementation_in_progress=True,
@@ -315,6 +326,198 @@ def test_database_pool_lease_accepts_adopted_parent_pid_drift(
     assert activity is not None
     assert activity["task_id"] == "VRIF-010"
     assert activity["lease_pid"] == str(os.getpid())
+
+
+def test_database_worktree_status_projection_tracks_grok_and_recycles_after_grace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    nested_state = PortalTaskState.load(fixture["nested_state_path"])
+    nested_state.active_phase = "implementing"
+    nested_state.active_phase_detail = "provider_launch_birth"
+    nested_state.active_phase_started_at = datetime.now(timezone.utc).isoformat()
+    nested_state.save(fixture["nested_state_path"])
+    nested_before = fixture["nested_state_path"].read_bytes()
+    fixture["state_path"].unlink()
+    monkeypatch.setattr(
+        supervisor,
+        "_build_daemon_command",
+        lambda: ["python", "-m", "managed-daemon"],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_shared_active_worktree_owners",
+        lambda _root: pytest.fail("worker projection scanned sibling state"),
+    )
+    workers = [
+        [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ]
+    ]
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: list(workers[0]),
+    )
+    clock = [100.0]
+    loop = SupervisorLoop(
+        supervisor.build_supervisor_loop_config(),
+        monotonic=lambda: clock[0],
+    )
+    threshold = float(
+        loop.config.status_static_fields["worktree_no_child_stall_seconds"]
+    )
+
+    live = loop.default_watchdog(
+        fixture["child"],
+        {"worktree_no_child_stall_seconds": 1.0},
+    )
+
+    assert live.action == "continue"
+    assert loop._last_worker_status["phase"] == "implementing"
+    assert loop._last_worker_status["threshold_seconds"] == threshold
+    assert loop._last_worker_status["active_worker_count"] == 1
+    assert loop._last_worker_status["active_worker_pids"] == [4321]
+    loop._write_status("running", child=fixture["child"])
+    published = json.loads(
+        loop.config.spec.supervisor_status_path.read_text(encoding="utf-8")
+    )
+    assert published["worker_phase"] == "implementing"
+    assert published["active_worker_count"] == 1
+    assert published["active_worker_pids"] == [4321]
+
+    workers[0] = []
+    clock[0] += threshold - 1.0
+    within_grace = loop.default_watchdog(fixture["child"], {})
+    clock[0] += 2.0
+    expired = loop.default_watchdog(fixture["child"], {})
+
+    assert within_grace.action == "continue"
+    assert expired.action == "recycle"
+    assert expired.reason == "worktree_phase_without_active_child"
+    assert expired.detail["worker_absence_age_seconds"] == threshold + 1.0
+    assert fixture["nested_state_path"].read_bytes() == nested_before
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "tampered_binding",
+        "malformed_nested_state",
+        "missing_phase_started_at",
+        "foreign_child_birth",
+    ),
+)
+def test_database_worktree_status_projection_rejects_unproved_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    child = fixture["child"]
+    valid_state = PortalTaskState.load(fixture["nested_state_path"])
+    valid_state.active_phase = "implementing"
+    valid_state.active_phase_detail = "provider_launch_birth"
+    valid_state.active_phase_started_at = datetime.now(timezone.utc).isoformat()
+    valid_state.save(fixture["nested_state_path"])
+    assert supervisor._database_worktree_status_projection(child, {}) is not None
+    if case == "tampered_binding":
+        binding = json.loads(fixture["binding_path"].read_text(encoding="utf-8"))
+        binding["binding_id"] = "sha256:" + "0" * 64
+        _write_json(fixture["binding_path"], binding)
+    elif case == "malformed_nested_state":
+        fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "missing_phase_started_at":
+        state = json.loads(
+            fixture["nested_state_path"].read_text(encoding="utf-8")
+        )
+        state["active_phase"] = "implementing"
+        state["active_phase_started_at"] = ""
+        _write_json(fixture["nested_state_path"], state)
+    else:
+        observed = child.identity_process_birth
+        child.identity_process_birth = ProcessBirthIdentity(
+            pid=observed.pid,
+            start_time_ticks=observed.start_time_ticks + 1,
+            boot_id=observed.boot_id,
+            parent_pid=observed.parent_pid,
+        )
+    fixture["state_path"].unlink()
+    monkeypatch.setattr(
+        supervisor,
+        "_build_daemon_command",
+        lambda: ["python", "-m", "managed-daemon"],
+    )
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [
+            {
+                "pid": 4321,
+                "cmdline": "/usr/local/bin/grok --model grok-4.6",
+            }
+        ],
+    )
+    loop = SupervisorLoop(supervisor.build_supervisor_loop_config())
+
+    assert supervisor._database_worktree_status_projection(child, {}) is None
+    decision = loop.default_watchdog(child, {})
+
+    assert decision.action == "continue"
+    assert loop._last_worker_status["required"] is False
+    assert loop._last_worker_status["phase"] == ""
+    assert loop._last_worker_status.get("active_worker_count", 0) == 0
+
+
+@pytest.mark.parametrize("projection_failure", ("exception", "non_mapping"))
+def test_worktree_status_projection_failure_does_not_fallback_to_outer_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    projection_failure: str,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    monkeypatch.setattr(
+        supervisor,
+        "_build_daemon_command",
+        lambda: ["python", "-m", "managed-daemon"],
+    )
+    monkeypatch.setattr(
+        worker_watchdog,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+
+    def failed_projection(_child: Any, _current: Any) -> Any:
+        if projection_failure == "exception":
+            raise RuntimeError("projection unavailable")
+        return []
+
+    loop = SupervisorLoop(
+        replace(
+            supervisor.build_supervisor_loop_config(),
+            worktree_status_projection=failed_projection,
+        )
+    )
+    outer_status = {
+        "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+        "active_phase": "implementing",
+        "active_phase_detail": "untrusted-outer-phase",
+        "active_phase_started_at": "2020-01-01T00:00:00+00:00",
+    }
+
+    decision = loop.default_watchdog(fixture["child"], outer_status)
+
+    assert decision.action == "continue"
+    assert loop._last_worker_status["required"] is False
+    assert loop._last_worker_status["phase"] == ""
+    assert loop._last_worker_status.get("active_worker_count", 0) == 0
 
 
 def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(

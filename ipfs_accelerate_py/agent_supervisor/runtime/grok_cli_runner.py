@@ -28,6 +28,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
@@ -77,6 +78,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     render_grok_failure_receipt,
     render_grok_route_outcome,
     valid_grok_failure_receipt,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_executable_trust import (
+    resolve_codex_quota_fallback_executable,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.worker_container_execution_profile import (
     EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2,
@@ -584,81 +588,6 @@ def _operating_system_account_home() -> Path:
 
         return Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(strict=True)
     return Path.home().resolve(strict=True)
-
-
-def resolve_codex_quota_fallback_executable(
-    *,
-    workspace: str | Path,
-    configured: str = "",
-) -> str:
-    """Resolve a pinned executable that the Grok workspace cannot replace."""
-
-    workspace_path = Path(workspace).expanduser().resolve()
-    codex_candidate = str(configured or shutil.which("codex") or "").strip()
-    if not codex_candidate:
-        return ""
-    candidate_path = Path(codex_candidate).expanduser()
-    if not candidate_path.is_absolute():
-        resolved_from_path = shutil.which(codex_candidate)
-        if not resolved_from_path:
-            return ""
-        candidate_path = Path(resolved_from_path)
-    try:
-        resolved_candidate = candidate_path.resolve(strict=True)
-    except OSError:
-        return ""
-    candidate_entry = Path(os.path.abspath(candidate_path))
-    system_entries = {
-        Path("/usr/bin/codex"),
-        Path("/usr/local/bin/codex"),
-        Path("/usr/bin/codex.exe"),
-        Path("/usr/local/bin/codex.exe"),
-    }
-    package_roots = (
-        Path("/usr/lib/node_modules/@openai/codex"),
-        Path("/usr/local/lib/node_modules/@openai/codex"),
-    )
-    matched_root = next(
-        (
-            root
-            for root in package_roots
-            if resolved_candidate == root
-            or resolved_candidate.is_relative_to(root)
-        ),
-        resolved_candidate.parent
-        if resolved_candidate.parent in {Path("/usr/bin"), Path("/usr/local/bin")}
-        else None,
-    )
-    try:
-        trust_chain = (
-            [candidate_entry, candidate_entry.parent, resolved_candidate]
-            + (
-                list(resolved_candidate.parents)[
-                    : list(resolved_candidate.parents).index(matched_root) + 1
-                ]
-                if matched_root is not None and resolved_candidate != matched_root
-                else ([matched_root] if matched_root is not None else [])
-            )
-        )
-        trusted_chain = all(
-            path.lstat().st_uid == 0
-            and (path.is_symlink() or not path.stat().st_mode & 0o022)
-            for path in trust_chain
-        )
-    except (OSError, ValueError):
-        trusted_chain = False
-    if (
-        candidate_entry not in system_entries
-        or matched_root is None
-        or not trusted_chain
-        or not candidate_entry.is_file()
-        or not os.access(candidate_entry, os.X_OK)
-        or candidate_entry.is_relative_to(workspace_path)
-        or resolved_candidate.is_relative_to(workspace_path)
-        or candidate_entry.name.casefold() not in {"codex", "codex.exe"}
-    ):
-        return ""
-    return str(candidate_entry)
 
 
 def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:
@@ -2587,6 +2516,14 @@ _GROK_POSITIVE_ENVIRONMENT_NAMES = frozenset(
         "XDG_STATE_HOME",
     }
 )
+_GROK_CODEX_COMPATIBILITY_KILL_SWITCH_NAMES = (
+    "GROK_CODEX_AGENTS_ENABLED",
+    "GROK_CODEX_HOOKS_ENABLED",
+    "GROK_CODEX_MCPS_ENABLED",
+    "GROK_CODEX_RULES_ENABLED",
+    "GROK_CODEX_SESSIONS_ENABLED",
+    "GROK_CODEX_SKILLS_ENABLED",
+)
 
 
 def _sanitized_grok_cli_environment(
@@ -2605,11 +2542,22 @@ def _sanitized_grok_cli_environment(
         for name, value in candidate.items()
     ):
         raise ValueError("Grok child environment is invalid")
-    return {
+    environment = {
         name: candidate[name]
         for name in sorted(_GROK_POSITIVE_ENVIRONMENT_NAMES)
         if name in candidate
     }
+    # These compatibility switches are part of the isolation boundary, not
+    # caller-controlled presentation state.  Older router pins do not accept
+    # ``isolate_alternate_providers`` and newer non-isolated calls may omit or
+    # override them, so seal every switch locally after filtering.
+    environment.update(
+        {
+            name: "0"
+            for name in _GROK_CODEX_COMPATIBILITY_KILL_SWITCH_NAMES
+        }
+    )
+    return environment
 
 
 def _effect_receipt_identity(value: object) -> str:
@@ -4452,23 +4400,46 @@ def _docker_codex_fallback_command(
             vendor = _host_codex_vendor_binaries()
         except Exception:
             vendor = None
-        if vendor is not None:
-            host_codex, host_companion = vendor
-            command.extend(
-                _docker_mount(
-                    host_codex,
-                    destination=Path("/usr/local/bin/codex"),
-                    read_only=True,
-                )
+        if vendor is None:
+            raise ValueError(
+                "Codex fallback requires a matching native code-mode vendor pair"
             )
-            command.extend(
-                _docker_mount(
-                    host_companion,
-                    destination=Path("/usr/local/bin/codex-code-mode-host"),
-                    read_only=True,
-                )
+        try:
+            host_codex, host_companion = (
+                binary.resolve(strict=True) for binary in vendor
             )
-            inner[0] = "/usr/local/bin/codex"
+            projected_usr = host_usr.resolve(strict=True)
+            for binary, expected_name in (
+                (host_codex, "codex"),
+                (host_companion, "codex-code-mode-host"),
+            ):
+                if (
+                    binary.name != expected_name
+                    or binary.parent != host_codex.parent
+                    or not binary.is_file()
+                    or not os.access(binary, os.X_OK)
+                ):
+                    raise ValueError(
+                        "Codex fallback vendor pair is not canonical"
+                    )
+                binary.relative_to(projected_usr)
+                trust_entry = binary
+                while True:
+                    trust_metadata = trust_entry.stat()
+                    if trust_metadata.st_uid != 0 or trust_metadata.st_mode & 0o022:
+                        raise ValueError(
+                            "Codex fallback vendor pair is not root-owned"
+                        )
+                    if trust_entry == projected_usr:
+                        break
+                    trust_entry = trust_entry.parent
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                "Codex fallback vendor pair is not safely projected by pinned host /usr"
+            ) from exc
+        # /usr is already projected read-only, so execute the resolved native
+        # binary in place. Its matching code-mode companion remains adjacent.
+        inner[0] = str(host_codex)
         host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
         if host_ca_certificates is None:
             raise ValueError("Codex fallback requires pinned host CA certificates")
@@ -4545,6 +4516,42 @@ def _docker_codex_fallback_command(
         container_execution_profile=qualified_worker_execution_profile,
     )
     return command
+
+
+def _codex_provider_argv_receipt(
+    codex_command: Sequence[str],
+    create_command: Sequence[str],
+) -> list[str]:
+    """Bind the authorized provider argv to its actual container executable."""
+
+    provider_argv = [str(item) for item in codex_command]
+    if not provider_argv or len(create_command) < len(provider_argv):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    actual_inner = [
+        str(item) for item in create_command[-len(provider_argv) :]
+    ]
+    expected_inner = list(provider_argv)
+    try:
+        sandbox_index = expected_inner.index("-s")
+    except ValueError as exc:
+        raise ValueError("Codex fallback lost its provider argv identity") from exc
+    if sandbox_index + 1 >= len(expected_inner):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    expected_inner[0] = actual_inner[0]
+    expected_inner[sandbox_index + 1] = "danger-full-access"
+    actual_executable = Path(actual_inner[0])
+    if (
+        actual_inner != expected_inner
+        or not actual_executable.is_absolute()
+        or actual_executable.name != "codex"
+        or ".." in actual_executable.parts
+        or not actual_executable.is_relative_to(Path("/usr"))
+    ):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    # Preserve the authorized workspace-write shape; receipt validation derives
+    # danger-full-access only for the independently confined Docker create argv.
+    provider_argv[0] = actual_inner[0]
+    return provider_argv
 
 
 def _run_codex_quota_fallback_in_docker(
@@ -4727,6 +4734,11 @@ def _run_codex_quota_fallback_in_docker(
             ),
             capacity_log_nonce=capacity_log_nonce,
         )
+        provider_argv_receipt = (
+            _codex_provider_argv_receipt(codex_command, command)
+            if effect_claim is not None
+            else []
+        )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
             # performed during route validation is caught below.
@@ -4835,7 +4847,7 @@ def _run_codex_quota_fallback_in_docker(
             command_receipt = {
                 "create_argv": list(command),
                 "start_argv": list(start_command),
-                "provider_argv": [str(item) for item in codex_command],
+                "provider_argv": provider_argv_receipt,
             }
             mount_receipt = list(mount_arguments)
             environment_receipt = {
@@ -5984,8 +5996,14 @@ def _codex_quota_fallback_env(
     """Build a minimal official-endpoint Codex environment with pinned auth."""
 
     configured_home = str(base_env.get("CODEX_HOME") or "").strip()
-    home = Path(str(base_env.get("HOME") or Path.home())).expanduser()
-    candidate = Path(configured_home).expanduser() if configured_home else home / ".codex"
+    # Live supervisors deliberately retarget HOME to a sealed runtime home.
+    # Resolve the default credential root from the login account instead of
+    # treating that sanitized child-process value as authorization.
+    candidate = (
+        Path(configured_home).expanduser()
+        if configured_home
+        else _operating_system_account_home() / ".codex"
+    )
     try:
         codex_home = candidate.resolve(strict=True)
     except OSError as exc:
@@ -6454,11 +6472,38 @@ def _independently_verify_grok_quota(
 
     from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
 
-    verifier_root = Path(tempfile.mkdtemp(prefix="asref-grok-quota-verifier-"))
+    # Grok scopes current session storage by the percent-encoded absolute cwd.
+    # Pin this tiny verifier to the bounded system temporary root so inherited
+    # TMPDIR depth cannot trigger Grok's alternate slug/hash layout and make
+    # independently generated evidence undiscoverable.
+    verifier_parent = Path("/tmp")
+    try:
+        parent_stat = verifier_parent.lstat()
+        if (
+            verifier_parent.is_symlink()
+            or not stat.S_ISDIR(parent_stat.st_mode)
+            or parent_stat.st_uid != 0
+            or not stat.S_IMODE(parent_stat.st_mode) & stat.S_ISVTX
+        ):
+            return ""
+        verifier_root = Path(
+            tempfile.mkdtemp(
+                prefix="asref-grok-quota-verifier-",
+                dir=verifier_parent,
+            )
+        )
+    except OSError:
+        return ""
     isolated_home: tempfile.TemporaryDirectory[str] | None = None
     try:
         verifier_workspace = verifier_root / "workspace"
         verifier_workspace.mkdir(mode=0o700)
+        encoded_workspace = urllib.parse.quote(
+            str(verifier_workspace.resolve(strict=True)),
+            safe="",
+        )
+        if len(encoded_workspace.encode("utf-8")) > 255:
+            return ""
         prompt_path = verifier_root / "prompt.txt"
         prompt_path.write_text(
             "Reply with exactly the single word OK.",
@@ -6519,6 +6564,7 @@ def _independently_verify_grok_quota(
                 stderr=subprocess.DEVNULL,
                 timeout=90,
                 check=False,
+                umask=0o077,
             )
         except (OSError, subprocess.TimeoutExpired):
             return ""
@@ -7241,6 +7287,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     if internal_legacy_preflight and supplied_route_binding:
         print(
             "legacy quota route forbids an auth/high route binding",
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        supplied_preflight_nonce or supplied_route_binding
+    ) and not codex_fallback_command:
+        print(
+            "typed Grok route requires a Codex fallback command",
             file=sys.stderr,
         )
         return 2
@@ -9333,7 +9387,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Delegate to the full isolation/fallback implementation. Terra is
     # dispatched only after typed preflight auth/quota evidence or terminal
-    # quota correlation plus independent verification.
+    # quota correlation plus independent verification. Lazy runner-owned
+    # imports must not create bytecode inside the content-fenced workspace.
+    previous_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     try:
         try:
             return _run(args, receipt_fd)
@@ -9350,6 +9407,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return _run(args, receipt_fd)
     finally:
+        sys.dont_write_bytecode = previous_dont_write_bytecode
         if receipt_fd >= 3:
             try:
                 os.close(receipt_fd)

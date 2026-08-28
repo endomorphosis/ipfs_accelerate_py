@@ -103,14 +103,20 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
+    LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH,
+    LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+    LgcvfConfiguredBoardLiveContext,
     STATE_LIVE_SCHEMA_REVISION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
     _eaaef_source_addressed_host_receipts,
+    _lgcvf_configured_board_live_positive_child_environment,
     _trusted_duckdb_runtime_environment,
+    build_lgcvf_configured_board_live_module_command,
     parse_accepted_control_plane_pin,
     provider_subprocess_environment,
+    verify_lgcvf_configured_board_live_context,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..merge.worktree_lifecycle import WorktreeLifecycleStore
@@ -137,9 +143,15 @@ from .database_portal_bridge import (
     verify_database_portal_attempt_projection,
 )
 from .implementation_daemon import (
+    AUTHORITY_VALIDATION_CONTAINER_BACKEND,
+    AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST,
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS,
+    MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     PROVIDER_EXTERNAL_ISOLATION_ENV,
     TASK_HEADER_PREFIX,
@@ -155,6 +167,7 @@ from .implementation_daemon import (
     _validated_provider_route_receipt,
     _validated_provider_filesystem_boundary_receipt,
     consume_stale_active_attempt,
+    interrupted_recovery_content_identity,
     load_json_dict,
     normalize_status,
     normalize_focus_tracks,
@@ -182,6 +195,7 @@ from .supervisor_runtime import (
     OwnerLiveness,
     ProcessBirthIdentity,
     RestartPolicy,
+    SupervisedChildSpec,
     load_supervised_child_identity,
     owner_liveness,
     read_process_birth,
@@ -201,6 +215,8 @@ from .worktrees import (
 REPO_ROOT = Path.cwd()
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
+
+INTERRUPTED_RECOVERY_FRESH_LEASE_TIMEOUT_SECONDS = 5.0
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
@@ -1594,6 +1610,26 @@ def _managed_daemon_child_environment(
             secret_handle=database_program.endpoint_secret_handle,
         )
     return env
+
+
+def _require_lgcvf_live_validation_runtime(
+    status: object,
+) -> None:
+    """Reject a live LGCVF lane unless its pinned validator was admitted."""
+
+    if (
+        not isinstance(status, Mapping)
+        or status.get("applied") is not True
+        or status.get("backend")
+        != AUTHORITY_VALIDATION_CONTAINER_BACKEND
+        or status.get("container_image")
+        != AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST
+        or status.get("required_modules")
+        != ["pytest", "z3", "cvc5"]
+    ):
+        raise SupervisorSchedulerConfigError(
+            "LGCVF live validation runtime is not admitted"
+        )
 
 
 def database_program_from_cli_namespace(
@@ -8861,6 +8897,7 @@ class PortalSupervisorConfig:
     task_shard_count: int = 1
     task_shard_index: int = 0
     strict_task_sharding: bool = False
+    idle_lane_work_stealing: str = ""
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -8909,6 +8946,9 @@ class PortalSupervisorConfig:
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
     accepted_control_plane_descriptor: int = -1
     worker_network_launch_authority_json: str = ""
+    configured_board_live_context: (
+        LgcvfConfiguredBoardLiveContext | None
+    ) = None
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -8974,26 +9014,116 @@ class PortalSupervisorConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
+    control_plane_reload_argv: tuple[str, ...] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.state_owner_bootstrap_fd, bool)
-            or not isinstance(self.state_owner_bootstrap_fd, int)
-            or (self.state_owner_bootstrap_fd != -1 and self.state_owner_bootstrap_fd < 3)
-        ):
-            raise ValueError("state_owner_bootstrap_fd must be -1 or a valid descriptor")
-        owner_session_id = str(self.database_owner_session_id or "").strip()
-        if any(character in owner_session_id for character in ("\x00", "\n", "\r")):
-            raise ValueError("database_owner_session_id must be a single-line identity")
-        self.database_owner_session_id = owner_session_id
-        bootstrap_store_id = str(self.state_owner_bootstrap_store_id or "").strip()
-        if any(character in bootstrap_store_id for character in ("\x00", "\n", "\r")):
-            raise ValueError("state_owner_bootstrap_store_id must be a single-line identity")
-        if self.state_owner_bootstrap_fd >= 3 and not bootstrap_store_id:
+        self.idle_lane_work_stealing = str(
+            self.idle_lane_work_stealing or ""
+        ).strip().lower()
+        if self.idle_lane_work_stealing not in {"", "virgin-transfer"}:
             raise ValueError(
-                "state_owner_bootstrap_store_id is required with the bootstrap descriptor"
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
             )
-        self.state_owner_bootstrap_store_id = bootstrap_store_id
+        if self.idle_lane_work_stealing and (
+            not self.strict_task_sharding or self.task_shard_count <= 1
+        ):
+            raise ValueError(
+                "idle_lane_work_stealing requires strict multi-lane sharding"
+            )
+        if self.configured_board_live_context is not None:
+            live = self.configured_board_live_context
+            try:
+                live = verify_lgcvf_configured_board_live_context(
+                    capsule_pin_json=live.capsule_pin_json,
+                    capsule_descriptor=live.capsule_descriptor,
+                    admission_json=live.admission_json,
+                    native_launch_json=live.native_launch_json,
+                    native_descriptor=live.native_descriptor,
+                )
+            except (OSError, ValueError) as exc:
+                raise SupervisorSchedulerConfigError(
+                    "LGCVF live supervisor capsule binding is invalid"
+                ) from exc
+            program = self.database_program
+            if (
+                self.plan_bound_dispatch
+                or self.accepted_control_plane_pin is not None
+                or self.accepted_control_plane_descriptor >= 3
+                or self.daemon_script_path is not None
+                or self.supervisor_script_path is not None
+                or self.board_namespace
+                != LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
+                or self.task_shard_count != 4
+                or self.task_shard_index not in {0, 1, 2, 3}
+                or not self.strict_task_sharding
+                or self.idle_lane_work_stealing != "virgin-transfer"
+                or program is None
+                or program.task_source_kind != "duckdb"
+                or program.authority_mode != "quack"
+                or program.failover_policy != FAILOVER_FAIL_CLOSED
+                or program.explicit_legacy
+                or program.schema_revision
+                != "datasets-authoritative-operational-v1"
+                or program.endpoint_secret_handle
+                != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+                or self.database_owner_session_id
+                != live.admission.lane_names[self.task_shard_index]
+                or self.state_owner_bootstrap_fd < 3
+                or self.state_owner_bootstrap_fd in live.pass_fds
+                or self.state_owner_bootstrap_store_id
+                != str(program.store_id)
+                or live.admission.candidate_config_path
+                != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+            ):
+                raise SupervisorSchedulerConfigError(
+                    "LGCVF live supervisor profile is not exact"
+                )
+            from ..task_sources.state_owner_bootstrap import (
+                StateOwnerBootstrapError,
+                validate_state_owner_bootstrap_listener,
+            )
+
+            try:
+                validate_state_owner_bootstrap_listener(
+                    int(self.state_owner_bootstrap_fd)
+                )
+            except StateOwnerBootstrapError as exc:
+                raise SupervisorSchedulerConfigError(
+                    "LGCVF live state-owner bootstrap listener is invalid"
+                ) from exc
+            root = _canonical_plan_bound_repo_root(self.repo_root)
+            state_dir = _plan_bound_contained_path(
+                root,
+                self.state_dir,
+                field_name="LGCVF live lane state",
+                require_directory=True,
+            )
+            todo_path = _plan_bound_contained_path(
+                root,
+                self.todo_path,
+                field_name="LGCVF live task board",
+                require_existing=True,
+                require_regular=True,
+            )
+            for field_name in ("state_path", "strategy_path", "events_path"):
+                authority_path = _plan_bound_contained_path(
+                    root,
+                    getattr(self, field_name),
+                    field_name=f"LGCVF live {field_name}",
+                )
+                if authority_path.parent != state_dir:
+                    raise SupervisorSchedulerConfigError(
+                        f"LGCVF live {field_name} escapes its lane"
+                    )
+                setattr(self, field_name, authority_path)
+            self.repo_root = root
+            self.state_dir = state_dir
+            self.todo_path = todo_path
+            self.configured_board_live_context = live
         if self.plan_bound_dispatch:
             if (
                 self.plan_bound_accepted_tree_root is None
@@ -9110,22 +9240,16 @@ class AdoptedManagedDaemonProcess:
         return self.returncode
 
     def terminate(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGTERM)
-            self.returncode = -signal.SIGTERM
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be terminated through the "
+            "supervisor ownership fence"
+        )
 
     def kill(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGKILL)
-            self.returncode = -signal.SIGKILL
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be killed through the "
+            "supervisor ownership fence"
+        )
 
     def wait(self, timeout: float | None = None) -> int:
         deadline = None if timeout is None else time.time() + timeout
@@ -9183,6 +9307,14 @@ class PortalImplementationSupervisor:
             ingest_todo=ingest_todo,
         )
         self.board_control_plane_status = isolated
+        if (
+            config.configured_board_live_context is not None
+            and self.board_namespace
+            == LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
+        ):
+            _require_lgcvf_live_validation_runtime(
+                isolated.get("validation_runtime")
+            )
         resolved_branch = str(isolated.get("implementation_branch") or "").strip()
         branch_reason = str(
             (isolated.get("branch_result") or {}).get("reason") or ""
@@ -9203,7 +9335,16 @@ class PortalImplementationSupervisor:
     def _control_plane_status_projection(self) -> dict[str, Any]:
         now_monotonic = time.monotonic()
         probe_interval = max(1.0, float(self.config.check_interval))
-        if (
+        if self.config.configured_board_live_context is not None:
+            # The admitted live controller executes an immutable, verified
+            # capsule.  Mutable checkout movement is neither its code source
+            # nor authority to replace that process image; only the capsule
+            # owner may publish a newly sealed generation.
+            self._current_control_plane_source = dict(
+                self._loaded_control_plane_source
+            )
+            self._last_control_plane_source_probe_monotonic = now_monotonic
+        elif (
             self._last_control_plane_source_probe_monotonic <= 0.0
             or now_monotonic
             - self._last_control_plane_source_probe_monotonic
@@ -9271,16 +9412,55 @@ class PortalImplementationSupervisor:
     def _reload_for_control_plane_update(self) -> None:
         """Replace this process image so parent and child import one generation."""
 
-        # ``main(argv)`` may be embedded in another launcher whose sys.argv is
-        # unrelated to the arguments this supervisor accepted.  Prefer the
-        # exact captured launch vector; direct programmatic configurations
-        # retain the historical sys.argv fallback for compatibility.
-        reload_argv = (
-            list(self.config.accepted_launch_argv)
-            if self.config.accepted_launch_argv is not None
-            else list(sys.argv[1:])
-        )
+        if self.config.configured_board_live_context is not None:
+            raise SupervisorSchedulerConfigError(
+                "sealed LGCVF live capsules may be replaced only by their owner"
+            )
+        if self.config.plan_bound_dispatch:
+            raise PlanBoundDispatchError(
+                "sealed plan-bound supervisors may be replaced only by their owner"
+            )
         supervisor_script_path = self.config.supervisor_script_path
+        accepted_reload_argv = self.config.control_plane_reload_argv
+        # Direct config construction predates explicit launch-policy capture;
+        # retain its ambient-argv compatibility.  Every parsed CLI/main(argv)
+        # path records a tuple (including the legitimate empty tuple) and
+        # therefore never reaches this legacy fallback.
+        reload_argv = list(
+            sys.argv[1:]
+            if accepted_reload_argv is None
+            else accepted_reload_argv
+        )
+
+        from ..runtime.process_security import (
+            STATE_AUTHORITY_CREDENTIAL_NAMES,
+            env_secret_handle_target,
+            state_authority_credential,
+            state_authority_credentials_present,
+        )
+
+        credential_names = set(STATE_AUTHORITY_CREDENTIAL_NAMES)
+        database_program = self.config.database_program
+        if database_program is not None:
+            target = env_secret_handle_target(
+                database_program.endpoint_secret_handle
+            )
+            if target:
+                credential_names.add(target)
+        credentials = {
+            name: value
+            for name in sorted(credential_names)
+            if (value := state_authority_credential(name))
+        }
+        if any(
+            credential in argument
+            for credential in credentials.values()
+            for argument in reload_argv
+        ):
+            raise SupervisorSchedulerConfigError(
+                "control-plane reload arguments contain a raw state credential"
+            )
+
         if supervisor_script_path is not None:
             script_path = Path(supervisor_script_path)
             if not script_path.is_absolute():
@@ -9305,10 +9485,12 @@ class PortalImplementationSupervisor:
                 module_name,
                 *reload_argv,
             ]
-        os.execv(
-            sys.executable,
-            arguments,
-        )
+        if state_authority_credentials_present():
+            environment = os.environ.copy()
+            environment.update(credentials)
+            os.execve(sys.executable, arguments, environment)
+        else:
+            os.execv(sys.executable, arguments)
         raise RuntimeError("control-plane process reload returned unexpectedly")
 
     def _autonomous_unstall_state_path(self) -> Path:
@@ -10123,7 +10305,7 @@ class PortalImplementationSupervisor:
             # implementation-lock PID check instead of making a live
             # supervisor lease look stale to the managed daemon.
             owner_script = ""
-        return {
+        metadata = {
             "kind": "implementation",
             "lease_role": "supervisor_maintenance",
             "lease_id": sha1(lease_seed.encode("utf-8")).hexdigest(),
@@ -10134,6 +10316,42 @@ class PortalImplementationSupervisor:
             "state_path": str(self.config.state_path.resolve()),
             "started_at": utc_now(),
         }
+        try:
+            owner_birth = read_process_birth(os.getpid())
+        except OSError:
+            owner_birth = None
+        if owner_birth is not None and owner_birth.start_time_ticks > 0:
+            metadata["owner_process_birth"] = owner_birth.to_dict()
+        return metadata
+
+    @classmethod
+    def _implementation_lease_owner_liveness(
+        cls,
+        metadata: Mapping[str, Any],
+    ) -> str:
+        """Classify exact new lease owners and PID-only legacy owners."""
+
+        try:
+            pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return "unknown"
+        if "owner_process_birth" not in metadata:
+            return cls._implementation_lease_pid_liveness(pid)
+        payload = metadata.get("owner_process_birth")
+        if not isinstance(payload, Mapping):
+            return "unknown"
+        try:
+            owner = ProcessBirthIdentity.from_dict(payload)
+        except (TypeError, ValueError):
+            return "unknown"
+        if owner.pid != pid or owner.pid <= 0 or owner.start_time_ticks <= 0:
+            return "unknown"
+        observed = owner_liveness(owner)
+        if observed is OwnerLiveness.ALIVE:
+            return "alive"
+        if observed is OwnerLiveness.DEAD:
+            return "dead"
+        return "unknown"
 
     def _implementation_lease_owner_is_active(
         self,
@@ -10152,20 +10370,33 @@ class PortalImplementationSupervisor:
                     return False
             except OSError:
                 return False
+        # New leases carry a PID-reuse-resistant process birth. Unknown
+        # inspection remains active (fail closed); older leases retain their
+        # historical PID-only fence.
+        return self._implementation_lease_owner_liveness(metadata) != "dead"
+
+    @staticmethod
+    def _implementation_lease_pid_liveness(pid: int) -> str:
+        """Classify lease PID inspection without collapsing uncertainty."""
+
+        if pid <= 0:
+            return "unknown"
         try:
-            pid = int(metadata.get("pid") or 0)
-        except (TypeError, ValueError):
-            return False
-        # A live PID in this state directory is sufficient to fail closed.
-        # ``owner_script`` remains useful diagnostics, but a wrapper command or
-        # unreadable procfs entry must never let maintenance steal a daemon's
-        # active implementation lease.
-        return process_is_running(pid)
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "dead"
+        except PermissionError:
+            return "alive"
+        except OSError:
+            return "unknown"
+        return "alive"
 
     def _publish_implementation_maintenance_lease(
         self,
         lock_path: Path,
         metadata: Mapping[str, Any],
+        *,
+        replace_existing: bool = False,
     ) -> bool:
         """Atomically publish a complete lease without an empty-file window."""
 
@@ -10189,10 +10420,23 @@ class PortalImplementationSupervisor:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
+            if replace_existing:
+                os.replace(temporary_path, lock_path)
+            else:
+                try:
+                    os.link(temporary_path, lock_path)
+                except FileExistsError:
+                    return False
+            directory_fd = os.open(
+                lock_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
             try:
-                os.link(temporary_path, lock_path)
-            except FileExistsError:
-                return False
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             return True
         finally:
             if fd is not None:
@@ -10201,11 +10445,16 @@ class PortalImplementationSupervisor:
 
     def _acquire_implementation_maintenance_lease(
         self,
+        *,
+        update_guard_timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         lock_path = self._implementation_maintenance_lock_path()
         metadata = self._implementation_maintenance_lease_metadata()
         try:
-            with serialized_lock_update(lock_path):
+            with serialized_lock_update(
+                lock_path,
+                timeout_seconds=update_guard_timeout_seconds,
+            ):
                 return self._acquire_implementation_maintenance_lease_serialized(
                     lock_path,
                     metadata,
@@ -10218,6 +10467,395 @@ class PortalImplementationSupervisor:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    @staticmethod
+    def _read_private_implementation_json(
+        path: Path,
+        *,
+        maximum_bytes: int = 256 * 1024,
+        require_private: bool = True,
+    ) -> tuple[bytes, dict[str, Any], int] | None:
+        """Read one owned 0600 regular JSON object through a stable fd."""
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        try:
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            return None
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or (
+                    stat.S_IMODE(before.st_mode) != 0o600
+                    if require_private
+                    else False
+                )
+                or before.st_size <= 0
+                or before.st_size > maximum_bytes
+            ):
+                raise OSError("implementation metadata is not a private regular file")
+            chunks: list[bytes] = []
+            remaining = int(before.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            payload_bytes = b"".join(chunks)
+            after = os.fstat(descriptor)
+            named = os.lstat(path)
+        finally:
+            os.close(descriptor)
+
+        def identity(item: os.stat_result) -> tuple[int, ...]:
+            return (
+                item.st_dev,
+                item.st_ino,
+                item.st_mode,
+                item.st_uid,
+                item.st_gid,
+                item.st_nlink,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+            )
+
+        if (
+            len(payload_bytes) != before.st_size
+            or identity(before) != identity(after)
+            or identity(after) != identity(named)
+        ):
+            raise OSError("implementation metadata changed while being read")
+
+        def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        decoded = payload_bytes.decode("utf-8")
+        parsed = json.loads(decoded, object_pairs_hook=unique_object)
+        if not isinstance(parsed, dict):
+            raise ValueError("implementation metadata is not a JSON object")
+        return payload_bytes, parsed, stat.S_IMODE(after.st_mode)
+
+    @staticmethod
+    def _implementation_lock_custody(
+        raw: bytes,
+        metadata: Mapping[str, Any],
+        mode: int,
+    ) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-attempt-lock-custody@2"
+            ),
+            "raw_utf8": raw.decode("utf-8"),
+            "sha256": "sha256:" + sha256(raw).hexdigest(),
+            "metadata": dict(metadata),
+            "mode": int(mode),
+        }
+
+    def _implementation_predecessor_claim_presence(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> tuple[bool | None, str, str]:
+        """Inspect whether a historical attempt has durable claim evidence."""
+
+        try:
+            daemon = self._build_worktree_reconciliation_daemon(
+                reclaim_dead_lifecycle_on_startup=False,
+            )
+            claim_path = daemon._implementation_task_claim_path(
+                str(metadata.get("task_id") or ""),
+                canonical_task_cid=str(
+                    metadata.get("canonical_task_cid") or ""
+                ),
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return (
+                None,
+                "",
+                f"{type(exc).__name__}: {exc}",
+            )
+        try:
+            os.lstat(claim_path)
+        except FileNotFoundError:
+            return False, str(claim_path), ""
+        except OSError as exc:
+            return None, str(claim_path), f"{type(exc).__name__}: {exc}"
+        return True, str(claim_path), ""
+
+    @staticmethod
+    def _valid_implementation_lock_custody(
+        custody: Any,
+    ) -> bool:
+        if not isinstance(custody, Mapping):
+            return False
+        schema = custody.get("schema")
+        common_fields = {"schema", "raw_utf8", "sha256", "metadata"}
+        if schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@1"
+        ):
+            if set(custody) != common_fields:
+                return False
+        elif schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@2"
+        ):
+            if set(custody) != common_fields | {"mode"}:
+                return False
+            custody_mode = custody.get("mode")
+            if (
+                not isinstance(custody_mode, int)
+                or isinstance(custody_mode, bool)
+                or custody_mode not in {0o600, 0o644, 0o664}
+            ):
+                return False
+        else:
+            return False
+        raw_text = custody.get("raw_utf8")
+        metadata = custody.get("metadata")
+        if (
+            not isinstance(raw_text, str)
+            or not isinstance(metadata, Mapping)
+        ):
+            return False
+        raw = raw_text.encode("utf-8")
+        def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+        try:
+            reparsed = json.loads(
+                raw_text,
+                object_pairs_hook=unique_object,
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError):
+            return False
+        return bool(
+            isinstance(reparsed, dict)
+            and reparsed == dict(metadata)
+            and custody.get("sha256")
+            == "sha256:" + sha256(raw).hexdigest()
+        )
+
+    @classmethod
+    def _valid_interrupted_recovery_receipt(
+        cls,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        body = dict(receipt)
+        receipt_id = body.pop("receipt_id", None)
+        basis = receipt.get("basis")
+        expected_after = receipt.get("expected_after")
+        phase = receipt.get("phase")
+        custody = (
+            basis.get("predecessor_attempt_lock")
+            if isinstance(basis, Mapping)
+            else None
+        )
+        if (
+            receipt.get("schema") != INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA
+            or phase not in {"prepared", "completed"}
+            or not isinstance(basis, Mapping)
+            or not isinstance(expected_after, Mapping)
+            or receipt.get("operation_id")
+            != interrupted_recovery_content_identity(basis)
+            or receipt_id != interrupted_recovery_content_identity(body)
+            or not cls._valid_implementation_lock_custody(custody)
+            or not str(receipt.get("prepared_at") or "")
+        ):
+            return False
+        common = {
+            "schema",
+            "phase",
+            "operation_id",
+            "basis",
+            "expected_after",
+            "prepared_at",
+            "receipt_id",
+        }
+        if phase == "prepared":
+            return set(receipt) == common
+        completion = receipt.get("completion")
+        final_proof = (
+            completion.get("final_proof")
+            if isinstance(completion, Mapping)
+            else None
+        )
+        return bool(
+            set(receipt) == common | {"completed_at", "completion"}
+            and str(receipt.get("completed_at") or "")
+            and isinstance(completion, Mapping)
+            and set(completion) == {"final_proof", "final_proof_id"}
+            and isinstance(final_proof, Mapping)
+            and set(final_proof)
+            == INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS
+            and completion.get("final_proof_id")
+            == interrupted_recovery_content_identity(final_proof)
+            and str(final_proof.get("marker_cid") or "")
+            and str(final_proof.get("lifecycle_cid") or "")
+            and str(final_proof.get("lifecycle_index_cid") or "")
+            and str(final_proof.get("state_cid") or "")
+            and str(final_proof.get("close_event_id") or "")
+            and str(final_proof.get("close_event_cid") or "")
+            and str(final_proof.get("state_recovered_event_id") or "")
+            and str(final_proof.get("state_recovered_event_cid") or "")
+        )
+
+    def _prepared_interrupted_recovery_custody(
+        self,
+    ) -> tuple[dict[str, Any] | None, str]:
+        receipt_path = (
+            self.config.state_path.parent
+            / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+        )
+        try:
+            loaded = self._read_private_implementation_json(
+                receipt_path,
+                maximum_bytes=(
+                    MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+                ),
+            )
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        if loaded is None:
+            return None, ""
+        _raw, receipt, _mode = loaded
+        if not self._valid_interrupted_recovery_receipt(receipt):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        if receipt.get("phase") == "completed":
+            basis = receipt.get("basis")
+            custody = (
+                basis.get("predecessor_attempt_lock")
+                if isinstance(basis, Mapping)
+                else None
+            )
+            # A completed record is not maintenance authority by itself. Carry
+            # its exact predecessor custody into a fresh lease so the daemon's
+            # strict canonical event replay revalidates the completion before
+            # ordinary maintenance can proceed.
+            return dict(custody), ""
+        basis = receipt.get("basis")
+        custody = (
+            basis.get("predecessor_attempt_lock")
+            if isinstance(basis, Mapping)
+            else None
+        )
+        if (
+            receipt.get("phase") != "prepared"
+            or not str(receipt.get("operation_id") or "")
+            or not self._valid_implementation_lock_custody(custody)
+        ):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        return dict(custody), ""
+
+    def _validate_predecessor_attempt_lock(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> tuple[bool, str]:
+        try:
+            pid = int(metadata.get("pid"))
+        except (TypeError, ValueError):
+            return False, "implementation_predecessor_lock_numeric_identity_invalid"
+        expected_repo = str(self.config.repo_root.resolve())
+        expected_state_dir = str(self.config.state_path.parent.resolve())
+        role = str(metadata.get("lease_role") or "implementation_attempt")
+        owner_birth_payload = metadata.get("owner_process_birth")
+        if (
+            "owner_process_birth" not in metadata
+            and str(metadata.get("kind") or "") == "implementation"
+            and role == "implementation_attempt"
+            and pid > 0
+        ):
+            # Legacy locks were intentionally much smaller.  Preserve their
+            # PID-only live-owner fence before applying the stricter shape
+            # required to convert a dead lock into predecessor custody.
+            legacy_liveness = self._implementation_lease_pid_liveness(pid)
+            if legacy_liveness == "alive":
+                return False, "implementation_protected_path_attempt_active"
+            if legacy_liveness != "dead":
+                return (
+                    False,
+                    "implementation_predecessor_lock_liveness_unknown",
+                )
+        try:
+            attempt = int(metadata.get("attempt"))
+        except (TypeError, ValueError):
+            return False, "implementation_predecessor_lock_numeric_identity_invalid"
+        if (
+            str(metadata.get("kind") or "") != "implementation"
+            or role != "implementation_attempt"
+            or pid <= 0
+            or attempt <= 0
+            or not str(metadata.get("lease_id") or "")
+            or not str(metadata.get("task_id") or "")
+            or not str(metadata.get("canonical_task_key") or "")
+            or not str(metadata.get("canonical_task_cid") or "")
+            or not str(metadata.get("board_namespace") or "")
+            or not str(metadata.get("started_at") or "")
+            or str(metadata.get("repo_root") or "") != expected_repo
+            or str(metadata.get("state_dir") or "") != expected_state_dir
+        ):
+            return False, "implementation_predecessor_lock_identity_invalid"
+        if "owner_process_birth" in metadata:
+            if not isinstance(owner_birth_payload, Mapping):
+                return (
+                    False,
+                    "implementation_predecessor_lock_birth_identity_invalid",
+                )
+            try:
+                owner_birth = ProcessBirthIdentity.from_dict(
+                    owner_birth_payload
+                )
+            except (TypeError, ValueError):
+                return (
+                    False,
+                    "implementation_predecessor_lock_birth_identity_invalid",
+                )
+            if (
+                owner_birth.pid != pid
+                or owner_birth.start_time_ticks <= 0
+            ):
+                return (
+                    False,
+                    "implementation_predecessor_lock_birth_identity_invalid",
+                )
+            observed = owner_liveness(owner_birth)
+            liveness = (
+                "alive"
+                if observed is OwnerLiveness.ALIVE
+                else (
+                    "dead"
+                    if observed is OwnerLiveness.DEAD
+                    else "unknown"
+                )
+            )
+        else:
+            # Narrow compatibility for predecessor locks written before
+            # process-birth identities were part of attempt authority.
+            liveness = self._implementation_lease_pid_liveness(pid)
+        if liveness == "alive":
+            return False, "implementation_protected_path_attempt_active"
+        if liveness != "dead":
+            return False, "implementation_predecessor_lock_liveness_unknown"
+        return True, ""
+
     def _acquire_implementation_maintenance_lease_serialized(
         self,
         lock_path: Path,
@@ -10225,51 +10863,219 @@ class PortalImplementationSupervisor:
     ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         """Acquire the durable lease while its update guard is held."""
 
+        prepared_custody, receipt_error = (
+            self._prepared_interrupted_recovery_custody()
+        )
+        if receipt_error:
+            return None, {
+                "blocked": True,
+                "reason": receipt_error,
+                "lock_path": str(lock_path),
+            }
+        lease_metadata = dict(metadata)
+        if prepared_custody is not None:
+            lease_metadata["predecessor_attempt_lock"] = prepared_custody
+
         for _ in range(2):
             if self._publish_implementation_maintenance_lease(
                 lock_path,
-                metadata,
+                lease_metadata,
             ):
-                return metadata, {
+                return lease_metadata, {
                     "blocked": False,
                     "reason": "implementation_maintenance_lease_acquired",
                     "lock_path": str(lock_path),
-                    "lease_id": str(metadata["lease_id"]),
-                }
-            existing = load_json_dict(lock_path)
-            if existing is None:
-                try:
-                    lock_path.unlink()
-                except FileNotFoundError:
-                    continue
-                except OSError:
-                    return None, {
-                        "blocked": True,
-                        "reason": "implementation_maintenance_lease_cleanup_failed",
-                        "lock_path": str(lock_path),
-                    }
-                continue
-            if self._implementation_lease_owner_is_active(existing):
-                return None, {
-                    "blocked": True,
-                    "reason": "implementation_protected_path_attempt_active",
-                    "lock_path": str(lock_path),
-                    "lock_owner_pid": int(existing.get("pid") or 0),
-                    "lock_owner_task_id": str(existing.get("task_id") or ""),
-                    "lock_owner_lease_role": str(
-                        existing.get("lease_role") or "implementation_attempt"
-                    ),
+                    "lease_id": str(lease_metadata["lease_id"]),
                 }
             try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                continue
-            except OSError:
+                loaded = self._read_private_implementation_json(
+                    lock_path,
+                    require_private=False,
+                )
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
                 return None, {
                     "blocked": True,
-                    "reason": "implementation_maintenance_lease_cleanup_failed",
+                    "reason": "implementation_predecessor_lock_malformed",
+                    "lock_path": str(lock_path),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            if loaded is None:
+                continue
+            raw, existing, existing_mode = loaded
+            existing_role = str(
+                existing.get("lease_role") or "implementation_attempt"
+            )
+            try:
+                existing_pid = int(existing.get("pid") or 0)
+            except (TypeError, ValueError):
+                existing_pid = 0
+            if existing_role == "implementation_attempt":
+                valid, reason = self._validate_predecessor_attempt_lock(
+                    existing
+                )
+                if not valid:
+                    guard = {
+                        "blocked": True,
+                        "reason": reason,
+                        "lock_path": str(lock_path),
+                    }
+                    if reason == "implementation_protected_path_attempt_active":
+                        guard.update(
+                            {
+                                "lock_owner_pid": existing_pid,
+                                "lock_owner_task_id": str(
+                                    existing.get("task_id") or ""
+                                ),
+                                "lock_owner_lease_role": existing_role,
+                            }
+                        )
+                    return None, guard
+                # Capture current private locks, the explicit-role owned 0644
+                # transition shape, and historical 0644/0664 records that have
+                # a durable task claim. Role-less records without a claim stay
+                # on the legacy non-journal path. Unsupported authoritative
+                # modes remain untouched for explicit review.
+                explicit_attempt_role = (
+                    existing.get("lease_role") == "implementation_attempt"
+                )
+                historical_claim_present = False
+                if "lease_role" not in existing and existing_mode != 0o600:
+                    (
+                        claim_presence,
+                        claim_path,
+                        claim_error,
+                    ) = self._implementation_predecessor_claim_presence(
+                        existing
+                    )
+                    if claim_presence is None:
+                        return None, {
+                            "blocked": True,
+                            "reason": (
+                                "implementation_predecessor_claim_inspection_failed"
+                            ),
+                            "lock_path": str(lock_path),
+                            "claim_path": claim_path,
+                            "error": claim_error,
+                        }
+                    historical_claim_present = claim_presence
+                custody_allowed = bool(
+                    existing_mode == 0o600
+                    or (existing_mode == 0o644 and explicit_attempt_role)
+                    or (
+                        "lease_role" not in existing
+                        and historical_claim_present
+                        and existing_mode in {0o644, 0o664}
+                    )
+                )
+                if not custody_allowed and (
+                    "lease_role" in existing or historical_claim_present
+                ):
+                    return None, {
+                        "blocked": True,
+                        "reason": (
+                            "implementation_predecessor_lock_permissions_invalid"
+                        ),
+                        "lock_path": str(lock_path),
+                        "lock_mode": oct(existing_mode),
+                    }
+                observed_custody = (
+                    self._implementation_lock_custody(
+                        raw,
+                        existing,
+                        existing_mode,
+                    )
+                    if custody_allowed
+                    else None
+                )
+            elif existing_role == "supervisor_maintenance":
+                existing_liveness = (
+                    self._implementation_lease_owner_liveness(existing)
+                )
+                if existing_liveness == "alive":
+                    return None, {
+                        "blocked": True,
+                        "reason": (
+                            "implementation_protected_path_attempt_active"
+                        ),
+                        "lock_path": str(lock_path),
+                        "lock_owner_pid": existing_pid,
+                        "lock_owner_task_id": str(
+                            existing.get("task_id") or ""
+                        ),
+                        "lock_owner_lease_role": existing_role,
+                    }
+                if existing_liveness == "unknown":
+                    return None, {
+                        "blocked": True,
+                        "reason": (
+                            "implementation_predecessor_lock_liveness_unknown"
+                        ),
+                        "lock_path": str(lock_path),
+                        "lock_owner_pid": existing_pid,
+                    }
+                observed_custody = existing.get(
+                    "predecessor_attempt_lock"
+                )
+                try:
+                    owner_pid = int(existing.get("pid"))
+                except (TypeError, ValueError):
+                    owner_pid = 0
+                if (
+                    str(existing.get("kind") or "") != "implementation"
+                    or not str(existing.get("lease_id") or "")
+                    or owner_pid <= 0
+                    or str(existing.get("repo_root") or "")
+                    != str(self.config.repo_root.resolve())
+                    or str(existing.get("state_dir") or "")
+                    != str(self.config.state_path.parent.resolve())
+                    or str(existing.get("state_path") or "")
+                    != str(self.config.state_path.resolve())
+                    or (
+                        observed_custody is not None
+                        and not self._valid_implementation_lock_custody(
+                            observed_custody
+                        )
+                    )
+                ):
+                    return None, {
+                        "blocked": True,
+                        "reason": "implementation_predecessor_lock_identity_invalid",
+                        "lock_path": str(lock_path),
+                    }
+            else:
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_predecessor_lock_role_unknown",
                     "lock_path": str(lock_path),
                 }
+            if (
+                prepared_custody is not None
+                and observed_custody != prepared_custody
+            ):
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_predecessor_lock_custody_mismatch",
+                    "lock_path": str(lock_path),
+                }
+            if observed_custody is not None:
+                lease_metadata["predecessor_attempt_lock"] = dict(
+                    observed_custody
+                )
+            if not self._publish_implementation_maintenance_lease(
+                lock_path,
+                lease_metadata,
+                replace_existing=True,
+            ):
+                continue
+            return lease_metadata, {
+                "blocked": False,
+                "reason": "implementation_maintenance_lease_acquired",
+                "lock_path": str(lock_path),
+                "lease_id": str(lease_metadata["lease_id"]),
+                "predecessor_attempt_lock_captured": (
+                    "predecessor_attempt_lock" in lease_metadata
+                ),
+            }
         return None, {
             "blocked": True,
             "reason": "implementation_maintenance_lease_unavailable",
@@ -10300,18 +11106,93 @@ class PortalImplementationSupervisor:
         lock_path: Path,
         metadata: Mapping[str, Any],
     ) -> None:
-        existing = load_json_dict(lock_path)
-        if existing is None:
+        try:
+            loaded = self._read_private_implementation_json(lock_path)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            logger.warning(
+                "Refusing to remove malformed or replaced implementation "
+                "lease: %s",
+                lock_path,
+            )
             return
-        if str(existing.get("lease_id") or "") != str(
-            metadata.get("lease_id") or ""
-        ):
+        if loaded is None:
+            return
+        _raw, existing, _mode = loaded
+        if existing != dict(metadata):
             logger.warning(
                 "Refusing to remove implementation lease no longer owned by "
                 "this supervisor pass: %s",
                 lock_path,
             )
             return
+        custody = metadata.get("predecessor_attempt_lock")
+        if self._valid_implementation_lock_custody(custody):
+            receipt_path = (
+                self.config.state_path.parent
+                / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+            )
+            try:
+                loaded_receipt = self._read_private_implementation_json(
+                    receipt_path,
+                    maximum_bytes=(
+                        MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+                    ),
+                )
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+                loaded_receipt = None
+            durable_custody = bool(
+                loaded_receipt is not None
+                and self._valid_interrupted_recovery_receipt(
+                    loaded_receipt[1]
+                )
+                and dict(
+                    loaded_receipt[1]["basis"][
+                        "predecessor_attempt_lock"
+                    ]
+                )
+                == dict(custody)
+            )
+            if not durable_custody:
+                raw = str(custody["raw_utf8"]).encode("utf-8")
+                restore_mode = int(custody.get("mode") or 0o600)
+                temporary = lock_path.with_name(
+                    f".{lock_path.name}.restore-{metadata['lease_id']}.tmp"
+                )
+                descriptor = -1
+                try:
+                    descriptor = os.open(
+                        temporary,
+                        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                        restore_mode,
+                    )
+                    os.fchmod(descriptor, restore_mode)
+                    offset = 0
+                    while offset < len(raw):
+                        written = os.write(descriptor, raw[offset:])
+                        if written <= 0:
+                            raise OSError(
+                                "short write while restoring predecessor lock"
+                            )
+                        offset += written
+                    os.fsync(descriptor)
+                    os.close(descriptor)
+                    descriptor = -1
+                    os.replace(temporary, lock_path)
+                    directory = os.open(
+                        lock_path.parent,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_CLOEXEC", 0),
+                    )
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                finally:
+                    if descriptor >= 0:
+                        os.close(descriptor)
+                    temporary.unlink(missing_ok=True)
+                return
         try:
             lock_path.unlink()
         except FileNotFoundError:
@@ -10322,6 +11203,139 @@ class PortalImplementationSupervisor:
                 lock_path,
                 exc_info=True,
             )
+            return
+        directory = os.open(
+            lock_path.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    def _interrupted_recovery_archive_handoff_checkpoint(
+        self,
+        _phase: str,
+    ) -> None:
+        """Test seam for loss after the old lease is durably released."""
+
+    def _handoff_completed_interrupted_recovery_receipt(
+        self,
+        lease: Mapping[str, Any],
+        recovery: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Release one exact lease, then archive its completed proof."""
+
+        lock_path = self._implementation_maintenance_lock_path()
+        operation_id = str(recovery.get("operation_id") or "")
+        receipt_id = str(recovery.get("receipt_id") or "")
+        current_receipt_path = (
+            self.config.state_path.parent
+            / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+        )
+        if (
+            not operation_id
+            or not receipt_id
+            or str(recovery.get("receipt_path") or "")
+            != str(current_receipt_path)
+            or recovery.get("completed_receipt_pending_archive") is not True
+        ):
+            return {
+                "blocked": True,
+                "reason": "interrupted_recovery_archive_handoff_invalid",
+            }
+        try:
+            with serialized_lock_update(lock_path):
+                loaded_lease = self._read_private_implementation_json(
+                    lock_path
+                )
+                if loaded_lease is None or loaded_lease[1] != dict(lease):
+                    return {
+                        "blocked": True,
+                        "reason": (
+                            "interrupted_recovery_archive_lease_changed"
+                        ),
+                        "lock_path": str(lock_path),
+                    }
+                custody = lease.get("predecessor_attempt_lock")
+                if not self._valid_implementation_lock_custody(custody):
+                    return {
+                        "blocked": True,
+                        "reason": (
+                            "interrupted_recovery_archive_custody_invalid"
+                        ),
+                        "lock_path": str(lock_path),
+                    }
+                daemon = self._build_worktree_reconciliation_daemon(
+                    reclaim_dead_lifecycle_on_startup=False,
+                )
+                receipt = (
+                    daemon._load_private_interrupted_recovery_receipt()
+                )
+                if (
+                    receipt is None
+                    or receipt.get("phase") != "completed"
+                    or receipt.get("operation_id") != operation_id
+                    or receipt.get("receipt_id") != receipt_id
+                    or dict(receipt["basis"])[
+                        "predecessor_attempt_lock"
+                    ]
+                    != dict(custody)
+                ):
+                    return {
+                        "blocked": True,
+                        "reason": (
+                            "interrupted_recovery_archive_receipt_changed"
+                        ),
+                        "lock_path": str(lock_path),
+                    }
+                lock_path.unlink()
+                directory = os.open(
+                    lock_path.parent,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+                if lock_path.exists() or lock_path.is_symlink():
+                    raise RuntimeError(
+                        "implementation maintenance lease was not released"
+                    )
+                self._interrupted_recovery_archive_handoff_checkpoint(
+                    "lease_released"
+                )
+                archive_path = (
+                    daemon._archive_completed_interrupted_recovery_receipt(
+                        receipt
+                    )
+                )
+                return {
+                    "blocked": False,
+                    "reason": (
+                        "interrupted_recovery_completed_receipt_archived"
+                    ),
+                    "operation_id": operation_id,
+                    "receipt_id": receipt_id,
+                    "receipt_path": str(archive_path),
+                    "lease_released": True,
+                }
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            return {
+                "blocked": True,
+                "reason": "interrupted_recovery_archive_handoff_failed",
+                "lock_path": str(lock_path),
+                "error": f"{type(exc).__name__}: {exc}",
+                "lease_released": bool(
+                    not lock_path.exists() and not lock_path.is_symlink()
+                ),
+            }
 
     def _run_once_with_maintenance(
         self,
@@ -10353,13 +11367,106 @@ class PortalImplementationSupervisor:
             }
         try:
             update_maintenance_phase("implementation_maintenance_lease")
-            return self._run_once_with_maintenance_under_lease(
+            first = self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=lease,
             )
+            if first.get("_completed_recovery_archive_required") is not True:
+                return first
+            recovery = first.get(
+                "interrupted_implementation_reconciliation"
+            )
+            if not isinstance(recovery, Mapping):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": "interrupted_recovery_archive_result_invalid",
+                }
+            update_maintenance_phase(
+                "interrupted_implementation_recovery_archive"
+            )
+            handoff = self._handoff_completed_interrupted_recovery_receipt(
+                lease,
+                recovery,
+            )
+            if handoff.get("lease_released") is True:
+                lease = None
+            if handoff.get("blocked") is True:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(handoff.get("reason") or ""),
+                    "interrupted_implementation_reconciliation": dict(
+                        recovery
+                    ),
+                    "interrupted_implementation_recovery_archive": handoff,
+                }
+            archived_recovery = {
+                **dict(recovery),
+                "receipt_path": str(handoff["receipt_path"]),
+                "receipt_archived": True,
+                "completed_receipt_pending_archive": False,
+            }
+            fresh_lease, fresh_guard = (
+                self._acquire_implementation_maintenance_lease(
+                    update_guard_timeout_seconds=(
+                        INTERRUPTED_RECOVERY_FRESH_LEASE_TIMEOUT_SECONDS
+                    )
+                )
+            )
+            if fresh_lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(fresh_guard.get("reason") or ""),
+                    "protected_path_guard": fresh_guard,
+                    "interrupted_implementation_reconciliation": (
+                        archived_recovery
+                    ),
+                    "interrupted_implementation_recovery_archive": handoff,
+                }
+            lease = fresh_lease
+            if lease.get("predecessor_attempt_lock") is not None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": (
+                        "fresh_implementation_maintenance_lease_has_custody"
+                    ),
+                    "interrupted_implementation_reconciliation": (
+                        archived_recovery
+                    ),
+                    "interrupted_implementation_recovery_archive": handoff,
+                }
+            update_maintenance_phase(
+                "implementation_maintenance_lease_reacquired"
+            )
+            second = self._run_once_with_maintenance_under_lease(
+                update_maintenance_phase,
+                include_refill=include_refill,
+                implementation_maintenance_lease=lease,
+            )
+            if second.get("_completed_recovery_archive_required") is True:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": (
+                        "interrupted_recovery_reappeared_after_archive"
+                    ),
+                    "interrupted_implementation_reconciliation": (
+                        archived_recovery
+                    ),
+                    "interrupted_implementation_recovery_archive": handoff,
+                }
+            second["interrupted_implementation_reconciliation"] = (
+                archived_recovery
+            )
+            second["interrupted_implementation_recovery_archive"] = handoff
+            return second
         finally:
-            self._release_implementation_maintenance_lease(lease)
+            if lease is not None:
+                self._release_implementation_maintenance_lease(lease)
 
     def _run_once_with_maintenance_under_lease(
         self,
@@ -10368,6 +11475,76 @@ class PortalImplementationSupervisor:
         include_refill: bool = True,
         implementation_maintenance_lease: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        interrupted_implementation_reconciliation: dict[str, Any] = {
+            "reconciled": False,
+            "blocked": False,
+            "reason": "no_interrupted_implementation_authority",
+        }
+        active_protected_attempt = (
+            self.config.state_path.parent
+            / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+        )
+        recovery_custody = (
+            implementation_maintenance_lease.get(
+                "predecessor_attempt_lock"
+            )
+            if isinstance(implementation_maintenance_lease, Mapping)
+            else None
+        )
+        if active_protected_attempt.exists() or recovery_custody is not None:
+            if implementation_maintenance_lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": (
+                        "interrupted_implementation_reconciliation_requires_"
+                        "predecessor_custody"
+                    ),
+                    "interrupted_implementation_reconciliation": (
+                        interrupted_implementation_reconciliation
+                    ),
+                }
+            update_maintenance_phase(
+                "interrupted_implementation_reconciliation"
+            )
+            interrupted_implementation_reconciliation = (
+                self._reconcile_interrupted_implementation_after_shutdown(
+                    preacquired_implementation_lock=(
+                        implementation_maintenance_lease
+                    ),
+                )
+            )
+            if not (
+                interrupted_implementation_reconciliation.get("reconciled")
+                is True
+                and interrupted_implementation_reconciliation.get("blocked")
+                is False
+            ):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        interrupted_implementation_reconciliation.get("reason")
+                        or "interrupted_implementation_reconciliation_blocked"
+                    ),
+                    "interrupted_implementation_reconciliation": (
+                        interrupted_implementation_reconciliation
+                    ),
+                }
+            if (
+                interrupted_implementation_reconciliation.get(
+                    "completed_receipt_pending_archive"
+                )
+                is True
+            ):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": False,
+                    "_completed_recovery_archive_required": True,
+                    "interrupted_implementation_reconciliation": (
+                        interrupted_implementation_reconciliation
+                    ),
+                }
         # A producer can retain the checkout lease only when its protected
         # outputs could not be proven clean.  Resolve that state before any
         # other maintenance callback is allowed to mutate repository state.
@@ -10397,6 +11574,9 @@ class PortalImplementationSupervisor:
                 "reason": str(protected_path_guard.get("reason") or ""),
                 "event_log_repair": event_log_repair,
                 "state_file_repair": state_file_repair,
+                "interrupted_implementation_reconciliation": (
+                    interrupted_implementation_reconciliation
+                ),
                 "protected_path_guard": protected_path_guard,
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
@@ -10561,6 +11741,9 @@ class PortalImplementationSupervisor:
                 "guardrail_unblock_count": len(guardrail_releases),
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
+                ),
+                "interrupted_implementation_reconciliation": (
+                    interrupted_implementation_reconciliation
                 ),
             }
         update_maintenance_phase("retry_dependency_guardrails")
@@ -10823,6 +12006,9 @@ class PortalImplementationSupervisor:
             "retained_generated_checkout_recovery": (
                 retained_generated_checkout_recovery
             ),
+            "interrupted_implementation_reconciliation": (
+                interrupted_implementation_reconciliation
+            ),
         }
 
     def run_forever(self) -> int:
@@ -11040,10 +12226,16 @@ class PortalImplementationSupervisor:
             self._implementation_watchdog_timeout_seconds()
             + max(30.0, float(self.config.check_interval) * 2.0),
         )
-        child_environment = _managed_daemon_child_environment(
-            database_program=self.config.database_program,
-            repo_root=self.config.repo_root,
-        )
+        live_context = self.config.configured_board_live_context
+        if live_context is not None:
+            child_environment, live_context = (
+                self._lgcvf_live_managed_daemon_environment(command)
+            )
+        else:
+            child_environment = _managed_daemon_child_environment(
+                database_program=self.config.database_program,
+                repo_root=self.config.repo_root,
+            )
         child_environment.update(
             {
                 SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
@@ -11098,6 +12290,15 @@ class PortalImplementationSupervisor:
             and int(self.config.accepted_control_plane_descriptor) >= 3
         ):
             sealed_fds = (int(self.config.accepted_control_plane_descriptor),)
+        live_fds = () if live_context is None else live_context.pass_fds
+        bootstrap_fds = (
+            (int(self.config.state_owner_bootstrap_fd),)
+            if int(self.config.state_owner_bootstrap_fd) >= 3
+            else ()
+        )
+        pass_fds = tuple(
+            dict.fromkeys((*live_fds, *sealed_fds, *bootstrap_fds))
+        )
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
@@ -11108,10 +12309,12 @@ class PortalImplementationSupervisor:
             # children retain the admitted source root and database authority
             # bindings instead of falling back to an ambient installation.
             child_env=child_environment,
-            child_pass_fds=(
-                (self.config.state_owner_bootstrap_fd,)
-                if self.config.state_owner_bootstrap_fd >= 3
-                else ()
+            child_inherit_environment=live_context is None,
+            pass_fds=pass_fds,
+            pre_popen_verify=(
+                None
+                if live_context is None
+                else self._verify_lgcvf_live_supervisor_loop_child_launch
             ),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -11126,9 +12329,13 @@ class PortalImplementationSupervisor:
             watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             watchdog_accept_fresh_child_log=True,
+            worktree_status_projection=(
+                self._database_worktree_status_projection
+                if self.config.database_program is not None
+                else None
+            ),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
-            pass_fds=sealed_fds,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -11146,6 +12353,89 @@ class PortalImplementationSupervisor:
             # without restarting the managed daemon.
             status_extra_fields=dict(proof_rollout_status_fields),
         )
+
+    def _lgcvf_live_managed_daemon_environment(
+        self,
+        command: Sequence[str],
+    ) -> tuple[dict[str, str], LgcvfConfiguredBoardLiveContext]:
+        """Project the exact sealed state environment for one daemon birth."""
+
+        live_context = self.config.configured_board_live_context
+        program = self.config.database_program
+        if live_context is None or program is None:
+            raise SupervisorSchedulerConfigError(
+                "LGCVF live daemon lacks its sealed context or Quack program"
+            )
+        live_context = verify_lgcvf_configured_board_live_context(
+            capsule_pin_json=live_context.capsule_pin_json,
+            capsule_descriptor=live_context.capsule_descriptor,
+            admission_json=live_context.admission_json,
+            native_launch_json=live_context.native_launch_json,
+            native_descriptor=live_context.native_descriptor,
+        )
+        self.config.configured_board_live_context = live_context
+        environment = _lgcvf_configured_board_live_positive_child_environment(
+            os.environ,
+            # The daemon consumes the credential through its already admitted
+            # env:// handle, not a raw argv value.  Re-present the opaque
+            # handle only to the closed projector.
+            common_args=(
+                *command,
+                "--endpoint-secret-handle",
+                program.endpoint_secret_handle,
+            ),
+        )
+        environment.update(
+            program.environment(repository_root=self.config.repo_root)
+        )
+        # The daemon's inherited rendezvous listener is its only state
+        # bootstrap capability.  Its exact process birth receives a narrow
+        # typed-owner grant over that channel; forwarding the controller's
+        # root token would silently defeat that boundary.
+        environment.pop("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", None)
+        return environment, live_context
+
+    def _verify_lgcvf_live_supervisor_loop_child_launch(
+        self,
+        child_spec: SupervisedChildSpec,
+    ) -> None:
+        """Reverify the immutable live command, environment, and FDs pre-Popen."""
+
+        expected_command = tuple(self._build_daemon_command())
+        expected_environment, live_context = (
+            self._lgcvf_live_managed_daemon_environment(expected_command)
+        )
+        expected_environment.update(
+            {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                    self._managed_daemon_identity_path()
+                ),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            }
+        )
+        if (
+            child_spec.repo_root != self.config.repo_root
+            or child_spec.command != expected_command
+            or child_spec.inherit_environment
+            or child_spec.pass_fds
+            != tuple(
+                dict.fromkeys(
+                    (
+                        *live_context.pass_fds,
+                        int(self.config.state_owner_bootstrap_fd),
+                    )
+                )
+            )
+            or dict(child_spec.env) != expected_environment
+        ):
+            raise SupervisorSchedulerConfigError(
+                "LGCVF live supervisor-loop launch bindings changed"
+            )
 
     @staticmethod
     def _load_single_link_json_object(path: Path) -> dict[str, Any] | None:
@@ -11432,11 +12722,11 @@ class PortalImplementationSupervisor:
             }
         return None
 
-    def _active_managed_database_pool_lease(
+    def _active_managed_database_pool_evidence(
         self,
         child: Any,
-    ) -> dict[str, str] | None:
-        """Prove nested database work from exact pool and lifecycle records.
+    ) -> tuple[dict[str, str], dict[str, Any]] | None:
+        """Prove nested database work and return its exact task projection.
 
         The outer database daemon deliberately has no Portal active-task
         projection.  During the provider-to-validation handoff there may also
@@ -11466,34 +12756,27 @@ class PortalImplementationSupervisor:
             state_root
             / f"{self.config.state_prefix}_database_portal_attempts"
         )
-        owners = self._shared_active_worktree_owners(root)
+        pool_state_root = root / ".pool-state"
+        try:
+            pool_root_observed = pool_state_root.lstat()
+            if (
+                not stat.S_ISDIR(pool_root_observed.st_mode)
+                or stat.S_ISLNK(pool_root_observed.st_mode)
+                or pool_state_root.resolve(strict=True) != pool_state_root
+            ):
+                return None
+            pool_state_paths = sorted(pool_state_root.glob("*.json"))
+        except (OSError, RuntimeError):
+            return None
         try:
             lifecycle_store = WorktreeLifecycleStore(repo_root)
         except (OSError, RuntimeError, ValueError):
             return None
 
-        for workspace, owner in sorted(owners.items(), key=lambda item: str(item[0])):
-            if (
-                owner.get("source") != "worktree_pool_lease"
-                or owner.get("lease_state") != "leased"
-                or owner.get("lease_pid") != str(child_pid)
-            ):
-                continue
-            try:
-                resolved_workspace = workspace.resolve(strict=True)
-                resolved_workspace.relative_to(root)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if resolved_workspace != workspace:
-                continue
-
-            raw_pool_path = str(owner.get("pool_state_path") or "")
-            if not raw_pool_path:
-                continue
-            pool_path = Path(raw_pool_path)
+        for pool_path in pool_state_paths:
             try:
                 if (
-                    pool_path.resolve(strict=True).parent != root / ".pool-state"
+                    pool_path.resolve(strict=True).parent != pool_state_root
                     or pool_path.suffix != ".json"
                 ):
                     continue
@@ -11523,14 +12806,16 @@ class PortalImplementationSupervisor:
             ):
                 continue
             try:
+                raw_workspace = Path(str(pool["path"]))
+                if not raw_workspace.is_absolute():
+                    continue
+                resolved_workspace = raw_workspace.resolve(strict=True)
+                resolved_workspace.relative_to(root)
                 if (
-                    Path(str(pool["path"])).resolve(strict=True)
-                    != resolved_workspace
-                    or Path(str(pool["repo_root"])).resolve(strict=True)
-                    != repo_root
+                    Path(str(pool["repo_root"])).resolve(strict=True) != repo_root
                 ):
                     continue
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, ValueError):
                 continue
 
             record = lifecycle_store.load_workspace(resolved_workspace)
@@ -11637,16 +12922,50 @@ class PortalImplementationSupervisor:
                 != self._stable_process_birth_identity(child_birth)
             ):
                 continue
-            return {
-                "task_id": record.task_id,
-                "task_cid": record.canonical_task_cid,
-                "attempt": str(record.attempt),
-                "phase": str(nested_state_payload["active_phase"]),
-                "worktree_path": str(resolved_workspace),
-                "branch": record.branch,
-                "lease_pid": str(child_pid),
-            }
+            return (
+                {
+                    "task_id": record.task_id,
+                    "task_cid": record.canonical_task_cid,
+                    "attempt": str(record.attempt),
+                    "phase": str(nested_state_payload["active_phase"]),
+                    "worktree_path": str(resolved_workspace),
+                    "branch": record.branch,
+                    "lease_pid": str(child_pid),
+                },
+                dict(nested_state_payload),
+            )
         return None
+
+    def _active_managed_database_pool_lease(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Return the activity summary for one exact nested database lease."""
+
+        evidence = self._active_managed_database_pool_evidence(child)
+        return None if evidence is None else dict(evidence[0])
+
+    def _database_worktree_status_projection(
+        self,
+        child: Any,
+        _current_status: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Project only a custody-proved nested database worktree phase."""
+
+        evidence = self._active_managed_database_pool_evidence(child)
+        if evidence is None:
+            return None
+        _activity, nested_state = evidence
+        phase_started_at = nested_state.get("active_phase_started_at")
+        phase_detail = nested_state.get("active_phase_detail")
+        if (
+            type(phase_started_at) is not str
+            or not phase_started_at
+            or parse_timestamp(phase_started_at) is None
+            or type(phase_detail) is not str
+        ):
+            return None
+        return nested_state
 
     def _supervisor_loop_watchdog_decision(
         self,
@@ -16198,7 +17517,11 @@ class PortalImplementationSupervisor:
             return "other_dirty"
         return "clean"
 
-    def _build_worktree_reconciliation_daemon(self) -> PortalImplementationDaemon:
+    def _build_worktree_reconciliation_daemon(
+        self,
+        *,
+        reclaim_dead_lifecycle_on_startup: bool | None = None,
+    ) -> PortalImplementationDaemon:
         return PortalImplementationDaemon(
             todo_path=self.config.todo_path,
             state_path=self.config.state_path,
@@ -16233,6 +17556,10 @@ class PortalImplementationSupervisor:
             task_shard_count=self.config.task_shard_count,
             task_shard_index=self.config.task_shard_index,
             strict_task_sharding=self.config.strict_task_sharding,
+            idle_lane_work_stealing=self.config.idle_lane_work_stealing,
+            reclaim_dead_lifecycle_on_startup=(
+                reclaim_dead_lifecycle_on_startup
+            ),
         )
 
     @staticmethod
@@ -16651,12 +17978,28 @@ class PortalImplementationSupervisor:
 
     def _reconcile_interrupted_implementation_after_shutdown(
         self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
-            daemon = self._build_worktree_reconciliation_daemon()
-            return daemon.reconcile_quiesced_active_attempt()
+            strict_custody = bool(
+                isinstance(preacquired_implementation_lock, Mapping)
+                and preacquired_implementation_lock.get(
+                    "predecessor_attempt_lock"
+                )
+            )
+            daemon = self._build_worktree_reconciliation_daemon(
+                reclaim_dead_lifecycle_on_startup=(
+                    False if strict_custody else None
+                ),
+            )
+            return daemon.reconcile_quiesced_active_attempt(
+                preacquired_implementation_lock=(
+                    preacquired_implementation_lock
+                ),
+            )
         except Exception as exc:
             logger.exception(
                 "Could not reconcile interrupted implementation during "
@@ -20101,14 +21444,21 @@ class PortalImplementationSupervisor:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
         try:
-            from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
-            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+                parse_goal_heap,
+            )
         except Exception:
             return []
 
-        objective_path = self.config.objective_path or default_objective_path(
-            self.config.repo_root
-        )
+        objective_path = self.config.objective_path
+        if objective_path is None:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+                    default_objective_path,
+                )
+            except Exception:
+                return []
+            objective_path = default_objective_path(self.config.repo_root)
         try:
             return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
@@ -21747,53 +23097,123 @@ class PortalImplementationSupervisor:
                 raise PlanBoundDispatchError(
                     EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO
                 )
-        self.ensure_managed_daemon_pid_file()
-        command = self._build_daemon_command()
-        env = os.environ.copy()
-        env.update(
-            _managed_daemon_child_environment(
-                database_program=self.config.database_program,
-                repo_root=self.config.repo_root,
-            )
-        )
-        pass_fds: tuple[int, ...] = ()
-        if (
-            self.config.plan_bound_dispatch
-            and int(self.config.accepted_control_plane_descriptor) >= 3
-        ):
-            pass_fds = (int(self.config.accepted_control_plane_descriptor),)
-        if self.config.state_owner_bootstrap_fd >= 3:
-            pass_fds = tuple(
-                dict.fromkeys(
-                    (*pass_fds, int(self.config.state_owner_bootstrap_fd))
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
                 )
             )
+        command = self._build_daemon_command()
+        live_context = self.config.configured_board_live_context
+        if live_context is not None:
+            env, live_context = (
+                self._lgcvf_live_managed_daemon_environment(command)
+            )
+        else:
+            env = os.environ.copy()
+            env.update(
+                _managed_daemon_child_environment(
+                    database_program=self.config.database_program,
+                    repo_root=self.config.repo_root,
+                )
+            )
+        popen_options: dict[str, object] = {}
+        sealed_fds = (
+            (int(self.config.accepted_control_plane_descriptor),)
+            if self.config.plan_bound_dispatch
+            and int(self.config.accepted_control_plane_descriptor) >= 3
+            else ()
+        )
+        bootstrap_fds = (
+            (int(self.config.state_owner_bootstrap_fd),)
+            if int(self.config.state_owner_bootstrap_fd) >= 3
+            else ()
+        )
+        live_fds: tuple[int, ...] = ()
+        if live_context is not None:
+            live_context = verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=live_context.capsule_pin_json,
+                capsule_descriptor=live_context.capsule_descriptor,
+                admission_json=live_context.admission_json,
+                native_launch_json=live_context.native_launch_json,
+                native_descriptor=live_context.native_descriptor,
+            )
+            self.config.configured_board_live_context = live_context
+            live_fds = live_context.pass_fds
+        pass_fds = tuple(
+            dict.fromkeys((*live_fds, *sealed_fds, *bootstrap_fds))
+        )
+        if pass_fds:
+            popen_options["pass_fds"] = pass_fds
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
             text=True,
             env=env,
-            pass_fds=pass_fds,
+            start_new_session=True,
+            **popen_options,
         )
+        try:
+            self._write_managed_daemon_identity(
+                pid=int(process.pid),
+                command=command,
+            )
+        except Exception:
+            direct_child_stopped = terminate_direct_child_process(
+                process,
+                grace_seconds=1.0,
+            )
+            launched_birth = None
+            if not direct_child_stopped:
+                try:
+                    launched_birth = read_process_birth(int(process.pid))
+                except OSError:
+                    launched_birth = None
+            if (
+                not direct_child_stopped
+                and launched_birth is not None
+                and launched_birth.parent_pid == os.getpid()
+            ):
+                terminate_pid_tree(
+                    int(process.pid),
+                    grace_seconds=1.0,
+                    freeze_first=True,
+                    require_gone=True,
+                    owned_process_group_id=int(process.pid),
+                    expected_root_start_time_ticks=(
+                        launched_birth.start_time_ticks
+                    ),
+                )
+            raise
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
     def _terminate(self, process: subprocess.Popen[str] | AdoptedManagedDaemonProcess) -> None:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=15)
-        pid_path = self._managed_daemon_pid_path()
-        if pid_path.exists():
-            if pid_path.is_dir():
-                backup_path = unique_backup_path(pid_path, "directory-backup")
-                pid_path.rename(backup_path)
-            else:
-                pid_path.unlink()
-        self._record_event("daemon_stop", {"returncode": process.returncode})
+        cleanup = self._terminate_managed_daemon_tree(grace_seconds=15.0)
+        if not cleanup.get("quiesced", False):
+            self._record_event("daemon_stop_blocked", cleanup)
+            raise RuntimeError(
+                str(
+                    cleanup.get("fence", {}).get("reason")
+                    or "managed_daemon_termination_unproven"
+                )
+            )
+        returncode = process.poll()
+        if isinstance(process, AdoptedManagedDaemonProcess):
+            process.returncode = 0 if returncode is None else returncode
+        self._record_event(
+            "daemon_stop",
+            {
+                "returncode": (
+                    process.returncode
+                    if process.returncode is not None
+                    else 0
+                ),
+                "managed_daemon_cleanup": cleanup,
+            },
+        )
 
     def _maybe_reload_scheduler_authority_profile(self) -> dict[str, Any]:
             """Hot-reload seal/epoch authority fields from the scheduler profile.
@@ -21805,6 +23225,11 @@ class PortalImplementationSupervisor:
             the profile and recycling the child keeps autonomous drains unblocked.
             """
 
+            if self.config.configured_board_live_context is not None:
+                return {
+                    "reloaded": False,
+                    "reason": "sealed_live_capsule_is_immutable",
+                }
             scheduler_path = self.config.scheduler_config_path
             if scheduler_path is None:
                 return {"reloaded": False, "reason": "scheduler_config_path_unset"}
@@ -22486,6 +23911,16 @@ class PortalImplementationSupervisor:
 
     def _build_daemon_command(self) -> list[str]:
             self._validated_plan_bound_slice()
+            live_context = self.config.configured_board_live_context
+            if live_context is not None:
+                live_context = verify_lgcvf_configured_board_live_context(
+                    capsule_pin_json=live_context.capsule_pin_json,
+                    capsule_descriptor=live_context.capsule_descriptor,
+                    admission_json=live_context.admission_json,
+                    native_launch_json=live_context.native_launch_json,
+                    native_descriptor=live_context.native_descriptor,
+                )
+                self.config.configured_board_live_context = live_context
             daemon_script_path = self.config.daemon_script_path
             if self.config.plan_bound_dispatch:
                 if daemon_script_path is not None:
@@ -22709,6 +24144,13 @@ class PortalImplementationSupervisor:
             )
             if self.config.strict_task_sharding and not self.config.plan_bound_dispatch:
                 command.append("--strict-task-sharding")
+            if self.config.idle_lane_work_stealing and not self.config.plan_bound_dispatch:
+                command.extend(
+                    [
+                        "--idle-lane-work-stealing",
+                        self.config.idle_lane_work_stealing,
+                    ]
+                )
             for path in self.config.external_reservation_manifest_paths:
                 command.extend(["--external-reservation-manifest-path", str(path)])
             for task_id in self.config.assumed_completed_task_ids:
@@ -22761,6 +24203,20 @@ class PortalImplementationSupervisor:
                         or self.config.repo_root
                     ),
                 )
+            elif live_context is not None:
+                command = build_lgcvf_configured_board_live_module_command(
+                    python_executable=sys.executable,
+                    capsule_pin_json=live_context.capsule_pin_json,
+                    capsule_descriptor=live_context.capsule_descriptor,
+                    admission_json=live_context.admission_json,
+                    native_launch_json=live_context.native_launch_json,
+                    native_descriptor=live_context.native_descriptor,
+                    module_name=(
+                        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                        "implementation_daemon"
+                    ),
+                    argv=command[4:],
+                )
             return command
 
     def provider_subprocess_environment(
@@ -22781,38 +24237,68 @@ class PortalImplementationSupervisor:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
 
         pid_path = self._managed_daemon_pid_path()
+        repair = self.ensure_managed_daemon_pid_file()
+        if repair.get("blocked", False):
+            return {
+                "pid": self._read_managed_daemon_pid(),
+                "terminated": False,
+                "quiesced": False,
+                "remaining_pid": self._find_matching_managed_daemon_pid(),
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": str(
+                        repair.get("reason")
+                        or "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
         pid = self._read_managed_daemon_pid()
-        if pid is not None:
-            command_line = process_command_line(pid) if process_is_running(pid) else ""
-            if not self._managed_daemon_matches_command_line(command_line):
-                pid = None
         if pid is None:
-            pid = self._find_matching_managed_daemon_pid()
+            remaining_pid = self._find_matching_managed_daemon_pid()
+            return {
+                "pid": None,
+                "terminated": False,
+                "quiesced": remaining_pid is None,
+                "remaining_pid": remaining_pid,
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": (
+                        "managed_daemon_not_found"
+                        if remaining_pid is None
+                        else "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
 
-        terminated = bool(
-            pid is not None
-            and terminate_pid_tree(
-                pid,
-                grace_seconds=max(0.0, float(grace_seconds)),
-                freeze_first=True,
-                require_gone=True,
-            )
+        fence = self._fence_recorded_managed_daemon(
+            pid=pid,
+            grace_seconds=grace_seconds,
         )
+        terminated = bool(fence.get("fenced", False))
         remaining_pid = self._find_matching_managed_daemon_pid()
-        try:
-            if remaining_pid is None:
-                if pid_path.is_file():
-                    pid_path.unlink()
-            else:
-                write_text_atomic(pid_path, f"{int(remaining_pid)}\n")
-        except OSError:
-            pass
+        if terminated:
+            self._remove_managed_daemon_identity_markers(
+                expected_pid=pid,
+            )
         return {
             "pid": pid,
             "terminated": terminated,
-            "quiesced": remaining_pid is None,
+            "quiesced": terminated and remaining_pid is None,
             "remaining_pid": remaining_pid,
             "pid_path": str(pid_path),
+            "identity_path": str(self._managed_daemon_identity_path()),
+            "fence": fence,
+            "repair": repair,
         }
 
     def _read_managed_daemon_pid(self) -> int | None:
@@ -22838,7 +24324,103 @@ class PortalImplementationSupervisor:
         """Remove stale or malformed managed-daemon PID state before adoption."""
 
         pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
         if not pid_path.exists():
+            identity_exists = identity_path.exists() or identity_path.is_symlink()
+            if identity_exists:
+                identity = load_supervised_child_identity(identity_path)
+                if identity is None:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_invalid",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                    }
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                identity_liveness = supervised_child_identity_liveness(
+                    identity
+                )
+                if identity_liveness is OwnerLiveness.UNKNOWN:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_liveness_unknown",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                if identity_liveness is OwnerLiveness.DEAD:
+                    matching_pid = self._find_matching_managed_daemon_pid()
+                    if matching_pid is not None:
+                        return {
+                            "repaired": False,
+                            "blocked": True,
+                            "reason": "matching_managed_daemon_ownership_unproven",
+                            "path": str(pid_path),
+                            "identity_path": str(identity_path),
+                            "pid": int(matching_pid),
+                        }
+                    quarantined = (
+                        self._quarantine_managed_daemon_identity_markers(
+                            reason="stale-orphaned-managed-daemon"
+                        )
+                    )
+                    result = {
+                        "repaired": True,
+                        "reason": "stale_orphaned_managed_daemon_identity",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                        "quarantined": quarantined,
+                    }
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                    return result
+                observed_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if observed_argv != identity.command:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_command_identity_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                write_text_atomic(
+                    pid_path,
+                    f"{identity.process_birth.pid}\n",
+                )
+                recovery = self.ensure_managed_daemon_pid_file()
+                recovery["repaired"] = True
+                recovery["orphaned_identity_recovered"] = True
+                if recovery.get("reason") == "active":
+                    recovery["reason"] = (
+                        "orphaned_live_managed_daemon_pid_reconstructed"
+                    )
+                self._record_event(
+                    "managed_daemon_pid_file_repaired",
+                    recovery,
+                )
+                return recovery
             return {"repaired": False, "reason": "missing", "path": str(pid_path)}
         if pid_path.is_dir():
             backup_path = unique_backup_path(pid_path, "directory-backup")
@@ -22896,77 +24478,286 @@ class PortalImplementationSupervisor:
             if result.get("repaired"):
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        if not process_is_running(pid):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "stale_pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        identity_exists = identity_path.exists() or identity_path.is_symlink()
+        identity = load_supervised_child_identity(identity_path)
+        recorded_pid_running = process_is_running(pid)
+        if identity_exists:
+            if identity is None:
+                return {
                     "repaired": False,
-                    "reason": "stale_managed_pid_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
-                    "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            identity_liveness = supervised_child_identity_liveness(identity)
+            if identity_liveness is OwnerLiveness.UNKNOWN:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_liveness_unknown",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            if identity_liveness is OwnerLiveness.ALIVE:
+                observed_identity_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                    or observed_identity_argv != identity.command
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_ownership_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                        "identity_pid": identity.process_birth.pid,
+                    }
+                if identity.process_birth.pid != pid:
+                    write_text_atomic(
+                        pid_path,
+                        f"{identity.process_birth.pid}\n",
+                    )
+                    recovery = self.ensure_managed_daemon_pid_file()
+                    recovery["repaired"] = True
+                    recovery["recorded_pid_reconciled"] = pid
+                    if recovery.get("reason") == "active":
+                        recovery["reason"] = (
+                            "managed_daemon_pid_reconciled_from_live_identity"
+                        )
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        recovery,
+                    )
+                    return recovery
+                if not recorded_pid_running:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_process_liveness_inconsistent",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                    }
+        if not recorded_pid_running:
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="stale-managed-daemon"
+            )
+            result = {
+                "repaired": True,
+                "reason": "stale_managed_pid",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
+
         command_line = process_command_line(pid)
-        if not self._managed_daemon_matches_command_line(command_line):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        desired_command = tuple(self._build_daemon_command())
+        desired_command_matches = self._managed_daemon_matches_command_line(
+            command_line
+        )
+        if not identity_exists and desired_command_matches:
+            # A legacy process is migratable only when procfs proves the exact
+            # desired argv; substring matching never grants ownership.
+            observed_argv = read_process_command_argv(pid)
+            if observed_argv != desired_command:
+                return {
                     "repaired": False,
-                    "reason": "managed_pid_command_mismatch_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            try:
+                self._write_managed_daemon_identity(
+                    pid=pid,
+                    command=desired_command,
+                    require_direct_child=False,
+                )
+            except Exception as exc:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_identity_migration_failed",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
                     "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            result = {
+                "repaired": True,
+                "reason": "active_legacy_managed_daemon_identity_migrated",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        return {"repaired": False, "reason": "active", "path": str(pid_path), "pid": pid}
+
+        if identity is None:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_unproven",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        identity_liveness = supervised_child_identity_liveness(identity)
+        if identity.process_birth.pid != pid or identity_liveness is OwnerLiveness.DEAD:
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="pid-reuse"
+            )
+            result = {
+                "repaired": True,
+                "reason": "managed_daemon_pid_reused",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if identity_liveness is not OwnerLiveness.ALIVE:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_liveness_unknown",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+        observed_argv = read_process_command_argv(pid)
+        if (
+            dict(identity.owner_scope) != self._managed_daemon_owner_scope()
+            or not self._managed_daemon_command_belongs_to_scope(
+                identity.command
+            )
+            or observed_argv != identity.command
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_scope_mismatch",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        if identity.command == desired_command:
+            if pid_path.is_symlink():
+                try:
+                    write_text_atomic(pid_path, f"{pid}\n")
+                except OSError as exc:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "active_managed_daemon_pid_symlink_unrepairable",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                        "error": str(exc),
+                    }
+                result = {
+                    "repaired": True,
+                    "reason": "active_managed_daemon_pid_symlink_rebound",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+                self._record_event("managed_daemon_pid_file_repaired", result)
+                return result
+            return {
+                "repaired": False,
+                "reason": "active",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        fence = self._fence_recorded_managed_daemon(pid=pid)
+        if not fence.get("fenced", False):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_fence_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        if not self._remove_managed_daemon_identity_markers(
+            expected_pid=pid
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_marker_cleanup_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        result = {
+            "repaired": True,
+            "reason": "obsolete_owned_managed_daemon_fenced",
+            "path": str(pid_path),
+            "identity_path": str(identity_path),
+            "pid": pid,
+            "fence": fence,
+        }
+        self._record_event("managed_daemon_pid_file_repaired", result)
+        return result
 
     def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
         pid_path = self._managed_daemon_pid_path()
         repair = self.ensure_managed_daemon_pid_file()
-        if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
+        if repair.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    repair.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
+        if (
+            repair.get("repaired")
+            and repair.get("reason")
+            != "active_legacy_managed_daemon_identity_migrated"
+        ) or not pid_path.exists() or pid_path.is_dir():
             return None
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())
@@ -22984,11 +24775,18 @@ class PortalImplementationSupervisor:
             return None
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
-            try:
-                pid_path.unlink()
-            except OSError:
-                pass
-            return None
+            raise RuntimeError("managed_daemon_command_identity_mismatch")
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if (
+            identity is None
+            or identity.process_birth.pid != pid
+            or identity.command != tuple(self._build_daemon_command())
+            or supervised_child_identity_liveness(identity)
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError("managed_daemon_ownership_identity_mismatch")
         return AdoptedManagedDaemonProcess(pid)
 
     def _managed_daemon_matches_command_line(self, command_line: str) -> bool:
@@ -23032,16 +24830,33 @@ class PortalImplementationSupervisor:
                 if token == option
             ]
 
-        # The daemon's immutable state-authority selection must match exactly,
-        # including the absence of optional fields.  Merely matching the
-        # executable and board paths could otherwise adopt a stale process
-        # bound to a different store generation, schema, or failover policy.
-        program_args = (
-            self.config.database_program.daemon_cli_args()
-            if self.config.database_program is not None
+        if option_value_list("--idle-lane-work-stealing") != (
+            [self.config.idle_lane_work_stealing]
+            if self.config.idle_lane_work_stealing
+            else []
+        ):
+            return False
+
+        database_program = self.config.database_program
+        expected_database_tokens = (
+            database_program.daemon_cli_args()
+            if database_program is not None
             else []
         )
-        authority_value_options = (
+
+        def expected_database_option_values(option: str) -> list[str]:
+            return [
+                expected_database_tokens[index + 1]
+                for index, token in enumerate(expected_database_tokens[:-1])
+                if token == option
+            ]
+
+        # A PID is adoptable only when its inspectable, non-secret database
+        # authority is byte-for-byte the program accepted by this supervisor.
+        # Checking the closed option set also rejects injected duplicates and
+        # prevents an old Markdown/local writer from being adopted after an
+        # authority transition.
+        for option in (
             "--task-source-kind",
             "--authority-mode",
             "--state-failover-policy",
@@ -23052,25 +24867,14 @@ class PortalImplementationSupervisor:
             "--event-store-path",
             "--runtime-registry-path",
             "--export-profile",
-        )
-        expected_authority_values = {
-            option: [
-                program_args[index + 1]
-                for index, token in enumerate(program_args[:-1])
-                if token == option
-            ]
-            for option in authority_value_options
-        }
-        if any(
-            option_value_list(option) != expected_authority_values[option]
-            for option in authority_value_options
         ):
-            return False
-        expected_explicit_legacy = "--explicit-legacy-task-source" in program_args
-        if ("--explicit-legacy-task-source" in tokens) != expected_explicit_legacy:
-            return False
-        # Secret handles are environment-only for managed daemons.
-        if "--endpoint-secret-handle" in tokens:
+            if option_value_list(option) != expected_database_option_values(
+                option
+            ):
+                return False
+        if tokens.count("--explicit-legacy-task-source") != (
+            expected_database_tokens.count("--explicit-legacy-task-source")
+        ):
             return False
 
         if option_values("--task-shard-count") != {
@@ -23221,6 +25025,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
+    parser.add_argument(
+        "--require-lgcvf-configured-board-live-seal",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--todo-path",
         type=Path,
@@ -23589,6 +25425,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Keep this supervisor lane within its deterministic task shard instead "
             "of borrowing ready work from other shards."
+        ),
+    )
+    parser.add_argument(
+        "--idle-lane-work-stealing",
+        choices=["virgin-transfer"],
+        default="",
+        help=(
+            "Opt-in strict-shard idle-lane handoff for never-attempted tasks."
         ),
     )
     parser.add_argument(
@@ -24020,19 +25864,60 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    raw_argv = list(sys.argv[1:] if argv is None else argv)
-    try:
-        expanded_argv, scheduler_config_path = (
-            expand_supervisor_scheduler_config_args(
-                raw_argv,
-                repo_root=REPO_ROOT,
+    incoming = list(sys.argv[1:] if argv is None else argv)
+    live_cli_present = any(
+        item == "--require-lgcvf-configured-board-live-seal"
+        or item.startswith("--require-lgcvf-configured-board-live-seal=")
+        or item.startswith("--configured-board-live-")
+        for item in incoming
+    )
+    scheduler_config_present = any(
+        item == "--scheduler-config" or item.startswith("--scheduler-config=")
+        for item in incoming
+    )
+    if live_cli_present:
+        if scheduler_config_present:
+            parser.error("LGCVF live supervisor forbids mutable scheduler config")
+        expanded, _config_path = incoming, None
+    else:
+        expanded, _config_path = expand_supervisor_scheduler_config_args(incoming)
+    parsed = parser.parse_args(expanded)
+    parsed.scheduler_config = _config_path
+    live_presence = (
+        bool(parsed.configured_board_live_capsule_pin_json),
+        parsed.configured_board_live_capsule_fd >= 3,
+        bool(parsed.configured_board_live_admission_json),
+        bool(parsed.configured_board_live_native_launch_json),
+        parsed.configured_board_live_native_fd >= 3,
+    )
+    if bool(parsed.require_lgcvf_configured_board_live_seal) != all(
+        live_presence
+    ) or (any(live_presence) and not all(live_presence)):
+        parser.error("LGCVF live supervisor binding is incomplete")
+    parsed._configured_board_live_context = None
+    if parsed.require_lgcvf_configured_board_live_seal:
+        if (
+            parsed.require_lgcvf_configured_board_live_seal
+            != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+        ):
+            parser.error("LGCVF live supervisor config path is foreign")
+        try:
+            parsed._configured_board_live_context = (
+                verify_lgcvf_configured_board_live_context(
+                    capsule_pin_json=(
+                        parsed.configured_board_live_capsule_pin_json
+                    ),
+                    capsule_descriptor=parsed.configured_board_live_capsule_fd,
+                    admission_json=parsed.configured_board_live_admission_json,
+                    native_launch_json=(
+                        parsed.configured_board_live_native_launch_json
+                    ),
+                    native_descriptor=parsed.configured_board_live_native_fd,
+                )
             )
-        )
-    except SupervisorSchedulerConfigError as exc:
-        parser.error(str(exc))
-    parsed = parser.parse_args(expanded_argv)
-    parsed.scheduler_config = scheduler_config_path
-    parsed._accepted_launch_argv = tuple(str(item) for item in raw_argv)
+        except (OSError, ValueError) as exc:
+            parser.error(f"LGCVF live supervisor binding is invalid: {exc}")
+    parsed._control_plane_reload_argv = tuple(incoming)
     return parsed
 
 
@@ -24136,6 +26021,7 @@ def supervisor_config_from_args(
         manual_completion_authority_revalidation_only=bool(
             getattr(args, "manual_completion_authority_revalidation_only", False)
         ),
+        scheduler_config_path=getattr(args, "scheduler_config", None),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
@@ -24148,6 +26034,9 @@ def supervisor_config_from_args(
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
         strict_task_sharding=bool(getattr(args, "strict_task_sharding", False)),
+        idle_lane_work_stealing=str(
+            getattr(args, "idle_lane_work_stealing", "") or ""
+        ),
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
         ),
@@ -24278,12 +26167,19 @@ def supervisor_config_from_args(
         objective_todo_vector_index_path=args.objective_todo_vector_index_path,
         objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
-        scheduler_config_path=getattr(args, "scheduler_config", None),
         repo_root=effective_repo_root,
+        configured_board_live_context=getattr(
+            args,
+            "_configured_board_live_context",
+            None,
+        ),
         daemon_script_path=daemon_script_path if daemon_script_path is not None else args.daemon_script_path,
         supervisor_script_path=supervisor_script_path
         if supervisor_script_path is not None
         else args.supervisor_script_path,
+        control_plane_reload_argv=tuple(
+            getattr(args, "_control_plane_reload_argv", ())
+        ),
     )
 
 
@@ -24359,9 +26255,13 @@ def _reconciliation_preflight_failure_reason(
 
 
 def main(argv: list[str] | None = None) -> int:
-    from ..runtime.process_security import harden_state_authority_process
+    from ..runtime.process_security import (
+        capture_state_authority_credentials,
+        harden_state_authority_process,
+    )
 
     harden_state_authority_process()
+    capture_state_authority_credentials()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

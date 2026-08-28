@@ -28,7 +28,7 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -49,6 +49,11 @@ from .control_plane_transactions import OptimisticConflictError
 from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
+)
+from .intent_repository import (
+    MAX_BODY_BYTES,
+    IntentRepositoryError,
+    _prepare_database_virgin_transfer_receipt_on,
 )
 from .task_execution_route_policy import TaskExecutionRouteBinding
 
@@ -85,6 +90,52 @@ TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
     "database_claim_lost_sidecar_dead_process"
 )
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-legacy-unstall-recovery@1"
+)
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
+    "task.claim.legacy_unstall.recover"
+)
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
+    "database_claim_legacy_unstall_dead_process"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-protected-qualification-completion@1"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: Final = (
+    "task.legacy_history_gap.protected_qualification.complete"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION: Final = (
+    "database_legacy_history_gap_protected_qualification_complete"
+)
+TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID: Final = (
+    "lgcvf-protected-qualification-completion"
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_TASK_CID: Final = (
+    "baguqeerakwvsckoysv5edcru3makxvmcwjjm2alzam5umsyqbkp3efngyqpa"
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES: Final = (
+    (
+        "LGCVF-111",
+        "baguqeerau4vdgcyn3sdorik7zawwgwrhy7mxxydb6gashctytbmdzwtmumea",
+    ),
+    (
+        "LGCVF-112",
+        "baguqeeramxjolmqp2rh7r5vfrrs5ne3mqqhbxh3pn74k27h5tbpf4luasfkq",
+    ),
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCY_CIDS: Final = tuple(
+    sorted(
+        cid
+        for _alias, cid in _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES
+    )
+)
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION: Final = 8
+_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256: Final = (
+    "sha256:f8fe4ec9875cf786f2ca909b2268c784b080e9c86599b1e8d367d982e606829d"
+)
 TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-strict-resume-rejection@1"
@@ -100,14 +151,29 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_retry",
         "database_portal_validation_retry",
         "database_portal_validation_retry_recovery",
+        "database_portal_validation_retry_successor_recovery",
+        "database_portal_capacity_retry",
+        "database_portal_protected_preservation_retry",
+        "database_portal_protected_preservation_retry_recovery",
+        (
+            "database_portal_protected_preservation_"
+            "reconciliation_retry_recovery"
+        ),
+        "database_portal_landed_completion_revalidation",
         "database_portal_protected_path_retry_recovery",
         "database_portal_external_protected_checkout_retry_recovery",
         "database_portal_inflight_process_retry_recovery",
         "database_portal_validation_retry_seed_conflict_retry_recovery",
         "database_portal_leftover_wait_deferral_budget_retry_recovery",
         "database_portal_pooled_worktree_create_retry_recovery",
+        "database_portal_superseded_consumed_attempt_recovery",
+        "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
+        (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ),
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     }
@@ -874,6 +940,7 @@ class OwnerClientGrant:
             "tree_id",
             "task_id",
             "task_cid",
+            "reviewed_preflight_cid",
             "subscription_id",
             "consumer_id",
             "event_id",
@@ -1476,6 +1543,154 @@ def _validated_database_claim_process_attestation(
     return attestation
 
 
+def _validated_legacy_unstall_claim_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    expected_task_revision: int,
+) -> dict[str, Any]:
+    """Prove the exact receipt/revision signature left by legacy unstall."""
+
+    task = str(task_cid or "").strip()
+    revision = expected_task_revision
+    if (
+        not task
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 2
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim revision is invalid"
+        )
+    values = dict(receipt)
+    identity = _validated_database_claim_identity(values)
+    historic_attestation = (
+        _validated_database_claim_process_attestation(values)
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            values.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim has no exact execution route"
+        ) from exc
+    operation = values.get("operation")
+    phase_schema = values.get("claim_phase_schema")
+    claimed_from_revision = values.get("claimed_from_revision")
+    if operation == "database_claim":
+        phase_matches = bool(
+            phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            and _strict_scalar_equal(
+                claimed_from_revision,
+                revision - 2,
+            )
+        )
+        admitted_from_revision: int | None = None
+    elif operation == "database_attempt_admitted":
+        admitted_from_revision = values.get("admitted_from_revision")
+        phase_matches = bool(
+            phase_schema == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            and revision >= 3
+            and _strict_scalar_equal(
+                claimed_from_revision,
+                revision - 3,
+            )
+            and _strict_scalar_equal(
+                admitted_from_revision,
+                revision - 2,
+            )
+            and values.get("attempt_execution_phase") == "claimed"
+            and _strict_scalar_equal(
+                values.get("attempt_execution_revision"),
+                1,
+            )
+        )
+    else:
+        admitted_from_revision = None
+        phase_matches = False
+    if (
+        not phase_matches
+        or dict(values.get("execution_route_binding") or {}) != route
+        or route["task_cid"] != task
+        or values.get("execution_route_policy_id") != route["policy_id"]
+        or not _strict_scalar_equal(
+            values.get("execution_route_origin_revision"),
+            route["task_revision"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim differs from its exact revision lineage"
+        )
+    return {
+        "receipt": values,
+        "identity": identity,
+        "historic_attestation": historic_attestation,
+        "execution_route": route,
+        "operation": operation,
+        "phase_schema": phase_schema,
+        "claimed_from_revision": int(claimed_from_revision),
+        "admitted_from_revision": (
+            int(admitted_from_revision)
+            if admitted_from_revision is not None
+            else None
+        ),
+    }
+
+
+def _legacy_unstall_recovery_receipt(
+    prior_receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    expected_task_revision: int,
+    recovery_process_attestation: Mapping[str, Any],
+    retry_not_before_ms: int,
+) -> dict[str, Any]:
+    """Derive the only durable receipt admitted for legacy unstall repair."""
+
+    legacy = _validated_legacy_unstall_claim_receipt(
+        prior_receipt,
+        task_cid=task_cid,
+        expected_task_revision=expected_task_revision,
+    )
+    recovered_claim_cid = content_identity(
+        {"typed_database_legacy_unstall_claim": dict(prior_receipt)}
+    )
+    receipt = {
+        "schema": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+        **dict(legacy["identity"]),
+        "recovered_claim_operation": legacy["operation"],
+        "recovered_claim_phase_schema": legacy["phase_schema"],
+        "recovered_claimed_from_revision": legacy[
+            "claimed_from_revision"
+        ],
+        "recovered_claim_receipt_cid": recovered_claim_cid,
+        "recovered_claim_process_attestation": dict(
+            legacy["historic_attestation"]
+        ),
+        "recovery_process_attestation": dict(
+            recovery_process_attestation
+        ),
+        "recovered_from_revision": expected_task_revision,
+        "legacy_unstall_revision": expected_task_revision,
+        "queue_reason": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
+        "backoff_ms": 0,
+        "retry_not_before_ms": retry_not_before_ms,
+        "control_expected_revision": expected_task_revision,
+        "execution_route_binding": dict(legacy["execution_route"]),
+        "execution_route_policy_id": legacy["execution_route"]["policy_id"],
+        "execution_route_origin_revision": int(
+            legacy["execution_route"]["task_revision"]
+        ),
+    }
+    if legacy["admitted_from_revision"] is not None:
+        receipt["recovered_admitted_from_revision"] = legacy[
+            "admitted_from_revision"
+        ]
+    return receipt
+
+
 def _validated_retry_cooldown_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1722,6 +1937,67 @@ def _validated_dead_claim_recovery_parameters(
     }
 
 
+def _validated_legacy_unstall_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed repair for one legacy startup-unstalled claim."""
+
+    parameters = dict(value)
+    if set(parameters) != {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+    }:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("operation")
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+        or parameters.get("status") != "retrying"
+        or parameters.get("expected_task_status") != "retrying"
+        or parameters.get("delay_ms") != 0
+        or parameters.get("selection_penalty") != 0
+        or parameters.get("reason")
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall recovery is outside its closed transition"
+        )
+    cooldown_parameters = {
+        name: member
+        for name, member in parameters.items()
+        if name != "status"
+    }
+    cooldown_parameters["operation"] = "task.retry.cooldown.record"
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    return {
+        **parameters,
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
 def _validated_retry_mutation_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1730,6 +2006,15 @@ def _validated_retry_mutation_parameters(
     if value.get("operation") == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
         return dict(
             _validated_dead_claim_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
+    if (
+        value.get("operation")
+        == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+    ):
+        return dict(
+            _validated_legacy_unstall_recovery_parameters(value)[
                 "cooldown_parameters"
             ]
         )
@@ -1748,6 +2033,687 @@ def _dead_claim_recovery_command_digest(
         if name not in {"body", "cooldown_parameters"}
     }
     return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _legacy_unstall_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind replay identity to the complete legacy-unstall repair."""
+
+    validated = _validated_legacy_unstall_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+_PROTECTED_QUALIFICATION_VALIDATION_IDENTITY_FIELDS: Final = (
+    "schema",
+    "operation",
+    "task_cid",
+    "task_alias",
+    "expected_task_revision",
+    "expected_task_status",
+    "expected_prior_body_sha256",
+    "expected_prior_receipt_schema",
+    "expected_prior_receipt_operation",
+    "expected_prior_receipt_cid",
+    "expected_history_revisions_json",
+    "expected_dependency_cids_json",
+    "reviewed_preflight_cid",
+    "reviewed_preflight_json",
+    "qualification_result_cid",
+    "qualification_stable_projection_cid",
+    "qualification_artifact_sha256",
+    "outcome",
+    "started_at",
+    "finished_at",
+    "command_digest",
+)
+
+
+def _protected_qualification_validation_identity_material(
+    parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive validation-row identities without caller-selected identifiers."""
+
+    try:
+        return {
+            name: parameters[name]
+            for name in _PROTECTED_QUALIFICATION_VALIDATION_IDENTITY_FIELDS
+        }
+    except KeyError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification validation identity is incomplete"
+        ) from exc
+
+
+def _validated_protected_qualification_completion_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the one closed legacy-gap qualification completion command."""
+
+    parameters = dict(value)
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "expected_task_revision",
+        "expected_task_status",
+        "expected_prior_body_sha256",
+        "expected_prior_receipt_schema",
+        "expected_prior_receipt_operation",
+        "expected_prior_receipt_cid",
+        "expected_history_revisions_json",
+        "expected_dependency_cids_json",
+        "status",
+        "body_json",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "qualification_artifact_sha256",
+        "reviewed_preflight_json",
+        "run_id",
+        "result_id",
+        "evidence_id",
+        "attempt_id",
+        "outcome",
+        "evidence_digest",
+        "started_at",
+        "finished_at",
+        "command_digest",
+        "run_body_json",
+        "result_body_json",
+        "evidence_body_json",
+    }
+    if set(parameters) != expected_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion command differs from its "
+            "closed schema"
+        )
+    revision = parameters.get("expected_task_revision")
+    cid_fields = (
+        "task_cid",
+        "expected_prior_receipt_cid",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "run_id",
+        "result_id",
+        "evidence_id",
+    )
+    digest_fields = (
+        "expected_prior_body_sha256",
+        "qualification_artifact_sha256",
+        "evidence_digest",
+        "command_digest",
+    )
+    if (
+        parameters.get("schema")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA
+        or parameters.get("operation")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+        or parameters.get("task_alias") != "LGCVF-113"
+        or parameters.get("task_cid")
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_TASK_CID
+        or parameters.get("expected_task_status") != "retrying"
+        or parameters.get("status") != "completed"
+        or parameters.get("expected_prior_receipt_operation")
+        != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        or parameters.get("expected_prior_receipt_schema")
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+        or parameters.get("outcome") != "passed"
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_REVISION
+        or parameters.get("expected_prior_body_sha256")
+        != _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_PRIOR_BODY_SHA256
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(parameters.get(name) or ""))
+            is None
+            for name in cid_fields
+        )
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(parameters.get(name) or "")
+            )
+            is None
+            for name in digest_fields
+        )
+        or parameters.get("evidence_digest")
+        != parameters.get("qualification_artifact_sha256")
+        or not str(parameters.get("attempt_id") or "").strip()
+        or not str(parameters.get("started_at") or "").strip()
+        or parameters.get("finished_at") != parameters.get("started_at")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion is outside its closed transition"
+        )
+
+    def canonical_json(name: str, expected_type: type[Any]) -> Any:
+        raw = parameters.get(name)
+        if not isinstance(raw, str):
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is malformed"
+            )
+        try:
+            decoded = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is malformed"
+            ) from exc
+        if not isinstance(decoded, expected_type) or (
+            canonical_json_bytes(decoded).decode("utf-8") != raw
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"protected qualification completion {name} is not canonical"
+            )
+        return decoded
+
+    history = canonical_json("expected_history_revisions_json", list)
+    dependencies = canonical_json("expected_dependency_cids_json", list)
+    body = canonical_json("body_json", dict)
+    run_body = canonical_json("run_body_json", dict)
+    result_body = canonical_json("result_body_json", dict)
+    evidence_body = canonical_json("evidence_body_json", dict)
+    reviewed_preflight = canonical_json("reviewed_preflight_json", dict)
+    reviewed_pins = reviewed_preflight.get("reviewed_pins")
+    task_pin = reviewed_pins.get("task") if isinstance(reviewed_pins, Mapping) else None
+    dependency_pins = (
+        reviewed_pins.get("dependencies")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    qualification_pin = (
+        reviewed_pins.get("qualification")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    source_pin = (
+        reviewed_pins.get("source_continuity")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    database_pins = (
+        reviewed_pins.get("databases")
+        if isinstance(reviewed_pins, Mapping)
+        else None
+    )
+    expected_result_body = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "protected-qualification-validation-evidence@1"
+        ),
+        "task_cid": parameters["task_cid"],
+        "task_alias": parameters["task_alias"],
+        "reviewed_preflight_cid": parameters["reviewed_preflight_cid"],
+        "qualification_result_cid": parameters["qualification_result_cid"],
+        "qualification_stable_projection_cid": parameters[
+            "qualification_stable_projection_cid"
+        ],
+        "qualification_artifact_sha256": parameters[
+            "qualification_artifact_sha256"
+        ],
+        "candidate_self_authority": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    if (
+        history != [1]
+        or any(isinstance(item, bool) or not isinstance(item, int) for item in history)
+        or history != sorted(set(history))
+        or history[0] != 1
+        or history[-1] >= revision
+        or history == list(range(1, revision + 1))
+        or dependencies
+        != list(_LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCY_CIDS)
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(item or "")) is None
+            for item in dependencies
+        )
+        or dependencies != sorted(set(map(str, dependencies)))
+        or len(canonical_json_bytes(body)) > MAX_BODY_BYTES
+        or result_body != expected_result_body
+        or run_body
+        != {
+            "argv": [
+                "python",
+                "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+                "--check",
+            ],
+            "body": expected_result_body,
+        }
+        or evidence_body
+        != {
+            "outcome": "passed",
+            "run_id": parameters["run_id"],
+            "result_id": parameters["result_id"],
+            "body": expected_result_body,
+        }
+        or reviewed_preflight.get("preflight_cid") is not None
+        or set(reviewed_preflight) != {"schema", "operation", "reviewed_pins"}
+        or content_identity(reviewed_preflight)
+        != parameters["reviewed_preflight_cid"]
+        or reviewed_preflight.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "lgcvf-protected-qualification-completion-preflight@1"
+        )
+        or reviewed_preflight.get("operation")
+        != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION
+        or not isinstance(reviewed_pins, Mapping)
+        or set(reviewed_pins)
+        != {
+            "target_generation",
+            "source_provenance_cid",
+            "stopped_state_continuity_receipt_cid",
+            "stopped_controller_status_cid",
+            "source_continuity",
+            "databases",
+            "task",
+            "dependencies",
+            "dependency_binding_cid",
+            "qualification",
+        }
+        or reviewed_pins.get("target_generation") != "lgcvf-run-v39"
+        or any(
+            re.fullmatch(r"b[a-z2-7]{20,200}", str(reviewed_pins.get(name) or ""))
+            is None
+            for name in (
+                "source_provenance_cid",
+                "stopped_state_continuity_receipt_cid",
+                "stopped_controller_status_cid",
+            )
+        )
+        or not isinstance(source_pin, Mapping)
+        or set(source_pin)
+        != {
+            "approved_branch",
+            "resolved_remote_head",
+            "current_head",
+            "current_tree",
+            "candidate_worktree_clean",
+            "datasets_head",
+            "datasets_tree",
+            "datasets_worktree_clean",
+            "python_bytecode_quarantine",
+            "superproject_runtime_inventory",
+            "datasets_runtime_inventory",
+        }
+        or source_pin.get("approved_branch")
+        != "agent/logic-governed-compositional-verification-fabric-v1"
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(source_pin.get("resolved_remote_head") or "")
+        )
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("current_head") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("current_tree") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("datasets_head") or ""))
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", str(source_pin.get("datasets_tree") or ""))
+        is None
+        or source_pin.get("candidate_worktree_clean") is not True
+        or source_pin.get("datasets_worktree_clean") is not True
+        or source_pin.get("python_bytecode_quarantine")
+        != {
+            "enabled": True,
+            "ephemeral": True,
+            "ignored_worktree_pycache": "quarantined_not_imported",
+            "outside_candidate_root": True,
+            "private": True,
+        }
+        or any(
+            not isinstance(source_pin.get(name), Mapping)
+            or set(source_pin[name])
+            != {"tracked_object_count", "tracked_inventory_root"}
+            or isinstance(source_pin[name].get("tracked_object_count"), bool)
+            or not isinstance(source_pin[name].get("tracked_object_count"), int)
+            or int(source_pin[name]["tracked_object_count"]) < 1
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(source_pin[name].get("tracked_inventory_root") or ""),
+            )
+            is None
+            for name in (
+                "superproject_runtime_inventory",
+                "datasets_runtime_inventory",
+            )
+        )
+        or not isinstance(database_pins, Mapping)
+        or set(database_pins) != {"control", "coordination", "execution"}
+        or any(
+            not isinstance(database_pins.get(name), Mapping)
+            or set(database_pins[name]) != {"path", "sha256"}
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(database_pins[name].get("sha256") or ""),
+            )
+            is None
+            for name in ("control", "coordination", "execution")
+        )
+        or not str(database_pins["control"].get("path") or "").endswith(
+            "/run-v39/control.duckdb"
+        )
+        or not str(database_pins["coordination"].get("path") or "").endswith(
+            "/run-v39/control.coordination.duckdb"
+        )
+        or not str(database_pins["execution"].get("path") or "").endswith(
+            "/run-v39/control.execution.duckdb"
+        )
+        or not isinstance(task_pin, Mapping)
+        or task_pin
+        != {
+            "task_cid": parameters["task_cid"],
+            "task_alias": parameters["task_alias"],
+            "status": parameters["expected_task_status"],
+            "revision": revision,
+            "body_sha256": parameters["expected_prior_body_sha256"],
+            "prior_receipt_schema": parameters["expected_prior_receipt_schema"],
+            "prior_receipt_operation": parameters[
+                "expected_prior_receipt_operation"
+            ],
+            "prior_receipt_cid": parameters["expected_prior_receipt_cid"],
+            "history_observed_revisions": history,
+            "history_missing_revisions": list(range(2, revision + 1)),
+            "gap_preserved": True,
+            "repair_authority": False,
+        }
+        or not isinstance(dependency_pins, list)
+        or len(dependency_pins) != 2
+        or any(not isinstance(item, Mapping) for item in dependency_pins)
+        or [str(item.get("task_cid") or "") for item in dependency_pins]
+        != dependencies
+        or [str(item.get("task_alias") or "") for item in dependency_pins]
+        != [
+            alias
+            for alias, _cid in sorted(
+                _LGCVF_PROTECTED_QUALIFICATION_COMPLETION_DEPENDENCIES,
+                key=lambda item: item[1],
+            )
+        ]
+        or any(
+            set(item) != {
+                "task_cid",
+                "task_alias",
+                "status",
+                "revision",
+                "body_sha256",
+            }
+            or item.get("status") != "completed"
+            or isinstance(item.get("revision"), bool)
+            or not isinstance(item.get("revision"), int)
+            or int(item["revision"]) < 1
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(item.get("body_sha256") or "")
+            )
+            is None
+            for item in dependency_pins
+        )
+        or reviewed_pins.get("dependency_binding_cid")
+        != content_identity(dependency_pins)
+        or not isinstance(qualification_pin, Mapping)
+        or set(qualification_pin)
+        != {
+            "argv",
+            "validator_path",
+            "validator_blob_oid",
+            "validator_sha256",
+            "artifact_path",
+            "artifact_blob_oid",
+            "artifact_sha256",
+            "stored_result_cid",
+            "stored_stable_projection_cid",
+            "replay_stable_projection_cid",
+            "replay_exit_code",
+            "recorded_at",
+            "passed",
+            "test_qualification_complete",
+            "independent_fixed_manifest_executed",
+            "candidate_suites_are_self_authority",
+            "task_implementation_complete",
+            "objective_complete",
+            "release_qualified",
+            "production_authoritative",
+            "production_authorized",
+        }
+        or qualification_pin.get("argv")
+        != [
+            "python",
+            "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+            "--check",
+        ]
+        or qualification_pin.get("validator_path")
+        != "scripts/qualify_logic_governed_compositional_verification_fabric.py"
+        or qualification_pin.get("artifact_path")
+        != (
+            "data/agent_supervisor/logic_governed_compositional_verification_"
+            "fabric/independent_qualification_result.json"
+        )
+        or any(
+            re.fullmatch(r"[0-9a-f]{40}", str(qualification_pin.get(name) or ""))
+            is None
+            for name in ("validator_blob_oid", "artifact_blob_oid")
+        )
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(qualification_pin.get(name) or "")
+            )
+            is None
+            for name in (
+                "validator_sha256",
+                "artifact_sha256",
+            )
+        )
+        or qualification_pin.get("stored_result_cid")
+        != parameters["qualification_result_cid"]
+        or qualification_pin.get("stored_stable_projection_cid")
+        != parameters["qualification_stable_projection_cid"]
+        or qualification_pin.get("replay_stable_projection_cid")
+        != parameters["qualification_stable_projection_cid"]
+        or qualification_pin.get("replay_exit_code") != 0
+        or qualification_pin.get("artifact_sha256")
+        != parameters["qualification_artifact_sha256"]
+        or qualification_pin.get("recorded_at") != parameters["started_at"]
+        or qualification_pin.get("passed") is not True
+        or qualification_pin.get("test_qualification_complete") is not True
+        or qualification_pin.get("independent_fixed_manifest_executed") is not True
+        or qualification_pin.get("candidate_suites_are_self_authority") is not False
+        or qualification_pin.get("task_implementation_complete") is not False
+        or qualification_pin.get("objective_complete") is not False
+        or qualification_pin.get("release_qualified") is not False
+        or qualification_pin.get("production_authoritative") is not False
+        or qualification_pin.get("production_authorized") is not False
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion authority observations differ"
+        )
+    validation_identity = _protected_qualification_validation_identity_material(
+        parameters
+    )
+    expected_run_id = content_identity(
+        {"protected_qualification_validation_run": validation_identity}
+    )
+    expected_result_id = content_identity(
+        {"protected_qualification_validation_result": validation_identity}
+    )
+    expected_evidence_id = content_identity(
+        {"protected_qualification_validation_evidence": validation_identity}
+    )
+    expected_command_digest = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(
+            [
+                "python",
+                "scripts/qualify_logic_governed_compositional_verification_fabric.py",
+                "--check",
+            ]
+        )
+    ).hexdigest()
+    if (
+        parameters["run_id"] != expected_run_id
+        or parameters["result_id"] != expected_result_id
+        or parameters["evidence_id"] != expected_evidence_id
+        or parameters["attempt_id"]
+        != f"protected-qualification:{expected_run_id}"
+        or parameters["command_digest"] != expected_command_digest
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification validation identities differ"
+        )
+    return {
+        **parameters,
+        "history_revisions": list(history),
+        "dependency_cids": list(map(str, dependencies)),
+        "body": dict(body),
+        "run_body": dict(run_body),
+        "result_body": dict(result_body),
+        "evidence_body": dict(evidence_body),
+        "reviewed_preflight": dict(reviewed_preflight),
+        "reviewed_pins": dict(reviewed_pins),
+        "task_pin": dict(task_pin),
+        "dependency_pins": [dict(item) for item in dependency_pins],
+        "qualification_pin": dict(qualification_pin),
+        "source_pin": dict(source_pin),
+    }
+
+
+def _protected_qualification_completion_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    validated = _validated_protected_qualification_completion_parameters(
+        parameters
+    )
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name
+        not in {
+            "history_revisions",
+            "dependency_cids",
+            "body",
+            "run_body",
+            "result_body",
+            "evidence_body",
+            "reviewed_preflight",
+            "reviewed_pins",
+            "task_pin",
+            "dependency_pins",
+            "qualification_pin",
+            "source_pin",
+        }
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _validated_protected_qualification_completion_receipt(
+    value: Any,
+    *,
+    parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind the persisted completion receipt to every reviewed command pin."""
+
+    if not isinstance(value, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion receipt is absent"
+        )
+    receipt = dict(value)
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "prior_status",
+        "prior_revision",
+        "completed_revision",
+        "prior_body_sha256",
+        "prior_receipt_schema",
+        "prior_receipt_operation",
+        "prior_receipt_cid",
+        "source_head",
+        "source_tree",
+        "dependency_binding_cid",
+        "reviewed_preflight_cid",
+        "qualification_result_cid",
+        "qualification_stable_projection_cid",
+        "qualification_artifact_sha256",
+        "validation_run_id",
+        "validation_result_id",
+        "validation_evidence_id",
+        "validation_outcome",
+        "history_observed_revisions",
+        "history_missing_revisions",
+        "appended_revision",
+        "gap_preserved",
+        "repair_performed",
+        "fabricated_revisions",
+        "task_completion_scope",
+        "scheduling_authority",
+        "release_qualified",
+        "production_authorized",
+        "receipt_cid",
+    }
+    revision = int(parameters["expected_task_revision"])
+    observed = list(parameters["history_revisions"])
+    missing = [
+        item for item in range(1, revision + 1) if item not in set(observed)
+    ]
+    body = {name: member for name, member in receipt.items() if name != "receipt_cid"}
+    expected = {
+        "schema": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
+        "operation": TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
+        "task_cid": parameters["task_cid"],
+        "task_alias": parameters["task_alias"],
+        "prior_status": parameters["expected_task_status"],
+        "prior_revision": revision,
+        "completed_revision": revision + 1,
+        "prior_body_sha256": parameters["expected_prior_body_sha256"],
+        "prior_receipt_schema": parameters["expected_prior_receipt_schema"],
+        "prior_receipt_operation": parameters[
+            "expected_prior_receipt_operation"
+        ],
+        "prior_receipt_cid": parameters["expected_prior_receipt_cid"],
+        "source_head": parameters["source_pin"]["current_head"],
+        "source_tree": parameters["source_pin"]["current_tree"],
+        "dependency_binding_cid": parameters["reviewed_pins"][
+            "dependency_binding_cid"
+        ],
+        "reviewed_preflight_cid": parameters["reviewed_preflight_cid"],
+        "qualification_result_cid": parameters["qualification_result_cid"],
+        "qualification_stable_projection_cid": parameters[
+            "qualification_stable_projection_cid"
+        ],
+        "qualification_artifact_sha256": parameters[
+            "qualification_artifact_sha256"
+        ],
+        "validation_run_id": parameters["run_id"],
+        "validation_result_id": parameters["result_id"],
+        "validation_evidence_id": parameters["evidence_id"],
+        "validation_outcome": "passed",
+        "history_observed_revisions": observed,
+        "history_missing_revisions": missing,
+        "appended_revision": revision + 1,
+        "gap_preserved": True,
+        "repair_performed": False,
+        "fabricated_revisions": [],
+        "task_completion_scope": "protected_hermetic_qualification",
+        "scheduling_authority": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    if (
+        set(receipt) != expected_fields
+        or body != expected
+        or receipt.get("receipt_cid") != content_identity(expected)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "protected qualification completion receipt differs from its pins"
+        )
+    return receipt
 
 
 _RETRY_COOLDOWN_ROW_FIELDS: Final[tuple[str, ...]] = (
@@ -1977,6 +2943,14 @@ _TRANSACTION_SQL_LOOKUP: Final[Mapping[str, str]] = MappingProxyType(
 _TRANSACTION_MUTATIONS: Final[frozenset[str]] = frozenset(
     {"txn_advance_store_revision", "txn_record_idempotency"}
 )
+
+_EXACT_SINGLE_ROW_TASK_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "txn_cas_task_status",
+        "executor_cas_task_status_receipt",
+        "executor_insert_task_revision_history",
+    }
+)
 _EVENT_MUTATIONS: Final[frozenset[str]] = frozenset(
     {
         "casf_seed_global_head",
@@ -2100,7 +3074,12 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "casf_reset_subscription_failures",
             }
         ),
-        "task.status.cas": frozenset({"txn_cas_task_status"}),
+        "task.status.cas": frozenset(
+            {
+                "txn_cas_task_status",
+                "executor_insert_task_revision_history",
+            }
+        ),
         "task.status.cas.receipt": frozenset(
             {
                 "executor_cas_task_status_receipt",
@@ -2119,6 +3098,23 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_cas_task_status_receipt",
                 "executor_insert_task_revision",
                 "executor_insert_retry_cooldown",
+            }
+        ),
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
+            }
+        ),
+        TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
             }
         ),
         "task.validation.record.passed": frozenset(
@@ -2144,6 +3140,8 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -2210,7 +3208,7 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 }
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
-            "task.status.cas": frozenset({"txn_cas_task_status"}),
+            "task.status.cas": _COMMAND_MUTATION_CATALOG["task.status.cas"],
             "task.status.cas.receipt": frozenset(
                 {
                     "executor_cas_task_status_receipt",
@@ -2220,6 +3218,17 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
                 _COMMAND_MUTATION_CATALOG[
                     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+                ]
+            ),
+            TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
+                {
+                    "executor_cas_task_status_receipt",
+                    "executor_insert_task_revision_history",
+                }
+            ),
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
                 ]
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
@@ -2494,16 +3503,16 @@ class TypedStateOwnerGateway:
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-        selected_transaction_lock = (
-            threading.RLock()
-            if transaction_lock is None
-            else transaction_lock
+        self._transaction_lock = (
+            threading.RLock() if transaction_lock is None else transaction_lock
         )
-        if type(selected_transaction_lock) is not _RLOCK_TYPE:
-            raise TypedStateOwnerProtocolError(
-                "owner transaction boundary must be one exact reentrant lock"
+        if any(
+            not callable(getattr(self._transaction_lock, name, None))
+            for name in ("acquire", "release", "__enter__", "__exit__")
+        ):
+            raise TypeError(
+                "transaction_lock must provide acquire, release, and context entry"
             )
-        self._transaction_lock = selected_transaction_lock
         self._clients: set[threading.Thread] = set()
         self._channels: set[socket.socket] = set()
         self._clients_lock = threading.Lock()
@@ -2905,34 +3914,114 @@ class TypedStateOwnerGateway:
                 if grant.grant_id != selected
             }
 
+    def renew_grant(
+        self,
+        grant_id: str,
+        *,
+        ttl_seconds: float = DEFAULT_GRANT_TTL_SECONDS,
+    ) -> OwnerClientGrant:
+        """Extend one still-live exact grant without changing its authority.
+
+        Long-lived clients retain a connection-local grant record. Renewal
+        therefore keeps the stable grant ID and token while replacing only
+        its bounded issuance window in the server table. Every subsequent
+        request resolves that current table record before authorization.
+        """
+
+        selected_id = str(grant_id or "").strip()
+        try:
+            ttl = float(ttl_seconds)
+        except (TypeError, ValueError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "grant renewal lifetime is invalid"
+            ) from exc
+        if (
+            not selected_id
+            or not math.isfinite(ttl)
+            or ttl < MIN_GRANT_TTL_SECONDS
+            or ttl > MAX_GRANT_TTL_SECONDS
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "grant renewal lifetime is outside the closed bound"
+            )
+        now_ms = int(time.time() * 1_000)
+        with self._grants_lock:
+            matches = tuple(
+                (token, candidate)
+                for token, candidate in self._grants.items()
+                if candidate.grant_id == selected_id
+            )
+            if (
+                selected_id in self._revoked_grants
+                or len(matches) != 1
+                or now_ms >= matches[0][1].expires_at
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant cannot be renewed"
+                )
+            token, current = matches[0]
+            try:
+                peer_uid = os.stat(f"/proc/{current.peer_pid}").st_uid
+                peer_start = _process_start_time_ticks(current.peer_pid)
+            except OSError as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "grant renewal peer process is unavailable"
+                ) from exc
+            if (
+                peer_uid != current.peer_uid
+                or peer_start != current.peer_start_time_ticks
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "grant renewal peer process identity differs"
+                )
+            renewed = replace(
+                current,
+                issued_at=now_ms,
+                expires_at=now_ms + int(ttl * 1_000),
+            )
+            self._grants[token] = renewed
+            return renewed
+
     def _require_active_grant(
         self,
         grant: OwnerClientGrant,
         *,
         peer_identity: tuple[int, int, int],
-    ) -> None:
+    ) -> OwnerClientGrant:
         """Revalidate revocation, expiry, and kernel peer identity per request."""
 
         with self._grants_lock:
             revoked = grant.grant_id in self._revoked_grants
-            still_issued = any(
-                candidate.grant_id == grant.grant_id
+            current = tuple(
+                candidate
                 for candidate in self._grants.values()
+                if candidate.grant_id == grant.grant_id
             )
-        if revoked or not still_issued:
-            raise TypedStateOwnerAuthorizationError("owner grant is revoked")
-        if int(time.time() * 1_000) >= grant.expires_at:
-            self.revoke_grant(grant.grant_id)
-            raise TypedStateOwnerAuthorizationError("owner grant is expired")
-        peer_pid, peer_uid, peer_start = peer_identity
-        if (
-            peer_pid != grant.peer_pid
-            or peer_uid != grant.peer_uid
-            or peer_start != grant.peer_start_time_ticks
-        ):
-            raise TypedStateOwnerAuthorizationError(
-                "kernel peer identity differs from the owner grant"
-            )
+            if revoked or len(current) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant is revoked"
+                )
+            active = current[0]
+            if int(time.time() * 1_000) >= active.expires_at:
+                self._revoked_grants.add(active.grant_id)
+                self._grants = {
+                    token: candidate
+                    for token, candidate in self._grants.items()
+                    if candidate.grant_id != active.grant_id
+                }
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant is expired"
+                )
+            peer_pid, peer_uid, peer_start = peer_identity
+            if (
+                peer_pid != active.peer_pid
+                or peer_uid != active.peer_uid
+                or peer_start != active.peer_start_time_ticks
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "kernel peer identity differs from the owner grant"
+                )
+            return active
 
     def start(self) -> None:
         self.socket_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -3059,7 +4148,10 @@ class TypedStateOwnerGateway:
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             "typed_event_wait_bound": self._event_wait_handler is not None,
-            "typed_event_wait_maximum_seconds": int(MAX_REMOTE_EVENT_WAIT_SECONDS),
+            # Owner status is canonical DAG-JSON and therefore float-free.
+            "typed_event_wait_maximum_seconds": int(
+                MAX_REMOTE_EVENT_WAIT_SECONDS
+            ),
             "commit_observer_bound": self._commit_observer is not None,
             "last_observer_error_type": self._last_observer_error_type,
             "last_error_type": self._last_error_type,
@@ -3345,7 +4437,10 @@ class TypedStateOwnerGateway:
                     )
             else:
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
-            self._require_active_grant(grant, peer_identity=peer_identity)
+            grant = self._require_active_grant(
+                grant,
+                peer_identity=peer_identity,
+            )
             if (
                 not client_id
                 or len(client_id) > 256
@@ -3401,7 +4496,10 @@ class TypedStateOwnerGateway:
                 # invalid correlation ID is never reflected to the peer.
                 request_id = _validated_request_id(request.get("request_id"))
                 try:
-                    self._require_active_grant(grant, peer_identity=peer_identity)
+                    grant = self._require_active_grant(
+                        grant,
+                        peer_identity=peer_identity,
+                    )
                     if action == "begin":
                         self._reject_unknown(
                             request,
@@ -3416,7 +4514,7 @@ class TypedStateOwnerGateway:
                                 "owner transaction admission timed out"
                             )
                         try:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )
@@ -3463,26 +4561,88 @@ class TypedStateOwnerGateway:
                                 raise TypedStateOwnerAuthorizationError(
                                     "mutation transaction has no admitted command"
                                 )
-                            self._authorize_mutation(
-                                command, operation, parameters, grant=grant
-                            )
                             if not semantic_authority_captured:
                                 semantic_authority = self._capture_semantic_authority(
                                     command,
                                     grant=grant,
                                 )
                                 semantic_authority_captured = True
+                            # A typed database claim carries a request, not
+                            # authority to author its virgin-transfer binding.
+                            # The exclusive owner derives that binding from
+                            # the transaction-stable ready frontier.  Rewrite
+                            # only the effective CAS parameters; the admitted
+                            # caller command and its idempotency identity stay
+                            # bound to the original canonical request.
+                            if (
+                                semantic_authority.get("operation")
+                                == "task.database.claim.phase"
+                                and operation.name
+                                in {
+                                    "executor_cas_task_status_receipt",
+                                    "executor_insert_task_revision",
+                                }
+                            ):
+                                normalized_body_json = str(
+                                    semantic_authority["body_json"]
+                                )
+                                body_index = operation.parameter_names.index(
+                                    "body_json"
+                                )
+                                if parameters[body_index] != command.parameters.get(
+                                    "body_json"
+                                ):
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "typed claim CAS body differs from its admitted request"
+                                    )
+                                if (
+                                    command.parameters.get("body_json")
+                                    != normalized_body_json
+                                ):
+                                    normalized_parameters = list(parameters)
+                                    normalized_parameters[body_index] = (
+                                        normalized_body_json
+                                    )
+                                    parameters = tuple(normalized_parameters)
+                            elif (
+                                semantic_authority.get("operation")
+                                == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+                                and operation.name
+                                == "executor_cas_task_status_receipt"
+                            ):
+                                body_index = operation.parameter_names.index(
+                                    "body_json"
+                                )
+                                normalized_parameters = list(parameters)
+                                normalized_parameters[body_index] = str(
+                                    semantic_authority["body_json"]
+                                )
+                                parameters = tuple(normalized_parameters)
+                            self._authorize_mutation(
+                                command,
+                                operation,
+                                parameters,
+                                grant=grant,
+                                semantic_authority=semantic_authority,
+                            )
                             self._record_manifest_mutation(
                                 command,
                                 operation,
                                 parameters,
                                 mutation_manifest,
+                                semantic_authority=semantic_authority,
                             )
                         if transaction_active:
                             result = self._execute(operation, parameters)
+                            if operation.mutation:
+                                self._validate_mutation_effect(
+                                    operation,
+                                    parameters,
+                                    result,
+                                )
                         else:
                             with self._transaction_lock:
-                                self._require_active_grant(
+                                grant = self._require_active_grant(
                                     grant,
                                     peer_identity=peer_identity,
                                 )
@@ -3642,7 +4802,7 @@ class TypedStateOwnerGateway:
                             request.get("envelope") or {}
                         )
                         with self._transaction_lock:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )
@@ -3747,7 +4907,7 @@ class TypedStateOwnerGateway:
                             request.get("envelope") or {}
                         )
                         with self._transaction_lock:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )
@@ -3930,6 +5090,8 @@ class TypedStateOwnerGateway:
             "task.status.cas": "claim",
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -3954,6 +5116,34 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "dead claim recovery replay identity differs from its parameters"
+                )
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            digest = _legacy_unstall_recovery_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:legacy-unstall-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-legacy-unstall-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery replay identity differs from "
+                    "its parameters"
+                )
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            digest = _protected_qualification_completion_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:protected-qualification-completion:{digest}"
+                or command.idempotency_key
+                != f"executor-protected-qualification-completion:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion replay identity differs "
+                    "from its parameters"
                 )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             if operation == "task.status.cas.receipt":
@@ -4468,6 +5658,345 @@ class TypedStateOwnerGateway:
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
             }
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            recovery = _validated_legacy_unstall_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task authority is absent or "
+                    "ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[0] or "").strip().lower() != "retrying"
+                or type(task_row[1]) is not int
+                or int(task_row[1]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task revision is stale"
+                )
+            try:
+                prior_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery prior task body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if not isinstance(prior_receipt, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery has no typed claim receipt"
+                )
+            legacy = _validated_legacy_unstall_claim_receipt(
+                prior_receipt,
+                task_cid=values["task_cid"],
+                expected_task_revision=values["expected_task_revision"],
+            )
+            exact_identity = {
+                "claim_id": values["claim_id"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "lease_id": values["lease_id"],
+                "owner_session_id": values["owner_session_id"],
+                "fencing_token": values["fencing_token"],
+                "fence_epoch": values["fence_epoch"],
+            }
+            historic_attestation = dict(legacy["historic_attestation"])
+            if (
+                any(
+                    not _strict_scalar_equal(
+                        legacy["identity"].get(name), expected
+                    )
+                    for name, expected in exact_identity.items()
+                )
+                or historic_attestation["client_id"] != grant.client_id
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery claim differs from its exact "
+                    "authority"
+                )
+            current_attestation = _claim_process_attestation(grant)
+            if (
+                historic_attestation["process_birth_id"]
+                == current_attestation["process_birth_id"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cannot replace its current "
+                    "process birth"
+                )
+            historic_birth = ProcessBirthIdentity(
+                pid=int(historic_attestation["pid"]),
+                start_time_ticks=int(
+                    historic_attestation["start_time_ticks"]
+                ),
+                boot_id=str(historic_attestation["boot_id"]),
+                parent_pid=int(historic_attestation["parent_pid"]),
+            )
+            try:
+                liveness = OwnerLiveness(
+                    self._owner_liveness_probe(historic_birth)
+                )
+            except BaseException:
+                liveness = OwnerLiveness.UNKNOWN
+            if liveness is not OwnerLiveness.DEAD:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery requires a provably dead "
+                    "historic process"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(queue_rows) > 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cooldown authority is ambiguous"
+                )
+            prior_queue: dict[str, Any] = {}
+            if queue_rows:
+                validated_prior = _validated_stored_retry_cooldown(
+                    queue_rows[0],
+                    task_cid=values["task_cid"],
+                )
+                prior_queue = {
+                    **validated_prior,
+                    "claim_id": validated_prior["claim_cid"],
+                    "attempt_number": validated_prior["attempt"],
+                }
+            if (
+                (values["expected_queue_revision"] == -1 and prior_queue)
+                or (
+                    values["expected_queue_revision"] >= 0
+                    and not prior_queue
+                )
+                or (
+                    prior_queue
+                    and (
+                        prior_queue["revision"]
+                        != values["expected_queue_revision"]
+                        or prior_queue["attempt_number"]
+                        != values["expected_queue_attempt"]
+                        or prior_queue["attempt_number"]
+                        >= values["attempt_number"]
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery expected cooldown authority is "
+                    "stale"
+                )
+            recovery_receipt = _legacy_unstall_recovery_receipt(
+                prior_receipt,
+                task_cid=values["task_cid"],
+                expected_task_revision=values["expected_task_revision"],
+                recovery_process_attestation=current_attestation,
+                retry_not_before_ms=values["retry_not_before_ms"],
+            )
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = recovery_receipt
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if len(expected_body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task body exceeds its byte bound"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "cooldown_parameters": values,
+                "prior_queue": prior_queue,
+                "recovery_receipt": recovery_receipt,
+                "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            values = _validated_protected_qualification_completion_parameters(
+                command.parameters
+            )
+            if (
+                grant.client_id
+                != TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID
+                or grant.allowed_operations
+                != frozenset(
+                    {
+                        "whoami_metadata",
+                        "load_store_generation",
+                        "txn_load_generation",
+                        "txn_lookup_idempotency",
+                        "txn_advance_store_revision",
+                        "txn_record_idempotency",
+                        "executor_insert_validation_run",
+                        "executor_insert_validation_result",
+                        "executor_insert_validation_evidence",
+                        "executor_cas_task_status_receipt",
+                        "executor_insert_task_revision_history",
+                    }
+                )
+                or grant.allowed_command_operations
+                != frozenset(
+                    {TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND}
+                )
+                or dict(grant.entity_scopes)
+                != {
+                    "task_cid": values["task_cid"],
+                    "reviewed_preflight_cid": values[
+                        "reviewed_preflight_cid"
+                    ],
+                }
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion grant is not exact"
+                )
+            task_rows = self._connection.execute(
+                """
+                SELECT task_alias, status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion task is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            task_alias = task_row[0]
+            status = task_row[1]
+            revision = task_row[2]
+            prior_body_json = task_row[3]
+            if (
+                str(task_alias or "") != values["task_alias"]
+                or str(status or "") != values["expected_task_status"]
+                or type(revision) is not int
+                or revision != values["expected_task_revision"]
+                or not isinstance(prior_body_json, str)
+                or "sha256:"
+                + hashlib.sha256(prior_body_json.encode("utf-8")).hexdigest()
+                != values["expected_prior_body_sha256"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion task pin is stale"
+                )
+            try:
+                prior_body = json.loads(prior_body_json)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion prior body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(prior_body, Mapping)
+                or not isinstance(prior_receipt, Mapping)
+                or prior_receipt.get("schema")
+                != values["expected_prior_receipt_schema"]
+                or prior_receipt.get("operation")
+                != values["expected_prior_receipt_operation"]
+                or content_identity(prior_receipt)
+                != values["expected_prior_receipt_cid"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion prior receipt differs"
+                )
+            history_rows = self._connection.execute(
+                "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                "ORDER BY revision",
+                [values["task_cid"]],
+            ).fetchall()
+            observed_history = [int(row[0]) for row in history_rows]
+            if observed_history != values["history_revisions"]:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion history pin is stale"
+                )
+            dependency_rows = self._connection.execute(
+                """
+                SELECT d.dependency_task_cid, t.task_alias, t.status,
+                       t.revision, t.body_json
+                FROM task_dependencies AS d
+                JOIN tasks AS t ON t.task_cid = d.dependency_task_cid
+                WHERE d.task_cid = ? ORDER BY d.dependency_task_cid
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            observed_dependencies = [str(row[0]) for row in dependency_rows]
+            observed_dependency_pins = [
+                {
+                    "task_cid": str(row[0]),
+                    "task_alias": str(row[1]),
+                    "status": str(row[2]),
+                    "revision": int(row[3]),
+                    "body_sha256": "sha256:"
+                    + hashlib.sha256(str(row[4]).encode("utf-8")).hexdigest(),
+                }
+                for row in dependency_rows
+            ]
+            if (
+                observed_dependencies != values["dependency_cids"]
+                or observed_dependency_pins != values["dependency_pins"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion dependencies differ"
+                )
+            next_body = dict(values["body"])
+            next_receipt = next_body.get("completion_receipt")
+            _validated_protected_qualification_completion_receipt(
+                next_receipt,
+                parameters=values,
+            )
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = dict(next_receipt)
+            expected_body_json = canonical_json_bytes(expected_body).decode("utf-8")
+            if values["body_json"] != expected_body_json:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion changed immutable task body"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "history_revisions": list(observed_history),
+                "dependency_cids": list(observed_dependencies),
+                "dependency_pins": list(observed_dependency_pins),
+                "validation": {
+                    name: values[name]
+                    for name in (
+                        "run_id",
+                        "result_id",
+                        "evidence_id",
+                        "outcome",
+                        "evidence_digest",
+                        "started_at",
+                        "finished_at",
+                        "command_digest",
+                        "run_body_json",
+                        "result_body_json",
+                        "evidence_body_json",
+                    )
+                },
+            }
         if operation == "task.status.cas.receipt":
             try:
                 next_body = json.loads(str(command.parameters.get("body_json") or ""))
@@ -4730,7 +6259,7 @@ class TypedStateOwnerGateway:
                     )
                 task_rows = self._connection.execute(
                     """
-                    SELECT status, revision, body_json FROM tasks
+                    SELECT status, revision, task_alias, body_json FROM tasks
                     WHERE task_cid = ? LIMIT 2
                     """,
                     [task_cid],
@@ -4745,16 +6274,62 @@ class TypedStateOwnerGateway:
                         "typed database claim task revision is stale"
                     )
                 try:
-                    prior_body = json.loads(str(task_row[2] or "{}"))
+                    prior_body = json.loads(str(task_row[3] or "{}"))
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
                     raise TypedStateOwnerAuthorizationError(
                         "typed database claim prior task body is malformed"
                     ) from exc
+                if not isinstance(prior_body, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim prior task body is malformed"
+                    )
                 prior_receipt = (
                     prior_body.get("completion_receipt")
                     if isinstance(prior_body, Mapping)
                     else None
                 )
+                requested_body = dict(prior_body)
+                requested_body["completion_receipt"] = dict(next_receipt)
+                try:
+                    request_body_matches = bool(
+                        isinstance(next_body, Mapping)
+                        and canonical_json_bytes(dict(next_body))
+                        == canonical_json_bytes(requested_body)
+                    )
+                except ValueError as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task body is not canonical"
+                    ) from exc
+                if not request_body_matches:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim may only replace its completion receipt"
+                    )
+                if phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA:
+                    previous_status = str(task_row[0] or "").strip().lower()
+                    try:
+                        next_receipt = (
+                            _prepare_database_virgin_transfer_receipt_on(
+                                self._connection,
+                                task={
+                                    "task_cid": task_cid,
+                                    "task_alias": str(task_row[2] or ""),
+                                    "status": previous_status,
+                                    "revision": int(task_row[1]),
+                                    "body": prior_body,
+                                },
+                                previous_status=previous_status,
+                                current_revision=expected_revision,
+                                new_status="in_progress",
+                                receipt=next_receipt,
+                                now_ms=int(time.time() * 1_000),
+                            )
+                        )
+                    except IntentRepositoryError as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database virgin-transfer authority is invalid"
+                        ) from exc
+                    next_body = dict(next_body)
+                    next_body["completion_receipt"] = dict(next_receipt)
                 next_identity = _validated_database_claim_identity(next_receipt)
                 next_attestation = _require_database_claim_process_attestation(
                     next_receipt,
@@ -4829,6 +6404,25 @@ class TypedStateOwnerGateway:
                     prior_attestation = prior_receipt.get(
                         "claim_process_attestation"
                     )
+                    expected_admission_receipt = {
+                        **dict(prior_receipt),
+                        "operation": "database_attempt_admitted",
+                        "claim_phase_schema": (
+                            TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        ),
+                        "admitted_from_revision": expected_revision,
+                        "attempt_execution_phase": "claimed",
+                        "attempt_execution_revision": 1,
+                    }
+                    try:
+                        admission_receipt_matches = bool(
+                            canonical_json_bytes(dict(next_receipt))
+                            == canonical_json_bytes(expected_admission_receipt)
+                        )
+                    except ValueError as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission is not canonical"
+                        ) from exc
                     if (
                         str(task_row[0] or "").strip().lower()
                         != "in_progress"
@@ -4865,16 +6459,22 @@ class TypedStateOwnerGateway:
                         )
                         or next_receipt.get("attempt_execution_phase")
                         != "claimed"
+                        or not admission_receipt_matches
                     ):
                         raise TypedStateOwnerAuthorizationError(
                             "typed database attempt admission differs from its reservation"
                         )
+                normalized_body_json = canonical_json_bytes(next_body).decode("utf-8")
+                if len(normalized_body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task body exceeds its byte bound"
+                    )
                 return {
                     "operation": "task.database.claim.phase",
                     "task_cid": task_cid,
                     "status": next_status,
                     "expected_revision": expected_revision,
-                    "body_json": str(command.parameters["body_json"]),
+                    "body_json": normalized_body_json,
                     "claim_phase_schema": phase_schema,
                     "claim_identity": next_identity,
                     "claim_process_attestation": next_attestation,
@@ -5733,6 +7333,7 @@ class TypedStateOwnerGateway:
         parameters: Sequence[Any],
         *,
         grant: OwnerClientGrant,
+        semantic_authority: Mapping[str, Any] | None = None,
     ) -> None:
         command_operation = str(command.parameters.get("operation") or "")
         admitted = (
@@ -5756,6 +7357,15 @@ class TypedStateOwnerGateway:
             name: parameters[index]
             for index, name in enumerate(operation.parameter_names)
         }
+        if (
+            operation.name == "executor_cas_task_status_receipt"
+            and semantic_authority
+            and semantic_authority.get("operation") == "task.database.claim.phase"
+            and bound.get("body_json") != semantic_authority.get("body_json")
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "typed claim mutation omits its owner-normalized body"
+            )
         if operation.name in {
             "casf_insert_process_birth_attestation",
             "casf_insert_supervisor_runtime_lease",
@@ -5820,6 +7430,8 @@ class TypedStateOwnerGateway:
         operation: OwnerOperation,
         parameters: Sequence[Any],
         manifest: list[tuple[str, dict[str, Any]]],
+        *,
+        semantic_authority: Mapping[str, Any] | None = None,
     ) -> None:
         """Admit one mutation into the closed owner-side transaction machine."""
 
@@ -5829,6 +7441,14 @@ class TypedStateOwnerGateway:
             )
         name = operation.name
         names = [item[0] for item in manifest]
+        if name == "executor_insert_task_revision_history" and (
+            not names
+            or names[-1]
+            not in {"txn_cas_task_status", "executor_cas_task_status_receipt"}
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "task revision history must immediately follow its task CAS"
+            )
         if name not in _REPEATABLE_MUTATIONS and name in names:
             raise TypedStateOwnerAuthorizationError(
                 "transaction repeats a singleton mutation role"
@@ -5936,6 +7556,17 @@ class TypedStateOwnerGateway:
             expected_task_revision = command.parameters.get(
                 "expected_task_revision"
             )
+            expected_body_json = command.parameters.get("body_json")
+            if (
+                semantic_authority
+                and semantic_authority.get("operation")
+                in {
+                    "task.database.claim.phase",
+                    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                    TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
+                }
+            ):
+                expected_body_json = semantic_authority.get("body_json")
             expected = {
                 "task_cid": command.parameters.get("task_cid"),
                 "expected_task_revision": expected_task_revision,
@@ -5946,8 +7577,14 @@ class TypedStateOwnerGateway:
                     else None
                 ),
                 "status": command.parameters.get("status"),
-                "body_json": command.parameters.get("body_json"),
+                "body_json": expected_body_json,
             }
+            if (
+                semantic_authority
+                and semantic_authority.get("operation")
+                == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
+            ):
+                expected["updated_at"] = command.parameters.get("finished_at")
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt mutation differs from the admitted command"
@@ -5956,6 +7593,13 @@ class TypedStateOwnerGateway:
             expected_task_revision = command.parameters.get(
                 "expected_task_revision"
             )
+            expected_body_json = command.parameters.get("body_json")
+            if (
+                semantic_authority
+                and semantic_authority.get("operation")
+                == "task.database.claim.phase"
+            ):
+                expected_body_json = semantic_authority.get("body_json")
             expected = {
                 "task_cid": command.parameters.get("task_cid"),
                 "revision": (
@@ -5965,7 +7609,7 @@ class TypedStateOwnerGateway:
                     else None
                 ),
                 "status": command.parameters.get("status"),
-                "body_json": command.parameters.get("body_json"),
+                "body_json": expected_body_json,
             }
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
@@ -6072,6 +7716,25 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "completion receipt timestamp is not bound to its task revision"
+                )
+        elif name == "executor_insert_task_revision_history":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            expected = {
+                "task_cid": command.parameters.get("task_cid"),
+                "task_revision": (
+                    expected_task_revision + 1
+                    if isinstance(expected_task_revision, int)
+                    and not isinstance(expected_task_revision, bool)
+                    else None
+                ),
+            }
+            if (
+                any(bound.get(field) != value for field, value in expected.items())
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision history mutation differs from the admitted command"
                 )
         elif name == "executor_insert_validation_run":
             expected = {
@@ -6445,6 +8108,69 @@ class TypedStateOwnerGateway:
                     "task revision history is not contiguous through its receipt CAS"
                 )
 
+        if "executor_insert_task_revision_history" in required:
+            task_cas_names = {
+                "txn_cas_task_status",
+                "executor_cas_task_status_receipt",
+            }
+            task_cas_positions = [
+                index for index, name in enumerate(names) if name in task_cas_names
+            ]
+            history_positions = [
+                index
+                for index, name in enumerate(names)
+                if name == "executor_insert_task_revision_history"
+            ]
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            task_cid = str(command.parameters.get("task_cid") or "")
+            if (
+                len(task_cas_positions) != 1
+                or len(history_positions) != 1
+                or history_positions[0] != task_cas_positions[0] + 1
+                or isinstance(expected_task_revision, bool)
+                or not isinstance(expected_task_revision, int)
+                or expected_task_revision < 0
+                or not task_cid
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task CAS and revision history roles are not exact and adjacent"
+                )
+            new_task_revision = expected_task_revision + 1
+            task_cas_name, task_cas = manifest[task_cas_positions[0]]
+            rows = self._connection.execute(
+                """
+                SELECT t.status, t.revision, t.body_json, t.updated_at,
+                       r.status, r.revision, r.body_json, r.recorded_at
+                FROM tasks AS t
+                JOIN task_revisions AS r
+                  ON r.task_cid = t.task_cid AND r.revision = t.revision
+                WHERE t.task_cid = ? AND t.revision = ? LIMIT 2
+                """,
+                [task_cid, new_task_revision],
+            ).fetchall()
+            if (
+                len(rows) != 1
+                or str(rows[0][0])
+                != str(command.parameters.get("status") or "")
+                or str(rows[0][0]) != str(task_cas.get("status") or "")
+                or int(rows[0][1]) != new_task_revision
+                or int(rows[0][1]) != int(task_cas.get("new_revision") or -1)
+                or str(rows[0][3]) != str(task_cas.get("updated_at") or "")
+                or (
+                    task_cas_name == "executor_cas_task_status_receipt"
+                    and str(rows[0][2]) != str(task_cas.get("body_json") or "")
+                )
+                or str(rows[0][0]) != str(rows[0][4])
+                or int(rows[0][1]) != int(rows[0][5])
+                or str(rows[0][2]) != str(rows[0][6])
+                or str(rows[0][3]) != str(rows[0][7])
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision history differs from authoritative post-state"
+                )
+
         if command_operation in _EVENT_EMITTING_COMMANDS:
             for event_role in _EVENT_CORE_SEQUENCE:
                 if names.count(event_role) != 1:
@@ -6470,6 +8196,36 @@ class TypedStateOwnerGateway:
                 command,
                 manifest,
                 semantic_authority,
+            )
+
+    @staticmethod
+    def _validate_mutation_effect(
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+        result: Mapping[str, Any],
+    ) -> None:
+        """Require each task lifecycle mutation to prove one exact row effect."""
+
+        if operation.name not in _EXACT_SINGLE_ROW_TASK_MUTATIONS:
+            return
+        rows = result.get("rows")
+        columns = result.get("columns")
+        expected_name = (
+            "task_revision"
+            if operation.name == "executor_insert_task_revision_history"
+            else "new_revision"
+        )
+        expected_index = operation.parameter_names.index(expected_name)
+        expected_revision = parameters[expected_index]
+        if (
+            columns != ["revision"]
+            or not isinstance(rows, list)
+            or len(rows) != 1
+            or not isinstance(rows[0], list)
+            or rows[0] != [expected_revision]
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"{operation.name} did not affect its one admitted task row"
             )
 
     def _validate_semantic_manifest(
@@ -6622,6 +8378,160 @@ class TypedStateOwnerGateway:
                 )
             return
 
+        if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
+            values = dict(authority["validation"])
+            expected_revision = int(authority["expected_revision"])
+            exact_domain_sequence = [
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            ]
+            if [
+                name for name, _bound in manifest if name in exact_domain_sequence
+            ] != exact_domain_sequence:
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion mutation order differs"
+                )
+            exact(
+                one("executor_insert_validation_run"),
+                {
+                    "run_id": values["run_id"],
+                    "task_cid": authority["task_cid"],
+                    "attempt_id": command.parameters["attempt_id"],
+                    "started_at": values["started_at"],
+                    "finished_at": values["finished_at"],
+                    "status": "passed",
+                    "command_digest": values["command_digest"],
+                    "body_json": values["run_body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_validation_result"),
+                {
+                    "result_id": values["result_id"],
+                    "run_id": values["run_id"],
+                    "task_cid": authority["task_cid"],
+                    "ordinal": 0,
+                    "outcome": "passed",
+                    "evidence_digest": values["evidence_digest"],
+                    "body_json": values["result_body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_validation_evidence"),
+                {
+                    "evidence_id": values["evidence_id"],
+                    "parent_evidence_id": "",
+                    "task_cid": authority["task_cid"],
+                    "evidence_kind": "validation",
+                    "digest": values["evidence_digest"],
+                    "created_at": values["finished_at"],
+                    "body_json": values["evidence_body_json"],
+                },
+            )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "completed",
+                    "body_json": authority["body_json"],
+                },
+            )
+            task_rows = self._connection.execute(
+                "SELECT status, revision, body_json, updated_at FROM tasks "
+                "WHERE task_cid = ? LIMIT 2",
+                [authority["task_cid"]],
+            ).fetchall()
+            history_rows = self._connection.execute(
+                "SELECT revision FROM task_revisions WHERE task_cid = ? "
+                "ORDER BY revision",
+                [authority["task_cid"]],
+            ).fetchall()
+            validation_run = self._connection.execute(
+                "SELECT task_cid, attempt_id, started_at, finished_at, status, "
+                "command_digest, body_json "
+                "FROM validation_runs WHERE run_id = ? LIMIT 2",
+                [values["run_id"]],
+            ).fetchall()
+            validation_result = self._connection.execute(
+                "SELECT run_id, task_cid, ordinal, outcome, evidence_digest, "
+                "body_json FROM validation_results WHERE result_id = ? LIMIT 2",
+                [values["result_id"]],
+            ).fetchall()
+            validation_evidence = self._connection.execute(
+                "SELECT parent_evidence_id, task_cid, evidence_kind, digest, "
+                "body_json FROM evidence_nodes WHERE evidence_id = ? LIMIT 2",
+                [values["evidence_id"]],
+            ).fetchall()
+            normalized_task_rows = [
+                tuple(row[index] for index in range(4)) for row in task_rows
+            ]
+            normalized_validation_run = [
+                tuple(row[index] for index in range(7)) for row in validation_run
+            ]
+            normalized_validation_result = [
+                tuple(row[index] for index in range(6))
+                for row in validation_result
+            ]
+            normalized_validation_evidence = [
+                tuple(row[index] for index in range(5))
+                for row in validation_evidence
+            ]
+            if (
+                normalized_task_rows
+                != [
+                    (
+                        "completed",
+                        expected_revision + 1,
+                        authority["body_json"],
+                        values["finished_at"],
+                    )
+                ]
+                or [int(row[0]) for row in history_rows]
+                != [*authority["history_revisions"], expected_revision + 1]
+                or normalized_validation_run
+                != [
+                    (
+                        authority["task_cid"],
+                        command.parameters["attempt_id"],
+                        values["started_at"],
+                        values["finished_at"],
+                        "passed",
+                        values["command_digest"],
+                        values["run_body_json"],
+                    )
+                ]
+                or normalized_validation_result
+                != [
+                    (
+                        values["run_id"],
+                        authority["task_cid"],
+                        0,
+                        "passed",
+                        values["evidence_digest"],
+                        values["result_body_json"],
+                    )
+                ]
+                or normalized_validation_evidence
+                != [
+                    (
+                        "",
+                        authority["task_cid"],
+                        "validation",
+                        values["evidence_digest"],
+                        values["evidence_body_json"],
+                    )
+                ]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "protected qualification completion post-state differs"
+                )
+            return
+
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             values = dict(authority["cooldown_parameters"])
             expected_revision = int(authority["expected_revision"])
@@ -6735,6 +8645,103 @@ class TypedStateOwnerGateway:
             if observed_queue != expected_queue:
                 raise TypedStateOwnerAuthorizationError(
                     "dead claim recovery cooldown post-state differs"
+                )
+            return
+
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            values = dict(authority["cooldown_parameters"])
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_revision = int(authority["expected_revision"])
+            expected_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            one(expected_mutation)
+            if by_name.get(alternate):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery contains both cooldown mutation "
+                    "roles"
+                )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(3))
+                if len(task_rows) == 1
+                else ()
+            )
+            if observed_task != (
+                "retrying",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task post-state differs"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_queue_revision = (
+                int(prior_queue["revision"]) + 1 if prior_queue else 1
+            )
+            expected_queue = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                expected_queue_revision,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_queue = (
+                tuple(
+                    queue_rows[0][index]
+                    for index in range(len(expected_queue))
+                )
+                if len(queue_rows) == 1
+                else ()
+            )
+            if observed_queue != expected_queue:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cooldown post-state differs"
                 )
             return
 
@@ -7843,7 +9850,9 @@ def open_typed_state_owner_connection(
     process_birth_id: str,
     timeout_seconds: float = 30.0,
 ) -> TypedStateOwnerConnection:
-    token = str(os.environ.get(TYPED_STATE_OWNER_TOKEN_ENV, "") or "").strip()
+    from ..runtime.process_security import state_authority_credential
+
+    token = state_authority_credential(TYPED_STATE_OWNER_TOKEN_ENV)
     return TypedStateOwnerConnection(
         socket_path=typed_owner_socket_path(store_id),
         token=token,
@@ -7873,6 +9882,10 @@ __all__ = [
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
     "TYPED_COMPLETION_PROGRESS_REQUEST_SCHEMA",
     "TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_CLIENT_ID",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION",
+    "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA",
     "TYPED_RETRY_COOLDOWN_SCHEMA",
     "compact_default_owner_socket_path",
     "TYPED_TASK_STATUS_VOCABULARY",
