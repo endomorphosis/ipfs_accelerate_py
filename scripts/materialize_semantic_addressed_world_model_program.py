@@ -140,6 +140,105 @@ _M6_SUPERSESSION_MODE = (
     "source_authority_revision_and_operational_validation_recovery"
 )
 
+_M6_FROZEN_SUCCESSOR_BINDING: dict[str, Any] = {
+    "store_id": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m6/control.duckdb"
+    ),
+    "control_store_sha256": (
+        "17e4dd76258b0584df1106e0324654c380fcf4f36587463a17936193a260381f"
+    ),
+    "control_store_size": 39_071_744,
+    "event_watermark": 168,
+    "event_prefix_sha256": (
+        "23093117ac6a8cf15c65668e4a455673800b4d1dcbc457dddec9b0528e7f0e9e"
+    ),
+    "projection_cid": _M6_EXPECTED_PROJECTION_CID,
+    "source_head": "9c92490e245a806e3f860ce71c61104a23c2a1b4",
+    "source_tree": "d86d0ca4fd820c12316aba7c56dcd788242b5186",
+    "source_binding_cid": (
+        "sha256:fdf0f6ea842e5e8326a5e5f488f9b19a72983dae296081756164756346ae53b4"
+    ),
+    "database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+    "generation": 8,
+    "plan_revision": 7,
+    "process_birth_id": "birth:8f543ddf21dd6ff4e98e73eafa9c88f3",
+    "server_id": "server:a1bb77fa-e5c6-427a-b151-e971a2fe0b0b",
+    "migration_receipt_path": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m6/migration-receipt.json"
+    ),
+    "migration_receipt_cid": (
+        "sha256:6fa4147b4ec8badd2872da24c77c115afeb5f6fc576c8fcbda8e0273f54bc8b3"
+    ),
+    "migration_receipt_file_sha256": (
+        "acb938ad0454a058ad8e5f8ae60b7ad7ae7f01128e9632794b1d5ee38404c93f"
+    ),
+    "owner_status_path": (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m6/quack-owner/quack-state-server.status.json"
+    ),
+    "owner_status_sha256": (
+        "6f82495e11614b7fcca1d95c78ef6300b0691b76f9ac63bba19c64eee7e5326c"
+    ),
+    "validator_digest": (
+        "sha256:c280087b49e10e9797d1a8815ed7a085ce42cdb50b7941851da16bd76a67d80d"
+    ),
+    "semantic_authority_digest": (
+        "sha256:e08b5d3695c3c9471f5738d0efed4165a1f87987851f7263296c0cff9259cf65"
+    ),
+    "frozen_base_authority_digest": (
+        "sha256:3b5ca340647cc6820e8827040fc96526986bf1cfc6a6e2d243e945be7a70835c"
+    ),
+    "append_surface_digest": (
+        "sha256:ab641eb7736abc257cd4aea145d90fb5a6c4ed56eec6e4776e92e33ec60ee842"
+    ),
+}
+
+_M7_EXPECTED_PROJECTION_CID = (
+    "baguqeeraypw3zwt7gud33pymtc2xsjgl5ezap73jcbh4tvbzs5psea7gdspq"
+)
+_M7_EVENT_SUFFIX_LENGTH = 2
+_M7_TARGET_EVENT_WATERMARK = 170
+_M7_TARGET_PLAN_REVISION = 8
+_M7_TARGET_GENERATION = 9
+_M7_MIGRATION_REVISION = "SAWM-R2-M7"
+_M7_SUPERSESSION_MODE = "source_only_live_task_contract_comparator_repair"
+_M7_SUPERSESSION_REASON = "authenticated_live_task_contract_comparator_repair"
+
+_M6_LIVE_PREFLIGHT_FAILURE: dict[str, Any] = {
+    "schema": "sawm/live-control-preflight-failure@1",
+    "phase": "authenticated_live_task_definition_validation",
+    "command": (
+        "python scripts/ops/agent_supervisor/"
+        "semantic_addressed_world_model.py preflight"
+    ),
+    "exit_code": 2,
+    "error_payload": {
+        "schema": "sawm/operator-error@1",
+        "valid": False,
+        "error": "OperatorError: live Quack task definition conflict: SAWM-001",
+    },
+    "failure_kind": "historical_operational_validation_view_mismatch",
+    "source_head": _M6_FROZEN_SUCCESSOR_BINDING["source_head"],
+    "source_tree": _M6_FROZEN_SUCCESSOR_BINDING["source_tree"],
+    "source_binding_cid": _M6_FROZEN_SUCCESSOR_BINDING["source_binding_cid"],
+    "store_id": _M6_FROZEN_SUCCESSOR_BINDING["store_id"],
+    "owner_generation": 8,
+    "owner_server_id": _M6_FROZEN_SUCCESSOR_BINDING["server_id"],
+    "owner_process_birth_id": _M6_FROZEN_SUCCESSOR_BINDING[
+        "process_birth_id"
+    ],
+    "canonical_owner_rows_verified": True,
+    "task_count_verified": 45,
+    "goal_count_verified": 29,
+    "provider_probed": False,
+    "task_claimed": False,
+    "task_state_changed": False,
+    "implementation_provider_invoked": False,
+    "failure_time_authority": "unavailable",
+}
+
 
 class MaterializationError(RuntimeError):
     """Fail-closed SAWM bootstrap error."""
@@ -591,6 +690,168 @@ def _store_sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _m7_source_repair_authority(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the closed source-only successor authority shared by both seals."""
+
+    repair_paths = [
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    ]
+    expected = {
+        "schema": "sawm/source-only-launch-repair-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M7_MIGRATION_REVISION,
+        "migration_kind": _M7_SUPERSESSION_REASON,
+        "supersession_mode": _M7_SUPERSESSION_MODE,
+        "prior_store_id": _M6_FROZEN_SUCCESSOR_BINDING["store_id"],
+        "prior_control_store_sha256": _M6_FROZEN_SUCCESSOR_BINDING[
+            "control_store_sha256"
+        ],
+        "prior_control_store_size": _M6_FROZEN_SUCCESSOR_BINDING[
+            "control_store_size"
+        ],
+        "prior_event_watermark": _M6_FROZEN_SUCCESSOR_BINDING[
+            "event_watermark"
+        ],
+        "prior_event_prefix_sha256": _M6_FROZEN_SUCCESSOR_BINDING[
+            "event_prefix_sha256"
+        ],
+        "prior_projection_cid": _M6_FROZEN_SUCCESSOR_BINDING[
+            "projection_cid"
+        ],
+        "prior_source_head": _M6_FROZEN_SUCCESSOR_BINDING["source_head"],
+        "prior_source_tree": _M6_FROZEN_SUCCESSOR_BINDING["source_tree"],
+        "prior_source_binding_cid": _M6_FROZEN_SUCCESSOR_BINDING[
+            "source_binding_cid"
+        ],
+        "prior_database_uuid": _M6_FROZEN_SUCCESSOR_BINDING["database_uuid"],
+        "prior_generation": _M6_FROZEN_SUCCESSOR_BINDING["generation"],
+        "prior_plan_revision": _M6_FROZEN_SUCCESSOR_BINDING["plan_revision"],
+        "prior_process_birth_id": _M6_FROZEN_SUCCESSOR_BINDING[
+            "process_birth_id"
+        ],
+        "prior_server_id": _M6_FROZEN_SUCCESSOR_BINDING["server_id"],
+        "prior_materialization_receipt_path": _M6_FROZEN_SUCCESSOR_BINDING[
+            "migration_receipt_path"
+        ],
+        "prior_materialization_receipt_cid": _M6_FROZEN_SUCCESSOR_BINDING[
+            "migration_receipt_cid"
+        ],
+        "prior_materialization_receipt_file_sha256": (
+            _M6_FROZEN_SUCCESSOR_BINDING["migration_receipt_file_sha256"]
+        ),
+        "prior_owner_status_path": _M6_FROZEN_SUCCESSOR_BINDING[
+            "owner_status_path"
+        ],
+        "prior_owner_status_sha256": _M6_FROZEN_SUCCESSOR_BINDING[
+            "owner_status_sha256"
+        ],
+        "prior_validator_digest": _M6_FROZEN_SUCCESSOR_BINDING[
+            "validator_digest"
+        ],
+        "prior_semantic_authority_digest": _M6_FROZEN_SUCCESSOR_BINDING[
+            "semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": _M6_FROZEN_SUCCESSOR_BINDING[
+            "frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": _M6_FROZEN_SUCCESSOR_BINDING[
+            "append_surface_digest"
+        ],
+        "target_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m7/control.duckdb"
+        ),
+        "target_generation": _M7_TARGET_GENERATION,
+        "target_plan_revision": _M7_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M7_EXPECTED_PROJECTION_CID,
+        "event_suffix_length": _M7_EVENT_SUFFIX_LENGTH,
+        "bounded_control_plane_repair_paths": repair_paths,
+        "live_preflight_failure": _M6_LIVE_PREFLIGHT_FAILURE,
+        "live_preflight_failure_cid": _identity(_M6_LIVE_PREFLIGHT_FAILURE),
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    configured = config.get("source_repair_materialization")
+    inventoried = population["migration_inventory"].get(
+        "source_repair_materialization"
+    )
+    if configured != expected or inventoried != expected:
+        raise MaterializationError(
+            "M7 source-only repair authority differs across scheduler and inventory"
+        )
+    return expected
+
+
+def _assert_m7_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Prove the committed M6-to-M7 source delta is exactly authorized."""
+
+    prior_head = str(authority["prior_source_head"])
+    current_head = str(population["source_binding"]["head"])
+    if current_head == prior_head:
+        raise MaterializationError("M7 source repair has no successor commit")
+    _git(root, "merge-base", "--is-ancestor", prior_head, current_head)
+    changed: set[str] = set()
+    output = _git(
+        root,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        prior_head,
+        current_head,
+        "--",
+    )
+    for line in output.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 2 or fields[0] != "M":
+            raise MaterializationError(
+                f"M7 source delta contains a non-modification entry: {line}"
+            )
+        path = fields[1]
+        if not path or Path(path).is_absolute() or ".." in Path(path).parts:
+            raise MaterializationError("M7 source delta path is not confined")
+        changed.add(path)
+    authorized = set(authority["bounded_control_plane_repair_paths"])
+    if changed != authorized:
+        raise MaterializationError(
+            "M7 committed source delta differs from the exact repair paths: "
+            + json.dumps(
+                {
+                    "missing": sorted(authorized - changed),
+                    "unexpected": sorted(changed - authorized),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
 
 
 def _assert_offline(path: Path) -> None:
@@ -2656,6 +2917,156 @@ def _ensure_migration_receipt(
         os.close(fd)
 
 
+def _expected_m7_migration_receipt(
+    root: Path,
+    target: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _m7_source_repair_authority(population, config)
+    _assert_m7_source_delta(root, population, authority)
+    receipt = {
+        "schema": "sawm/non-authoritative-migration-receipt@4",
+        "authoritative": False,
+        "database_is_authority": True,
+        "migration_revision": _M7_MIGRATION_REVISION,
+        "program_definition_cid": population["program_definition_cid"],
+        "plan_projection_cid": _projection_at_watermark(
+            target,
+            population,
+            _M7_TARGET_EVENT_WATERMARK - 1,
+        ),
+        "migration_projection_cid": verified["projection_cid"],
+        "migration_event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "projection_cid": verified["projection_cid"],
+        "target_event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "validation_digest": validation_digest,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "plan_migration_event_id": verified["plan_migration_event_id"],
+        "migration_evidence_event_id": verified[
+            "migration_evidence_event_id"
+        ],
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "prior_control_store_sha256": authority[
+            "prior_control_store_sha256"
+        ],
+        "prior_event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_materialization_receipt_cid": authority[
+            "prior_materialization_receipt_cid"
+        ],
+        "prior_semantic_authority_digest": authority[
+            "prior_semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": authority[
+            "prior_frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": authority[
+            "prior_append_surface_digest"
+        ],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "prior_database_path": authority["prior_store_id"],
+        "database_path": str(target.relative_to(root)),
+        "worker_self_approval": False,
+    }
+    return {**receipt, "receipt_cid": _identity(receipt)}
+
+
+def _ensure_m7_migration_receipt(
+    root: Path,
+    target: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    expected = _expected_m7_migration_receipt(
+        root,
+        target,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    receipt_path = target.parent / "migration-receipt.json"
+    if receipt_path.exists():
+        observed = _load_json(receipt_path)
+        if observed != expected:
+            raise MigrationRequired("external M7 migration receipt differs")
+        unhashed = dict(observed)
+        claimed = str(unhashed.pop("receipt_cid", ""))
+        if claimed != _identity(unhashed):
+            raise MigrationRequired("external M7 receipt CID does not rehash")
+        return observed
+    lock = receipt_path.with_name(f".{receipt_path.name}.publish.lock")
+    fd = os.open(
+        lock,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        lock_stat = os.fstat(fd)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise MaterializationError("M7 receipt lock is not a regular file")
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the M7 receipt publication lock"
+                    ) from exc
+                time.sleep(0.02)
+        if receipt_path.exists():
+            observed = _load_json(receipt_path)
+            if observed != expected:
+                raise MigrationRequired("concurrent M7 migration receipt differs")
+            return observed
+        temporary = receipt_path.with_name(
+            f".{receipt_path.name}.{os.getpid()}.tmp"
+        )
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            payload = _canonical(expected) + b"\n"
+            view = memoryview(payload)
+            while view:
+                view = view[os.write(out, view) :]
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, receipt_path)
+        directory = os.open(
+            receipt_path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return expected
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)
+
+
 def _ducklake_projection(root: Path, config: Mapping[str, Any], record: Mapping[str, Any]) -> dict[str, Any]:
     policy = config.get("ducklake_history_projection") or {}
     receipt_path = root / str(policy.get("receipt_path"))
@@ -2727,12 +3138,1261 @@ def _assert_fresh_successor_operational_state(target: Path) -> None:
         )
 
 
+def _m6_receipt_population(
+    population: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project the immutable M6 source binding for receipt reconstruction."""
+
+    source_binding = dict(population["source_binding"])
+    source_binding.update(
+        {
+            "head": _M6_FROZEN_SUCCESSOR_BINDING["source_head"],
+            "tree": _M6_FROZEN_SUCCESSOR_BINDING["source_tree"],
+            "source_binding_cid": _M6_FROZEN_SUCCESSOR_BINDING[
+                "source_binding_cid"
+            ],
+        }
+    )
+    return {**dict(population), "source_binding": source_binding}
+
+
+def _expected_m6_operational_contract(
+    population: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> tuple[tuple[tuple[str, ...], ...], dict[str, Any] | None]:
+    """Return the exact validations and historical receipt admitted by M6."""
+
+    alias = str(expected["task_id"])
+    historical = tuple(
+        (str(command),) for command in expected["validation_commands"]
+    )
+    if alias == "SAWM-000":
+        return historical, None
+    if alias not in _operational_task_aliases():
+        raise MigrationRequired(f"task is outside the M6 operational set: {alias}")
+    operational, replacement_count = _operational_validation_commands(
+        historical,
+        task_alias=alias,
+    )
+    prior_status = "blocked" if alias == "SAWM-001" else "todo"
+    prior_revision = 5 if alias == "SAWM-001" else 1
+    receipt = _operational_validation_receipt(
+        _m6_receipt_population(population),
+        task_alias=alias,
+        task_cid=str(expected["task_cid"]),
+        expected_status=prior_status,
+        expected_revision=prior_revision,
+        prior_validations=historical,
+        operational_validations=operational,
+        replacement_count=replacement_count,
+    )
+    return operational, receipt
+
+
+def _verify_m6_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify immutable definitions plus M6's exact operational revisions."""
+
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    migration = population["migration_inventory"]
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        raw = source.intent.get_task(str(expected["task_cid"]))
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_validations, expected_receipt = _expected_m6_operational_contract(
+            population,
+            expected,
+        )
+        expected_identity = {
+            "task_cid": str(expected["task_cid"]),
+            "task_alias": alias,
+            "repository_tree_id": migration["definition_source_binding_cid"],
+        }
+        expected_outputs = [
+            {
+                "ordinal": index,
+                "path": str(item["effect_id"]),
+                "effect": dict(item),
+            }
+            for index, item in enumerate(expected["outputs"])
+        ]
+        expected_acceptance = [
+            {
+                "ordinal": index,
+                "criterion": str(item["criterion"]),
+                "evidence_policy": dict(item),
+            }
+            for index, item in enumerate(expected["acceptance_criteria"])
+        ]
+        expected_validation_rows = [
+            {"ordinal": index, "argv": list(argv), "policy": {}}
+            for index, argv in enumerate(expected_validations)
+        ]
+        if (
+            observed is None
+            or raw is None
+            or observed.task_cid != expected["task_cid"]
+            or observed.task_alias != alias
+            or observed.goal_cid != expected["goal_cid"]
+            or observed.plan_cid != expected["plan_cid"]
+            or observed.objective_id != ""
+            or int(observed.ordinal) != int(expected["ordinal"])
+            or observed.priority != expected["priority"]
+            or raw["identity"] != expected_identity
+            or observed.body.get("definition_cid") != expected["definition_cid"]
+            or observed.body.get("definition") != expected["definition"]
+            or _identity(observed.body.get("definition"))
+            != expected["definition_cid"]
+            or sorted(observed.dependencies) != sorted(expected["depends_on"])
+            or [dict(item) for item in observed.outputs] != expected_outputs
+            or [dict(item) for item in observed.acceptance]
+            != expected_acceptance
+            or [dict(item) for item in observed.validations]
+            != expected_validation_rows
+        ):
+            raise MigrationRequired(f"frozen M6 task contract differs: {alias}")
+        observed_receipt = observed.body.get("operational_validation_revision")
+        if alias == "SAWM-000":
+            if observed_receipt is not None:
+                raise MigrationRequired(
+                    "frozen M6 operator task acquired an operational receipt"
+                )
+        else:
+            if observed_receipt != expected_receipt:
+                raise MigrationRequired(
+                    f"frozen M6 operational receipt differs: {alias}"
+                )
+            receipt_cids[alias] = str(expected_receipt["receipt_cid"])
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    expected_statuses = {
+        alias: "completed" if alias == "SAWM-000" else "todo"
+        for alias in migration["prior_task_cids"]
+    }
+    expected_revisions = {
+        alias: 2 if alias == "SAWM-000" else 7 if alias == "SAWM-001" else 2
+        for alias in migration["prior_task_cids"]
+    }
+    if statuses != expected_statuses or revisions != expected_revisions:
+        raise MigrationRequired("frozen M6 task status/revision projection differs")
+    return statuses, revisions, receipt_cids
+
+
+def _verify_frozen_m6_authority(
+    root: Path,
+    config: Mapping[str, Any],
+    population: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify the stopped M6 bytes before copying them into M7."""
+
+    authority = _m7_source_repair_authority(population, config)
+    _assert_m7_source_delta(root, population, authority)
+    prior = (root / str(authority["prior_store_id"])).resolve()
+    target = (root / str(authority["target_store_id"])).resolve()
+    if (
+        not prior.is_relative_to(root)
+        or not target.is_relative_to(root)
+        or prior == target
+        or not prior.is_file()
+    ):
+        raise MigrationRequired("M7 prior/target authority paths are not confined")
+    _assert_offline(prior)
+    initial_hash = _store_sha256(prior)
+    if (
+        initial_hash != authority["prior_control_store_sha256"]
+        or prior.stat().st_size != int(authority["prior_control_store_size"])
+    ):
+        raise MigrationRequired("frozen M6 control-store bytes differ")
+    receipt_path = root / str(authority["prior_materialization_receipt_path"])
+    if (
+        _store_sha256(receipt_path)
+        != authority["prior_materialization_receipt_file_sha256"]
+    ):
+        raise MigrationRequired("frozen M6 migration receipt bytes differ")
+    _verify_receipt_anchor(
+        receipt_path,
+        str(authority["prior_materialization_receipt_cid"]),
+    )
+    status_path = root / str(authority["prior_owner_status_path"])
+    if _store_sha256(status_path) != authority["prior_owner_status_sha256"]:
+        raise MigrationRequired("frozen M6 owner status bytes differ")
+    owner_status = _load_json(status_path)
+    identity = owner_status.get("identity") or {}
+    if (
+        owner_status.get("lifecycle") != "stopped"
+        or identity.get("status") != "stopped"
+        or identity.get("server_id") != authority["prior_server_id"]
+        or identity.get("process_birth_id")
+        != authority["prior_process_birth_id"]
+        or int(identity.get("generation") or 0)
+        != int(authority["prior_generation"])
+        or identity.get("database_uuid") != authority["prior_database_uuid"]
+    ):
+        raise MigrationRequired("frozen M6 owner is not exactly stopped")
+    marker = prior.with_name(f".{prior.name}.state-owner.json")
+    if marker.exists():
+        raise MigrationRequired("frozen M6 still has a live owner marker")
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        verify_datasets_authoritative_operational_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m6-replay-", dir="/tmp") as temp_dir:
+        replay_path = Path(temp_dir) / "control.duckdb"
+        shutil.copyfile(prior, replay_path)
+        if _store_sha256(replay_path) != initial_hash:
+            raise MigrationRequired("frozen M6 verification copy differs")
+        schema = verify_datasets_authoritative_operational_schema(replay_path)
+        if schema.get("valid") is not True:
+            raise MigrationRequired("frozen M6 operational schema does not verify")
+        semantic_authority_digest = _semantic_authority_digest(replay_path)
+        if (
+            semantic_authority_digest
+            != authority["prior_semantic_authority_digest"]
+        ):
+            raise MigrationRequired("frozen M6 semantic authority differs")
+        frozen_base_authority_digest = _frozen_base_authority_digest(
+            replay_path
+        )
+        if (
+            frozen_base_authority_digest
+            != authority["prior_frozen_base_authority_digest"]
+        ):
+            raise MigrationRequired("frozen M6 base authority differs")
+        append_surface_digest = _append_surface_digest(replay_path)
+        if append_surface_digest != authority["prior_append_surface_digest"]:
+            raise MigrationRequired("frozen M6 append surfaces differ")
+        source = DatabaseTaskSource(
+            replay_path,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+        )
+        try:
+            snap = source.snapshot()
+            statuses, revisions, receipt_cids = _verify_m6_task_projection(
+                source,
+                population,
+            )
+            plan = source.plans.get(str(population["plan_root_cid"]))
+            if (
+                snap.task_count != 45
+                or snap.goal_count != 29
+                or int(snap.event_cursor)
+                != int(authority["prior_event_watermark"])
+                or str(snap.projection_cid) != authority["prior_projection_cid"]
+                or plan is None
+                or int(plan.get("revision") or 0)
+                != int(authority["prior_plan_revision"])
+            ):
+                raise MigrationRequired("frozen M6 snapshot identity differs")
+            with source.intent._connection(write=False) as connection:
+                prefix, count = _event_prefix_digest(
+                    connection,
+                    int(authority["prior_event_watermark"]),
+                )
+                owner = connection.execute(
+                    "SELECT server_id, process_birth_id, status "
+                    "FROM state_servers WHERE generation = ?",
+                    [int(authority["prior_generation"])],
+                ).fetchall()
+                completion = connection.execute(
+                    "SELECT receipt_cid, task_cid FROM completion_receipts "
+                    "ORDER BY receipt_cid"
+                ).fetchall()
+                if (
+                    prefix != authority["prior_event_prefix_sha256"]
+                    or count != int(authority["prior_event_watermark"])
+                    or owner
+                    != [
+                        (
+                            authority["prior_server_id"],
+                            authority["prior_process_birth_id"],
+                            "stopped",
+                        )
+                    ]
+                    or completion
+                    != [
+                        (
+                            population["migration_inventory"][
+                                "prior_completion_receipt_cid"
+                            ],
+                            population["migration_inventory"][
+                                "prior_task_cids"
+                            ]["SAWM-000"],
+                        )
+                    ]
+                ):
+                    raise MigrationRequired(
+                        "frozen M6 event/owner/completion evidence differs"
+                    )
+            if not source.projection_matches_events():
+                raise MigrationRequired("frozen M6 replay projection differs")
+        finally:
+            source.close()
+    if _store_sha256(prior) != initial_hash:
+        raise MaterializationError("frozen M6 verification changed authority bytes")
+    return {
+        "valid": True,
+        "database_path": str(prior),
+        "database_sha256": initial_hash,
+        "event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "event_watermark": authority["prior_event_watermark"],
+        "projection_cid": authority["prior_projection_cid"],
+        "statuses": statuses,
+        "revisions": revisions,
+        "operational_validation_receipt_cids": receipt_cids,
+        "owner_status_sha256": authority["prior_owner_status_sha256"],
+        "semantic_authority_digest": semantic_authority_digest,
+        "frozen_base_authority_digest": frozen_base_authority_digest,
+        "append_surface_digest": append_surface_digest,
+    }
+
+
+def _m7_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _m7_source_repair_authority(population, config)
+    repair_paths = authority["bounded_control_plane_repair_paths"]
+    return {
+        "schema": "sawm/operator-control-plane-source-migration@4",
+        "migration_revision": _M7_MIGRATION_REVISION,
+        "board_namespace": NAMESPACE,
+        "plan_revision": REVISION,
+        "program_definition_cid": population["program_definition_cid"],
+        "plan_root_cid": population["plan_root_cid"],
+        "operator_task_cid": population["migration_inventory"][
+            "prior_task_cids"
+        ]["SAWM-000"],
+        "prior_store_id": authority["prior_store_id"],
+        "target_store_id": authority["target_store_id"],
+        "prior_control_store_sha256": authority[
+            "prior_control_store_sha256"
+        ],
+        "prior_event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "prior_event_watermark": authority["prior_event_watermark"],
+        "prior_projection_cid": authority["prior_projection_cid"],
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_head": authority["prior_source_head"],
+        "prior_tree": authority["prior_source_tree"],
+        "prior_plan_revision": authority["prior_plan_revision"],
+        "target_plan_revision": authority["target_plan_revision"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "current_head": population["source_binding"]["head"],
+        "current_tree": population["source_binding"]["tree"],
+        "bounded_control_plane_repair_paths": list(repair_paths),
+        "bounded_control_plane_repair_sha256": {
+            path: population["source_binding"]["control_sha256"][path]
+            for path in repair_paths
+        },
+        "live_preflight_failure": authority["live_preflight_failure"],
+        "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "prior_materialization_receipt_cid": authority[
+            "prior_materialization_receipt_cid"
+        ],
+        "prior_materialization_receipt_file_sha256": authority[
+            "prior_materialization_receipt_file_sha256"
+        ],
+        "prior_owner_status_sha256": authority["prior_owner_status_sha256"],
+        "prior_semantic_authority_digest": authority[
+            "prior_semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": authority[
+            "prior_frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": authority[
+            "prior_append_surface_digest"
+        ],
+        "validation_runtime": dict(config["validation_runtime"]),
+        "validator_digest": validation_digest,
+        "supersession_reason": _M7_SUPERSESSION_REASON,
+        "supersession_mode": _M7_SUPERSESSION_MODE,
+        "prior_authority_preserved": True,
+        "accepted_task_definitions_rewritten": False,
+        "accepted_goal_definitions_rewritten": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "operator_completion_replayed": False,
+        "worker_self_approval": False,
+    }
+
+
+def _m7_migration_plan_delta(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _m7_source_repair_authority(population, config)
+    return {
+        "kind": _M7_SUPERSESSION_REASON,
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "prior_migration_receipt_cids": [
+            *[
+                entry["migration_receipt_cid"]
+                for entry in population["migration_inventory"][
+                    "migration_history"
+                ]
+            ],
+            authority["prior_materialization_receipt_cid"],
+        ],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "live_preflight_failure_cid": authority["live_preflight_failure_cid"],
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _verify_m7_store_copy(
+    path: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify the two-event M7 source migration and unchanged task authority."""
+
+    _assert_offline(path)
+    authority = _m7_source_repair_authority(population, config)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        verify_datasets_authoritative_operational_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    schema = verify_datasets_authoritative_operational_schema(path)
+    if schema.get("valid") is not True:
+        raise MigrationRequired("M7 operational schema does not verify")
+    frozen_base_authority_digest = _frozen_base_authority_digest(path)
+    if (
+        frozen_base_authority_digest
+        != authority["prior_frozen_base_authority_digest"]
+    ):
+        raise MigrationRequired("M7 changed a frozen base authority table")
+    source = DatabaseTaskSource(
+        path,
+        install_schema=False,
+        repository_tree_id=str(population["repository_tree_id"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+    )
+    try:
+        snap = source.snapshot()
+        statuses, revisions, receipt_cids = _verify_m6_task_projection(
+            source,
+            population,
+        )
+        if (
+            snap.task_count != 45
+            or snap.goal_count != 29
+            or snap.plan_root_cid != population["plan_root_cid"]
+            or int(snap.event_cursor) != _M7_TARGET_EVENT_WATERMARK
+            or str(snap.projection_cid) != _M7_EXPECTED_PROJECTION_CID
+        ):
+            raise MigrationRequired("M7 snapshot identity differs")
+        for expected in population["objectives"]:
+            goal = source.get_goal(str(expected["goal_cid"]))
+            if (
+                goal is None
+                or str(goal.get("goal_alias")) != expected["goal_id"]
+                or (goal.get("body") or {}).get("definition_cid")
+                != expected["definition_cid"]
+                or (goal.get("body") or {}).get("definition")
+                != expected["definition"]
+            ):
+                raise MigrationRequired(
+                    f"M7 goal definition differs: {expected['goal_id']}"
+                )
+        plan = source.plans.get(str(population["plan_root_cid"]))
+        if plan is None or int(plan.get("revision") or 0) != _M7_TARGET_PLAN_REVISION:
+            raise MigrationRequired("M7 plan revision is missing")
+
+        expected_migration_body = _m7_migration_body(
+            population,
+            config,
+            validation_digest,
+        )
+        expected_migration_digest = _identity(expected_migration_body)
+        plan_delta = _m7_migration_plan_delta(population, config)
+        migration = population["migration_inventory"]
+        with source.intent._connection(write=False) as connection:
+            prefix, prefix_count = _event_prefix_digest(
+                connection,
+                int(authority["prior_event_watermark"]),
+            )
+            if (
+                prefix != authority["prior_event_prefix_sha256"]
+                or prefix_count != int(authority["prior_event_watermark"])
+            ):
+                raise MigrationRequired("M7 changed the frozen M6 event prefix")
+            if int(_table_count(connection, "task_revisions")) != 49:
+                raise MigrationRequired("M7 changed the frozen task revision set")
+            completion = [
+                (str(row[0]), str(row[1]))
+                for row in connection.execute(
+                    "SELECT receipt_cid, task_cid FROM completion_receipts "
+                    "ORDER BY receipt_cid"
+                ).fetchall()
+            ]
+            if completion != [
+                (
+                    migration["prior_completion_receipt_cid"],
+                    migration["prior_task_cids"]["SAWM-000"],
+                )
+            ]:
+                raise MigrationRequired("M7 changed completion evidence")
+            evidence_rows = connection.execute(
+                "SELECT evidence_id, parent_evidence_id, task_cid, "
+                "evidence_kind, digest, created_at, body_json "
+                "FROM evidence_nodes WHERE task_cid = ? AND evidence_kind = ? "
+                "ORDER BY created_at",
+                [
+                    migration["prior_task_cids"]["SAWM-000"],
+                    "operator_control_plane_source_migration",
+                ],
+            ).fetchall()
+            current = []
+            for row in evidence_rows:
+                body = json.loads(str(row[6]))
+                if body.get("migration_revision") == _M7_MIGRATION_REVISION:
+                    current.append(
+                        {
+                            "evidence_id": str(row[0]),
+                            "parent_evidence_id": str(row[1]),
+                            "task_cid": str(row[2]),
+                            "evidence_kind": str(row[3]),
+                            "digest": str(row[4]),
+                            "body": body,
+                            "created_at": str(row[5]),
+                        }
+                    )
+            if len(current) != 1:
+                raise MigrationRequired("M7 source migration evidence is ambiguous")
+            evidence_row = current[0]
+            if (
+                evidence_row["body"] != expected_migration_body
+                or evidence_row["digest"] != expected_migration_digest
+                or evidence_row["parent_evidence_id"]
+                or evidence_row["task_cid"]
+                != migration["prior_task_cids"]["SAWM-000"]
+                or evidence_row["evidence_kind"]
+                != "operator_control_plane_source_migration"
+            ):
+                raise MigrationRequired("M7 source migration evidence differs")
+            expected_evidence_id = content_identity(
+                {
+                    "task_cid": migration["prior_task_cids"]["SAWM-000"],
+                    "evidence_kind": "operator_control_plane_source_migration",
+                    "digest": expected_migration_digest,
+                    "body": expected_migration_body,
+                }
+            )
+            if evidence_row["evidence_id"] != expected_evidence_id:
+                raise MigrationRequired("M7 migration evidence identity differs")
+            append_counts = {
+                table: int(_table_count(connection, table))
+                for table in (
+                    "plans",
+                    "plan_revisions",
+                    "evidence_nodes",
+                    "domain_events",
+                )
+            }
+            if append_counts != {
+                "plans": 1,
+                "plan_revisions": 8,
+                "evidence_nodes": 9,
+                "domain_events": 170,
+            }:
+                raise MigrationRequired("M7 append-surface counts differ")
+            if (
+                _m7_prior_append_surface_digest_on(
+                    connection,
+                    expected_evidence_id=expected_evidence_id,
+                )
+                != authority["prior_append_surface_digest"]
+            ):
+                raise MigrationRequired("M7 changed an append-surface prefix")
+
+            plan_rows = connection.execute(
+                "SELECT revision, body_json, recorded_at FROM plan_revisions "
+                "WHERE plan_cid = ? AND revision IN (?, ?) ORDER BY revision",
+                [
+                    population["plan_root_cid"],
+                    authority["prior_plan_revision"],
+                    authority["target_plan_revision"],
+                ],
+            ).fetchall()
+            if [int(row[0]) for row in plan_rows] != [7, 8]:
+                raise MigrationRequired("M7 plan revision pair differs")
+            prior_plan_body = json.loads(str(plan_rows[0][1]))
+            expected_plan_body = {
+                **prior_plan_body,
+                "current_source_binding_cid": population["source_binding"][
+                    "source_binding_cid"
+                ],
+                "source_migration_revision": _M7_MIGRATION_REVISION,
+                "source_migration_digest": expected_migration_digest,
+                "supersession_mode": _M7_SUPERSESSION_MODE,
+                "last_delta": plan_delta,
+            }
+            observed_plan_body = json.loads(str(plan_rows[1][1]))
+            plan_recorded_at = str(plan_rows[1][2])
+            if (
+                observed_plan_body != expected_plan_body
+                or plan.get("body") != expected_plan_body
+                or str(plan.get("updated_at") or "") != plan_recorded_at
+            ):
+                raise MigrationRequired("M7 plan body differs")
+
+            suffix = connection.execute(
+                "SELECT event_id, stream_id, sequence, global_sequence, "
+                "event_type, task_cid, attempt_id, session_id, recorded_at, "
+                "body_json FROM domain_events WHERE global_sequence IN (169, 170) "
+                "ORDER BY global_sequence"
+            ).fetchall()
+            if len(suffix) != _M7_EVENT_SUFFIX_LENGTH:
+                raise MigrationRequired("M7 event suffix length differs")
+            events: list[dict[str, Any]] = []
+            for row in suffix:
+                event = {
+                    "event_id": str(row[0]),
+                    "stream_id": str(row[1]),
+                    "sequence": int(row[2]),
+                    "global_sequence": int(row[3]),
+                    "event_type": str(row[4]),
+                    "task_cid": str(row[5]),
+                    "attempt_id": str(row[6]),
+                    "session_id": str(row[7]),
+                    "recorded_at": str(row[8]),
+                    "body": json.loads(str(row[9])),
+                }
+                envelope = event["body"]
+                if (
+                    content_identity(
+                        {
+                            "stream_id": event["stream_id"],
+                            "sequence": event["sequence"],
+                            "global_sequence": event["global_sequence"],
+                            "event_type": event["event_type"],
+                            "body": envelope,
+                        }
+                    )
+                    != event["event_id"]
+                    or event["stream_id"] != "stream:intent"
+                    or event["session_id"] != "session:intent"
+                    or event["attempt_id"]
+                    or event["sequence"] != event["global_sequence"]
+                    or envelope.get("schema")
+                    != "ipfs_accelerate_py/agent-supervisor/intent-event@1"
+                    or envelope.get("event_type") != event["event_type"]
+                    or envelope.get("recorded_at") != event["recorded_at"]
+                    or envelope.get("owner_id") != "sawm-r2-source-migrator"
+                ):
+                    raise MigrationRequired("M7 event identity differs")
+                events.append(event)
+            plan_event, evidence_event = events
+            expected_plan_inner = {
+                "plan_cid": population["plan_root_cid"],
+                "goal_cid": migration["prior_goal_cids"][ROOT_GOAL],
+                "plan_alias": REVISION,
+                "status": "active",
+                "revision": _M7_TARGET_PLAN_REVISION,
+                "body": expected_plan_body,
+                "delta": plan_delta,
+                "recorded_at": plan_recorded_at,
+            }
+            if (
+                plan_event["event_type"] != "intent.plan_revision_appended"
+                or plan_event["task_cid"]
+                or plan_event["body"].get("subject_id")
+                != population["plan_root_cid"]
+                or plan_event["body"].get("body") != expected_plan_inner
+            ):
+                raise MigrationRequired("M7 plan event differs")
+            expected_evidence_inner = {
+                "evidence_id": evidence_row["evidence_id"],
+                "parent_evidence_id": "",
+                "task_cid": migration["prior_task_cids"]["SAWM-000"],
+                "evidence_kind": "operator_control_plane_source_migration",
+                "digest": expected_migration_digest,
+                "body": expected_migration_body,
+                "created_at": evidence_row["created_at"],
+                "revision": 0,
+            }
+            if (
+                evidence_event["event_type"] != "intent.evidence_recorded"
+                or evidence_event["task_cid"]
+                != migration["prior_task_cids"]["SAWM-000"]
+                or evidence_event["body"].get("subject_id")
+                != evidence_row["evidence_id"]
+                or evidence_event["body"].get("body")
+                != expected_evidence_inner
+            ):
+                raise MigrationRequired("M7 evidence event differs")
+    finally:
+        source.close()
+
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m7-replay-", dir="/tmp") as temp_dir:
+        replay_path = Path(temp_dir) / "control.duckdb"
+        shutil.copyfile(path, replay_path)
+        replay = DatabaseTaskSource(
+            replay_path,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+        )
+        try:
+            if not replay.projection_matches_events():
+                raise MigrationRequired("M7 replay projection differs")
+        finally:
+            replay.close()
+    return {
+        "valid": True,
+        "task_count": 45,
+        "goal_count": 29,
+        "projection_cid": _M7_EXPECTED_PROJECTION_CID,
+        "event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "projection_matches_events": True,
+        "statuses": statuses,
+        "revisions": revisions,
+        "operational_validation_receipt_cids": receipt_cids,
+        "migration_digest": expected_migration_digest,
+        "migration_evidence_id": evidence_row["evidence_id"],
+        "plan_migration_event_id": plan_event["event_id"],
+        "migration_evidence_event_id": evidence_event["event_id"],
+        "migration_event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "target_event_watermark": _M7_TARGET_EVENT_WATERMARK,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "frozen_base_authority_digest": frozen_base_authority_digest,
+    }
+
+
+def _verify_m7_store(
+    path: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify M7 only through an exact disposable copy of accepted bytes."""
+
+    _assert_offline(path)
+    initial_hash = _store_sha256(path)
+    with tempfile.TemporaryDirectory(
+        prefix="sawm-r2-m7-verify-",
+        dir="/tmp",
+    ) as temp_dir:
+        verification_copy = Path(temp_dir) / "control.duckdb"
+        shutil.copyfile(path, verification_copy)
+        if _store_sha256(verification_copy) != initial_hash:
+            raise MigrationRequired("M7 verification copy differs")
+        report = _verify_m7_store_copy(
+            verification_copy,
+            population,
+            config,
+            validation_digest,
+        )
+    if _store_sha256(path) != initial_hash:
+        raise MaterializationError("M7 verification changed accepted bytes")
+    return report
+
+
+def _authority_table_digest_on(
+    connection: Any,
+    tables: Sequence[str],
+) -> str:
+    """Hash complete rows for a closed, ordered base-table set."""
+
+    import datetime
+
+    def jsonable(value: Any) -> Any:
+        if isinstance(value, bytes):
+            return {"bytes_hex": value.hex()}
+        if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
+            return {"iso8601": value.isoformat()}
+        return value
+
+    projection: dict[str, Any] = {}
+    for table in tables:
+        columns = connection.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'main' AND table_name = ? "
+            "ORDER BY ordinal_position",
+            [table],
+        ).fetchall()
+        if not columns:
+            raise MigrationRequired(
+                f"source-only authority table is missing: {table}"
+            )
+        order = ", ".join(str(index) for index in range(1, len(columns) + 1))
+        rows = connection.execute(
+            f'SELECT * FROM "{table}" ORDER BY {order}'
+        ).fetchall()
+        projection[table] = [
+            [jsonable(row[index]) for index in range(len(columns))]
+            for row in rows
+        ]
+    return _identity(projection)
+
+
+def _semantic_authority_digest_on(connection: Any) -> str:
+    """Hash semantic authority rows on a local or live read-only connection."""
+
+    return _authority_table_digest_on(
+        connection,
+        (
+            "objectives",
+            "objective_revisions",
+            "goals",
+            "goal_edges",
+            "tasks",
+            "task_revisions",
+            "task_dependencies",
+            "task_outputs",
+            "task_acceptance",
+            "task_validations",
+            "validation_results",
+            "completion_receipts",
+        ),
+    )
+
+
+def _frozen_base_authority_digest_on(connection: Any) -> str:
+    """Hash every base table except the four exact M7 append surfaces."""
+
+    allowed_append_tables = {
+        "domain_events",
+        "evidence_nodes",
+        "plan_revisions",
+        "plans",
+    }
+    tables = tuple(
+        str(row[0])
+        for row in connection.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        ).fetchall()
+        if str(row[0]) not in allowed_append_tables
+    )
+    if not tables or allowed_append_tables.intersection(tables):
+        raise MigrationRequired("M7 frozen base-table inventory is invalid")
+    return _authority_table_digest_on(connection, tables)
+
+
+def _m7_prior_append_surface_digest_on(
+    connection: Any,
+    *,
+    expected_evidence_id: str,
+) -> str:
+    """Reconstruct and hash the exact M6 prefix of M7's append surfaces."""
+
+    plan_rows = [
+        tuple(row[index] for index in range(8))
+        for row in connection.execute(
+            "SELECT * FROM plans ORDER BY 1, 2, 3, 4, 5, 6, 7, 8"
+        ).fetchall()
+    ]
+    revision_rows = [
+        tuple(row[index] for index in range(4))
+        for row in connection.execute(
+            "SELECT * FROM plan_revisions WHERE revision <= 7 "
+            "ORDER BY 1, 2, 3, 4"
+        ).fetchall()
+    ]
+    revision_seven = [row for row in revision_rows if int(row[1]) == 7]
+    if len(plan_rows) != 1 or len(revision_rows) != 7 or len(revision_seven) != 1:
+        raise MigrationRequired("M7 cannot reconstruct the M6 plan prefix")
+    current_plan = plan_rows[0]
+    prior_revision = revision_seven[0]
+    prior_plan = (
+        current_plan[0],
+        current_plan[1],
+        current_plan[2],
+        current_plan[3],
+        current_plan[4],
+        prior_revision[3],
+        7,
+        prior_revision[2],
+    )
+    evidence_rows = [
+        tuple(row[index] for index in range(7))
+        for row in connection.execute(
+            "SELECT * FROM evidence_nodes ORDER BY 1, 2, 3, 4, 5, 6, 7"
+        ).fetchall()
+        if str(row[0]) != expected_evidence_id
+    ]
+    event_rows = [
+        tuple(row[index] for index in range(10))
+        for row in connection.execute(
+            "SELECT * FROM domain_events WHERE global_sequence <= 168 "
+            "ORDER BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
+        ).fetchall()
+    ]
+    if len(evidence_rows) != 8 or len(event_rows) != 168:
+        raise MigrationRequired("M7 append-surface prefix counts differ")
+    projection = {
+        "plans": [list(prior_plan)],
+        "plan_revisions": [list(row) for row in revision_rows],
+        "evidence_nodes": [list(row) for row in evidence_rows],
+        "domain_events": [list(row) for row in event_rows],
+    }
+    return _identity(projection)
+
+
+def _semantic_authority_digest(path: Path) -> str:
+    """Hash rows that an M7 source-only migration is forbidden to change."""
+
+    import duckdb
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        return _semantic_authority_digest_on(connection)
+    finally:
+        connection.close()
+
+
+def _frozen_base_authority_digest(path: Path) -> str:
+    """Hash every M7-frozen base table through a read-only local handle."""
+
+    import duckdb
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        return _frozen_base_authority_digest_on(connection)
+    finally:
+        connection.close()
+
+
+def _append_surface_digest(path: Path) -> str:
+    """Hash the exact four M6 surfaces authorized for the M7 append."""
+
+    import duckdb
+
+    connection = duckdb.connect(str(path), read_only=True)
+    try:
+        return _authority_table_digest_on(
+            connection,
+            ("plans", "plan_revisions", "evidence_nodes", "domain_events"),
+        )
+    finally:
+        connection.close()
+
+
+def _m7_validation_digest(root: Path, population: Mapping[str, Any]) -> str:
+    dependency = _validator_report(
+        root,
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+    )
+    board = _validator_report(
+        root,
+        "scripts/validate_semantic_addressed_world_model_board.py",
+    )
+    return _identity(
+        {
+            "dependency": dependency,
+            "board": board,
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+
+
+def check_materialized(
+    repo_root: Path | str = REPO_ROOT,
+    config_path: Path | str = CONFIG_PATH,
+) -> dict[str, Any]:
+    """Verify the current source-only successor and its receipt."""
+
+    root = Path(repo_root).resolve()
+    config_file = Path(config_path)
+    if not config_file.is_absolute():
+        config_file = root / config_file
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m7_source_repair_authority(population, config)
+    validation_digest = _m7_validation_digest(root, population)
+    m5 = _verify_prior_store(root, config, population)
+    m6 = _verify_frozen_m6_authority(root, config, population)
+    target = (root / str(authority["target_store_id"])).resolve()
+    if not target.is_file():
+        raise MigrationRequired("M7 materialized authority is missing")
+    verified = _verify_m7_store(
+        target,
+        population,
+        config,
+        validation_digest,
+    )
+    receipt = _ensure_m7_migration_receipt(
+        root,
+        target,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked",
+        "database_path": str(target),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "m5_authority": m5,
+        "prior_authority": m6,
+        "receipt": receipt,
+        **verified,
+    }
+
+
+def _materialize_m7(
+    root: Path,
+    config_file: Path,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m7_source_repair_authority(population, config)
+    target = (root / str(config["database_program"]["store_id"])).resolve()
+    if (
+        str(config["database_program"]["store_id"])
+        != authority["target_store_id"]
+        or int(config["database_program"].get("store_generation") or 0)
+        != _M7_TARGET_GENERATION
+        or str(config["quack_owner"].get("database_path") or "")
+        != authority["target_store_id"]
+        or str(config["quack_owner"].get("store_id") or "")
+        != authority["target_store_id"]
+    ):
+        raise MaterializationError("scheduler M7 target/generation binding differs")
+    if not target.is_relative_to(root):
+        raise MaterializationError("M7 target escapes the repository root")
+    validation_digest = _m7_validation_digest(root, population)
+    m5 = _verify_prior_store(root, config, population)
+    m6 = _verify_frozen_m6_authority(root, config, population)
+    prior_path = Path(m6["database_path"])
+    if target.exists():
+        verified = _verify_m7_store(
+            target,
+            population,
+            config,
+            validation_digest,
+        )
+        receipt = _ensure_m7_migration_receipt(
+            root,
+            target,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+        return {
+            "schema": SCHEMA,
+            "valid": True,
+            "action": "verified_existing_noop",
+            "migration_required": False,
+            "database_path": str(target),
+            "program_definition_cid": population["program_definition_cid"],
+            "validation_digest": validation_digest,
+            "m5_authority": m5,
+            "prior_authority": m6,
+            "receipt": receipt,
+            **verified,
+        }
+
+    _assert_fresh_successor_operational_state(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    preserved_stages = sorted(target.parent.glob(target.name + ".installing.*"))
+    if preserved_stages:
+        raise MaterializationError(
+            "preserved M7 staging attempt requires inspection: "
+            + ", ".join(str(item) for item in preserved_stages)
+        )
+    stage = target.with_name(
+        target.name
+        + f".installing.{os.getpid()}.{validation_digest[-12:]}"
+    )
+    shutil.copy2(prior_path, stage)
+    if _store_sha256(stage) != authority["prior_control_store_sha256"]:
+        raise MaterializationError("staged M6 copy differs before M7 migration")
+    before_semantic_authority = _semantic_authority_digest(stage)
+    before_frozen_base_authority = _frozen_base_authority_digest(stage)
+    if (
+        before_semantic_authority
+        != authority["prior_semantic_authority_digest"]
+        or before_frozen_base_authority
+        != authority["prior_frozen_base_authority_digest"]
+    ):
+        raise MaterializationError("staged M6 authority digest differs")
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    source = DatabaseTaskSource(
+        stage,
+        install_schema=False,
+        repository_tree_id=str(population["repository_tree_id"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+        owner_id="sawm-r2-source-migrator",
+    )
+    try:
+        operator = source.get_task("SAWM-000")
+        if operator is None or operator.status != "completed" or operator.revision != 2:
+            raise MaterializationError("M7 preserved operator completion differs")
+        migration_body = _m7_migration_body(
+            population,
+            config,
+            validation_digest,
+        )
+        migration_digest = _identity(migration_body)
+        plan_delta = _m7_migration_plan_delta(population, config)
+        plan_receipt = source.plans.append_revision(
+            plan_cid=str(population["plan_root_cid"]),
+            expected_revision=int(authority["prior_plan_revision"]),
+            body={
+                "current_source_binding_cid": population["source_binding"][
+                    "source_binding_cid"
+                ],
+                "source_migration_revision": _M7_MIGRATION_REVISION,
+                "source_migration_digest": migration_digest,
+                "supersession_mode": _M7_SUPERSESSION_MODE,
+            },
+            delta=plan_delta,
+        )
+        evidence = source.record_evidence(
+            task_cid=operator.task_cid,
+            evidence_kind="operator_control_plane_source_migration",
+            digest=migration_digest,
+            body=migration_body,
+        )
+        unchanged = source.get_task(operator.task_cid)
+        if unchanged is None or unchanged.status != "completed" or unchanged.revision != 2:
+            raise MaterializationError("M7 migration changed operator task state")
+    finally:
+        source.close()
+    after_semantic_authority = _semantic_authority_digest(stage)
+    after_frozen_base_authority = _frozen_base_authority_digest(stage)
+    if (
+        after_semantic_authority != before_semantic_authority
+        or after_frozen_base_authority != before_frozen_base_authority
+    ):
+        raise MaterializationError(
+            "M7 source-only migration changed frozen authority"
+        )
+    verified = _verify_m7_store(
+        stage,
+        population,
+        config,
+        validation_digest,
+    )
+    if (
+        int(verified["event_watermark"]) != _M7_TARGET_EVENT_WATERMARK
+        or verified["projection_cid"] != _M7_EXPECTED_PROJECTION_CID
+    ):
+        raise MaterializationError("M7 emitted an unexpected event/projection suffix")
+    if _store_sha256(prior_path) != authority["prior_control_store_sha256"]:
+        raise MaterializationError("M7 migration changed frozen M6 authority")
+
+    # Close the source-tree TOCTOU window before making the staged authority
+    # visible.  The staged database is intentionally retained for inspection
+    # if this check fails.
+    _assert_committed_clean_source(root, population)
+    _assert_m7_source_delta(root, population, authority)
+    with stage.open("rb") as staged_file:
+        os.fsync(staged_file.fileno())
+
+    lock = target.with_name(target.name + ".publish.lock")
+    fd = None
+    directory_fd = None
+    try:
+        fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        directory_fd = os.open(target.parent, os.O_RDONLY)
+        if target.exists():
+            raise MigrationRequired(
+                "another writer published M7; inspect it append-only"
+            )
+        os.link(stage, target)
+        os.fsync(directory_fd)
+        os.unlink(stage)
+        os.fsync(directory_fd)
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+        if fd is not None:
+            os.close(fd)
+            lock.unlink(missing_ok=True)
+    receipt = _ensure_m7_migration_receipt(
+        root,
+        target,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    history = _ducklake_projection(
+        root,
+        config,
+        {
+            "program_definition_cid": population["program_definition_cid"],
+            "projection_cid": verified["projection_cid"],
+        },
+    )
+    report = {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "migrated_append_only",
+        "migration_required": False,
+        "database_path": str(target),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "m5_authority": m5,
+        "prior_authority": m6,
+        "plan_migration_event_id": plan_receipt.event_id,
+        "migration_evidence_event_id": evidence.event_id,
+        "migration_digest": migration_digest,
+        "semantic_authority_digest_before": before_semantic_authority,
+        "semantic_authority_digest_after": after_semantic_authority,
+        "frozen_base_authority_digest_before": before_frozen_base_authority,
+        "frozen_base_authority_digest_after": after_frozen_base_authority,
+        "ducklake_history": history,
+        "receipt": receipt,
+        **verified,
+    }
+    return report
+
+
 def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CONFIG_PATH) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     config_file = Path(config_path)
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if isinstance(config.get("source_repair_materialization"), Mapping):
+        return _materialize_m7(root, config_file, config)
     population = build_population(root)
     _assert_committed_clean_source(root, population)
     migration = population["migration_inventory"]
@@ -2995,6 +4655,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.action == "check":
             root = Path(args.repo_root).resolve()
             config = _load_json(args.config if args.config.is_absolute() else root / args.config)
+            if isinstance(config.get("source_repair_materialization"), Mapping):
+                report = check_materialized(root, args.config)
+                print(json.dumps(report, indent=2, sort_keys=True))
+                return 0
             _assert_committed_clean_source(root, population)
             dependency = _validator_report(
                 root, "scripts/validate_semantic_addressed_world_model_dependencies.py"

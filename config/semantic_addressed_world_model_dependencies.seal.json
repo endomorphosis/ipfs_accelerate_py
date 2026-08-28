@@ -524,6 +524,7 @@
     "accepted_completion_replay_allowed": false,
     "prior_authority_preserved": true
   },
+  "source_repair_materialization_cid": "sha256:326b6d9185ff9974050333d6c8e011ab3dce8772c322fd1143a27f926b72e468",
   "optional_capability_policy": {
     "external_provers": "probe_then_typed_unavailable",
     "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",

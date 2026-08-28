@@ -994,16 +994,223 @@ def _m6_source_migration_errors(
         or not required_paths.issubset(capsule_paths)
     ):
         errors.append("M6 bounded validation-runtime repairs are not exact protected controls")
-    program = scheduler.get("database_program")
-    if not isinstance(program, Mapping) or (
-        program.get("store_id") != target_store
-        or program.get("store_generation") != "8"
-        or program.get("quack_endpoint") != "quack:127.0.0.1:45248"
-        or any("run-r2-m5" in str(program.get(field) or "") for field in (
-            "store_id", "event_store_path", "runtime_registry_path", "worktree_root"
-        ))
+    return errors
+
+
+def _m7_source_repair_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Verify the exact source-only successor that repairs M6 live comparison."""
+
+    errors: list[str] = []
+    expected_cid = (
+        "sha256:326b6d9185ff9974050333d6c8e011ab3dce8772c322fd1143a27f926b72e468"
+    )
+    configured = scheduler.get("source_repair_materialization")
+    inventoried = migration.get("source_repair_materialization")
+    if type(configured) is not dict or configured != inventoried:
+        errors.append("M7 source-only repair authority differs across controls")
+        configured = {}
+    observed_cid = "sha256:" + hashlib.sha256(
+        _canonical_json(configured)
+    ).hexdigest()
+    if (
+        observed_cid != expected_cid
+        or seal.get("source_repair_materialization_cid") != expected_cid
     ):
-        errors.append("scheduler M6 execution/coordination targets are not fresh")
+        errors.append("M7 source-only repair authority CID is not exact")
+
+    expected_subset = {
+        "schema": "sawm/source-only-launch-repair-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": "SAWM-R2-M7",
+        "migration_kind": "authenticated_live_task_contract_comparator_repair",
+        "supersession_mode": "source_only_live_task_contract_comparator_repair",
+        "prior_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m6/control.duckdb"
+        ),
+        "prior_control_store_sha256": (
+            "17e4dd76258b0584df1106e0324654c380fcf4f36587463a17936193a260381f"
+        ),
+        "prior_control_store_size": 39_071_744,
+        "prior_event_watermark": 168,
+        "prior_event_prefix_sha256": (
+            "23093117ac6a8cf15c65668e4a455673800b4d1dcbc457dddec9b0528e7f0e9e"
+        ),
+        "prior_projection_cid": (
+            "baguqeeraztioh4pdrleiio2hzt2dtxh7o7ae2jk237fvcflktepffj6dpuya"
+        ),
+        "prior_source_head": "9c92490e245a806e3f860ce71c61104a23c2a1b4",
+        "prior_source_tree": "d86d0ca4fd820c12316aba7c56dcd788242b5186",
+        "prior_source_binding_cid": (
+            "sha256:fdf0f6ea842e5e8326a5e5f488f9b19a72983dae296081756164756346ae53b4"
+        ),
+        "prior_database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "prior_generation": 8,
+        "prior_plan_revision": 7,
+        "prior_process_birth_id": "birth:8f543ddf21dd6ff4e98e73eafa9c88f3",
+        "prior_server_id": "server:a1bb77fa-e5c6-427a-b151-e971a2fe0b0b",
+        "prior_materialization_receipt_cid": (
+            "sha256:6fa4147b4ec8badd2872da24c77c115afeb5f6fc576c8fcbda8e0273f54bc8b3"
+        ),
+        "prior_materialization_receipt_file_sha256": (
+            "acb938ad0454a058ad8e5f8ae60b7ad7ae7f01128e9632794b1d5ee38404c93f"
+        ),
+        "prior_owner_status_sha256": (
+            "6f82495e11614b7fcca1d95c78ef6300b0691b76f9ac63bba19c64eee7e5326c"
+        ),
+        "prior_validator_digest": (
+            "sha256:c280087b49e10e9797d1a8815ed7a085ce42cdb50b7941851da16bd76a67d80d"
+        ),
+        "prior_semantic_authority_digest": (
+            "sha256:e08b5d3695c3c9471f5738d0efed4165a1f87987851f7263296c0cff9259cf65"
+        ),
+        "prior_frozen_base_authority_digest": (
+            "sha256:3b5ca340647cc6820e8827040fc96526986bf1cfc6a6e2d243e945be7a70835c"
+        ),
+        "prior_append_surface_digest": (
+            "sha256:ab641eb7736abc257cd4aea145d90fb5a6c4ed56eec6e4776e92e33ec60ee842"
+        ),
+        "target_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m7/control.duckdb"
+        ),
+        "target_generation": 9,
+        "target_plan_revision": 8,
+        "target_event_watermark": 170,
+        "target_projection_cid": (
+            "baguqeeraypw3zwt7gud33pymtc2xsjgl5ezap73jcbh4tvbzs5psea7gdspq"
+        ),
+        "event_suffix_length": 2,
+        "live_preflight_failure_cid": (
+            "sha256:2587c8e77f72011245b0be7d9f1bbb28c640c20c41bce811a5501dd03d770cf4"
+        ),
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    for field, expected in expected_subset.items():
+        if configured.get(field) != expected:
+            errors.append(f"M7 source-only repair {field} is not exact")
+
+    failure = configured.get("live_preflight_failure")
+    if not isinstance(failure, Mapping) or (
+        "sha256:" + hashlib.sha256(_canonical_json(failure)).hexdigest()
+        != expected_subset["live_preflight_failure_cid"]
+        or failure.get("error_payload")
+        != {
+            "schema": "sawm/operator-error@1",
+            "valid": False,
+            "error": "OperatorError: live Quack task definition conflict: SAWM-001",
+        }
+        or failure.get("provider_probed") is not False
+        or failure.get("task_claimed") is not False
+        or failure.get("task_state_changed") is not False
+        or failure.get("implementation_provider_invoked") is not False
+    ):
+        errors.append("M7 frozen live-preflight failure is not exact")
+
+    required_repair_paths = {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+    if (
+        set(configured.get("bounded_control_plane_repair_paths") or ())
+        != required_repair_paths
+        or not required_repair_paths.issubset(CONTROL_PATHS)
+        or not required_repair_paths.issubset(
+            set(scheduler.get("protected_paths") or ())
+        )
+        or not required_repair_paths.issubset(
+            set(
+                (scheduler.get("configured_board_live_capsule") or {}).get(
+                    "control_paths"
+                )
+                or ()
+            )
+        )
+    ):
+        errors.append("M7 bounded source-repair paths are not exact protected controls")
+
+    target_store = expected_subset["target_store_id"]
+    program = scheduler.get("database_program")
+    owner = scheduler.get("quack_owner")
+    history = scheduler.get("ducklake_history_projection")
+    if not isinstance(program, Mapping) or (
+        program.get("authority_mode") != "quack"
+        or program.get("task_source_kind") != "duckdb"
+        or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
+        or program.get("store_id") != target_store
+        or program.get("store_generation") != "9"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:45249"
+        or program.get("schema_revision")
+        != "datasets-authoritative-operational-v1"
+        or program.get("failover_policy") != "fail_closed"
+        or program.get("explicit_legacy") is not False
+        or program.get("event_store_path")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/events"
+        or program.get("runtime_registry_path")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/registry"
+        or program.get("worktree_root")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/worktrees"
+    ):
+        errors.append("scheduler M7 execution authority is not exact")
+    if not isinstance(owner, Mapping) or (
+        owner.get("database_path") != target_store
+        or owner.get("store_id") != target_store
+        or owner.get("state_dir")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/quack-owner"
+        or owner.get("host") != "127.0.0.1"
+        or owner.get("port") != 45249
+        or owner.get("secret_handle") != "env://SAWM_QUACK_TOKEN"
+        or owner.get("migration_profile")
+        != "datasets-authoritative-operational-v1"
+        or owner.get("start_once_before_scheduler") is not True
+        or owner.get("live_transport_query_required") is not True
+        or owner.get("status_file_alone_is_ready") is not False
+        or owner.get("automatic_direct_file_fallback") is not False
+    ):
+        errors.append("scheduler M7 Quack owner authority is not exact")
+    if not isinstance(history, Mapping) or (
+        history.get("catalog_path")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/ducklake/history.ducklake"
+        or history.get("data_path")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/ducklake/data"
+        or history.get("receipt_path")
+        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/ducklake-history-receipt.json"
+    ):
+        errors.append("scheduler M7 DuckLake projection paths are not exact")
+    runtime = scheduler.get("runtime_paths")
+    expected_runtime = {
+        "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7",
+        "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/state",
+        "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/worktrees",
+        "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/merge-queue",
+        "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if runtime != expected_runtime:
+        errors.append("scheduler M7 runtime paths are not exact")
     return errors
 
 
@@ -2920,6 +3127,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("unsigned Quack extensions must remain forbidden")
 
         protocol_errors.extend(_m6_source_migration_errors(scheduler, seal, migration))
+        protocol_errors.extend(_m7_source_repair_errors(scheduler, seal, migration))
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"

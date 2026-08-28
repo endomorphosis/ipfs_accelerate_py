@@ -310,6 +310,20 @@ definition; and only then performs an explicit operator CAS requeue. M5's
 canonical database and execution, coordination, portal, owner, and log
 sidecars remain frozen and are never used as implementation source.
 
+The first authenticated M6 live preflight then failed closed before provider
+probing, task claim, or task mutation because its operator comparator evaluated
+the immutable Markdown validation commands instead of M6's exact admitted
+operational validation view. M6 was stopped and frozen with its database,
+event prefix, projection, owner identity, stopped-status record, and migration
+receipt rehashed. M7 is a source-only append-only successor: it changes no task
+revision, status, definition, validation, completion, effect, commit, or merge
+authority; appends only the plan source-binding revision and its operator
+migration evidence; and makes authenticated live comparison reuse the closed
+M6 operational-contract reconstruction. A fresh generation-9 owner on the M7
+store is required before launch resumes. Direct configured-scheduler launch is
+not an acceptable substitute because it bypasses the authenticated Quack,
+mutation-binding, provider-token retirement, and live task-contract gates.
+
 DuckDB plus a live Quack exclusive state owner is the authoritative multi-writer control path. DuckLake is optional non-authoritative history/projection storage and cannot substitute for DuckDB/Quack. This plan does not assert either service live; preflight must prove current capability and fail closed.
 
 The strongest honest terminal is one of: all mandatory work independently accepted with final transitive root verification; an explicitly permitted typed external-capability terminal; or an observed control-plane blocker that cannot be safely repaired within bootstrap authority. There is no background-completion claim.

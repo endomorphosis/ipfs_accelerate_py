@@ -861,7 +861,10 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
         signal.signal(signal.SIGTERM, previous_term)
 
 
-def _validate_offline_quack_start(config: Mapping[str, Any]) -> Mapping[str, Any]:
+def _validate_offline_quack_start(
+    config: Mapping[str, Any],
+    config_path: Path = CONFIG_PATH,
+) -> Mapping[str, Any]:
     """Revalidate committed controls and the exact store before native LOAD."""
 
     dependency = _validator(
@@ -877,6 +880,18 @@ def _validate_offline_quack_start(config: Mapping[str, Any]) -> Mapping[str, Any
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if isinstance(config.get("source_repair_materialization"), Mapping):
+        checked = materializer.check_materialized(REPO_ROOT, config_path)
+        if checked.get("valid") is not True:
+            raise OperatorError("M7 materialized authority does not verify")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": checked["prior_authority"],
+                "store": checked,
+            }
+        )
     validation_digest = materializer._identity(
         {
             "dependency": dependency,
@@ -1020,28 +1035,56 @@ def _live_preflight(
                               owner_id="sawm-r2-live-preflight")
     try:
         live_snapshot = live.snapshot().to_dict()
-        if live_snapshot["task_count"] != 45 or live_snapshot["goal_count"] != 29 or live_snapshot["plan_root_cid"] != population["plan_root_cid"]:
+        if (
+            live_snapshot["task_count"] != 45
+            or live_snapshot["goal_count"] != 29
+            or live_snapshot["dependency_count"] != 136
+            or live_snapshot["plan_count"] != 1
+            or live_snapshot["event_cursor"] != 170
+            or live_snapshot["projection_cid"]
+            != materializer._M7_EXPECTED_PROJECTION_CID
+            or live_snapshot["plan_root_cid"] != population["plan_root_cid"]
+        ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
-        statuses: dict[str, str] = {}
-        for expected in population["taskboard"]:
-            observed = live.get_task(expected["task_cid"])
-            if (
-                observed is None
-                or observed.task_alias != expected["task_id"]
-                or observed.body.get("definition_cid") != expected["definition_cid"]
-                or sorted(observed.dependencies) != sorted(expected["depends_on"])
-                or [(item.get("effect") or {}).get("declared_path") for item in observed.outputs]
-                   != [item["declared_path"] for item in expected["outputs"]]
-                or [item.get("criterion") for item in observed.acceptance]
-                   != [item["criterion"] for item in expected["acceptance_criteria"]]
-                or [list(item.get("argv") or ()) for item in observed.validations]
-                   != [[command] for command in expected["validation_commands"]]
-            ):
-                raise OperatorError(f"live Quack task definition conflict: {expected['task_id']}")
-            statuses[observed.task_alias] = observed.status
+        try:
+            statuses, _revisions, _receipts = (
+                materializer._verify_m6_task_projection(live, population)
+            )
+            with live.intent._connection(write=False) as connection:
+                semantic_authority_digest = (
+                    materializer._semantic_authority_digest_on(connection)
+                )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"live Quack task authority conflict: {exc}"
+            ) from exc
+        expected_semantic_authority_digest = config[
+            "source_repair_materialization"
+        ]["prior_semantic_authority_digest"]
+        if semantic_authority_digest != expected_semantic_authority_digest:
+            raise OperatorError("live Quack semantic task authority differs")
         for expected in population["objectives"]:
             observed = live.get_goal(expected["goal_cid"])
-            if observed is None or observed.get("goal_alias") != expected["goal_id"] or (observed.get("body") or {}).get("definition_cid") != expected["definition_cid"]:
+            body = observed.get("body") if isinstance(observed, Mapping) else {}
+            if (
+                observed is None
+                or observed.get("goal_cid") != expected["goal_cid"]
+                or observed.get("goal_alias") != expected["goal_id"]
+                or observed.get("objective_id") != expected["objective_id"]
+                or observed.get("parent_goal_cid")
+                != expected["parent_goal_cid"]
+                or int(observed.get("ordinal") or 0) != int(expected["ordinal"])
+                or observed.get("title") != expected["title"]
+                or observed.get("status") != expected["status"]
+                or int(observed.get("revision") or 0) != 1
+                or body.get("definition_cid") != expected["definition_cid"]
+                or body.get("definition") != expected["definition"]
+                or materializer._identity(body.get("definition"))
+                != expected["definition_cid"]
+            ):
                 raise OperatorError(f"live Quack goal definition conflict: {expected['goal_id']}")
         if statuses.get("SAWM-000") not in {"completed", "complete", "done"}:
             raise OperatorError("live Quack authority lacks the SAWM-000 completion CAS")
@@ -1169,6 +1212,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 discovery = discover_live_quack_endpoint(store)
                 if discovery.uri:
                     return _emit({"action": "checked_live", **_live_preflight(config, probe_provider=False)})
+                if isinstance(config.get("source_repair_materialization"), Mapping):
+                    return _emit(materializer.check_materialized(REPO_ROOT, config_path))
                 materializer._assert_committed_clean_source(REPO_ROOT, population)
                 dependency = materializer._validator_report(
                     REPO_ROOT,
@@ -1214,7 +1259,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return _emit(materializer.materialize(REPO_ROOT, config_path))
         if args.command == "quack-start":
-            _validate_offline_quack_start(config)
+            _validate_offline_quack_start(config, config_path)
             return _start_quack(config)
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")

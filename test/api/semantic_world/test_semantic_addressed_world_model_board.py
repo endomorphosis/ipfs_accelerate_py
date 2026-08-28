@@ -541,6 +541,243 @@ def test_append_only_source_migration_rehearsal_verifies_exactly() -> None:
         ) == receipt
 
 
+def test_m7_source_only_migration_rehearsal_and_tamper_gates() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m7_rehearsal_test",
+    )
+    population = materializer.build_population(REPO_ROOT)
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    validation_digest = materializer._m7_validation_digest(
+        REPO_ROOT,
+        population,
+    )
+    authority = config["source_repair_materialization"]
+    prior_path = REPO_ROOT / authority["prior_store_id"]
+    prior_hash = materializer._store_sha256(prior_path)
+    prior_append_surface_digest = materializer._append_surface_digest(prior_path)
+    assert prior_append_surface_digest == authority["prior_append_surface_digest"]
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    with tempfile.TemporaryDirectory(
+        prefix="sawm-r2-m7-test-",
+        dir="/tmp",
+    ) as directory:
+        stage = Path(directory) / "control.duckdb"
+        shutil.copy2(prior_path, stage)
+        before_semantic = materializer._semantic_authority_digest(stage)
+        before_frozen = materializer._frozen_base_authority_digest(stage)
+        source = DatabaseTaskSource(
+            stage,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-source-migrator",
+        )
+        try:
+            operator = source.get_task("SAWM-000")
+            assert operator is not None
+            body = materializer._m7_migration_body(
+                population,
+                config,
+                validation_digest,
+            )
+            digest = materializer._identity(body)
+            delta = materializer._m7_migration_plan_delta(population, config)
+            source.plans.append_revision(
+                plan_cid=str(population["plan_root_cid"]),
+                expected_revision=7,
+                body={
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
+                    "source_migration_revision": materializer._M7_MIGRATION_REVISION,
+                    "source_migration_digest": digest,
+                    "supersession_mode": materializer._M7_SUPERSESSION_MODE,
+                },
+                delta=delta,
+            )
+            source.record_evidence(
+                task_cid=operator.task_cid,
+                evidence_kind="operator_control_plane_source_migration",
+                digest=digest,
+                body=body,
+            )
+        finally:
+            source.close()
+
+        verified = materializer._verify_m7_store(
+            stage,
+            population,
+            config,
+            validation_digest,
+        )
+        assert verified["event_watermark"] == 170
+        assert verified["projection_cid"] == (
+            materializer._M7_EXPECTED_PROJECTION_CID
+        )
+        assert verified["task_revision_changes"] == 0
+        assert verified["task_status_changes"] == 0
+        assert verified["accepted_definition_changes"] == 0
+        assert verified["accepted_completion_changes"] == 0
+        assert verified["projection_matches_events"] is True
+        assert materializer._semantic_authority_digest(stage) == before_semantic
+        assert materializer._frozen_base_authority_digest(stage) == before_frozen
+        assert before_semantic == authority["prior_semantic_authority_digest"]
+        assert before_frozen == authority["prior_frozen_base_authority_digest"]
+        assert materializer._store_sha256(prior_path) == prior_hash
+
+        import duckdb
+
+        forged_evidence = Path(directory) / "forged-evidence.duckdb"
+        shutil.copy2(stage, forged_evidence)
+        connection = duckdb.connect(str(forged_evidence))
+        try:
+            connection.execute(
+                "INSERT INTO evidence_nodes "
+                "SELECT ?, parent_evidence_id, task_cid, evidence_kind, digest, "
+                "created_at, body_json FROM evidence_nodes LIMIT 1",
+                ["sha256:" + "1" * 64],
+            )
+        finally:
+            connection.close()
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="append-surface",
+        ):
+            materializer._verify_m7_store(
+                forged_evidence,
+                population,
+                config,
+                validation_digest,
+            )
+
+        forged_plan = Path(directory) / "forged-plan.duckdb"
+        shutil.copy2(stage, forged_plan)
+        connection = duckdb.connect(str(forged_plan))
+        try:
+            connection.execute(
+                "UPDATE plans SET body_json = ?",
+                ['{"forged":true}'],
+            )
+        finally:
+            connection.close()
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="plan body",
+        ):
+            materializer._verify_m7_store(
+                forged_plan,
+                population,
+                config,
+                validation_digest,
+            )
+
+        forged_state = Path(directory) / "forged-state.duckdb"
+        shutil.copy2(stage, forged_state)
+        connection = duckdb.connect(str(forged_state))
+        try:
+            connection.execute(
+                "UPDATE state_servers SET status = 'running' WHERE generation = 8"
+            )
+        finally:
+            connection.close()
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="frozen base authority",
+        ):
+            materializer._verify_m7_store(
+                forged_state,
+                population,
+                config,
+                validation_digest,
+            )
+
+
+def test_m7_controls_and_live_comparator_fail_closed() -> None:
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m7_source_repair_test",
+    )
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m7_source_repair_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m7_live_comparator_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert dependency_validator._m7_source_repair_errors(
+        config,
+        seal,
+        migration,
+    ) == []
+    assert board_validator._m7_migration_errors(config, seal, migration) == []
+
+    changed_authority = copy.deepcopy(config)
+    changed_authority["source_repair_materialization"][
+        "accepted_completion_changes"
+    ] = 1
+    assert dependency_validator._m7_source_repair_errors(
+        changed_authority,
+        seal,
+        migration,
+    )
+    stale_runtime = copy.deepcopy(config)
+    stale_runtime["runtime_paths"]["root"] = (
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m6"
+    )
+    assert dependency_validator._m7_source_repair_errors(
+        stale_runtime,
+        seal,
+        migration,
+    )
+    drifted_seal = copy.deepcopy(seal)
+    drifted_seal["source_repair_materialization_cid"] = "sha256:" + "0" * 64
+    assert dependency_validator._m7_source_repair_errors(
+        config,
+        drifted_seal,
+        migration,
+    )
+
+    source = Path(operator.__file__).read_text(encoding="utf-8")
+    assert "materializer._verify_m6_task_projection(live, population)" in source
+    assert "materializer._semantic_authority_digest_on(connection)" in source
+    assert "live_snapshot[\"event_cursor\"] != 170" in source
+    assert (
+        'if isinstance(config.get("source_repair_materialization"), Mapping):'
+        in source
+    )
+    assert "checked = materializer.check_materialized(REPO_ROOT, config_path)" in source
+
+
 def test_scheduler_keeps_ducklake_non_authoritative() -> None:
     config = json.loads(
         (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
