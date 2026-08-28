@@ -1,9 +1,10 @@
 """Deterministic model routing for the semantic-compression harness.
 
-``routing.py`` scores only the declared inputs: context size, lowest relevant
-confidence, risk class, affected dependency cone, unresolved obligations,
-prior repair failures, and available proofs. Results are one of the five
-closed ``ModelRoute`` values and always carry an ordered explanation.
+``routing.py`` is the canonical receipt-to-human routing authority. It scores
+only declared inputs: context size, lowest relevant confidence, risk class,
+affected dependency cone, unresolved obligations, prior repair failures, and
+available proofs. ``route_decision_ladder`` records the exact nine ordered
+stages; ``route_model`` remains its compatibility-level capability scorer.
 
 Providers are never hardcoded here. ``deterministic_only`` means no model
 invocation. ``human_review_required`` halts before provider dispatch or root
@@ -82,6 +83,67 @@ class RiskClass(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class LadderStage(str, Enum):
+    """The closed, ordered receipt-to-human routing ladder.
+
+    These values are intentionally capability-oriented rather than tied to a
+    provider.  ``route_decision_ladder`` is the sole evaluator for this
+    sequence; callers receive a receipt for every value on every decision.
+    """
+
+    AUTHORITATIVE_RECEIPT = "authoritative_receipt"
+    AST_SYMBOL_DEPENDENCY_IMPACT = "ast_symbol_dependency_impact"
+    SCHEMA_TYPE_STATIC_LINT_CONTRACT = "schema_type_static_lint_contract"
+    SELECTED_TESTS = "selected_tests"
+    INCREMENTAL_PROVER = "incremental_prover"
+    LOCAL_SMALL_SPECIALIST = "local_small_specialist"
+    LOCAL_REMOTE_MEDIUM = "local_remote_medium"
+    REMOTE_FRONTIER = "remote_frontier"
+    HUMAN_REVIEW = "human_review"
+
+
+class StageAction(str, Enum):
+    """Whether a ladder stage was evaluated or explicitly bypassed."""
+
+    RUN = "run"
+    SKIP = "skip"
+
+
+class StageReason(str, Enum):
+    """Closed reasons carried by every ladder-stage receipt."""
+
+    DECISIVE_EVIDENCE = "decisive_evidence"
+    INCONCLUSIVE_EVIDENCE = "inconclusive_evidence"
+    EVIDENCE_UNAVAILABLE = "evidence_unavailable"
+    NOT_APPLICABLE = "not_applicable"
+    NO_EVIDENCE = "no_evidence"
+    PRIOR_STAGE_RESOLVED = "prior_stage_resolved"
+    DETERMINISTIC_ROUTE_ELIGIBLE = "deterministic_route_eligible"
+    ROUTE_NOT_ELIGIBLE = "route_not_eligible"
+    MODEL_STAGE_SELECTED = "model_stage_selected"
+    UNRESOLVED_QUESTION_REQUIRED = "unresolved_question_required"
+    QUESTION_NOT_DECISION_RELEVANT = "question_not_decision_relevant"
+    HUMAN_REVIEW_REQUIRED = "human_review_required"
+
+
+class EvidenceStatus(str, Enum):
+    """Closed result of a deterministic-stage evidence attempt."""
+
+    RESOLVED = "resolved"
+    INCONCLUSIVE = "inconclusive"
+    UNAVAILABLE = "unavailable"
+    NOT_APPLICABLE = "not_applicable"
+
+
+_LADDER_STAGES: tuple[LadderStage, ...] = tuple(LadderStage)
+_DETERMINISTIC_STAGES: tuple[LadderStage, ...] = _LADDER_STAGES[:5]
+_MODEL_STAGE_BY_ROUTE: Mapping[str, LadderStage] = {
+    ModelRoute.SMALL_LOCAL_MODEL.value: LadderStage.LOCAL_SMALL_SPECIALIST,
+    ModelRoute.MEDIUM_MODEL.value: LadderStage.LOCAL_REMOTE_MEDIUM,
+    ModelRoute.FRONTIER_MODEL.value: LadderStage.REMOTE_FRONTIER,
+}
 
 
 def _clip(text: str, *, maximum: int = _MAX_EXPLANATION_CHARS) -> str:
@@ -473,6 +535,276 @@ class RoutingDecision:
         )
 
 
+@dataclass(frozen=True)
+class DeterministicEvidence:
+    """A bounded observation produced by one deterministic ladder stage.
+
+    A ``resolved`` observation is decisive and prevents all later model
+    stages from being selected.  The reference is deliberately an opaque,
+    bounded label (for example an admitted receipt or test run identifier),
+    rather than a prompt, source body, or provider response.
+    """
+
+    status: str
+    reference: str = "unspecified"
+
+    _FIELDS = frozenset({"status", "reference"})
+
+    def __post_init__(self) -> None:
+        status = _enum(self.status, EvidenceStatus, "status")
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "reference", _clip(_text(self.reference, "reference")))
+
+    def to_dict(self) -> dict[str, str]:
+        return {"status": self.status, "reference": self.reference}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "DeterministicEvidence":
+        payload = _closed(data, cls._FIELDS, "DeterministicEvidence")
+        return cls(status=payload["status"], reference=payload["reference"])
+
+
+@dataclass(frozen=True)
+class UnresolvedQuestionRecord:
+    """Closed, decision-relevant record required before model selection."""
+
+    question_id: str
+    question: str
+    admissible_decisions: tuple[str, ...]
+    answer_can_change_decision: bool
+
+    _FIELDS = frozenset(
+        {
+            "question_id",
+            "question",
+            "admissible_decisions",
+            "answer_can_change_decision",
+        }
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "question_id", _clip(_text(self.question_id, "question_id")))
+        object.__setattr__(self, "question", _clip(_text(self.question, "question")))
+        decisions = self.admissible_decisions
+        if isinstance(decisions, (str, bytes)) or not isinstance(decisions, tuple):
+            raise HarnessError("admissible_decisions must be a tuple")
+        normalized = tuple(
+            _enum(item, ModelRoute, "admissible_decisions") for item in decisions
+        )
+        if len(set(normalized)) != len(normalized):
+            raise HarnessError("admissible_decisions must not contain duplicates")
+        if not normalized:
+            raise HarnessError("admissible_decisions must not be empty")
+        object.__setattr__(self, "admissible_decisions", normalized)
+        object.__setattr__(
+            self,
+            "answer_can_change_decision",
+            _bool(self.answer_can_change_decision, "answer_can_change_decision"),
+        )
+
+    @property
+    def is_decision_relevant(self) -> bool:
+        return self.answer_can_change_decision and len(self.admissible_decisions) >= 2
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "question_id": self.question_id,
+            "question": self.question,
+            "admissible_decisions": list(self.admissible_decisions),
+            "answer_can_change_decision": self.answer_can_change_decision,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "UnresolvedQuestionRecord":
+        payload = _closed(data, cls._FIELDS, "UnresolvedQuestionRecord")
+        raw_decisions = payload["admissible_decisions"]
+        if isinstance(raw_decisions, (str, bytes)) or not isinstance(raw_decisions, list):
+            raise HarnessError("admissible_decisions must be a list")
+        return cls(
+            question_id=payload["question_id"],
+            question=payload["question"],
+            admissible_decisions=tuple(raw_decisions),
+            answer_can_change_decision=payload["answer_can_change_decision"],
+        )
+
+
+@dataclass(frozen=True)
+class StageReceipt:
+    """One typed run/skip receipt in the canonical decision ladder."""
+
+    stage: str
+    action: str
+    reason: str
+    decisive: bool = False
+    evidence_reference: str = "unspecified"
+
+    _FIELDS = frozenset(
+        {"stage", "action", "reason", "decisive", "evidence_reference"}
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", _enum(self.stage, LadderStage, "stage"))
+        object.__setattr__(self, "action", _enum(self.action, StageAction, "action"))
+        object.__setattr__(self, "reason", _enum(self.reason, StageReason, "reason"))
+        object.__setattr__(self, "decisive", _bool(self.decisive, "decisive"))
+        object.__setattr__(
+            self,
+            "evidence_reference",
+            _clip(_text(self.evidence_reference, "evidence_reference")),
+        )
+        if self.decisive and self.action != StageAction.RUN.value:
+            raise HarnessError("a decisive stage receipt must record action=run")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage,
+            "action": self.action,
+            "reason": self.reason,
+            "decisive": self.decisive,
+            "evidence_reference": self.evidence_reference,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "StageReceipt":
+        payload = _closed(data, cls._FIELDS, "StageReceipt")
+        return cls(
+            stage=payload["stage"],
+            action=payload["action"],
+            reason=payload["reason"],
+            decisive=payload["decisive"],
+            evidence_reference=payload["evidence_reference"],
+        )
+
+
+@dataclass(frozen=True)
+class DecisionLadderInputs:
+    """Inputs to the single receipt-to-human routing authority."""
+
+    routing_inputs: RoutingInputs
+    deterministic_evidence: Mapping[str, DeterministicEvidence]
+    unresolved_question: UnresolvedQuestionRecord | None = None
+
+    _FIELDS = frozenset(
+        {"routing_inputs", "deterministic_evidence", "unresolved_question"}
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.routing_inputs, RoutingInputs):
+            raise HarnessError("routing_inputs must be RoutingInputs")
+        if not isinstance(self.deterministic_evidence, Mapping):
+            raise HarnessError("deterministic_evidence must be an object")
+        normalized: dict[str, DeterministicEvidence] = {}
+        for stage, evidence in self.deterministic_evidence.items():
+            stage_token = _enum(stage, LadderStage, "deterministic_evidence stage")
+            if stage_token not in {item.value for item in _DETERMINISTIC_STAGES}:
+                raise HarnessError("deterministic_evidence is only valid for deterministic stages")
+            if not isinstance(evidence, DeterministicEvidence):
+                raise HarnessError("deterministic_evidence values must be DeterministicEvidence")
+            normalized[stage_token] = evidence
+        object.__setattr__(self, "deterministic_evidence", normalized)
+        if self.unresolved_question is not None and not isinstance(
+            self.unresolved_question, UnresolvedQuestionRecord
+        ):
+            raise HarnessError("unresolved_question must be UnresolvedQuestionRecord or None")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "routing_inputs": self.routing_inputs.to_dict(),
+            "deterministic_evidence": {
+                stage: evidence.to_dict()
+                for stage, evidence in sorted(self.deterministic_evidence.items())
+            },
+            "unresolved_question": (
+                None
+                if self.unresolved_question is None
+                else self.unresolved_question.to_dict()
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "DecisionLadderInputs":
+        payload = _closed(data, cls._FIELDS, "DecisionLadderInputs")
+        routing_inputs = payload["routing_inputs"]
+        evidence = payload["deterministic_evidence"]
+        question = payload["unresolved_question"]
+        if not isinstance(routing_inputs, Mapping):
+            raise HarnessError("routing_inputs must be an object")
+        if not isinstance(evidence, Mapping):
+            raise HarnessError("deterministic_evidence must be an object")
+        normalized_evidence: dict[str, DeterministicEvidence] = {}
+        for stage, item in evidence.items():
+            if not isinstance(item, Mapping):
+                raise HarnessError("deterministic_evidence values must be objects")
+            normalized_evidence[str(stage)] = DeterministicEvidence.from_dict(item)
+        if question is not None and not isinstance(question, Mapping):
+            raise HarnessError("unresolved_question must be an object or null")
+        return cls(
+            routing_inputs=RoutingInputs.from_dict(routing_inputs),
+            deterministic_evidence=normalized_evidence,
+            unresolved_question=(
+                None if question is None else UnresolvedQuestionRecord.from_dict(question)
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class DecisionLadder:
+    """Full ordered receipt and the selected executor for one decision."""
+
+    selected_stage: str
+    route: str
+    stage_receipts: tuple[StageReceipt, ...]
+    routing_decision: RoutingDecision
+
+    _FIELDS = frozenset(
+        {"selected_stage", "route", "stage_receipts", "routing_decision"}
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "selected_stage", _enum(self.selected_stage, LadderStage, "selected_stage")
+        )
+        object.__setattr__(self, "route", _enum(self.route, ModelRoute, "route"))
+        if len(self.stage_receipts) != len(_LADDER_STAGES):
+            raise HarnessError("stage_receipts must contain every ladder stage exactly once")
+        expected = tuple(item.value for item in _LADDER_STAGES)
+        actual = tuple(item.stage for item in self.stage_receipts)
+        if actual != expected:
+            raise HarnessError("stage_receipts must be in canonical ladder order")
+        selected = [item for item in self.stage_receipts if item.stage == self.selected_stage]
+        if len(selected) != 1 or selected[0].action != StageAction.RUN.value:
+            raise HarnessError("selected_stage must have exactly one run receipt")
+        if self.route == ModelRoute.HUMAN_REVIEW_REQUIRED.value:
+            if self.selected_stage != LadderStage.HUMAN_REVIEW.value:
+                raise HarnessError("human_review_required must select human_review")
+        elif self.selected_stage == LadderStage.HUMAN_REVIEW.value:
+            raise HarnessError("only human_review_required may select human_review")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "selected_stage": self.selected_stage,
+            "route": self.route,
+            "stage_receipts": [item.to_dict() for item in self.stage_receipts],
+            "routing_decision": self.routing_decision.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "DecisionLadder":
+        payload = _closed(data, cls._FIELDS, "DecisionLadder")
+        receipts = payload["stage_receipts"]
+        decision = payload["routing_decision"]
+        if not isinstance(receipts, list):
+            raise HarnessError("stage_receipts must be a list")
+        if not isinstance(decision, Mapping):
+            raise HarnessError("routing_decision must be an object")
+        return cls(
+            selected_stage=payload["selected_stage"],
+            route=payload["route"],
+            stage_receipts=tuple(StageReceipt.from_dict(item) for item in receipts),
+            routing_decision=RoutingDecision.from_dict(decision),
+        )
+
+
 def _human_review_reasons(
     inputs: RoutingInputs, policy: ModelRoutingPolicy
 ) -> list[str]:
@@ -679,6 +1011,199 @@ def route_model(
     )
 
 
+def route_decision_ladder(
+    inputs: DecisionLadderInputs | Mapping[str, Any],
+    *,
+    policy: ModelRoutingPolicy | Mapping[str, Any] | None = None,
+) -> DecisionLadder:
+    """Evaluate the one canonical nine-stage receipt-to-human ladder.
+
+    All nine stages are represented, in declaration order, regardless of the
+    selected executor.  Deterministic evidence is considered before the model
+    score, and a decisive deterministic observation prevents model selection.
+    A model stage additionally requires a closed, decision-relevant
+    :class:`UnresolvedQuestionRecord`; model availability is deliberately not
+    an input and therefore cannot justify skipping a prior stage.
+    """
+
+    if isinstance(inputs, Mapping):
+        inputs = DecisionLadderInputs.from_dict(inputs)
+    elif not isinstance(inputs, DecisionLadderInputs):
+        raise HarnessError("inputs must be DecisionLadderInputs or mapping")
+
+    base_decision = route_model(inputs.routing_inputs, policy=policy)
+    receipts: list[StageReceipt] = []
+    selected_stage: str | None = None
+
+    for stage in _DETERMINISTIC_STAGES:
+        evidence = inputs.deterministic_evidence.get(stage.value)
+        if selected_stage is not None:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.SKIP.value,
+                    reason=StageReason.PRIOR_STAGE_RESOLVED.value,
+                )
+            )
+        elif evidence is None:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.SKIP.value,
+                    reason=StageReason.NO_EVIDENCE.value,
+                )
+            )
+        elif evidence.status == EvidenceStatus.RESOLVED.value:
+            selected_stage = stage.value
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.RUN.value,
+                    reason=StageReason.DECISIVE_EVIDENCE.value,
+                    decisive=True,
+                    evidence_reference=evidence.reference,
+                )
+            )
+        elif evidence.status == EvidenceStatus.INCONCLUSIVE.value:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.RUN.value,
+                    reason=StageReason.INCONCLUSIVE_EVIDENCE.value,
+                    evidence_reference=evidence.reference,
+                )
+            )
+        elif evidence.status == EvidenceStatus.UNAVAILABLE.value:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.SKIP.value,
+                    reason=StageReason.EVIDENCE_UNAVAILABLE.value,
+                    evidence_reference=evidence.reference,
+                )
+            )
+        else:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.SKIP.value,
+                    reason=StageReason.NOT_APPLICABLE.value,
+                    evidence_reference=evidence.reference,
+                )
+            )
+
+    # A low-risk, proof-covered route remains deterministic even where no
+    # individual deterministic evidence producer supplied a terminal result.
+    # The final deterministic stage records that eligibility explicitly.
+    if selected_stage is None and base_decision.route == ModelRoute.DETERMINISTIC_ONLY.value:
+        selected_stage = LadderStage.INCREMENTAL_PROVER.value
+        receipts[-1] = StageReceipt(
+            stage=LadderStage.INCREMENTAL_PROVER.value,
+            action=StageAction.RUN.value,
+            reason=StageReason.DETERMINISTIC_ROUTE_ELIGIBLE.value,
+            decisive=True,
+        )
+
+    if selected_stage is not None:
+        for stage in _LADDER_STAGES[len(_DETERMINISTIC_STAGES) :]:
+            receipts.append(
+                StageReceipt(
+                    stage=stage.value,
+                    action=StageAction.SKIP.value,
+                    reason=StageReason.PRIOR_STAGE_RESOLVED.value,
+                )
+            )
+        return DecisionLadder(
+            selected_stage=selected_stage,
+            route=ModelRoute.DETERMINISTIC_ONLY.value,
+            stage_receipts=tuple(receipts),
+            routing_decision=base_decision,
+        )
+
+    target_stage = _MODEL_STAGE_BY_ROUTE.get(base_decision.route)
+    question = inputs.unresolved_question
+    question_reason: StageReason | None = None
+    if target_stage is not None:
+        if question is None:
+            question_reason = StageReason.UNRESOLVED_QUESTION_REQUIRED
+        elif not question.is_decision_relevant or base_decision.route not in question.admissible_decisions:
+            question_reason = StageReason.QUESTION_NOT_DECISION_RELEVANT
+
+    if target_stage is not None and question_reason is None:
+        selected_stage = target_stage.value
+        for stage in _LADDER_STAGES[len(_DETERMINISTIC_STAGES) : -1]:
+            if stage == target_stage:
+                receipts.append(
+                    StageReceipt(
+                        stage=stage.value,
+                        action=StageAction.RUN.value,
+                        reason=StageReason.MODEL_STAGE_SELECTED.value,
+                        decisive=True,
+                        evidence_reference=question.question_id if question else "unspecified",
+                    )
+                )
+            elif _LADDER_STAGES.index(stage) < _LADDER_STAGES.index(target_stage):
+                receipts.append(
+                    StageReceipt(
+                        stage=stage.value,
+                        action=StageAction.SKIP.value,
+                        reason=StageReason.ROUTE_NOT_ELIGIBLE.value,
+                    )
+                )
+            else:
+                receipts.append(
+                    StageReceipt(
+                        stage=stage.value,
+                        action=StageAction.SKIP.value,
+                        reason=StageReason.PRIOR_STAGE_RESOLVED.value,
+                    )
+                )
+        receipts.append(
+            StageReceipt(
+                stage=LadderStage.HUMAN_REVIEW.value,
+                action=StageAction.SKIP.value,
+                reason=StageReason.PRIOR_STAGE_RESOLVED.value,
+            )
+        )
+        return DecisionLadder(
+            selected_stage=selected_stage,
+            route=base_decision.route,
+            stage_receipts=tuple(receipts),
+            routing_decision=base_decision,
+        )
+
+    # A direct human route or a rejected model call both terminate at the
+    # human stage.  The rejected model stages retain the typed reason, making
+    # the failure auditable rather than silently falling through.
+    model_reason = (
+        question_reason.value
+        if question_reason is not None
+        else StageReason.ROUTE_NOT_ELIGIBLE.value
+    )
+    for stage in _LADDER_STAGES[len(_DETERMINISTIC_STAGES) : -1]:
+        receipts.append(
+            StageReceipt(
+                stage=stage.value,
+                action=StageAction.SKIP.value,
+                reason=model_reason,
+            )
+        )
+    receipts.append(
+        StageReceipt(
+            stage=LadderStage.HUMAN_REVIEW.value,
+            action=StageAction.RUN.value,
+            reason=StageReason.HUMAN_REVIEW_REQUIRED.value,
+            decisive=True,
+        )
+    )
+    return DecisionLadder(
+        selected_stage=LadderStage.HUMAN_REVIEW.value,
+        route=ModelRoute.HUMAN_REVIEW_REQUIRED.value,
+        stage_receipts=tuple(receipts),
+        routing_decision=base_decision,
+    )
+
+
 def route_requires_human_review(decision: RoutingDecision | Mapping[str, Any]) -> bool:
     if isinstance(decision, Mapping):
         decision = RoutingDecision.from_dict(decision)
@@ -708,7 +1233,13 @@ def model_routing_descriptor() -> dict[str, Any]:
             "ModelRoutingPolicy",
             "RoutingInputs",
             "RoutingDecision",
+            "DeterministicEvidence",
+            "UnresolvedQuestionRecord",
+            "StageReceipt",
+            "DecisionLadderInputs",
+            "DecisionLadder",
         ],
+        "decision_ladder": [item.value for item in _LADDER_STAGES],
         "scoring_inputs": [
             "context_size",
             "lowest_relevant_confidence",
@@ -722,6 +1253,9 @@ def model_routing_descriptor() -> dict[str, Any]:
             "route_decision_is_deterministic_and_explained",
             "human_review_required_halts_before_dispatch_and_root_publication",
             "deterministic_only_never_invokes_a_provider",
+            "every_decision_records_every_ladder_stage_in_order",
+            "deterministic_evidence_resolves_before_model_selection",
+            "model_selection_requires_a_closed_decision_relevant_question",
             "high_risk_opaque_oversized_failed_cases_escalate",
             "providers_are_never_hardcoded",
         ],
@@ -732,6 +1266,11 @@ __all__ = [
     "ADAPTER_ID",
     "BOARD_NAMESPACE",
     "ConfidenceClass",
+    "DecisionLadder",
+    "DecisionLadderInputs",
+    "DeterministicEvidence",
+    "EvidenceStatus",
+    "LadderStage",
     "MODEL_ROUTING_INTERFACE",
     "MODEL_ROUTING_SCHEMA",
     "ModelRoute",
@@ -739,8 +1278,13 @@ __all__ = [
     "RiskClass",
     "RoutingDecision",
     "RoutingInputs",
+    "StageAction",
+    "StageReason",
+    "StageReceipt",
+    "UnresolvedQuestionRecord",
     "model_routing_descriptor",
     "route_allows_provider_dispatch",
+    "route_decision_ladder",
     "route_model",
     "route_requires_human_review",
 ]

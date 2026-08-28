@@ -33,6 +33,11 @@ rejected.  When the safely required model tier is unavailable, routing does
 **not** downgrade: it returns ``human_review_required``.
 
 Importing this module performs no I/O and never invokes a model provider.
+
+The canonical receipt-to-human ladder is owned by
+``semantic_state.routing.route_decision_ladder``.  Its types and entry point
+are re-exported here for verification callers; this module does not implement
+a second ladder.
 """
 
 from __future__ import annotations
@@ -43,6 +48,18 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..semantic_state.routing import (
+    DecisionLadder,
+    DecisionLadderInputs,
+    DeterministicEvidence,
+    EvidenceStatus,
+    LadderStage,
+    StageAction,
+    StageReason,
+    StageReceipt,
+    UnresolvedQuestionRecord,
+    route_decision_ladder,
+)
 from ..core.multiformats_identity import cid_for_dag_json
 from .contracts import (
     MAX_COLLECTION_ITEMS,
@@ -1555,6 +1572,11 @@ __all__ = [
     "AvailableModelCapability",
     "CapabilityLocality",
     "CounterexampleQuality",
+    "DecisionLadder",
+    "DecisionLadderInputs",
+    "DeterministicEvidence",
+    "EvidenceStatus",
+    "LadderStage",
     "ModelRoute",
     "ModelRouteDecision",
     "ModelRouteError",
@@ -1564,11 +1586,16 @@ __all__ = [
     "ModelRoutePolicyError",
     "PriorRepairAttempt",
     "RiskLevel",
+    "StageAction",
+    "StageReason",
+    "StageReceipt",
+    "UnresolvedQuestionRecord",
     "apply_availability",
     "choose_model_route",
     "decide_model_route",
     "default_inventory",
     "derive_model_route_facts",
     "policy_cid_for",
+    "route_decision_ladder",
     "select_required_route",
 ]
