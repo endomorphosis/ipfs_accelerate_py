@@ -140,6 +140,7 @@ from .database_portal_bridge import (
     DatabasePortalBridgeError,
     _projection_immutable_digest,
     verify_database_portal_attempt_projection,
+    verify_database_portal_attempt_projection_identity,
 )
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -17339,8 +17340,150 @@ class PortalImplementationSupervisor:
             track="ops",
         )
 
-    @staticmethod
+    def _database_completion_portal_identity_proof(
+        self,
+        *,
+        task_alias: str,
+        task_cid: str,
+        receipt: Mapping[str, Any],
+        completion_attempt_number: int,
+        control_expected_revision: int,
+    ) -> dict[str, Any]:
+        """Recover one exact completed attempt's Portal lifecycle identity.
+
+        Attempt projections are lane-local runtime evidence.  A supervisor can
+        reconcile worktrees created by any sibling lane, so locate only the
+        directory named by the completed receipt's exact attempt ID across the
+        board's live lane namespace.  Missing, duplicate, symlinked, malformed,
+        or receipt-divergent evidence grants no cleanup authority.
+        """
+
+        attempt_id = str(receipt.get("attempt_id") or "").strip()
+        expected_attempt_directory = hashlib.sha256(
+            attempt_id.encode("utf-8")
+        ).hexdigest()[:24]
+        try:
+            namespace_root = self.config.state_path.parent.parent.resolve(
+                strict=True
+            )
+            state_dirs = sorted(namespace_root.iterdir())
+        except (OSError, RuntimeError):
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_namespace_unavailable",
+            }
+
+        candidates: list[Path] = []
+        for state_dir in state_dirs:
+            try:
+                if state_dir.is_symlink() or not state_dir.is_dir():
+                    continue
+                attempt_roots = sorted(state_dir.iterdir())
+            except OSError:
+                continue
+            for attempt_root in attempt_roots:
+                try:
+                    if (
+                        not attempt_root.name.endswith(
+                            "_database_portal_attempts"
+                        )
+                        or attempt_root.is_symlink()
+                        or not attempt_root.is_dir()
+                    ):
+                        continue
+                    candidate = attempt_root / expected_attempt_directory
+                    if candidate.is_symlink() or candidate.exists():
+                        candidates.append(candidate)
+                except OSError:
+                    continue
+
+        if not candidates:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_missing",
+            }
+        if len(candidates) != 1:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_ambiguous",
+                "candidate_count": len(candidates),
+            }
+
+        attempt_dir = candidates[0]
+        attempt_root = attempt_dir.parent
+        try:
+            if attempt_dir.is_symlink() or not attempt_dir.is_dir():
+                raise DatabasePortalBridgeError(
+                    "database Portal attempt directory is not a regular directory"
+                )
+            resolved_attempt_root = attempt_root.resolve(strict=True)
+            resolved_attempt_root.relative_to(namespace_root)
+            verified = verify_database_portal_attempt_projection_identity(
+                attempt_dir / "task-projection.md",
+                expected_task_alias=task_alias,
+                expected_task_cid=task_cid,
+                allowed_root=attempt_root,
+            )
+            if (
+                attempt_dir.is_symlink()
+                or attempt_root.is_symlink()
+                or (attempt_dir / "task-projection.md").parent.resolve(
+                    strict=True
+                )
+                != attempt_dir.resolve(strict=True)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal attempt path changed during verification"
+                )
+        except (DatabasePortalBridgeError, OSError, RuntimeError, ValueError) as exc:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_unverified",
+                "error_type": type(exc).__name__,
+            }
+
+        expected_binding = {
+            "attempt_id": attempt_id,
+            "claim_id": str(receipt.get("claim_id") or ""),
+            "attempt_number": completion_attempt_number,
+            "owner_session_id": str(
+                receipt.get("owner_session_id") or ""
+            ),
+            "task_alias": task_alias,
+            "task_cid": task_cid,
+            "task_revision": control_expected_revision,
+            "fencing_token": receipt.get("fencing_token"),
+            "fence_epoch": receipt.get("fence_epoch"),
+            "lease_id": str(receipt.get("lease_id") or ""),
+        }
+        if any(
+            verified.get(field) != expected
+            for field, expected in expected_binding.items()
+        ):
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_binding_mismatch",
+            }
+        return {
+            "verified": True,
+            "reason": "database_portal_attempt_identity_verified",
+            "binding_id": str(verified["binding_id"]),
+            "projection_immutable_digest": str(
+                verified["projection_immutable_digest"]
+            ),
+            "portal_canonical_task_key": str(
+                verified["portal_canonical_task_key"]
+            ),
+            "portal_canonical_task_cid": str(
+                verified["portal_canonical_task_cid"]
+            ),
+            "portal_semantic_fingerprint": str(
+                verified["portal_semantic_fingerprint"]
+            ),
+        }
+
     def _database_completion_receipt_proof(
+        self,
         task: Any,
         *,
         expected_alias: str,
@@ -17370,68 +17513,12 @@ class PortalImplementationSupervisor:
                 "status": status,
             }
 
-        # Database tasks do not have to persist ``task_key``.  Reuse the
-        # database Portal bridge's canonical projection identity instead of
-        # treating that optional projection field as authority.  The bridge
-        # derives ``task/v1/sha256(task_cid)`` when no declared key exists;
-        # Portal's canonical identity then owns the exact branch fingerprint.
-        try:
-            from .database_portal_bridge import (
-                DatabasePortalBridgeError,
-                _canonical_projection_identity,
-            )
-            from ..task_sources.task_identity import canonical_task_identity
-
-            task_key, canonical_task_cid = _canonical_projection_identity(
-                task,
-                body,
-            )
-            identity = canonical_task_identity(
-                {
-                    "task_id": expected_alias,
-                    "canonical task key": task_key,
-                    "canonical task cid": canonical_task_cid,
-                }
-            )
-        except (DatabasePortalBridgeError, ValueError, TypeError) as exc:
-            return {
-                "verified": False,
-                "reason": "canonical_task_projection_identity_invalid",
-                "task_id": expected_alias,
-                "task_cid": task_cid,
-                "status": status,
-                "error_type": type(exc).__name__,
-            }
-        expected_fingerprint = identity.short_id
-        alias_fragment = expected_alias.lower().replace("/", "-")
-        branch_match = re.fullmatch(
-            (
-                r"rescue/worktree/implementation-"
-                + re.escape(alias_fragment)
-                + "-"
-                + re.escape(expected_fingerprint)
-                + r"-attempt-([1-9][0-9]*)-([0-9]+)-([0-9a-f]{12})"
-            ),
-            str(branch or "").removeprefix("refs/heads/").lower(),
-        )
-        if branch_match is None:
-            return {
-                "verified": False,
-                "reason": "branch_task_generation_mismatch",
-                "task_id": expected_alias,
-                "task_cid": task_cid,
-                "task_key": task_key,
-                "status": status,
-                "expected_fingerprint": expected_fingerprint,
-            }
-        branch_attempt_number = int(branch_match.group(1))
         if status != "completed":
             return {
                 "verified": False,
                 "reason": "canonical_task_not_completed",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
@@ -17458,7 +17545,6 @@ class PortalImplementationSupervisor:
                 "reason": "database_completion_receipt_shape_invalid",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
@@ -17502,7 +17588,6 @@ class PortalImplementationSupervisor:
                 "reason": "database_completion_receipt_unverified",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
@@ -17570,12 +17655,60 @@ class PortalImplementationSupervisor:
                 "reason": "database_completion_preparation_unverified",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
-                "branch_attempt_number": branch_attempt_number,
                 "completion_attempt_number": completion_attempt_number,
             }
+
+        portal_identity = self._database_completion_portal_identity_proof(
+            task_alias=expected_alias,
+            task_cid=task_cid,
+            receipt=receipt,
+            completion_attempt_number=completion_attempt_number,
+            control_expected_revision=control_expected_revision,
+        )
+        if not portal_identity.get("verified"):
+            return {
+                "verified": False,
+                "reason": str(portal_identity.get("reason") or ""),
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "status": status,
+                "revision": revision,
+                "completion_attempt_number": completion_attempt_number,
+                **{
+                    key: portal_identity[key]
+                    for key in ("candidate_count", "error_type")
+                    if key in portal_identity
+                },
+            }
+
+        task_key = str(portal_identity["portal_canonical_task_key"])
+        expected_fingerprint = str(
+            portal_identity["portal_semantic_fingerprint"]
+        )[:12]
+        alias_fragment = expected_alias.lower().replace("/", "-")
+        branch_match = re.fullmatch(
+            (
+                r"rescue/worktree/implementation-"
+                + re.escape(alias_fragment)
+                + "-"
+                + re.escape(expected_fingerprint)
+                + r"-attempt-([1-9][0-9]*)-([0-9]+)-([0-9a-f]{12})"
+            ),
+            str(branch or "").removeprefix("refs/heads/").lower(),
+        )
+        if branch_match is None:
+            return {
+                "verified": False,
+                "reason": "branch_task_generation_mismatch",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "expected_fingerprint": expected_fingerprint,
+            }
+        branch_attempt_number = int(branch_match.group(1))
         return {
             "verified": True,
             "reason": "database_completed_task_verified",
@@ -17588,6 +17721,18 @@ class PortalImplementationSupervisor:
             "branch_attempt_number": branch_attempt_number,
             "completion_attempt_number": completion_attempt_number,
             "evidence_digest": evidence_digest,
+            "portal_canonical_task_cid": str(
+                portal_identity["portal_canonical_task_cid"]
+            ),
+            "portal_semantic_fingerprint": str(
+                portal_identity["portal_semantic_fingerprint"]
+            ),
+            "database_portal_attempt_binding_id": str(
+                portal_identity["binding_id"]
+            ),
+            "database_portal_projection_immutable_digest": str(
+                portal_identity["projection_immutable_digest"]
+            ),
         }
 
     def _canonical_completed_reconciliation_task(

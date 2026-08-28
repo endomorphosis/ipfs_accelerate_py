@@ -2788,6 +2788,107 @@ def verify_database_portal_attempt_projection(
     }
 
 
+def verify_database_portal_attempt_projection_identity(
+    task_projection: Path | str,
+    *,
+    expected_task_alias: str = "",
+    expected_task_cid: str = "",
+    allowed_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Verify and derive the exact projection-local identity Portal records.
+
+    Database authority, the parsed Markdown projection, and Portal lifecycle
+    events deliberately have distinct identities when the projection carries
+    path authority.  Consumers that need to recognize a Portal branch must
+    derive its identity from the immutable projection and exact attempt
+    binding instead of hashing the authoritative database task CID.
+
+    The projection and binding are verified both before and after parsing so
+    a concurrent replacement cannot be accepted as one stable proof.
+    """
+
+    verified = verify_database_portal_attempt_projection(
+        task_projection,
+        expected_task_alias=expected_task_alias,
+        expected_task_cid=expected_task_cid,
+        allowed_root=allowed_root,
+    )
+    projection = Path(str(verified["projection_path"]))
+    try:
+        projection_text = projection.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise DatabasePortalBridgeError(
+            "database Portal projection identity is unreadable"
+        ) from exc
+
+    # Import lazily because implementation_daemon imports its runner, which
+    # in turn binds this bridge.
+    from .implementation_daemon import parse_task_text, portal_task_identity
+
+    alias = str(verified["task_alias"])
+    task_cid = str(verified["task_cid"])
+    task_key = str(verified["canonical_task_key"])
+    try:
+        projected_tasks = parse_task_text(
+            projection_text,
+            path=projection,
+            task_header_prefix=f"## {alias}",
+        )
+    except (TypeError, ValueError) as exc:
+        raise DatabasePortalBridgeError(
+            "Portal completion projection identity is malformed"
+        ) from exc
+    if len(projected_tasks) != 1:
+        raise DatabasePortalBridgeError(
+            "Portal completion projection is not exactly one task"
+        )
+    task = projected_tasks[0]
+    metadata = task.metadata
+    if (
+        task.task_id != alias
+        or metadata.get("projection authority") != "false"
+        or metadata.get("database task cid") != task_cid
+        or metadata.get("canonical task cid") != task_cid
+        or metadata.get("canonical task key") != task_key
+    ):
+        raise DatabasePortalBridgeError(
+            "Portal completion projection differs from its database binding"
+        )
+    try:
+        identity = portal_task_identity(task, todo_path=projection)
+    except (TypeError, ValueError) as exc:
+        raise DatabasePortalBridgeError(
+            "Portal completion event identity cannot be derived"
+        ) from exc
+    if (
+        not identity.canonical_task_key
+        or not identity.canonical_task_cid
+        or re.fullmatch(r"[0-9a-f]{64}", identity.semantic_fingerprint)
+        is None
+    ):
+        raise DatabasePortalBridgeError(
+            "Portal completion event identity is absent"
+        )
+
+    verified_after = verify_database_portal_attempt_projection(
+        projection,
+        expected_task_alias=expected_task_alias,
+        expected_task_cid=expected_task_cid,
+        allowed_root=allowed_root,
+    )
+    if verified_after != verified:
+        raise DatabasePortalBridgeError(
+            "database Portal projection changed during identity verification"
+        )
+    return {
+        **verified,
+        "portal_task_identity": identity.to_dict(),
+        "portal_canonical_task_key": identity.canonical_task_key,
+        "portal_canonical_task_cid": identity.canonical_task_cid,
+        "portal_semantic_fingerprint": identity.semantic_fingerprint,
+    }
+
+
 def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
     """Keep control evidence while excluding raw provider/model payloads."""
 
@@ -8774,13 +8875,6 @@ class DatabasePortalExecutionBridge:
         single-task projection and its database binding have been verified.
         """
 
-        # Import lazily because implementation_daemon imports its runner,
-        # which in turn binds this bridge.
-        from .implementation_daemon import (
-            parse_task_text,
-            portal_task_identity,
-        )
-
         alias = str(binding.get("task_alias") or "")
         task_cid = str(binding.get("task_cid") or "")
         task_key = str(binding.get("canonical_task_key") or "")
@@ -8793,7 +8887,19 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal completion projection differs from its database binding"
             )
-        verified_projection = verify_database_portal_attempt_projection(
+        try:
+            observed_projection_text = paths.task_projection.read_text(
+                encoding="utf-8"
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection identity is unreadable"
+            ) from exc
+        if observed_projection_text != projection_text:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection changed before identity derivation"
+            )
+        verified_projection = verify_database_portal_attempt_projection_identity(
             paths.task_projection,
             expected_task_alias=alias,
             expected_task_cid=task_cid,
@@ -8808,50 +8914,10 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal completion projection differs from its database binding"
             )
-        try:
-            projected_tasks = parse_task_text(
-                projection_text,
-                path=paths.task_projection,
-                # The bridge default (``## ``) normalizes to ``## ##`` and is
-                # not a valid parser prefix.  This is a private, verified
-                # single-task projection, so bind parsing to its exact alias
-                # and confirm that alias again below.
-                task_header_prefix=f"## {alias}",
-            )
-        except (TypeError, ValueError) as exc:
-            raise DatabasePortalBridgeError(
-                "Portal completion projection identity is malformed"
-            ) from exc
-        if len(projected_tasks) != 1:
-            raise DatabasePortalBridgeError(
-                "Portal completion projection is not exactly one task"
-            )
-        task = projected_tasks[0]
-        metadata = task.metadata
-        if (
-            task.task_id != alias
-            or metadata.get("projection authority") != "false"
-            or metadata.get("database task cid") != task_cid
-            or metadata.get("canonical task cid") != task_cid
-            or metadata.get("canonical task key") != task_key
-        ):
-            raise DatabasePortalBridgeError(
-                "Portal completion projection differs from its database binding"
-            )
-        try:
-            identity = portal_task_identity(
-                task,
-                todo_path=paths.task_projection,
-            )
-        except (TypeError, ValueError) as exc:
-            raise DatabasePortalBridgeError(
-                "Portal completion event identity cannot be derived"
-            ) from exc
-        if not identity.canonical_task_key or not identity.canonical_task_cid:
-            raise DatabasePortalBridgeError(
-                "Portal completion event identity is absent"
-            )
-        return identity.canonical_task_key, identity.canonical_task_cid
+        return (
+            str(verified_projection["portal_canonical_task_key"]),
+            str(verified_projection["portal_canonical_task_cid"]),
+        )
 
     @staticmethod
     def _has_completion_event_candidate(
@@ -21599,4 +21665,5 @@ __all__ = (
     "is_protected_checkout_setup_block",
     "database_portal_task_contract_digest",
     "verify_database_portal_attempt_projection",
+    "verify_database_portal_attempt_projection_identity",
 )
