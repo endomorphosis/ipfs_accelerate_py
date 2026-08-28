@@ -1,0 +1,882 @@
+{
+  "acceptance_subset": [
+    "exact-current-tree",
+    "declared-effects",
+    "independent-validation",
+    "rollback",
+    "authority-separation",
+    "no-safety-floor-regression"
+  ],
+  "authority_rules": {
+    "completion_authoritative": false,
+    "ducklake_is_authority": false,
+    "duplicate_authority_forbidden": true,
+    "markdown_is_completion_authority": false,
+    "model_output_is_proposal_only": true,
+    "one_authoritative_store_per_mutable_semantic_fact": true,
+    "vector_similarity_is_authority": false,
+    "worker_self_approval": false
+  },
+  "capabilities": [
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "related_current_tree",
+      "concern": "closed contract-repair AST renderer",
+      "disposition": "reuse_related_not_sufficient",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "analytical_change_transforms",
+      "interface_concern": null,
+      "notes": "Landed closed AST renderer for contract-repair shapes. It is not a SPAR extraction/codemod executor and cannot close the PCAR source-mutation or CST-extraction gaps.",
+      "overlap_item": null,
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/analytical_change_transforms.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "ANALYTICAL_CHANGE_TRANSFORMER_INTERFACE"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_analytical_change_transforms.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "architecture_refactorer",
+      "disposition": "reuse_and_versioned_extension",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "architecture_refactorer",
+      "interface_concern": "architecture_refactorer",
+      "notes": "Current-tree ArchitectureIR, operators, boundaries, state ownership, and public surface are reusable as versioned contracts. OPERATOR_CAN_AUTHORIZE_EXECUTION is false; declarations cannot execute SPAR source mutation.",
+      "overlap_item": "agent_supervisor.architecture_refactorer",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "ArchitectureIR",
+        "OPERATOR_CAN_AUTHORIZE_EXECUTION"
+      ],
+      "tests": [
+        "test/api/architecture_refactorer/test_architecture_ir.py",
+        "test/api/architecture_refactorer/test_refactor_operators.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "context",
+      "disposition": "reuse_ordering_adapter",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "context",
+      "interface_concern": "context",
+      "notes": "Current ContextCompiler remains the compression/context authority. SPAR residual routing must be a versioned ordering adapter, not a second compiler.",
+      "overlap_item": "context.context_compiler",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "CONTEXT_COMPILER_VERSION",
+        "ContextCompilationError"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_context_compiler.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "CST-preserving move and extraction codemod",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "runtime_observation",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no SPAR CST extraction adapter; libcst is typed_unavailable in the sealed validation environment",
+      "id": "cst_codemod",
+      "interface_concern": null,
+      "notes": "SPAR-020 must adapt the current best available CST/codemod capability and type-refuse unsupported constructs. libcst is absent under the sealed validation interpreter and must not be claimed usable. parso and asttokens are parse helpers only. AnalyticalChangeTransformer is not an extraction executor.",
+      "overlap_item": null,
+      "owner": "ipfs_accelerate_py",
+      "paths": [],
+      "planned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py"
+      ],
+      "probe_method": "current_tree_path_and_ast_plus_find_spec",
+      "required": true,
+      "required_symbols": [
+        "CSTExtractionCodemod"
+      ],
+      "tests": [],
+      "tool_observations": [
+        {
+          "module": "asttokens",
+          "status": "present_parse_helper"
+        },
+        {
+          "module": "libcst",
+          "status": "typed_unavailable"
+        },
+        {
+          "module": "parso",
+          "status": "present_parse_helper"
+        }
+      ]
+    },
+    {
+      "authority": "live operational authority",
+      "authority_is_completion": true,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "duckdb_quack",
+      "disposition": "reuse_authority",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "duckdb_quack",
+      "interface_concern": "duckdb_quack",
+      "notes": "DuckDB/DatabaseTaskSource@1 through exclusive Quack remains the only live task/goal/lease/fence/CAS/evidence/completion authority. This matrix cannot complete SPAR-001.",
+      "overlap_item": "task_sources DatabaseTaskSource/Quack",
+      "owner": "DuckDB/DatabaseTaskSource@1 via Quack",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "CASResult",
+        "DatabaseTaskSource"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_quack_transport_defaults.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "non-authoritative rebuildable projection",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "ducklake",
+      "disposition": "reuse_non_authoritative",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present_non_authoritative",
+      "gap_statement": null,
+      "id": "ducklake",
+      "interface_concern": "ducklake",
+      "notes": "DuckLake projection is present and explicitly non-authoritative. It cannot schedule, lease, complete, or gate SPAR readiness.",
+      "overlap_item": "DuckLake projections",
+      "owner": "DuckLake",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "project_history",
+        "projection_establishes_authority"
+      ],
+      "tests": [
+        "test/api/causal_federation/test_ducklake_projection.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "deterministic source-mutation executor behind PCAR candidates",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no deterministic source-mutation executor behind PCAR candidates; must use current fenced workers",
+      "id": "pcar_source_mutation_executor",
+      "interface_concern": null,
+      "notes": "PCAR operator declarations exist and independently forbid execution. SPAR source mutation must use current fenced workers; no SPAR extraction-wave executor is landed.",
+      "overlap_item": "agent_supervisor.architecture_refactorer",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/refactor_operators.py"
+      ],
+      "planned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/codemod.py",
+        "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/extraction_wave.py"
+      ],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "OPERATOR_CAN_AUTHORIZE_EXECUTION"
+      ],
+      "tests": [
+        "test/api/architecture_refactorer/test_refactor_operators.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "procedures",
+      "disposition": "reuse",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "procedures",
+      "interface_concern": "procedures",
+      "notes": "Current procedure compiler, registry, and verifier remain the promotion authority. SPAR procedures must not self-certify.",
+      "overlap_item": "procedure_compiler",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "ProcedureVerifier",
+        "verify_procedure"
+      ],
+      "tests": [
+        "test/api/procedure_compiler/test_registry.py",
+        "test/api/procedure_compiler/test_verifier.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "program_graph",
+      "disposition": "reuse_query_adapter",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "program_graph",
+      "interface_concern": "program_graph",
+      "notes": "Current program graph is reusable as a query adapter. Semantic/refactoring graph meaning remains datasets-owned. No happens-before or initialization-order edge is present.",
+      "overlap_item": "analysis.program_graph",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_graph.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "ProgramEdgeKind",
+        "ProgramGraphError"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_program_graph.py",
+        "test/api/test_agent_supervisor_program_graph_queries.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "arbitrary-Python extraction translation-validation receipt",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no arbitrary-Python extraction translation-validation receipt",
+      "id": "python_extraction_translation_validation",
+      "interface_concern": null,
+      "notes": "Procedure-compiler translation validation exists for generated tools, not for arbitrary Python extraction P -> P'. SPAR-027 must add the extraction receipt without collapsing evidence classes.",
+      "overlap_item": null,
+      "owner": "ipfs_accelerate_py",
+      "paths": [],
+      "planned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/translation_validation.py"
+      ],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "RefactorEquivalenceClaim",
+        "TranslationValidationRequest"
+      ],
+      "tests": [],
+      "tool_observations": []
+    },
+    {
+      "authority": "formal semantic authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "initialization-order and happens-before refactor graph relation",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no explicit initialization-order/happens-before refactor graph relation",
+      "id": "refactor_initialization_happens_before",
+      "interface_concern": null,
+      "notes": "Current ProgramEdgeKind and snapshot edge vocabularies contain imports/calls/state_flow but neither happens_before nor initialization_order. SPAR-010 must add the relation under datasets semantic authority.",
+      "overlap_item": "analysis.program_graph",
+      "owner": "ipfs_datasets_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_graph.py"
+      ],
+      "planned_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/initialization.py"
+      ],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "InitializationOrderGraph@1",
+        "happens_before"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_program_graph.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "formal semantic authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "semantic-refactoring capsule family with declared identity dimensions",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no landed semantic-refactoring capsule family with all declared identity dimensions",
+      "id": "semantic_refactoring_capsule_family",
+      "interface_concern": null,
+      "notes": "Current datasets SemanticCapsule@1 is reusable identity evidence but does not land the SPAR capsule family or all declared identity dimensions. Planned names in SPAR-000 inventories are not completion.",
+      "overlap_item": "agent_supervisor.semantic_state",
+      "owner": "ipfs_datasets_py",
+      "paths": [],
+      "planned_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/semantic_refactoring/capsules.py"
+      ],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "CallsiteSemanticCapsule@1",
+        "ClassSemanticCapsule@1",
+        "FunctionSemanticCapsule@1",
+        "MethodSemanticCapsule@1",
+        "ModuleSemanticCapsule@1",
+        "PackageSemanticCapsule@1",
+        "RegistrationCapsule@1",
+        "ResourceLifecycleCapsule@1",
+        "StateOwnerCapsule@1",
+        "TopLevelBlockCapsule@1"
+      ],
+      "tests": [],
+      "tool_observations": []
+    },
+    {
+      "authority": "formal semantic authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "semantic_state",
+      "disposition": "reuse",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "semantic_state",
+      "interface_concern": "semantic_state",
+      "notes": "Datasets-owned semantic-state producer, capsules, and roots are the current formal semantic authority. SPAR must extend this authority with versioned adapters and must not create a second semantic store.",
+      "overlap_item": "agent_supervisor.semantic_state",
+      "owner": "ipfs_datasets_py",
+      "paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/semantic_state"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "SemanticCapsule",
+        "SemanticStateRoot",
+        "compile_semantic_capsule"
+      ],
+      "tests": [
+        "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_payload_schema.py",
+        "ipfs_datasets_py/tests/unit/logic/software_contracts/semantic_state/test_regressions.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "semantic_state_operational_adapter",
+      "disposition": "reuse",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "semantic_state_operational_adapter",
+      "interface_concern": "semantic_state_operational_adapter",
+      "notes": "Operational adapter is pinned to datasets semantic-state schemas and grants no put/CAS/WAL/network authority to datasets.",
+      "overlap_item": "agent_supervisor.semantic_state",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "ADAPTER_ID",
+        "EXPECTED_CAPSULE_SCHEMA"
+      ],
+      "tests": [
+        "test/api/semantic_state/test_datasets_adapter.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "confirmed_gap",
+      "concern": "SPAR accepted-wave/fixed-point contract",
+      "disposition": "gap",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "gap_confirmed",
+      "gap_statement": "no SPAR accepted-wave/fixed-point contract composed from current roots and merge receipts",
+      "id": "spar_accepted_wave_fixed_point",
+      "interface_concern": null,
+      "notes": "Federation FixedPointStore is not a SPAR accepted-wave contract. SPAR-038 must compose current roots and merge receipts; workers cannot self-approve a fixed point.",
+      "overlap_item": null,
+      "owner": "ipfs_accelerate_py",
+      "paths": [],
+      "planned_paths": [
+        "ipfs_accelerate_py/agent_supervisor/semantic_refactoring/fixed_point.py"
+      ],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "FixedPointRemodularizationController"
+      ],
+      "tests": [],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "tactician_hammer",
+      "disposition": "reuse_lowering_adapter",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "tactician_hammer",
+      "interface_concern": "tactician_hammer",
+      "notes": "Current Tactician/Hammer coordinator is reusable through a lowering adapter. Availability is not proof success. Semantic proof meaning remains datasets-owned.",
+      "overlap_item": "proof.tactician_hammer_coordinator",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/tactician_hammer_coordinator.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "HammerCoordinationReceipt",
+        "TacticianHammerCoordinator"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_tactician_hammer_capabilities.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "advisory=false authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "vector_retrieval",
+      "disposition": "reuse_advisory_only",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "vector_candidate",
+      "evidence_status": "verified_present_advisory",
+      "gap_statement": null,
+      "id": "vector_retrieval",
+      "interface_concern": "vector_retrieval",
+      "notes": "Vector/hybrid retrieval may nominate candidates only. It cannot prove cohesion, remove obligations, authorize mutation, or establish completion.",
+      "overlap_item": "analysis.code_symbol_vector_index",
+      "owner": "existing vector/hybrid indexes",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/code_symbol_vector_index.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "CODE_SYMBOL_VECTOR_INDEX_SCHEMA",
+        "CodeSymbolVectorIndexError"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_code_symbol_vector_index.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "storage and retrieval authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "vfs_wal_cas",
+      "disposition": "reuse",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "vfs_wal_cas",
+      "interface_concern": "vfs_wal_cas",
+      "notes": "Kit VFS, WAL, and generation-bearing root CAS remain the storage authority. SPAR must not introduce a competing byte/CID/WAL engine.",
+      "overlap_item": "kit VFS/WAL/CAS",
+      "owner": "ipfs_kit_py",
+      "paths": [
+        "ipfs_kit_py/ipfs_kit_py/core/vfs",
+        "ipfs_kit_py/ipfs_kit_py/core/wal",
+        "ipfs_kit_py/ipfs_kit_py/mcp_server/mcplusplus/coordination_storage.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "CanonicalVFSService",
+        "DurableCoordinationStore"
+      ],
+      "tests": [
+        "ipfs_kit_py/tests/proof_seal_store/test_wal.py",
+        "ipfs_kit_py/tests/runtime_readiness/vfs/test_vfs_contracts.py",
+        "ipfs_kit_py/tests/test_semantic_state_root_cas.py"
+      ],
+      "tool_observations": []
+    },
+    {
+      "authority": "operational refactoring authority",
+      "authority_is_completion": false,
+      "blocks_dependent_work": false,
+      "classification": "current_tree_reuse",
+      "concern": "worktree_lifecycle",
+      "disposition": "reuse",
+      "duplicate_authority_forbidden": true,
+      "evidence_class": "exact_static_fact",
+      "evidence_status": "verified_present",
+      "gap_statement": null,
+      "id": "worktree_lifecycle",
+      "interface_concern": "worktree_lifecycle",
+      "notes": "Current fenced worktrees, leases, fences, and merge queues are the SPAR isolation/rollback substrate. SPAR waves must not bypass them.",
+      "overlap_item": "merge worktree/lease/fence/queue",
+      "owner": "ipfs_accelerate_py",
+      "paths": [
+        "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/protected_recovery_fence.py",
+        "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"
+      ],
+      "planned_paths": [],
+      "probe_method": "current_tree_path_and_ast",
+      "required": true,
+      "required_symbols": [
+        "FenceMismatchError",
+        "WorkspaceLifecycleRecord"
+      ],
+      "tests": [
+        "test/api/test_agent_supervisor_protected_recovery_deferral.py"
+      ],
+      "tool_observations": []
+    }
+  ],
+  "declared_effects": {
+    "permitted": [
+      "Write owned SPAR-001 inventory and independent probe tests",
+      "Run declared hermetic validation",
+      "Emit content-addressed receipts through current authority"
+    ],
+    "prohibited": [
+      "Edit sealed SPAR controls, release floors, task/completion authority, and out-of-scope tests/policies",
+      "Direct multi-process DuckDB",
+      "Unrestricted diff",
+      "Hidden dynamic frontier",
+      "Vector or model authority",
+      "Self-approval",
+      "Fabricated evidence",
+      "Implicit network or install"
+    ],
+    "write_scope": [
+      "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/verified_capability_matrix.json",
+      "test/api/semantic_refactoring/test_capability_matrix.py"
+    ]
+  },
+  "evidence_classes": [
+    "accepted_transition",
+    "conservative_may_fact",
+    "countermodel",
+    "exact_static_fact",
+    "human_policy_decision",
+    "model_hypothesis",
+    "proof_candidate",
+    "reconstructed_proof",
+    "replayed_counterexample",
+    "reviewed_specification",
+    "runtime_observation",
+    "test",
+    "vector_candidate"
+  ],
+  "evidence_status_vocabulary": [
+    "gap_confirmed",
+    "typed_unavailable",
+    "verified_present",
+    "verified_present_advisory",
+    "verified_present_non_authoritative"
+  ],
+  "failed_efficiency_target": "non-promotion; safety floors remain unchanged",
+  "gaps": [
+    {
+      "capability_id": "semantic_refactoring_capsule_family",
+      "evidence_status": "gap_confirmed",
+      "statement": "no landed semantic-refactoring capsule family with all declared identity dimensions"
+    },
+    {
+      "capability_id": "refactor_initialization_happens_before",
+      "evidence_status": "gap_confirmed",
+      "statement": "no explicit initialization-order/happens-before refactor graph relation"
+    },
+    {
+      "capability_id": "pcar_source_mutation_executor",
+      "evidence_status": "gap_confirmed",
+      "statement": "no deterministic source-mutation executor behind PCAR candidates; must use current fenced workers"
+    },
+    {
+      "capability_id": "python_extraction_translation_validation",
+      "evidence_status": "gap_confirmed",
+      "statement": "no arbitrary-Python extraction translation-validation receipt"
+    },
+    {
+      "capability_id": "spar_accepted_wave_fixed_point",
+      "evidence_status": "gap_confirmed",
+      "statement": "no SPAR accepted-wave/fixed-point contract composed from current roots and merge receipts"
+    }
+  ],
+  "interface": "VerifiedCapabilityMatrix@1",
+  "observed_tree": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051",
+  "overlaps": [
+    {
+      "capability_ids": [
+        "ducklake"
+      ],
+      "item": "DuckLake projections"
+    },
+    {
+      "capability_ids": [
+        "architecture_refactorer",
+        "pcar_source_mutation_executor"
+      ],
+      "item": "agent_supervisor.architecture_refactorer"
+    },
+    {
+      "capability_ids": [
+        "semantic_refactoring_capsule_family",
+        "semantic_state",
+        "semantic_state_operational_adapter"
+      ],
+      "item": "agent_supervisor.semantic_state"
+    },
+    {
+      "capability_ids": [
+        "vector_retrieval"
+      ],
+      "item": "analysis.code_symbol_vector_index"
+    },
+    {
+      "capability_ids": [
+        "program_graph",
+        "refactor_initialization_happens_before"
+      ],
+      "item": "analysis.program_graph"
+    },
+    {
+      "capability_ids": [
+        "context"
+      ],
+      "item": "context.context_compiler"
+    },
+    {
+      "capability_ids": [
+        "vfs_wal_cas"
+      ],
+      "item": "kit VFS/WAL/CAS"
+    },
+    {
+      "capability_ids": [
+        "worktree_lifecycle"
+      ],
+      "item": "merge worktree/lease/fence/queue"
+    },
+    {
+      "capability_ids": [
+        "procedures"
+      ],
+      "item": "procedure_compiler"
+    },
+    {
+      "capability_ids": [
+        "tactician_hammer"
+      ],
+      "item": "proof.tactician_hammer_coordinator"
+    },
+    {
+      "capability_ids": [
+        "duckdb_quack"
+      ],
+      "item": "task_sources DatabaseTaskSource/Quack"
+    }
+  ],
+  "predecessors": [
+    {
+      "branch": "agent/semantic-addressed-world-model-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse candidate identities/roots only after current-store lookup and freshness",
+      "historical_branch_is_completion": false,
+      "historical_revision": "9c92490e245a",
+      "program": "semantic-addressed-world-model-v1"
+    },
+    {
+      "branch": "agent/proof-gated-contract-repair",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current landed proof adapters; historical task titles are not completion",
+      "historical_branch_is_completion": false,
+      "historical_revision": "bcd8fc4efb6e",
+      "program": "proof-gated-contract-repair and Tactician/Hammer"
+    },
+    {
+      "branch": "integration/ipfs-kit-fuse-vfs-main-20260810",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current VFS/WAL/CAS interfaces and verify exact source",
+      "historical_branch_is_completion": false,
+      "historical_revision": "b6ce7c9688fa",
+      "program": "VFS symbolic assurance"
+    },
+    {
+      "branch": "feat/semantic-state-harness",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current semantic-state producer/view and receipts",
+      "historical_branch_is_completion": false,
+      "historical_revision": "6feb0a71138d",
+      "program": "semantic-state harness"
+    },
+    {
+      "branch": "agent/semantic-compression-governor-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current ContextCompiler/compression authority",
+      "historical_branch_is_completion": false,
+      "historical_revision": "485edc0871c5",
+      "program": "semantic-compression governor"
+    },
+    {
+      "branch": "codex/proof-carrying-procedure-compiler-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse current procedure compiler/registry/verifier",
+      "historical_branch_is_completion": false,
+      "historical_revision": "d426d838b0ef",
+      "program": "proof-carrying procedure compiler"
+    },
+    {
+      "branch": "codex/proof-carrying-architecture-refactorer-v1",
+      "current_tree_verification_required": true,
+      "disposition": "reuse landed ArchitectureIR, graphs, boundaries, state/public surface, operators, scheduler patterns",
+      "historical_branch_is_completion": false,
+      "historical_revision": "0374c408469c",
+      "program": "proof-carrying architecture refactorer"
+    }
+  ],
+  "program": "semantic-preserving-autonomous-remodularization-v1",
+  "rollback": {
+    "advance_accepted_roots": false,
+    "policy": "Reject the candidate, restore exact preimages or discard the isolated worktree, retain negative evidence, release leases/fences, and do not advance accepted roots.",
+    "retains_negative_evidence": true,
+    "source_mutation": false
+  },
+  "schema": "spar/verified-capability-matrix@1",
+  "source_binding": {
+    "accelerator": {
+      "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
+      "repository": "ipfs_accelerate_py",
+      "tree": "fbc6fa1ddefb2f9ecb7b5c718d618e3b60aa3051"
+    },
+    "datasets": {
+      "commit": "41bbe7ede20294944cccb77f22072351a29e6902",
+      "repository": "ipfs_datasets_py",
+      "tree": "ed2edab3ffbba25e17b5a59aba1b9d2dd37cf06d"
+    },
+    "kit": {
+      "commit": "80bbdc3443e560b9bf40339c864a32689ccad8ef",
+      "repository": "ipfs_kit_py",
+      "tree": "543ccd2bd78994d4e3d55cd44993ae6ca65e4c28"
+    }
+  },
+  "supersession_policy": "preserve accepted identity/evidence; add only versioned adapter, missing integration, migration, qualification, or successor task",
+  "task_id": "SPAR-001",
+  "title": "Current-tree overlap/gap matrix of required SPAR capabilities",
+  "zero_safety_floors": {
+    "critical_seeded_defect_escape": 0,
+    "false_task_completions": 0,
+    "rollback_failure": 0,
+    "root_conflict_overwrite": 0,
+    "silent_state_duplication": 0,
+    "similarity_only_authoritative_reuse": 0,
+    "simulated_as_live_admission": 0,
+    "stale_authoritative_reuse": 0,
+    "test_or_proof_weakening": 0,
+    "unaccepted_public_api_break": 0,
+    "unauthorized_mutations": 0
+  }
+}
