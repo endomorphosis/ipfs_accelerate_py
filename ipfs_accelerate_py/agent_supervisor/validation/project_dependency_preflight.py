@@ -72,6 +72,9 @@ SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3 = (
 SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4 = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4"
 )
+SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5 = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@5"
+)
 
 SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
@@ -85,6 +88,9 @@ MAX_SCOPED_CONTRACT_TARGETS = 16
 MAX_SCOPED_CONTRACT_TARGET_BYTES = 2048
 MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES = 64 * 1024
 MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES = 4096
+MAX_SCOPED_CONTRACT_BOARD_POLICIES = 16
+MAX_SCOPED_CONTRACT_BOARD_TASKS = 512
+MAX_SCOPED_CONTRACT_TASKBOARD_BYTES = 1024 * 1024
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS = 256
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES = 256 * 1024
 MAX_SCOPED_PRIOR_SEED_AUTHORITY_BYTES = 4 * 1024 * 1024
@@ -121,6 +127,8 @@ MAX_PREFLIGHT_INLINE_RECEIPT_BYTES = 64 * 1024
 
 
 _SAFE_SCOPED_EXTRA_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+_SAFE_SCOPED_TASK_PREFIX_PATTERN = re.compile(r"[A-Z][A-Z0-9_]{0,31}-")
+_SAFE_SCOPED_V5_FILE_SEGMENT_PATTERN = re.compile(r"[A-Za-z0-9_.-]+")
 
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
@@ -150,6 +158,15 @@ _SCOPED_CONTRACT_V2_FIELDS = frozenset(
         "authority",
         "requires-python",
         "targets",
+    }
+)
+_SCOPED_CONTRACT_V5_FIELDS = frozenset(
+    {
+        "schema",
+        "authority",
+        "requires-python",
+        "targets",
+        "board-policies",
     }
 )
 _SCOPED_CONTRACT_V2_TARGET_FIELDS = frozenset(
@@ -184,6 +201,15 @@ _SCOPED_CONTRACT_V4_TASK_FIELDS = frozenset(
         "board-namespace",
         "canonical-task-cid",
         "declared-outputs",
+    }
+)
+_SCOPED_CONTRACT_V5_BOARD_POLICY_FIELDS = frozenset(
+    {
+        "board-namespace",
+        "taskboard-path",
+        "taskboard-sha256",
+        "task-prefix",
+        "requirements",
     }
 )
 _SCOPED_CONTRACT_V2_PRESENT_BASELINE_FIELDS = frozenset(
@@ -588,7 +614,9 @@ def _scoped_dependency_contract_configuration(
         raise ValueError("scoped dependency contract must be a table")
     schema = contract.get("schema")
     expected_fields = (
-        _SCOPED_CONTRACT_V2_FIELDS
+        _SCOPED_CONTRACT_V5_FIELDS
+        if schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+        else _SCOPED_CONTRACT_V2_FIELDS
         if schema in {
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
@@ -814,6 +842,416 @@ def _command_is_exact_v4_target(
     return False
 
 
+def _scoped_v5_board_policies(
+    contract: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Validate the closed, fixed-requirement board policy extension."""
+
+    raw_policies = contract.get("board-policies")
+    if not (
+        type(raw_policies) is list
+        and raw_policies
+        and len(raw_policies) <= MAX_SCOPED_CONTRACT_BOARD_POLICIES
+    ):
+        raise _ScopedDependencyContractError("v5_board_policies_invalid")
+    policies: list[dict[str, Any]] = []
+    seen_namespaces: set[str] = set()
+    seen_taskboards: set[str] = set()
+    requirement_count = 0
+    requirement_bytes = 0
+    for raw_policy in raw_policies:
+        if not (
+            type(raw_policy) is dict
+            and set(raw_policy) == _SCOPED_CONTRACT_V5_BOARD_POLICY_FIELDS
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_fields_invalid"
+            )
+        board_namespace = raw_policy.get("board-namespace")
+        if not (
+            type(board_namespace) is str
+            and board_namespace
+            and board_namespace.strip() == board_namespace
+            and len(
+                board_namespace.encode("utf-8", errors="surrogatepass")
+            )
+            <= MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES
+            and not any(ord(character) < 32 for character in board_namespace)
+            and not any(character in board_namespace for character in "*?[]")
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_namespace_invalid"
+            )
+        taskboard_path = _require_safe_scoped_v4_file(
+            raw_policy.get("taskboard-path"),
+            reason="v5_board_policy_taskboard_path_invalid",
+        )
+        if not taskboard_path.endswith(".md"):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_taskboard_path_invalid"
+            )
+        taskboard_sha256 = raw_policy.get("taskboard-sha256")
+        if not (
+            type(taskboard_sha256) is str
+            and _LOWER_SHA256_PATTERN.fullmatch(taskboard_sha256)
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_taskboard_digest_invalid"
+            )
+        task_prefix = raw_policy.get("task-prefix")
+        if not (
+            type(task_prefix) is str
+            and _SAFE_SCOPED_TASK_PREFIX_PATTERN.fullmatch(task_prefix)
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_task_prefix_invalid"
+            )
+        requirements = _require_scoped_requirements(
+            raw_policy.get("requirements")
+        )
+        requirement_count += len(requirements)
+        requirement_bytes += sum(
+            len(requirement.encode("utf-8", errors="surrogatepass"))
+            for requirement in requirements
+        )
+        if (
+            requirement_count > MAX_STATIC_REQUIREMENTS
+            or requirement_bytes > MAX_DEPENDENCY_MANIFEST_BYTES
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_requirements_exceed_aggregate_bound"
+            )
+        pytest_requirements = [
+            requirement
+            for requirement in requirements
+            if re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", requirement)
+        ]
+        if not pytest_requirements or not any(
+            ";" not in requirement for requirement in pytest_requirements
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_requirements_omit_pytest"
+            )
+        if (
+            board_namespace in seen_namespaces
+            or taskboard_path in seen_taskboards
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_board_policy_duplicate"
+            )
+        seen_namespaces.add(board_namespace)
+        seen_taskboards.add(taskboard_path)
+        policies.append(
+            {
+                "board_namespace": board_namespace,
+                "taskboard_path": taskboard_path,
+                "taskboard_sha256": taskboard_sha256,
+                "task_prefix": task_prefix,
+                "requirements": requirements,
+            }
+        )
+    return policies
+
+
+def _exact_v5_board_pytest_target(
+    command: str,
+    *,
+    relative_root: str,
+) -> str:
+    """Return the sole test file in one exact, option-free pytest command."""
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError as exc:
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_command_invalid"
+        ) from exc
+    if relative_root:
+        prefix = ["cd", relative_root, "&&"]
+        if tokens[: len(prefix)] != prefix:
+            raise _ScopedDependencyContractError(
+                "v5_board_validation_command_invalid"
+            )
+        tokens = tokens[len(prefix) :]
+    target = ""
+    if len(tokens) == 5 and tokens[:3] == ["python", "-m", "pytest"]:
+        if tokens[3] == "-q" and not tokens[4].startswith("-"):
+            target = tokens[4]
+    elif (
+        len(tokens) == 5
+        and tokens[:3] == ["python3", "-m", "pytest"]
+    ):
+        if tokens[3] == "-q" and not tokens[4].startswith("-"):
+            # Current taskboards use the same v4 grammar with the sealed
+            # validation interpreter spelling made explicit.
+            target = tokens[4]
+        elif tokens[4] == "-q" and not tokens[3].startswith("-"):
+            target = tokens[3]
+    if not target:
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_command_invalid"
+        )
+    target = _require_safe_scoped_v4_file(
+        target,
+        reason="v5_board_validation_target_invalid",
+    )
+    target_parts = PurePosixPath(target).parts
+    if (
+        not target.endswith(".py")
+        or not any(part in {"test", "tests"} for part in target_parts[:-1])
+        or any(
+            _SAFE_SCOPED_V5_FILE_SEGMENT_PATTERN.fullmatch(part) is None
+            for part in target_parts
+        )
+    ):
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_target_invalid"
+        )
+    exact_commands = {
+        f"python -m pytest -q {target}",
+        f"python3 -m pytest -q {target}",
+        f"python3 -m pytest {target} -q",
+    }
+    if relative_root:
+        exact_commands = {
+            f"cd {relative_root} && {candidate}"
+            for candidate in exact_commands
+        }
+    if command not in exact_commands:
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_command_invalid"
+        )
+    return target
+
+
+def _scoped_v5_taskboard_blocks(
+    payload: bytes,
+    *,
+    board_namespace: str,
+    task_prefix: str,
+) -> list[dict[str, Any]]:
+    """Parse only the exact task identity, validation, and output fields."""
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _ScopedDependencyContractError(
+            "v5_taskboard_not_utf8"
+        ) from exc
+    lines = text.splitlines()
+    heading_pattern = re.compile(
+        rf"## ({re.escape(task_prefix)}[A-Za-z0-9][A-Za-z0-9_.-]{{0,63}})(?: .+)?"
+    )
+    heading_indexes = [
+        index for index, line in enumerate(lines) if line.startswith("## ")
+    ]
+    blocks: list[dict[str, Any]] = []
+    seen_task_ids: set[str] = set()
+    for heading_ordinal, start in enumerate(heading_indexes):
+        heading = lines[start]
+        if not heading.startswith(f"## {task_prefix}"):
+            continue
+        match = heading_pattern.fullmatch(heading)
+        if match is None:
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_heading_invalid"
+            )
+        task_id = match.group(1)
+        if task_id in seen_task_ids:
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_duplicate_task_id"
+            )
+        seen_task_ids.add(task_id)
+        end = (
+            heading_indexes[heading_ordinal + 1]
+            if heading_ordinal + 1 < len(heading_indexes)
+            else len(lines)
+        )
+        field_prefixes = {
+            "stable_task_id": "- Stable task ID: ",
+            "board_namespace": "- Board namespace: ",
+            "validation": "- Validation: ",
+            "outputs": "- Outputs: ",
+        }
+        fields: dict[str, str] = {}
+        for line in lines[start + 1 : end]:
+            for field, prefix in field_prefixes.items():
+                if not line.startswith(prefix):
+                    continue
+                if field in fields:
+                    raise _ScopedDependencyContractError(
+                        "v5_taskboard_duplicate_required_field"
+                    )
+                value = line[len(prefix) :]
+                if (
+                    not value
+                    or value.strip() != value
+                    or len(value.encode("utf-8", errors="surrogatepass"))
+                    > MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES
+                ):
+                    raise _ScopedDependencyContractError(
+                        "v5_taskboard_required_field_invalid"
+                    )
+                fields[field] = value
+        if set(fields) != set(field_prefixes):
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_required_fields_missing"
+            )
+        if (
+            fields["stable_task_id"] != task_id
+            or fields["board_namespace"] != board_namespace
+        ):
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_task_identity_mismatch"
+            )
+        outputs = fields["outputs"].split(", ")
+        if ", ".join(outputs) != fields["outputs"]:
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_outputs_invalid"
+            )
+        declared_outputs = _require_scoped_prior_seed_paths(
+            outputs,
+            reason="v5_taskboard_outputs_invalid",
+        )
+        blocks.append(
+            {
+                "task_id": task_id,
+                "validation_command": fields["validation"],
+                "declared_outputs": declared_outputs,
+            }
+        )
+        if len(blocks) > MAX_SCOPED_CONTRACT_BOARD_TASKS:
+            raise _ScopedDependencyContractError(
+                "v5_taskboard_task_count_exceeds_bound"
+            )
+    if not blocks:
+        raise _ScopedDependencyContractError("v5_taskboard_has_no_tasks")
+    return blocks
+
+
+def _scoped_v5_selected_board_target(
+    policies: Sequence[Mapping[str, Any]],
+    *,
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+    relative_root: str,
+    validation_commands: Sequence[str],
+    task_authority: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Select one task from a sealed board without trusting target bytes."""
+
+    if len(validation_commands) != 1:
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_command_count_invalid"
+        )
+    if not (
+        type(task_authority) is dict
+        and set(task_authority) == _SCOPED_RUNTIME_TASK_AUTHORITY_FIELDS
+    ):
+        raise _ScopedDependencyContractError(
+            "v5_board_runtime_task_authority_fields_invalid"
+        )
+    runtime_board_namespace = task_authority.get("board_namespace")
+    runtime_task_cid = task_authority.get("canonical_task_cid")
+    runtime_declared_outputs = task_authority.get("declared_outputs")
+    if not (
+        type(runtime_board_namespace) is str
+        and type(runtime_task_cid) is str
+        and runtime_task_cid
+        and not any(character in runtime_task_cid for character in "*?[]")
+        and type(runtime_declared_outputs) is list
+    ):
+        raise _ScopedDependencyContractError(
+            "v5_board_runtime_task_authority_invalid"
+        )
+    selected_policies = [
+        dict(policy)
+        for policy in policies
+        if policy.get("board_namespace") == runtime_board_namespace
+    ]
+    if len(selected_policies) != 1:
+        raise _ScopedDependencyContractError(
+            "v5_board_policy_not_declared"
+        )
+    policy = selected_policies[0]
+    try:
+        taskboard_file, taskboard_payload = (
+            _read_bounded_contained_regular_file(
+                project_root,
+                project_root / str(policy["taskboard_path"]),
+                maximum_bytes=MAX_SCOPED_CONTRACT_TASKBOARD_BYTES,
+                expected_containment_root_snapshot=(
+                    expected_project_root_snapshot
+                ),
+            )
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        if isinstance(exc, _ScopedDependencyContractError):
+            raise
+        raise _ScopedDependencyContractError(
+            "v5_taskboard_read_invalid"
+        ) from exc
+    observed_taskboard_sha256 = hashlib.sha256(taskboard_payload).hexdigest()
+    if observed_taskboard_sha256 != policy["taskboard_sha256"]:
+        raise _ScopedDependencyContractError(
+            "v5_taskboard_digest_mismatch"
+        )
+    validation_command = validation_commands[0]
+    validation_target = _exact_v5_board_pytest_target(
+        validation_command,
+        relative_root=relative_root,
+    )
+    declared_validation_target = _expected_scoped_declared_output(
+        relative_root,
+        validation_target,
+    )
+    if declared_validation_target not in runtime_declared_outputs:
+        raise _ScopedDependencyContractError(
+            "v5_board_validation_target_not_declared_output"
+        )
+    blocks = _scoped_v5_taskboard_blocks(
+        taskboard_payload,
+        board_namespace=str(policy["board_namespace"]),
+        task_prefix=str(policy["task_prefix"]),
+    )
+    matches = [
+        block
+        for block in blocks
+        if block["validation_command"] == validation_command
+        and block["declared_outputs"] == runtime_declared_outputs
+    ]
+    if len(matches) != 1:
+        raise _ScopedDependencyContractError(
+            "v5_taskboard_task_not_exactly_matched"
+        )
+    selected_block = matches[0]
+    return {
+        "target": validation_target,
+        "command_target": validation_target,
+        "command_kind": "pytest",
+        "validation_command_sha256": hashlib.sha256(
+            validation_command.encode("utf-8", errors="surrogatepass")
+        ).hexdigest(),
+        "requirements": list(policy["requirements"]),
+        "board_namespace": runtime_board_namespace,
+        "canonical_task_cid": runtime_task_cid,
+        "declared_output": declared_validation_target,
+        "declared_outputs": list(runtime_declared_outputs),
+        "baseline_state": "board-policy-taskboard",
+        "baseline_sha256": "",
+        "selection_kind": "board-policy",
+        "board_policy_sha256": _content_sha256(policy),
+        "taskboard_task_id_sha256": hashlib.sha256(
+            str(selected_block["task_id"]).encode("utf-8")
+        ).hexdigest(),
+        "taskboard_manifest": {
+            "path": taskboard_file.relative_to(project_root).as_posix(),
+            "sha256": observed_taskboard_sha256,
+            "bytes": len(taskboard_payload),
+        },
+    }
+
+
 def _expected_scoped_declared_output(relative_root: str, target: str) -> str:
     return (PurePosixPath(relative_root) / target).as_posix()
 
@@ -865,8 +1303,10 @@ def _scoped_selected_task_authority(
         "canonical_task_cid": selected_target["canonical_task_cid"],
         **(
             {"declared_outputs": selected_target["declared_outputs"]}
-            if contract_schema
-            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+            if contract_schema in {
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+            }
             else {"declared_output": selected_target["declared_output"]}
         ),
     }
@@ -892,6 +1332,7 @@ def _scoped_prior_seed_target_sha256(
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
     }:
         raise _ScopedDependencyContractError(
             "v2_prior_seed_contract_schema_invalid"
@@ -1261,12 +1702,14 @@ def _scoped_v2_selected_target(
     """Validate all task-bound entries and select one exact command."""
 
     contract_schema = contract.get("schema")
-    v4_contract = (
-        contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
-    )
+    v4_contract = contract_schema in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+    }
     mixed_declared_output_roots = contract_schema in {
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
     }
 
     targets = contract.get("targets")
@@ -1604,6 +2047,7 @@ def _scoped_setup_extra_dependencies(
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
     }:
         raise ValueError("scoped dependency contract schema is unsupported")
 
@@ -1612,6 +2056,7 @@ def _scoped_setup_extra_dependencies(
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
         }:
             return _ScopedDependencyContractError(reason)
         return ValueError(message)
@@ -1627,7 +2072,10 @@ def _scoped_setup_extra_dependencies(
     authority_file = authority.get("file")
     authority_extra = authority.get("extra")
     if (
-        contract_schema != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+        contract_schema not in {
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+        }
         and authority_file != "setup.py"
     ):
         raise contract_failure(
@@ -1637,6 +2085,7 @@ def _scoped_setup_extra_dependencies(
     if contract_schema in {
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
     }:
         if not (
             type(authority_extra) is str
@@ -1649,8 +2098,10 @@ def _scoped_setup_extra_dependencies(
         ):
             raise _ScopedDependencyContractError(
                 "v4_file_authority_extra_invalid"
-                if contract_schema
-                == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+                if contract_schema in {
+                    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+                }
                 else "v3_setup_authority_extra_invalid"
             )
     elif authority_extra != "test":
@@ -1686,6 +2137,12 @@ def _scoped_setup_extra_dependencies(
     target_materialization_state = "present"
     prior_seed_authority_sha256 = ""
     selected_v2_target: dict[str, Any] | None = None
+    taskboard_manifest: dict[str, Any] | None = None
+    v5_board_policies = (
+        _scoped_v5_board_policies(contract)
+        if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+        else []
+    )
     if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA:
         target = contract.get("covered-pytest-target")
         if type(target) is not str:
@@ -1739,15 +2196,42 @@ def _scoped_setup_extra_dependencies(
         ):
             raise ValueError("scoped dependency requirements must be nonempty and unique")
     else:
-        selected_v2_target = _scoped_v2_selected_target(
-            contract,
-            relative_root=relative_root,
-            validation_commands=validation_commands,
-            task_authority=task_authority,
-        )
+        try:
+            selected_v2_target = _scoped_v2_selected_target(
+                contract,
+                relative_root=relative_root,
+                validation_commands=validation_commands,
+                task_authority=task_authority,
+            )
+        except _ScopedDependencyContractError as exc:
+            if (
+                contract_schema
+                != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5
+                or exc.reason
+                not in {
+                    "v2_validation_command_not_declared",
+                    "v2_validation_task_authority_mismatch",
+                }
+            ):
+                raise
+            selected_v2_target = _scoped_v5_selected_board_target(
+                v5_board_policies,
+                project_root=project_root,
+                expected_project_root_snapshot=(
+                    expected_project_root_snapshot
+                ),
+                relative_root=relative_root,
+                validation_commands=validation_commands,
+                task_authority=task_authority,
+            )
         target = str(selected_v2_target["target"])
         requirements = list(selected_v2_target["requirements"])
-        if selected_v2_target["baseline_state"] == "present":
+        if selected_v2_target.get("selection_kind") == "board-policy":
+            target_materialization_state = "not-read-board-policy"
+            taskboard_manifest = dict(
+                selected_v2_target["taskboard_manifest"]
+            )
+        elif selected_v2_target["baseline_state"] == "present":
             target_file, target_payload = _read_bounded_contained_regular_file(
                 project_root,
                 project_root / target,
@@ -1823,7 +2307,7 @@ def _scoped_setup_extra_dependencies(
                 target_materialization_state = "absent"
 
     # V1-v3 authorize a literal setup.py extra only when the project has no
-    # declarative setuptools dependency file.  V4 instead binds the existing
+    # declarative setuptools dependency file.  V4/V5 instead bind the existing
     # single file-backed dependency source and one static PEP-621 validation
     # extra.  Neither path imports or executes packaging code.
     tool = parsed.get("tool")
@@ -1833,7 +2317,10 @@ def _scoped_setup_extra_dependencies(
     dynamic = setuptools.get("dynamic") if isinstance(setuptools, Mapping) else None
     if dynamic is not None and not isinstance(dynamic, Mapping):
         raise ValueError("tool.setuptools.dynamic must be a table")
-    if contract_schema == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4:
+    if contract_schema in {
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+    }:
         dependency_source = (
             dynamic.get("dependencies")
             if isinstance(dynamic, Mapping)
@@ -1866,7 +2353,11 @@ def _scoped_setup_extra_dependencies(
                     dependency_source,
                     project_root,
                     maximum_total_bytes=(
-                        MAX_DEPENDENCY_MANIFEST_BYTES - len(target_payload)
+                        MAX_DEPENDENCY_MANIFEST_BYTES
+                        - len(target_payload)
+                        - int(
+                            (taskboard_manifest or {}).get("bytes") or 0
+                        )
                     ),
                     expected_project_root_snapshot=(
                         expected_project_root_snapshot
@@ -1913,6 +2404,8 @@ def _scoped_setup_extra_dependencies(
                 "v4_optional_dependency_authority_digest_mismatch"
             )
         manifests = list(authority_manifests)
+        if taskboard_manifest is not None:
+            manifests.append(taskboard_manifest)
     else:
         if isinstance(dynamic, Mapping) and "dependencies" in dynamic:
             raise ValueError("scoped and setuptools dependency sources conflict")
@@ -1991,7 +2484,10 @@ def _scoped_setup_extra_dependencies(
             "scoped dependency authority subset order drifted",
         )
     if (
-        contract_schema != SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+        contract_schema not in {
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+        }
         or (
             selected_v2_target is not None
             and selected_v2_target.get("command_kind") == "pytest"
@@ -2032,14 +2528,17 @@ def _scoped_setup_extra_dependencies(
         ).hexdigest(),
         (
             "scoped_file_extra_requirements_sha256"
-            if contract_schema
-            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+            if contract_schema in {
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+            }
             else "setup_extra_requirements_sha256"
         ): extra_requirements_sha256,
     }
     if contract_schema in {
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
         SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+        SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
     }:
         metadata["scoped_validation_extra"] = authority_extra
     if selected_v2_target is not None:
@@ -2069,6 +2568,18 @@ def _scoped_setup_extra_dependencies(
         if prior_seed_authority_sha256:
             metadata["scoped_validation_prior_seed_authority_sha256"] = (
                 prior_seed_authority_sha256
+            )
+        if selected_v2_target.get("selection_kind") == "board-policy":
+            metadata.update(
+                {
+                    "scoped_validation_selection_kind": "board_policy",
+                    "scoped_board_policy_sha256": selected_v2_target[
+                        "board_policy_sha256"
+                    ],
+                    "scoped_taskboard_task_id_sha256": selected_v2_target[
+                        "taskboard_task_id_sha256"
+                    ],
+                }
             )
     return list(requirements), manifests, metadata
 
@@ -2454,7 +2965,10 @@ def _bounded_static_project(
         prefer_scoped_contract = (
             isinstance(raw_scoped_contract, Mapping)
             and raw_scoped_contract.get("schema")
-            == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+            in {
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+            }
         )
         dynamic_dependency_error = prefer_scoped_contract
         if not prefer_scoped_contract:
@@ -2502,7 +3016,10 @@ def _bounded_static_project(
             dependency_source = (
                 "agent_supervisor_scoped_file_extra"
                 if scoped_contract_metadata.get("dependency_contract_schema")
-                == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4
+                in {
+                    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                    SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
+                }
                 else "agent_supervisor_scoped_setup_extra"
             )
             scoped_contract_selected = True
@@ -3374,6 +3891,7 @@ def _evaluate_dependency_payload(
         if dependency_contract_schema in {
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
         }:
             if (
                 type(scoped_validation_extra) is str
@@ -3850,6 +4368,7 @@ def _preflight_validation_project_dependencies(
                         in {
                             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3,
                             SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                            SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V5,
                         }
                         else {}
                     ),

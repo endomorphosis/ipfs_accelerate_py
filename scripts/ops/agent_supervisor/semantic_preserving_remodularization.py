@@ -519,11 +519,13 @@ def _control_documents() -> dict[str, bytes]:
 def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
     edges = sorted((dependency, task.task_id) for task in TASKS for dependency in task.dependencies)
     bootstrap_runtime_paths = (
+        "pyproject.toml",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
     )
     seal = {
         "schema": "spar/dependency-source-seal@1", "program": PROGRAM, "plan_revision": PLAN_REVISION,

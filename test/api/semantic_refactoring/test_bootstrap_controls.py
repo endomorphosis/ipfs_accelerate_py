@@ -81,6 +81,11 @@ def test_rendered_controls_are_deterministic_and_sealed() -> None:
             ]
         )
     )
+    assert {
+        "pyproject.toml",
+        "ipfs_accelerate_py/agent_supervisor/validation/"
+        "project_dependency_preflight.py",
+    }.issubset(seal["bootstrap_runtime_file_sha256"])
 
 
 def test_scheduler_authority_and_rollout_are_fail_closed() -> None:
