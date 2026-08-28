@@ -97,6 +97,7 @@ CONTROL_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
@@ -257,6 +258,64 @@ def _m8_migration_errors(
         return list(module._m8_source_repair_errors(scheduler, seal, migration))
     except Exception as exc:
         return [f"M8 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m9_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M9 live-recovery contract across both static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(module._m9_live_recovery_errors(scheduler, seal, migration))
+    except Exception as exc:
+        return [f"M9 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _active_successor_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Select the newest declared successor without truthiness fallback.
+
+    Key presence selects M9 before M8.  Consequently an empty, null, or
+    otherwise malformed M9 declaration is validated as M9 and cannot silently
+    reactivate the historical M8 authority.  M8 remains independently checked
+    as immutable history whenever M9 is selected.
+    """
+
+    m9_key = "live_recovery_successor_materialization"
+    m9_seal_key = "live_recovery_successor_materialization_cid"
+    m9_presence = (
+        m9_key in scheduler,
+        m9_key in migration,
+        m9_seal_key in seal,
+    )
+    if any(m9_presence):
+        errors = _m9_migration_errors(scheduler, seal, migration)
+        if not all(m9_presence):
+            errors.append("M9 live-recovery authority is only partially declared")
+        # The predecessor remains immutable historical authority; M9 changes
+        # only the adjacent active execution generation.
+        errors.extend(_m8_migration_errors(scheduler, seal, migration))
+        return errors
+
+    m8_key = "source_repair_successor_materialization"
+    m8_seal_key = "source_repair_successor_materialization_cid"
+    m8_presence = (
+        m8_key in scheduler,
+        m8_key in migration,
+        m8_seal_key in seal,
+    )
+    if any(m8_presence):
+        errors = _m8_migration_errors(scheduler, seal, migration)
+        if not all(m8_presence):
+            errors.append("M8 source-repair authority is only partially declared")
+        return errors
+    return ["active M8/M9 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1687,23 +1746,96 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("one lane is required until sidecars are lane-scoped")
     provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
     expected_provider = {
-        "primary_provider_id": "grok_cli", "primary_model_id": "grok-4.6",
-        "fallback_provider_id": "codex", "fallback_model_id": "gpt-5.6-terra",
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "primary_executable": "/home/barberb/.local/bin/grok",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "medium",
+        "max_concurrency": 1,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+        "probe_before_live_launch": True,
+        "provider_results_are_completion_authority": False,
     }
-    if any(provider.get(key) != value for key, value in expected_provider.items()):
+    if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m9_key = "live_recovery_successor_materialization"
+    m9_selected = any(
+        (
+            m9_key in config,
+            m9_key in migration,
+            "live_recovery_successor_materialization_cid" in seal,
+        )
+    )
+    active_run = "run-r2-m9" if m9_selected else "run-r2-m8"
+    active_generation = "11" if m9_selected else "10"
+    active_port = 45251 if m9_selected else 45250
+    active_store = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        f"{active_run}/control.duckdb"
+    )
     program = config.get("database_program") if isinstance(config.get("database_program"), Mapping) else {}
     if (
         program.get("authority_mode") != "quack"
         or program.get("task_source_kind") != "duckdb"
-        or program.get("quack_endpoint") != "quack:127.0.0.1:45250"
+        or program.get("quack_endpoint") != f"quack:127.0.0.1:{active_port}"
         or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
         or program.get("failover_policy") != "fail_closed"
-        or program.get("store_generation") != "10"
-        or program.get("store_id")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/control.duckdb"
+        or program.get("store_generation") != active_generation
+        or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
+    if m9_selected:
+        live_recovery = config.get(m9_key)
+        expected_m9_cid = (
+            "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9"
+        )
+        expected_m9_fields = {
+            "schema": "sawm/control-plane-runtime-recovery-authorization@1",
+            "migration_revision": "SAWM-R2-M9",
+            "migration_kind": "board_scoped_checkout_lock_and_portal_deferral_recovery",
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m9/control.coordination.duckdb"
+            ),
+            "target_generation": 11,
+            "target_plan_revision": 10,
+            "target_event_watermark": 177,
+            "target_projection_cid": (
+                "baguqeeraebsdnrj7pvgd6yp26yr6ob7ocbrfzjwg57xfjnr6sn4xfkuvkq2q"
+            ),
+            "target_coordination_projection_digest": (
+                "sha256:7fb9bacb0f76fe832cc34dd5fb2ccdef13ddafeef4ec2a3d532cb902aa62011e"
+            ),
+            "event_suffix_length": 3,
+        }
+        if type(live_recovery) is not dict or any(
+            live_recovery.get(field) != expected
+            for field, expected in expected_m9_fields.items()
+        ):
+            config_errors.append("M9 active dual-store recovery authority is not exact")
+        elif (
+            live_recovery != migration.get(m9_key)
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    live_recovery,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            != expected_m9_cid
+            or seal.get("live_recovery_successor_materialization_cid")
+            != expected_m9_cid
+        ):
+            # The canonical authority binds the exact fourteen repair paths,
+            # frozen live failure, sanctioned task rearm, and unchanged
+            # provider strategy in addition to the active dual-store fields.
+            config_errors.append("M9 recovery/failure/rearm authority CID is not exact")
     prior = config.get("prior_materialization") if isinstance(config.get("prior_materialization"), Mapping) else {}
     if (
         prior.get("program_definition_cid") != migration.get("prior_program_definition_cid")
@@ -1718,7 +1850,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("append-only prior-SAWM migration binding mismatch")
     config_errors.extend(_m6_migration_errors(config, seal, migration))
     config_errors.extend(_m7_migration_errors(config, seal, migration))
-    config_errors.extend(_m8_migration_errors(config, seal, migration))
+    config_errors.extend(_active_successor_migration_errors(config, seal, migration))
     config_errors.extend(_configured_board_dependency_errors(root, config, seal))
     ducklake = config.get("ducklake_history_projection") if isinstance(config.get("ducklake_history_projection"), Mapping) else {}
     if not (

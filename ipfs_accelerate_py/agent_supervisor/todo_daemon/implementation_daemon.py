@@ -109,6 +109,8 @@ from ..merge.checkout_lock import (
     CheckoutMaintenanceLease,
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
+    board_scoped_protected_path_maintenance_lock_path,
     checkout_lock_metadata,
     checkout_lock_repository_matches,
     checkout_mutation_lock_path,
@@ -4721,6 +4723,7 @@ class PortalImplementationDaemon:
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
         merge_target_branch: str | None = None,
+        board_namespace: str = "",
         worktree_submodule_paths: Any = None,
         implementation_protected_paths: Any = None,
         manual_completion_authority_task_ids: Sequence[str] = (),
@@ -5078,6 +5081,10 @@ class PortalImplementationDaemon:
                 self._authorize_pooled_worktree_reuse
             )
         self.merge_target_branch = str(merge_target_branch or "").strip()
+        # Explicit configured-board namespaces opt into the board-isolated
+        # checkout locks.  The empty value preserves the legacy repo-wide
+        # lock contract for direct callers that have no canonical board ID.
+        self.board_namespace = str(board_namespace or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
         self.generated_status_paths = tuple(Path(path) for path in generated_status_paths)
@@ -54791,6 +54798,11 @@ class PortalImplementationDaemon:
         return self.state_path.parent / "implementation.lock"
 
     def _protected_path_maintenance_lock_path(self) -> Path:
+        if self.board_namespace:
+            return board_scoped_protected_path_maintenance_lock_path(
+                self.repo_root,
+                self.board_namespace,
+            )
         return checkout_mutation_lock_path(
             self.repo_root,
             lock_name=PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
@@ -59029,6 +59041,11 @@ class PortalImplementationDaemon:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def _repo_merge_lock_path(self) -> Path:
+        if self.board_namespace:
+            return board_scoped_checkout_mutation_lock_path(
+                self.repo_root,
+                self.board_namespace,
+            )
         return checkout_mutation_lock_path(self.repo_root)
 
     @staticmethod
@@ -71609,6 +71626,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Markdown heading prefix for tasks, for example '## PORTAL-' or '## AGENT-'",
     )
     parser.add_argument(
+        "--board-namespace",
+        default="",
+        help="Canonical task-board namespace for branch and lock isolation.",
+    )
+    parser.add_argument(
         "--state-prefix",
         default="portal",
         help="State file prefix inside --state-dir",
@@ -72059,6 +72081,7 @@ def main(argv: list[str] | None = None) -> None:
             strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
             events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
             repo_root=REPO_ROOT,
+            board_namespace=str(getattr(args, "board_namespace", "") or ""),
             task_header_prefix=args.task_prefix,
             implement=args.implement,
             implementation_command=args.implementation_command or None,

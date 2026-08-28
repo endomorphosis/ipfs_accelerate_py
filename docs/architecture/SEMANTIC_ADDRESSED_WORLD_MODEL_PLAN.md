@@ -347,6 +347,93 @@ it retains M7 and its receipt as immutable history, appends only plan revision
 as the existing empty string, and moves execution to a fresh generation-10
 owner. Changed controls are forbidden from restarting against generation 9.
 
+### 17.1 M9 append-only live-runtime recovery
+
+The first M8 implementation launch is retained as immutable live evidence. It
+claimed `SAWM-001` from `todo` revision 7 to `in_progress` revision 8, then
+settled it as `blocked` revision 9 after the database portal bridge classified
+the implementation supervisor's stable
+`external_protected_checkout_recovery_required` no-write result as a terminal
+portal error. The attempt produced no provider invocation, effect claim,
+implementation commit, merge attempt, or accepted-completion change. Its claim,
+lease, attempt, failure payload, settlement event, and full failure receipt are
+preserved. The Grok capability probe reported a hard-quota class, but the
+independent quota verifier did not run, so the quota-only Codex fallback was
+not admitted or dispatched.
+
+Generation 10 was stopped before audit. The required offline DuckDB checkpoint
+changed the physical control-file digest from its pre-audit digest but did not
+change the event prefix, event watermark 174, task or goal meaning, projection,
+semantic-authority digest, frozen-base digest, or append-surface digest. Both
+physical digests and the unchanged semantic projections are sealed; neither
+physical equality with the pre-checkpoint file nor a fabricated clean-state
+claim may replace that evidence.
+
+M9 authorizes exactly two bounded source repairs. First, the existing
+implementation daemon, runner, and managed-supervisor command propagate the
+board namespace into merge and protected-checkout maintenance locking. Equal
+namespaces contend on the same board-scoped locks, different namespaces do not
+share those locks, and an explicitly empty namespace retains the historical
+global-lock behavior for legacy callers. Second, the existing portal bridge
+defers only the closed, exact supervisor result whose reason is
+`external_protected_checkout_recovery_required`, whose owner is
+`implementation_supervisor`, and whose write count, projection delta, merge
+reconciliation, and implementation result prove that no implementation write
+occurred. Missing or altered owner, recovery, write, delta, or merge fields
+remain terminal; this repair does not weaken owner tags or make general portal
+failures retryable.
+
+Unlike the earlier source-only successors, M9 must copy the frozen M8
+`control.coordination.duckdb` together with the frozen control store because
+the failed-completion barrier is current coordinator authority. The copied
+coordinator is rearmed once using the complete sealed failure receipt and the
+exact successful control CAS observation. Rearm removes only that mutable
+failed-completion barrier, makes the task schedulable, and appends one
+coordination event. It preserves the failed attempt, claim, lease, settlement,
+failure receipt, and all prior coordination events. The execution database is
+historical attempt evidence and is never copied. This is a narrowly sealed
+exception for live-failure recovery, not a general permission to migrate
+execution or coordination sidecars.
+
+The provider route is unchanged: Grok 4.6 remains primary and Codex remains a
+fallback only after independently verified primary quota exhaustion. Provider
+output remains proposal-only and never establishes task completion. A
+configuration-only Codex-primary route, an unverified quota fallback, or a
+model/provider name not admitted by the current capability probe is outside
+M9 authority.
+
+M9 targets generation 11 and the exact pair:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m9/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m9/control.coordination.duckdb
+plan revision 10
+event cursor  177
+projection    baguqeeraebsdnrj7pvgd6yp26yr6ob7ocbrfzjwg57xfjnr6sn4xfkuvkq2q
+SAWM-001      retrying revision 10
+coord events  36
+coord root    sha256:7fb9bacb0f76fe832cc34dd5fb2ccdef13ddafeef4ec2a3d532cb902aa62011e
+```
+
+The coordination projection is deterministic, while the newly appended
+coordination event identifier makes its physical database digest a publication
+result. The final migration receipt records that actual digest and size; it is
+never predicted or fabricated in advance.
+
+The two stores form one publication bundle. Materialization must verify both
+staged stores, remove every mutable staging alias, prove that no M9 execution
+sidecar exists, hardlink-publish both stores under the pair lock, reverify the
+published bytes and projections, and publish
+`sawm/non-authoritative-migration-receipt@7` last. That receipt is the final
+pair commit marker: it binds both physical digests, both logical projections,
+the three control events, coordinator rearm event, failure-lineage identities,
+and current source binding, but does not itself become task or completion
+authority. A single store without its partner, an orphan marker, a pending
+receipt alias, a changed pair, or a receipt published before staging cleanup
+fails closed. The operator's materializer/check path must verify this final
+marker before generation 11 may start and every live preflight must rebind the
+marker without directly opening the Quack-owned control database.
+
 DuckDB plus a live Quack exclusive state owner is the authoritative multi-writer control path. DuckLake is optional non-authoritative history/projection storage and cannot substitute for DuckDB/Quack. This plan does not assert either service live; preflight must prove current capability and fail closed.
 
 The strongest honest terminal is one of: all mandatory work independently accepted with final transitive root verification; an explicitly permitted typed external-capability terminal; or an observed control-plane blocker that cannot be safely repaired within bootstrap authority. There is no background-completion claim.

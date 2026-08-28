@@ -292,6 +292,113 @@ def test_bridge_honors_explicit_deferral_without_reason_keyword(
     assert "Projection authority: false" in projection
 
 
+def _external_owner_recovery_result(*, owner: str) -> dict[str, object]:
+    return {
+        "blocked": True,
+        "reason": "external_protected_checkout_recovery_required",
+        "protected_checkout_recovery": {
+            "required": True,
+            "adopted": False,
+            "blocked": True,
+            "recovered": False,
+            "reason": "external_protected_checkout_recovery_required",
+            "protected_recovery_owner": owner,
+            "lock_path": "/tmp/repository.lock",
+        },
+        "unchanged": True,
+        "write_count": 0,
+        "projection_delta": {},
+        "implementation_result": None,
+        "merge_reconciliation": [],
+    }
+
+
+def test_bridge_defers_exact_external_owner_recovery_without_settling(
+    tmp_path: Path,
+) -> None:
+    class RecoveryBlockedPortal:
+        def run_once(self) -> dict[str, object]:
+            return _external_owner_recovery_result(
+                owner="implementation_supervisor"
+            )
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: RecoveryBlockedPortal(),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="^external_protected_checkout_recovery_required$",
+    ):
+        bridge.run_provider(_attempt())
+
+
+def test_bridge_rejects_unbound_external_owner_recovery_as_terminal(
+    tmp_path: Path,
+) -> None:
+    class UnboundRecoveryPortal:
+        def run_once(self) -> dict[str, object]:
+            return _external_owner_recovery_result(owner="")
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: UnboundRecoveryPortal(),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as captured:
+        bridge.run_provider(_attempt())
+    assert not isinstance(captured.value, DatabasePortalBridgeDeferred)
+    assert str(captured.value) == (
+        "external_protected_checkout_recovery_required"
+    )
+
+
+def test_external_owner_recovery_deferral_shape_is_closed() -> None:
+    exact = _external_owner_recovery_result(
+        owner="implementation_supervisor"
+    )
+    assert (
+        DatabasePortalExecutionBridge._is_external_protected_recovery_deferral(
+            exact
+        )
+        is True
+    )
+
+    variants: list[dict[str, object]] = []
+    for field, value in (
+        ("adopted", True),
+        ("protected_recovery_owner", "implementation_daemon"),
+        ("lock_path", ""),
+    ):
+        variant = json.loads(json.dumps(exact))
+        variant["protected_checkout_recovery"][field] = value
+        variants.append(variant)
+    for field, value in (
+        ("write_count", 1),
+        ("projection_delta", {"changed": True}),
+        ("merge_reconciliation", [{"status": "pending"}]),
+    ):
+        variant = json.loads(json.dumps(exact))
+        variant[field] = value
+        variants.append(variant)
+
+    assert all(
+        not DatabasePortalExecutionBridge._is_external_protected_recovery_deferral(
+            variant
+        )
+        for variant in variants
+    )
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_production_database_daemon_cannot_complete_with_default_noops(
     tmp_path: Path,

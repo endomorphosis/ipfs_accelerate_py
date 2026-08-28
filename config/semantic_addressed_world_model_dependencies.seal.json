@@ -526,6 +526,7 @@
   },
   "source_repair_materialization_cid": "sha256:326b6d9185ff9974050333d6c8e011ab3dce8772c322fd1143a27f926b72e468",
   "source_repair_successor_materialization_cid": "sha256:01935058ca682411743904513524b3eab41369b057151db529af14d46c5c0963",
+  "live_recovery_successor_materialization_cid": "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9",
   "optional_capability_policy": {
     "external_provers": "probe_then_typed_unavailable",
     "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",

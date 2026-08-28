@@ -503,6 +503,37 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_execution_skipped")
         return ""
 
+    @staticmethod
+    def _is_external_protected_recovery_deferral(
+        result: Mapping[str, Any],
+    ) -> bool:
+        """Recognize only the daemon's exact no-write owner deferral."""
+
+        recovery = result.get("protected_checkout_recovery")
+        write_count = result.get("write_count")
+        return bool(
+            result.get("blocked") is True
+            and result.get("unchanged") is True
+            and isinstance(write_count, int)
+            and not isinstance(write_count, bool)
+            and write_count == 0
+            and result.get("implementation_result") is None
+            and result.get("reason")
+            == "external_protected_checkout_recovery_required"
+            and isinstance(recovery, Mapping)
+            and recovery.get("required") is True
+            and recovery.get("adopted") is False
+            and recovery.get("blocked") is True
+            and recovery.get("recovered") is False
+            and recovery.get("reason")
+            == "external_protected_checkout_recovery_required"
+            and recovery.get("protected_recovery_owner")
+            == "implementation_supervisor"
+            and bool(str(recovery.get("lock_path") or "").strip())
+            and result.get("projection_delta") == {}
+            and result.get("merge_reconciliation") == []
+        )
+
     def _acceptance_receipt(
         self,
         *,
@@ -593,6 +624,10 @@ class DatabasePortalExecutionBridge:
                             implementation.get("reason")
                             or "portal_execution_deferred"
                         )
+                    )
+                if self._is_external_protected_recovery_deferral(raw_result):
+                    raise DatabasePortalBridgeDeferred(
+                        "external_protected_checkout_recovery_required"
                     )
                 failure = self._terminal_failure(raw_result)
                 if failure:

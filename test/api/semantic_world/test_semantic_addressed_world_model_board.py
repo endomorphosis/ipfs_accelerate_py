@@ -15,7 +15,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -299,6 +299,53 @@ def test_nonroot_goal_objective_projection_is_optional_and_closed() -> None:
     source = Path(operator.__file__).read_text(encoding="utf-8")
     assert 'str(expected.get("objective_id") or "")' in source
     assert 'expected["objective_id"]' not in source
+
+
+def test_managed_daemon_uses_the_supervisors_explicit_board_lock(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        board_scoped_checkout_mutation_lock_path,
+        board_scoped_protected_path_maintenance_lock_path,
+        checkout_mutation_lock_path,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+        parse_args as parse_daemon_args,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalImplementationSupervisor,
+    )
+
+    namespace = "semantic-addressed-world-model-v1"
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.repo_root = tmp_path
+    daemon.board_namespace = namespace
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.board_namespace = namespace
+    supervisor.config = SimpleNamespace(repo_root=tmp_path)
+
+    expected = board_scoped_checkout_mutation_lock_path(tmp_path, namespace)
+    assert daemon._repo_merge_lock_path() == expected
+    assert supervisor._repo_merge_lock_path() == expected
+    maintenance = daemon._protected_path_maintenance_lock_path()
+    assert maintenance == (
+        board_scoped_protected_path_maintenance_lock_path(tmp_path, namespace)
+    )
+    assert expected != checkout_mutation_lock_path(tmp_path)
+    assert maintenance != checkout_mutation_lock_path(tmp_path)
+    assert expected != board_scoped_checkout_mutation_lock_path(
+        tmp_path,
+        "independent-board-v1",
+    )
+    assert parse_daemon_args(
+        ["--board-namespace", namespace, "--once"]
+    ).board_namespace == namespace
+
+    daemon.board_namespace = ""
+    assert daemon._repo_merge_lock_path() == checkout_mutation_lock_path(
+        tmp_path
+    )
 
 
 def test_preserved_definition_cids_rehash_from_the_prior_source_binding() -> None:
@@ -886,7 +933,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
+    # Exercise the historical M8 selector in isolation.  The active M9 key
+    # intentionally has precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("live_recovery_successor_materialization")
     malformed_successor["source_repair_successor_materialization"] = []
     with pytest.raises(
         operator.OperatorError,
@@ -922,6 +972,7 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     )
 
     stale_runtime = copy.deepcopy(config)
+    stale_runtime.pop("live_recovery_successor_materialization")
     stale_runtime["runtime_paths"]["root"] = (
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m7"
     )
@@ -1886,3 +1937,423 @@ def test_operator_stop_closes_shared_extension_custody_on_quack_stop_failure() -
     assert replica.closed is True
     assert seal.close_count == 1
     assert transport._sealed_extension_set is None
+
+
+def _build_m9_rehearsal_pair(
+    materializer: ModuleType,
+    *,
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: dict[str, object],
+    config: dict[str, object],
+    validation_digest: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinator,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    shutil.copyfile(prior_control, control)
+    shutil.copyfile(prior_coordination, coordination)
+    source = DatabaseTaskSource(
+        control,
+        install_schema=False,
+        repository_tree_id=str(population["repository_tree_id"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+        owner_id="sawm-r2-runtime-recovery-migrator",
+    )
+    try:
+        operator = source.get_task("SAWM-000")
+        assert operator is not None
+        body = materializer._m9_migration_body(
+            population,
+            config,
+            validation_digest,
+        )
+        digest = materializer._identity(body)
+        source.plans.append_revision(
+            plan_cid=str(population["plan_root_cid"]),
+            expected_revision=9,
+            body={
+                "current_source_binding_cid": population["source_binding"][
+                    "source_binding_cid"
+                ],
+                "source_migration_revision": materializer._M9_MIGRATION_REVISION,
+                "source_migration_digest": digest,
+                "supersession_mode": materializer._M9_SUPERSESSION_MODE,
+            },
+            delta=materializer._m9_migration_plan_delta(population, config),
+        )
+        source.record_evidence(
+            task_cid=operator.task_cid,
+            evidence_kind="operator_control_plane_runtime_recovery",
+            digest=digest,
+            body=body,
+        )
+        task_cas = source.compare_and_set_status(
+            materializer._M8_LIVE_FAILURE_RECEIPT["task_cid"],
+            9,
+            "retrying",
+            materializer._m9_task_rearm_receipt(),
+        )
+    finally:
+        source.close()
+    coordinator = DatabaseCoordinator(coordination).open()
+    try:
+        rearm = coordinator.rearm_failed_task(
+            failure_receipt=materializer._M8_LIVE_FAILURE_RECEIPT,
+            control_task_observation=task_cas.to_dict(),
+            now_ms=materializer._M9_COORDINATION_REARM_OBSERVED_AT_MS,
+        )
+    finally:
+        coordinator.close()
+    assert rearm["ready"] is True
+    assert rearm["replayed"] is False
+
+
+def test_m9_exact_control_and_coordination_rehearsal(tmp_path: Path) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m9_exact_rehearsal_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._m9_live_recovery_authority(population, config)
+    assert materializer._identity(authority) == (
+        "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9"
+    )
+    frozen = materializer._verify_frozen_m8_live_authority(
+        REPO_ROOT,
+        authority,
+    )
+    assert frozen["append_surface_digest"] == authority[
+        "prior_append_surface_digest"
+    ]
+    malformed = copy.deepcopy(config)
+    malformed["live_recovery_successor_materialization"] = []
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M9 live recovery authority is invalid",
+    ):
+        materializer._m9_successor_configured(malformed)
+
+    prior_control = REPO_ROOT / authority["prior_store_id"]
+    prior_coordination = REPO_ROOT / authority["prior_coordination_store_id"]
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    validation_digest = "sha256:m9-focused-rehearsal"
+    before_prior = (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+
+    symlink_root = tmp_path / "symlink-predecessor"
+    expected_parent = (
+        symlink_root
+        / "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8"
+    )
+    expected_parent.mkdir(parents=True)
+    relocated = symlink_root / "relocated-control.duckdb"
+    shutil.copyfile(prior_control, relocated)
+    (expected_parent / "control.duckdb").symlink_to(relocated)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="no-follow regular file",
+    ):
+        materializer._verify_frozen_m8_live_authority(
+            symlink_root,
+            authority,
+        )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="no-follow regular file",
+    ):
+        materializer._assert_m9_prior_publication_anchor(
+            symlink_root,
+            authority,
+        )
+
+    _build_m9_rehearsal_pair(
+        materializer,
+        control=control,
+        coordination=coordination,
+        prior_control=prior_control,
+        prior_coordination=prior_coordination,
+        population=population,
+        config=config,
+        validation_digest=validation_digest,
+    )
+    before_verify = (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )
+    report = materializer._verify_m9_store_pair_copy(
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    assert report["projection_cid"] == materializer._M9_EXPECTED_PROJECTION_CID
+    assert report["event_watermark"] == 177
+    assert report["coordination_projection_digest"] == (
+        materializer._M9_COORDINATION_PROJECTION_DIGEST
+    )
+    assert report["coordination_event_count"] == 36
+    assert report["task_revision_changes"] == 1
+    assert before_verify == (
+        materializer._store_sha256(control),
+        materializer._store_sha256(coordination),
+    )
+    assert before_prior == (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+
+    import duckdb
+
+    connection = duckdb.connect(str(control))
+    try:
+        connection.execute(
+            "UPDATE goals SET title = title || '-tampered' "
+            "WHERE goal_cid = (SELECT MIN(goal_cid) FROM goals)"
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="non-authorized control table",
+    ):
+        materializer._verify_m9_store_pair_copy(
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+
+
+def test_m9_receipt_is_last_single_link_pair_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m9_receipt_recovery_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._m9_live_recovery_authority(population, config)
+    prior_control = tmp_path / "prior-control.duckdb"
+    prior_coordination = tmp_path / "prior-control.coordination.duckdb"
+    shutil.copyfile(REPO_ROOT / authority["prior_store_id"], prior_control)
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        prior_coordination,
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+    control = target / "control.duckdb"
+    coordination = target / "control.coordination.duckdb"
+    validation_digest = "sha256:m9-receipt-recovery"
+    _build_m9_rehearsal_pair(
+        materializer,
+        control=control,
+        coordination=coordination,
+        prior_control=prior_control,
+        prior_coordination=prior_coordination,
+        population=population,
+        config=config,
+        validation_digest=validation_digest,
+    )
+    verified = materializer._verify_m9_store_pair(
+        tmp_path,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_committed_clean_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m9_source_delta",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m9_prior_publication_anchor",
+        lambda *_args, **_kwargs: (prior_control, prior_coordination),
+    )
+    receipt = materializer._ensure_m9_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    receipt_path = target / "migration-receipt.json"
+    assert receipt["receipt_is_final_pair_commit_marker"] is True
+    assert receipt_path.stat().st_nlink == 1
+    assert control.stat().st_nlink == coordination.stat().st_nlink == 1
+    assert not list(target.glob(".migration-receipt.json.*.tmp"))
+    assert materializer._ensure_m9_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    ) == receipt
+
+    receipt_path.unlink()
+    pending = target / ".migration-receipt.json.999999.tmp"
+    pending.write_bytes(materializer._canonical(receipt) + b"\n")
+    os.link(pending, receipt_path)
+    assert receipt_path.stat().st_nlink == 2
+    recovered = materializer._ensure_m9_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    assert recovered == receipt
+    assert receipt_path.stat().st_nlink == 1
+    assert not pending.exists()
+
+    alias = target / "mutable-control-alias.duckdb"
+    os.link(control, alias)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="exactly 1 link",
+    ):
+        materializer._ensure_m9_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    alias.unlink()
+    execution = target / "control.execution.duckdb"
+    execution.write_bytes(b"not-copied")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="execution sidecar exists",
+    ):
+        materializer._ensure_m9_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    execution.unlink()
+
+    # Reproduce a sidecar appearing after full pair verification but before
+    # the receipt lock is acquired.  The final commit-input gate must refuse
+    # to publish the marker.
+    receipt_path.unlink()
+    original_pair_verifier = materializer._verify_m9_store_pair
+
+    def inject_execution_sidecar(*args: object, **kwargs: object) -> object:
+        result = original_pair_verifier(*args, **kwargs)
+        execution.write_bytes(b"appeared-during-verification")
+        return result
+
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m9_store_pair",
+        inject_execution_sidecar,
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="execution sidecar exists at receipt commit",
+    ):
+        materializer._ensure_m9_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    assert not receipt_path.exists()
+    execution.unlink()
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m9_store_pair",
+        original_pair_verifier,
+    )
+
+    # If the store changes after the last pre-link recheck, the post-link
+    # check removes only the marker created by this invocation and retains the
+    # pending receipt bytes for crash/audit recovery.
+    original_commit_gate = materializer._assert_m9_receipt_commit_inputs
+    commit_gate_calls = 0
+
+    def mutate_after_prelink_gate(*args: object, **kwargs: object) -> None:
+        nonlocal commit_gate_calls
+        original_commit_gate(*args, **kwargs)
+        commit_gate_calls += 1
+        if commit_gate_calls == 2:
+            with control.open("ab") as handle:
+                handle.write(b"post-gate-mutation")
+                handle.flush()
+                os.fsync(handle.fileno())
+
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m9_receipt_commit_inputs",
+        mutate_after_prelink_gate,
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="store pair changed at receipt commit",
+    ):
+        materializer._ensure_m9_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    assert not receipt_path.exists()
+    assert len(list(target.glob(".migration-receipt.json.*.tmp"))) == 1

@@ -1214,6 +1214,9 @@ def bind_database_portal_execution_from_args(
             strategy_path=paths.strategy,
             events_path=paths.events,
             repo_root=repo_root,
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
             task_header_prefix=parsed.task_prefix,
             implement=True,
             implementation_command=parsed.implementation_command or None,
@@ -1401,6 +1404,9 @@ def build_portal_implementation_daemon_from_args(
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
         repo_root=repo_root,
+        board_namespace=str(
+            getattr(parsed, "board_namespace", "") or ""
+        ),
         task_header_prefix=parsed.task_prefix,
         implement=parsed.implement,
         implementation_command=parsed.implementation_command or None,

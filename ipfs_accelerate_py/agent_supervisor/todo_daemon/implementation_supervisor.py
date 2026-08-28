@@ -18497,6 +18497,8 @@ class PortalImplementationSupervisor:
                     str(self.config.state_dir),
                     "--task-prefix",
                     self.config.task_prefix,
+                    "--board-namespace",
+                    self.board_namespace,
                     "--state-prefix",
                     self.config.state_prefix,
                     "--max-task-attempts",
@@ -18910,6 +18912,8 @@ class PortalImplementationSupervisor:
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
+            return False
+        if option_values("--board-namespace") != {self.board_namespace}:
             return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids

@@ -29,6 +29,15 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M9_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m9/control.duckdb"
+)
+_M9_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m9/control.coordination.duckdb"
+)
+_M9_GENERATION = 11
 
 
 class OperatorError(RuntimeError):
@@ -70,15 +79,38 @@ def _materializer():
 def _active_source_repair_materialization(
     config: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    """Return the newest sealed source-only successor authority.
+    """Return the newest sealed successor authority by key presence.
 
-    M8 is a successor to the immutable M7 repair record, not a rewrite of it.
-    Fall back to M7 only when the M8 key is absent; a present but malformed M8
-    authority must fail closed instead of silently selecting older evidence.
+    M9 is the append-only live-recovery successor to M8.  A present malformed
+    M9 authority must fail closed rather than silently selecting M8.  The same
+    rule applies to M8 before the historical M7 fallback.
     """
 
+    recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if recovery_key in config:
+        recovery = config.get(recovery_key)
+        required = {
+            "migration_revision",
+            "target_store_id",
+            "target_coordination_store_id",
+            "target_generation",
+            "target_plan_revision",
+            "target_event_watermark",
+            "target_projection_cid",
+            "target_coordination_projection_digest",
+            "provider_strategy",
+            "task_rearm",
+        }
+        if (
+            not isinstance(recovery, Mapping)
+            or any(recovery.get(key) in (None, "") for key in required)
+            or not isinstance(recovery.get("provider_strategy"), Mapping)
+            or not isinstance(recovery.get("task_rearm"), Mapping)
+        ):
+            raise OperatorError("active M9 live-recovery successor authority is invalid")
+        return recovery
     if successor_key in config:
         successor = config.get(successor_key)
         if not isinstance(successor, Mapping):
@@ -88,6 +120,156 @@ def _active_source_repair_materialization(
     if not isinstance(historical, Mapping):
         raise OperatorError("source-only successor authority is unavailable")
     return historical
+
+
+def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
+    """Return whether any append-only successor key is present.
+
+    Key presence is intentional: malformed newer controls must reach the
+    fail-closed selector instead of falling through to historical authority.
+    """
+
+    return any(
+        key in config
+        for key in (
+            "live_recovery_successor_materialization",
+            "source_repair_successor_materialization",
+            "source_repair_materialization",
+        )
+    )
+
+
+def _validate_m9_runtime_binding(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Bind M9 to its closed store pair, generation, and unchanged route."""
+
+    if "live_recovery_successor_materialization" not in config:
+        return
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    provider = config.get("provider")
+    strategy = authority.get("provider_strategy")
+    rearm = authority.get("task_rearm")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (program, owner, provider, strategy, rearm)
+    ):
+        raise OperatorError("M9 runtime authority binding is incomplete")
+    prior_route = str(strategy.get("prior_route") or "")
+    if (
+        authority.get("migration_revision") != "SAWM-R2-M9"
+        or authority.get("target_store_id") != _M9_STORE_ID
+        or authority.get("target_coordination_store_id")
+        != _M9_COORDINATION_STORE_ID
+        or int(authority.get("target_generation") or 0) != _M9_GENERATION
+        or program.get("store_id") != _M9_STORE_ID
+        or int(program.get("store_generation") or 0) != _M9_GENERATION
+        or owner.get("database_path") != _M9_STORE_ID
+        or owner.get("store_id") != _M9_STORE_ID
+        or not prior_route
+        or strategy.get("target_route") != prior_route
+        or strategy.get("route_changed") is not False
+        or strategy.get("capability_probe_required") is not True
+        or strategy.get("provider_result_is_completion_authority") is not False
+        or not str(provider.get("primary_provider_id") or "")
+        or not str(provider.get("primary_model_id") or "")
+        or not str(provider.get("fallback_provider_id") or "")
+        or not str(provider.get("fallback_model_id") or "")
+        or provider.get("fallback_trigger") != "primary_quota_exhausted"
+        or provider.get("provider_results_are_completion_authority") is not False
+        or rearm.get("coordination_rearm_required") is not True
+        or int(rearm.get("target_coordination_event_count") or 0) != 36
+        or rearm.get("historical_settlement_preserved") is not True
+    ):
+        raise OperatorError("M9 runtime store, generation, or provider binding differs")
+
+
+def _require_m9_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require the materializer's final marker for the verified M9 pair.
+
+    Offline startup supplies the complete ``check_materialized`` report.  Live
+    preflight rechecks its immutable final marker without opening the Quack-
+    owned control database directly.
+    """
+
+    if "live_recovery_successor_materialization" not in config:
+        return MappingProxyType({})
+    _validate_m9_runtime_binding(config, authority)
+    receipt_path = REPO_ROOT / Path(_M9_STORE_ID).parent / "migration-receipt.json"
+    try:
+        observed, _receipt_sha256 = materializer._load_nofollow_json(
+            receipt_path,
+            root=REPO_ROOT,
+            noun="M9 final pair commit marker",
+        )
+    except Exception as exc:
+        raise OperatorError("M9 materialized final pair marker is unavailable") from exc
+    if not isinstance(observed, Mapping):
+        raise OperatorError("M9 materialized final pair marker is invalid")
+    coordination_path = (REPO_ROOT / _M9_COORDINATION_STORE_ID).resolve()
+    try:
+        coordination_sha256, coordination_size = (
+            materializer._stable_regular_sha256(
+                coordination_path,
+                root=REPO_ROOT,
+                noun="materialized M9 coordination store",
+                required_link_count=1,
+            )
+        )
+    except Exception as exc:
+        raise OperatorError("M9 materialized coordination store is unavailable") from exc
+    unhashed = dict(observed)
+    claimed_cid = str(unhashed.pop("receipt_cid", ""))
+    rearm = authority["task_rearm"]
+    if (
+        claimed_cid != materializer._identity(unhashed)
+        or observed.get("schema") != "sawm/non-authoritative-migration-receipt@7"
+        or observed.get("receipt_is_final_pair_commit_marker") is not True
+        or observed.get("migration_revision") != authority["migration_revision"]
+        or observed.get("database_path") != _M9_STORE_ID
+        or observed.get("coordination_path") != _M9_COORDINATION_STORE_ID
+        or observed.get("coordination_store_sha256") != coordination_sha256
+        or int(observed.get("coordination_store_size") or 0)
+        != coordination_size
+        or observed.get("migration_projection_cid")
+        != authority["target_projection_cid"]
+        or observed.get("coordination_projection_digest")
+        != authority["target_coordination_projection_digest"]
+        or int(observed.get("migration_event_watermark") or 0)
+        != int(authority["target_event_watermark"])
+        or int(observed.get("coordination_event_count") or 0)
+        != int(rearm["target_coordination_event_count"])
+        or observed.get("coordination_sidecar_copied_before_rearm") is not True
+        or observed.get("failed_attempt_history_preserved") is not True
+        or observed.get("failed_completion_barrier_rearmed") is not True
+        or observed.get("execution_sidecar_copied") is not False
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M9 materialized final pair marker differs")
+    if checked is not None:
+        expected_control = str((REPO_ROOT / _M9_STORE_ID).resolve())
+        expected_coordination = str(coordination_path)
+        if (
+            checked.get("valid") is not True
+            or checked.get("database_path") != expected_control
+            or checked.get("coordination_path") != expected_coordination
+            or checked.get("projection_cid") != authority["target_projection_cid"]
+            or checked.get("coordination_projection_digest")
+            != authority["target_coordination_projection_digest"]
+            or int(checked.get("event_watermark") or 0)
+            != int(authority["target_event_watermark"])
+            or checked.get("receipt") != observed
+        ):
+            raise OperatorError("M9 materializer check differs from its final pair marker")
+    return MappingProxyType(dict(observed))
 
 
 def _quack_args(config: Mapping[str, Any], command: str) -> list[str]:
@@ -903,16 +1085,19 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
-    if (
-        "source_repair_successor_materialization" in config
-        or isinstance(config.get("source_repair_materialization"), Mapping)
-    ):
-        _active_source_repair_materialization(config)
+    if _successor_materialization_configured(config):
+        active_materialization = _active_source_repair_materialization(config)
         checked = materializer.check_materialized(REPO_ROOT, config_path)
         if checked.get("valid") is not True:
             raise OperatorError(
-                "current source-only successor authority does not verify"
+                "current append-only successor authority does not verify"
             )
+        _require_m9_final_pair_marker(
+            config,
+            active_materialization,
+            materializer,
+            checked=checked,
+        )
         return MappingProxyType(
             {
                 "dependency_valid": True,
@@ -998,6 +1183,11 @@ def _live_preflight(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     active_source_repair = _active_source_repair_materialization(config)
+    final_pair_marker = _require_m9_final_pair_marker(
+        config,
+        active_source_repair,
+        materializer,
+    )
     expected_event_cursor = int(active_source_repair["target_event_watermark"])
     expected_projection_cid = str(
         active_source_repair["target_projection_cid"]
@@ -1151,6 +1341,22 @@ def _live_preflight(
         "direct_authoritative_file_opened": False,
         "statuses": statuses,
     }
+    if final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M9_COORDINATION_STORE_ID).resolve()
+                ),
+                "coordination_projection_digest": final_pair_marker[
+                    "coordination_projection_digest"
+                ],
+                "coordination_event_count": final_pair_marker[
+                    "coordination_event_count"
+                ],
+                "materialization_receipt_cid": final_pair_marker["receipt_cid"],
+                "final_pair_commit_marker_verified": True,
+            }
+        )
 
     credential_report: dict[str, Any] = {
         "retired": False,
@@ -1263,14 +1469,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 discovery = discover_live_quack_endpoint(store)
                 if discovery.uri:
                     return _emit({"action": "checked_live", **_live_preflight(config, probe_provider=False)})
-                if (
-                    "source_repair_successor_materialization" in config
-                    or isinstance(
-                        config.get("source_repair_materialization"), Mapping
+                if _successor_materialization_configured(config):
+                    active_materialization = _active_source_repair_materialization(
+                        config
                     )
-                ):
-                    _active_source_repair_materialization(config)
-                    return _emit(materializer.check_materialized(REPO_ROOT, config_path))
+                    checked = materializer.check_materialized(
+                        REPO_ROOT, config_path
+                    )
+                    _require_m9_final_pair_marker(
+                        config,
+                        active_materialization,
+                        materializer,
+                        checked=checked,
+                    )
+                    return _emit(checked)
                 materializer._assert_committed_clean_source(REPO_ROOT, population)
                 dependency = materializer._validator_report(
                     REPO_ROOT,

@@ -137,6 +137,7 @@ CONTROL_PATHS = frozenset(
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_attestation.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
@@ -233,6 +234,51 @@ def _canonical_json(value: Mapping[str, Any]) -> bytes:
         ensure_ascii=True,
         allow_nan=False,
     ).encode("utf-8")
+
+
+def _has_presence_based_key_selection(source: str, key: str) -> bool:
+    """Return whether source selects *key* by membership, not truthiness.
+
+    The selector may use the literal directly or a local constant.  This keeps
+    the gate independent of the operator helper's name while still forbidding
+    a malformed newest authority from silently falling back to history.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    constants: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    constants[target.id] = node.value.value
+    for node in ast.walk(tree):
+        if (
+            not isinstance(node, ast.If)
+            or not isinstance(node.test, ast.Compare)
+            or len(node.test.ops) != 1
+            or not isinstance(node.test.ops[0], ast.In)
+            or len(node.test.comparators) != 1
+            or not isinstance(node.test.comparators[0], ast.Name)
+            or node.test.comparators[0].id != "config"
+        ):
+            continue
+        left = node.test.left
+        selected = (
+            left.value
+            if isinstance(left, ast.Constant) and isinstance(left.value, str)
+            else constants.get(left.id) if isinstance(left, ast.Name) else None
+        )
+        if selected == key:
+            return True
+    return False
 
 
 def _m5_source_migration_errors(
@@ -1376,65 +1422,402 @@ def _m8_source_repair_errors(
     ):
         errors.append("M8 bounded source-repair paths are not exact protected controls")
 
-    target_store = expected_subset["target_store_id"]
-    program = scheduler.get("database_program")
+    # Preserve the complete M8 execution-path gate for an historical control
+    # set.  Presence (not truthiness) of the M9 key transfers active-path
+    # authority to M9; a present malformed M9 record is rejected below rather
+    # than silently falling back here.
+    if "live_recovery_successor_materialization" not in scheduler:
+        target_store = expected_subset["target_store_id"]
+        program = scheduler.get("database_program")
+        owner = scheduler.get("quack_owner")
+        history = scheduler.get("ducklake_history_projection")
+        if not isinstance(program, Mapping) or (
+            program.get("authority_mode") != "quack"
+            or program.get("task_source_kind") != "duckdb"
+            or program.get("endpoint_secret_handle")
+            != "env://SAWM_QUACK_TOKEN"
+            or program.get("store_id") != target_store
+            or program.get("store_generation") != "10"
+            or program.get("quack_endpoint") != "quack:127.0.0.1:45250"
+            or program.get("schema_revision")
+            != "datasets-authoritative-operational-v1"
+            or program.get("failover_policy") != "fail_closed"
+            or program.get("explicit_legacy") is not False
+            or program.get("event_store_path")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/events"
+            )
+            or program.get("runtime_registry_path")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/registry"
+            )
+            or program.get("worktree_root")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/worktrees"
+            )
+        ):
+            errors.append("scheduler M8 execution authority is not exact")
+        if not isinstance(owner, Mapping) or (
+            owner.get("database_path") != target_store
+            or owner.get("store_id") != target_store
+            or owner.get("state_dir")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/quack-owner"
+            )
+            or owner.get("host") != "127.0.0.1"
+            or owner.get("port") != 45250
+            or owner.get("secret_handle") != "env://SAWM_QUACK_TOKEN"
+            or owner.get("migration_profile")
+            != "datasets-authoritative-operational-v1"
+            or owner.get("start_once_before_scheduler") is not True
+            or owner.get("live_transport_query_required") is not True
+            or owner.get("status_file_alone_is_ready") is not False
+            or owner.get("automatic_direct_file_fallback") is not False
+        ):
+            errors.append("scheduler M8 Quack owner authority is not exact")
+        if not isinstance(history, Mapping) or (
+            history.get("catalog_path")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/ducklake/history.ducklake"
+            )
+            or history.get("data_path")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/ducklake/data"
+            )
+            or history.get("receipt_path")
+            != (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/ducklake-history-receipt.json"
+            )
+        ):
+            errors.append("scheduler M8 DuckLake projection paths are not exact")
+        expected_runtime = {
+            "root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8"
+            ),
+            "state": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/state"
+            ),
+            "worktrees": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/worktrees"
+            ),
+            "merge_queue": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/merge-queue"
+            ),
+            "logs": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m8/logs"
+            ),
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        if scheduler.get("runtime_paths") != expected_runtime:
+            errors.append("scheduler M8 runtime paths are not exact")
+    return errors
+
+
+def _m9_live_recovery_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Verify the exact M9 live-failure rearm and active runtime authority."""
+
+    errors: list[str] = []
+    authority_key = "live_recovery_successor_materialization"
+    expected_cid = (
+        "sha256:e7834d12a6150a7d4dd1f90dcb5369d73a6d8620a38bf6baa0cbbb3da17bebb9"
+    )
+    if authority_key not in scheduler:
+        errors.append("M9 live recovery authority key is absent from scheduler")
+    if authority_key not in migration:
+        errors.append("M9 live recovery authority key is absent from inventory")
+    configured = scheduler[authority_key] if authority_key in scheduler else None
+    inventoried = migration[authority_key] if authority_key in migration else None
+    if type(configured) is not dict or configured != inventoried:
+        errors.append("M9 live recovery authority differs across controls")
+        configured = {}
+    observed_cid = "sha256:" + hashlib.sha256(
+        _canonical_json(configured)
+    ).hexdigest()
+    if "live_recovery_successor_materialization_cid" not in seal:
+        errors.append("M9 live recovery authority CID key is absent from seal")
+    if (
+        observed_cid != expected_cid
+        or seal.get("live_recovery_successor_materialization_cid")
+        != expected_cid
+    ):
+        errors.append("M9 live recovery authority CID is not exact")
+
+    expected_subset = {
+        "schema": "sawm/control-plane-runtime-recovery-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": "SAWM-R2-M9",
+        "migration_kind": (
+            "board_scoped_checkout_lock_and_portal_deferral_recovery"
+        ),
+        "supersession_mode": "append_only_live_failure_rearm",
+        "prior_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m8/control.duckdb"
+        ),
+        "prior_control_store_sha256": (
+            "e8b0814314b38f4e73c77258403aacd495c341d1c249d8fd84c5b29b0d1a21ab"
+        ),
+        "prior_control_store_size": 45_101_056,
+        "prior_event_watermark": 174,
+        "prior_event_prefix_sha256": (
+            "ac685db15d9e2f47c904c618ce7b1573aedeceb5613db144c78a2f93a0a0fe1a"
+        ),
+        "prior_projection_cid": (
+            "baguqeerarcj7jcicssddipfwagqjy5zhikzcohotihhsycnsl5ctqyuydgra"
+        ),
+        "prior_generation": 10,
+        "prior_plan_revision": 9,
+        "prior_coordination_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m8/control.coordination.duckdb"
+        ),
+        "prior_coordination_store_sha256": (
+            "9363b3763bdfea7ba3277f4b19853c093ca2ede36a8592832b1ca04d033576af"
+        ),
+        "prior_coordination_store_size": 6_828_032,
+        "prior_coordination_event_count": 35,
+        "prior_coordination_projection_digest": (
+            "sha256:a31ff114882052cff614cfc4e134ed6cbe44de456fdd337bfcb296d34caa6a24"
+        ),
+        "target_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m9/control.duckdb"
+        ),
+        "target_coordination_store_id": (
+            "data/agent_supervisor/semantic_addressed_world_model/"
+            "run-r2-m9/control.coordination.duckdb"
+        ),
+        "target_generation": 11,
+        "target_plan_revision": 10,
+        "target_event_watermark": 177,
+        "target_projection_cid": (
+            "baguqeeraebsdnrj7pvgd6yp26yr6ob7ocbrfzjwg57xfjnr6sn4xfkuvkq2q"
+        ),
+        "target_coordination_projection_digest": (
+            "sha256:7fb9bacb0f76fe832cc34dd5fb2ccdef13ddafeef4ec2a3d532cb902aa62011e"
+        ),
+        "event_suffix_length": 3,
+        "task_revision_changes": 1,
+        "task_status_changes": 1,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    for field, expected in expected_subset.items():
+        if configured.get(field) != expected:
+            errors.append(f"M9 live recovery {field} is not exact")
+
+    expected_provider_strategy = {
+        "capability_probe_required": True,
+        "prior_route": "grok-4.6_then_codex_on_independently_verified_quota",
+        "provider_result_is_completion_authority": False,
+        "route_changed": False,
+        "target_route": "grok-4.6_then_codex_on_independently_verified_quota",
+    }
+    if configured.get("provider_strategy") != expected_provider_strategy:
+        errors.append("M9 provider strategy does not preserve the sealed route")
+
+    expected_task_rearm = {
+        "schema": "sawm/control-plane-task-rearm-authorization@1",
+        "operation": "operator_control_plane_repair",
+        "task_alias": "SAWM-001",
+        "task_cid": (
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+        "settlement_id": (
+            "baguqeeransrfearh5ojrnru6ls43mn7xsx6mlhndkhokrn4k7wlhowxjnshq"
+        ),
+        "from_status": "blocked",
+        "from_revision": 9,
+        "to_status": "retrying",
+        "to_revision": 10,
+        "automatic_retry_admitted": False,
+        "coordination_rearm_required": True,
+        "coordination_rearm_observed_at_ms": 1_787_939_913_492,
+        "prior_coordination_event_count": 35,
+        "target_coordination_event_count": 36,
+        "historical_settlement_preserved": True,
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+        "implementation_commit_count": 0,
+        "merge_attempt_count": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    if configured.get("task_rearm") != expected_task_rearm:
+        errors.append("M9 task rearm authority is not exact")
+
+    failure = configured.get("live_implementation_failure")
+    if not isinstance(failure, Mapping) or (
+        failure.get("schema") != "sawm/live-control-implementation-failure@1"
+        or failure.get("attempt") != "SAWM-R2-M8-LIVE-A1"
+        or failure.get("phase") != "implementation_execution"
+        or failure.get("failure_kind")
+        != "external_protected_checkout_recovery_required"
+        or failure.get("task_alias") != "SAWM-001"
+        or failure.get("from_status") != "todo"
+        or failure.get("from_revision") != 7
+        or failure.get("claim_status") != "in_progress"
+        or failure.get("claim_revision") != 8
+        or failure.get("terminal_status") != "blocked"
+        or failure.get("terminal_revision") != 9
+        or failure.get("provider_invocation_count") != 0
+        or failure.get("effect_claim_count") != 0
+        or failure.get("implementation_commit_count") != 0
+        or failure.get("merge_attempt_count") != 0
+        or failure.get("worker_self_approval") is not False
+    ):
+        errors.append("M9 frozen live implementation failure is not exact")
+
+    required_repair_paths = {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_daemon_runner.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_supervisor.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "database_portal_bridge.py"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+    }
+    protected = set(scheduler.get("protected_paths") or ())
+    capsule = scheduler.get("configured_board_live_capsule")
+    capsule_controls = set(
+        capsule.get("control_paths") or ()
+        if isinstance(capsule, Mapping)
+        else ()
+    )
+    if (
+        set(configured.get("bounded_control_plane_repair_paths") or ())
+        != required_repair_paths
+        or len(configured.get("bounded_control_plane_repair_paths") or ()) != 14
+        or not required_repair_paths.issubset(CONTROL_PATHS)
+        or not required_repair_paths.issubset(protected)
+        or not required_repair_paths.issubset(capsule_controls)
+    ):
+        errors.append("M9 bounded repair paths are not exact protected controls")
+
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m9"
+    target_store = f"{root}/control.duckdb"
+    expected_program = {
+        "authority_mode": "quack",
+        "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
+        "event_store_path": f"{root}/events",
+        "explicit_legacy": False,
+        "export_profile": "semantic-addressed-world-model-r2",
+        "failover_policy": "fail_closed",
+        "quack_endpoint": "quack:127.0.0.1:45251",
+        "runtime_registry_path": f"{root}/registry",
+        "schema_revision": "datasets-authoritative-operational-v1",
+        "store_generation": "11",
+        "store_id": target_store,
+        "task_source_kind": "duckdb",
+        "worktree_root": f"{root}/worktrees",
+    }
+    if scheduler.get("database_program") != expected_program:
+        errors.append("scheduler M9 execution authority is not exact")
+
     owner = scheduler.get("quack_owner")
-    history = scheduler.get("ducklake_history_projection")
-    if not isinstance(program, Mapping) or (
-        program.get("authority_mode") != "quack"
-        or program.get("task_source_kind") != "duckdb"
-        or program.get("endpoint_secret_handle") != "env://SAWM_QUACK_TOKEN"
-        or program.get("store_id") != target_store
-        or program.get("store_generation") != "10"
-        or program.get("quack_endpoint") != "quack:127.0.0.1:45250"
-        or program.get("schema_revision")
-        != "datasets-authoritative-operational-v1"
-        or program.get("failover_policy") != "fail_closed"
-        or program.get("explicit_legacy") is not False
-        or program.get("event_store_path")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/events"
-        or program.get("runtime_registry_path")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/registry"
-        or program.get("worktree_root")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/worktrees"
+    expected_owner_fields = {
+        "automatic_direct_file_fallback": False,
+        "database_path": target_store,
+        "host": "127.0.0.1",
+        "live_transport_query_required": True,
+        "migration_profile": "datasets-authoritative-operational-v1",
+        "port": 45_251,
+        "repository_id": "ipfs_accelerate_py:semantic-addressed-world-model-v1",
+        "secret_handle": "env://SAWM_QUACK_TOKEN",
+        "start_once_before_scheduler": True,
+        "state_dir": f"{root}/quack-owner",
+        "status_file_alone_is_ready": False,
+        "store_id": target_store,
+    }
+    if not isinstance(owner, Mapping) or any(
+        owner.get(field) != expected
+        for field, expected in expected_owner_fields.items()
     ):
-        errors.append("scheduler M8 execution authority is not exact")
-    if not isinstance(owner, Mapping) or (
-        owner.get("database_path") != target_store
-        or owner.get("store_id") != target_store
-        or owner.get("state_dir")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/quack-owner"
-        or owner.get("host") != "127.0.0.1"
-        or owner.get("port") != 45250
-        or owner.get("secret_handle") != "env://SAWM_QUACK_TOKEN"
-        or owner.get("migration_profile")
-        != "datasets-authoritative-operational-v1"
-        or owner.get("start_once_before_scheduler") is not True
-        or owner.get("live_transport_query_required") is not True
-        or owner.get("status_file_alone_is_ready") is not False
-        or owner.get("automatic_direct_file_fallback") is not False
-    ):
-        errors.append("scheduler M8 Quack owner authority is not exact")
-    if not isinstance(history, Mapping) or (
-        history.get("catalog_path")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/ducklake/history.ducklake"
-        or history.get("data_path")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/ducklake/data"
-        or history.get("receipt_path")
-        != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/ducklake-history-receipt.json"
-    ):
-        errors.append("scheduler M8 DuckLake projection paths are not exact")
-    runtime = scheduler.get("runtime_paths")
+        errors.append("scheduler M9 Quack owner authority is not exact")
+
+    expected_history = {
+        "authority": False,
+        "catalog_path": f"{root}/ducklake/history.ducklake",
+        "completion_prerequisite": False,
+        "data_path": f"{root}/ducklake/data",
+        "enabled_when_locally_available": True,
+        "install_or_network_forbidden": True,
+        "load_local_only": True,
+        "receipt_path": f"{root}/ducklake-history-receipt.json",
+        "scheduling_prerequisite": False,
+        "typed_unavailability_is_permitted": True,
+    }
+    if scheduler.get("ducklake_history_projection") != expected_history:
+        errors.append("scheduler M9 DuckLake projection is not exact")
+
     expected_runtime = {
-        "root": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8",
-        "state": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/state",
-        "worktrees": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/worktrees",
-        "merge_queue": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/merge-queue",
-        "logs": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m8/logs",
+        "root": root,
+        "state": f"{root}/state",
+        "worktrees": f"{root}/worktrees",
+        "merge_queue": f"{root}/merge-queue",
+        "logs": f"{root}/logs",
         "generated_runtime_artifacts_are_completion_authority": False,
     }
-    if runtime != expected_runtime:
-        errors.append("scheduler M8 runtime paths are not exact")
+    if scheduler.get("runtime_paths") != expected_runtime:
+        errors.append("scheduler M9 runtime paths are not exact")
+
+    expected_provider = {
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_provider_id": "codex",
+        "fallback_reasoning_effort": "medium",
+        "fallback_trigger": "primary_quota_exhausted",
+        "max_concurrency": 1,
+        "primary_executable": "/home/barberb/.local/bin/grok",
+        "primary_model_id": "grok-4.6",
+        "primary_provider_id": "grok_cli",
+        "probe_before_live_launch": True,
+        "provider_results_are_completion_authority": False,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+    }
+    if scheduler.get("provider") != expected_provider:
+        errors.append("scheduler M9 provider route is not exact")
     return errors
 
 
@@ -3353,6 +3736,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(_m6_source_migration_errors(scheduler, seal, migration))
         protocol_errors.extend(_m7_source_repair_errors(scheduler, seal, migration))
         protocol_errors.extend(_m8_source_repair_errors(scheduler, seal, migration))
+        protocol_errors.extend(_m9_live_recovery_errors(scheduler, seal, migration))
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"
@@ -3372,6 +3756,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "live_recovery_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M9 authority by fail-closed key presence"
+            )
         for name in (
             "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
             "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING",
