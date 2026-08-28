@@ -31,6 +31,19 @@ from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     TaskProposalRouterError,
     parse_task_implementation_proposal,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.promotion_comparison import (
+    DEFAULT_PROOF_MINIMUM_MILLIONTHS,
+    DEFAULT_SEMANTIC_MINIMUM_MILLIONTHS,
+    M2_GATES,
+    PromotionComparisonError,
+    PromotionComparisonPolicy,
+    PromotionComparisonReceipt,
+    PromotionComparisonRequest,
+    PromotionDecision,
+    PromotionGateEvidence,
+    compare_promotion,
+    passing_m2_evidence,
+)
 
 
 TASK_ID = "ASI-031"
@@ -2113,4 +2126,3 @@ def test_forged_promotion_comparison_receipt_is_rejected() -> None:
 
     with pytest.raises(PromotionComparisonError, match="forged"):
         PromotionComparisonReceipt.from_dict(payload)
-
