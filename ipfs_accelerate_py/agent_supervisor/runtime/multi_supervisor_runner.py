@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -2646,6 +2647,205 @@ def _profile_option_values(argv: Sequence[str], option: str) -> tuple[str, ...]:
             values.append(value)
         index += 1
     return tuple(values)
+
+
+def _validated_state_owner_bootstrap_fd(
+    common_args: Sequence[str],
+) -> int | None:
+    """Return one inherited typed-owner listener from a legacy launch profile.
+
+    The descriptor is an ambient process capability, so the non-plan-bound
+    runner admits it only when one exact profile option names an already-open
+    Unix-domain listening socket.  A duplicate descriptor is used for the
+    probe so validation never consumes or closes the caller's capability.
+    """
+
+    values = _profile_option_values(
+        common_args,
+        "--state-owner-bootstrap-fd",
+    )
+    if not values:
+        return None
+    if len(values) != 1:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must appear exactly once"
+        )
+    try:
+        descriptor = int(values[0])
+    except ValueError as exc:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must name an integer descriptor"
+        ) from exc
+    if descriptor < 3:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must be an open descriptor >= 3"
+        )
+    try:
+        probe_descriptor = os.dup(descriptor)
+    except OSError as exc:
+        raise ValueError(
+            "--state-owner-bootstrap-fd is not an open descriptor"
+        ) from exc
+    try:
+        probe = socket.socket(fileno=probe_descriptor)
+    except OSError as exc:
+        os.close(probe_descriptor)
+        raise ValueError(
+            "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+        ) from exc
+    with probe:
+        try:
+            listening = probe.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
+        except OSError as exc:
+            raise ValueError(
+                "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+            ) from exc
+        if probe.family != socket.AF_UNIX or listening != 1:
+            raise ValueError(
+                "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+            )
+    return descriptor
+
+
+def _seal_state_owner_bootstrap_lane_directory(path: Path) -> None:
+    """Seal one bootstrap lane before its daemon opens private sidecars.
+
+    A typed Quack owner is authoritative for task state, but the generic
+    database daemon deliberately retains lane-private coordination and
+    execution journals.  Their writer locks require an owner-only parent.
+    ``Path.mkdir`` alone inherits the caller's umask when the lane is first
+    created and does not repair an existing directory, so an ordinary 0002
+    umask otherwise leaves the daemon with a 0775 lock parent.
+
+    Open the final component without following a symlink, normalize it through
+    that descriptor, and confirm that the pathname still names the same owned
+    directory.  This is launch-custody repair, not a second state authority.
+    """
+
+    lane = Path(path)
+    lane.mkdir(parents=True, exist_ok=True, mode=0o700)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ValueError(
+            "state-owner bootstrap lane requires no-follow directory access"
+        )
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    try:
+        descriptor = os.open(lane, flags)
+    except OSError as exc:
+        raise ValueError(
+            "state-owner bootstrap lane is not a no-follow directory"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or int(before.st_uid) != os.geteuid()
+        ):
+            raise ValueError(
+                "state-owner bootstrap lane must be an owned directory"
+            )
+        os.fchmod(descriptor, 0o700)
+        after = os.fstat(descriptor)
+        try:
+            named = os.lstat(lane)
+        except OSError as exc:
+            raise ValueError(
+                "state-owner bootstrap lane changed during admission"
+            ) from exc
+        if (
+            not stat.S_ISDIR(after.st_mode)
+            or stat.S_ISLNK(named.st_mode)
+            or int(after.st_uid) != os.geteuid()
+            or stat.S_IMODE(after.st_mode) != 0o700
+            or (int(after.st_dev), int(after.st_ino))
+            != (int(named.st_dev), int(named.st_ino))
+        ):
+            raise ValueError(
+                "state-owner bootstrap lane changed during admission"
+            )
+    finally:
+        os.close(descriptor)
+
+
+def _replace_single_profile_option(
+    argv: Sequence[str],
+    option: str,
+    value: str,
+) -> tuple[str, ...]:
+    """Replace one already-validated profile value without adding authority."""
+
+    tokens = [str(item) for item in argv]
+    for index, token in enumerate(tokens):
+        if token == option:
+            tokens[index + 1] = value
+            return tuple(tokens)
+        if token.startswith(option + "="):
+            tokens[index] = f"{option}={value}"
+            return tuple(tokens)
+    raise AssertionError(f"validated launch profile omitted {option}")
+
+
+def _lane_scoped_state_owner_common_args(
+    common_args: Sequence[str],
+    *,
+    track: SupervisorTrack,
+) -> tuple[str, ...]:
+    """Bind one shared bootstrap owner identity to an expanded shard lane."""
+
+    owner_option = "--database-owner-session-id"
+    owner_values = _profile_option_values(common_args, owner_option)
+    if len(owner_values) != 1:
+        raise ValueError(
+            f"{owner_option} must appear exactly once with the bootstrap descriptor"
+        )
+    base_owner = owner_values[0].strip()
+    if not base_owner or any(
+        character in base_owner for character in ("\x00", "\n", "\r")
+    ):
+        raise ValueError(
+            f"{owner_option} must name one nonempty single-line identity"
+        )
+
+    shard_counts = _profile_option_values(
+        track.extra_args,
+        "--task-shard-count",
+    )
+    shard_indices = _profile_option_values(
+        track.extra_args,
+        "--task-shard-index",
+    )
+    if not shard_counts and not shard_indices:
+        return tuple(str(item) for item in common_args)
+    if len(shard_counts) != 1 or len(shard_indices) != 1:
+        raise ValueError(
+            "bootstrap owner shard metadata must contain one count and one index"
+        )
+    try:
+        shard_count = int(shard_counts[0])
+        shard_index = int(shard_indices[0])
+    except ValueError as exc:
+        raise ValueError("bootstrap owner shard metadata must be integer") from exc
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError("bootstrap owner shard metadata is out of range")
+    if shard_count == 1:
+        return tuple(str(item) for item in common_args)
+
+    track_digest = hashlib.sha256(track.name.encode("utf-8")).hexdigest()[:12]
+    lane_owner = (
+        f"{base_owner}:shard:{shard_index}-of-{shard_count}:"
+        f"track:{track_digest}"
+    )
+    return _replace_single_profile_option(
+        common_args,
+        owner_option,
+        lane_owner,
+    )
 
 
 class _StableArtifactReadError(RuntimeError):
@@ -6230,19 +6430,25 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
     expected = f"{os.getpid()}\n".encode("ascii")
     with serialized_lock_update(path):
         try:
-            payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
+            payload, evidence = _read_stable_regular_bytes(
+                path,
+                max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+            )
         except _StableArtifactReadError as exc:
             raise ValueError(f"unsafe master PID projection: {exc}") from exc
         if payload is not None:
             if (
-                payload != expected
-                or int(evidence.get("uid", -1)) != os.geteuid()
-                or int(evidence.get("link_count", -1)) != 1
-                or not stat.S_ISREG(int(evidence.get("mode", 0)))
-                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+                payload == expected
+                and int(evidence.get("uid", -1)) == os.geteuid()
+                and int(evidence.get("link_count", -1)) == 1
+                and stat.S_ISREG(int(evidence.get("mode", 0)))
+                and stat.S_IMODE(int(evidence.get("mode", 0))) == 0o600
             ):
-                raise ValueError("master PID projection is not owned by this runner")
-            return
+                return
+            # A dead leftover from a previous generation must not freeze
+            # foreground relaunch. Detached launch already quarantines this
+            # class; keep the same ESRCH-only reclaim for adopt-or-create.
+            _quarantine_stale_detached_master_pid_locked(path)
         descriptor, identity = _reserve_owned_pid_projection_locked(path)
         try:
             _publish_reserved_pid_projection(
@@ -6529,25 +6735,74 @@ def _pending_supervisor_generation_fields(
     reason: str,
     observed_supervisor_pid: int | None = None,
     status_age_seconds: float | None = None,
+    generation_live_status_observed: bool = False,
+    status_gap_started_at_epoch_seconds: float | None = None,
 ) -> dict[str, object]:
-    """Return bounded startup health until this process generation reports."""
+    """Return bounded startup or post-live status-gap health.
 
-    startup_age_seconds = max(
-        0.0,
-        observed_at.timestamp() - generation_started_at_epoch_seconds,
-    )
-    within_startup_grace = startup_age_seconds <= startup_grace_seconds
+    A generation that has never published a valid live status remains bounded
+    by its original startup horizon.  Once a valid live status was observed,
+    an unavailable or generation-invalid read gets a distinct bounded gap
+    horizon.  The caller must retain the first returned gap origin until a
+    generation-valid status is observed; otherwise repeated bad observations
+    could extend the grace indefinitely.
+    """
+
+    observed_epoch_seconds = observed_at.timestamp()
+    if generation_live_status_observed:
+        gap_started_at = (
+            observed_epoch_seconds
+            if status_gap_started_at_epoch_seconds is None
+            else float(status_gap_started_at_epoch_seconds)
+        )
+        if (
+            not math.isfinite(gap_started_at)
+            or gap_started_at < generation_started_at_epoch_seconds
+            or gap_started_at > observed_epoch_seconds + 1e-6
+        ):
+            raise ValueError("supervisor status gap bounds are invalid")
+        gap_age_seconds = max(0.0, observed_epoch_seconds - gap_started_at)
+        within_grace = gap_age_seconds <= startup_grace_seconds
+        generation_state = "status_gap"
+    else:
+        if status_gap_started_at_epoch_seconds is not None:
+            raise ValueError(
+                "supervisor status gap requires a prior valid live status"
+            )
+        startup_age_seconds = max(
+            0.0,
+            observed_epoch_seconds - generation_started_at_epoch_seconds,
+        )
+        within_grace = startup_age_seconds <= startup_grace_seconds
+        generation_state = "pending"
     fields: dict[str, object] = {
-        "supervisor_status": "starting" if within_startup_grace else "stale",
-        "supervisor_status_generation": "pending",
+        "supervisor_status": "starting" if within_grace else "stale",
+        "supervisor_status_generation": generation_state,
         "supervisor_status_generation_reason": reason,
         "supervisor_status_path": str(status_path),
-        "supervisor_startup_age_seconds": round(startup_age_seconds, 1),
-        "supervisor_startup_grace_seconds": startup_grace_seconds,
-        "supervisor_within_startup_grace": within_startup_grace,
         "expected_supervisor_pid": expected_supervisor_pid,
-        "restart_supervisor": not within_startup_grace,
+        "restart_supervisor": not within_grace,
     }
+    if generation_live_status_observed:
+        fields.update(
+            {
+                "supervisor_status_gap_started_at_epoch_seconds": gap_started_at,
+                "supervisor_status_gap_age_seconds": round(gap_age_seconds, 1),
+                "supervisor_status_gap_grace_seconds": startup_grace_seconds,
+                "supervisor_within_status_gap_grace": within_grace,
+            }
+        )
+    else:
+        fields.update(
+            {
+                "supervisor_startup_age_seconds": round(
+                    startup_age_seconds,
+                    1,
+                ),
+                "supervisor_startup_grace_seconds": startup_grace_seconds,
+                "supervisor_within_startup_grace": within_grace,
+            }
+        )
     if observed_supervisor_pid is not None:
         fields["observed_supervisor_pid"] = observed_supervisor_pid
     if status_age_seconds is not None:
@@ -6566,12 +6821,11 @@ def supervisor_status_health_fields(
     expected_supervisor_pid: int | None = None,
     generation_started_at_epoch_seconds: float | None = None,
     startup_grace_seconds: float = 0.0,
+    generation_live_status_observed: bool = False,
+    status_gap_started_at_epoch_seconds: float | None = None,
 ) -> dict[str, object]:
     """Return generation-bound health for the wrapper supervisor status file."""
 
-    status_path = _inferred_supervisor_status_path(track)
-    if status_path is None:
-        return {"supervisor_status": "untracked"}
     generation_bound = (
         expected_supervisor_pid is not None
         or generation_started_at_epoch_seconds is not None
@@ -6584,7 +6838,15 @@ def supervisor_status_health_fields(
         raise ValueError(
             "supervisor status generation requires a positive PID and spawn epoch"
         )
-    observed_at = datetime.now(timezone.utc)
+    if type(generation_live_status_observed) is not bool:
+        raise ValueError(
+            "supervisor live-status observation must be a boolean"
+        )
+    if not generation_bound and (
+        generation_live_status_observed
+        or status_gap_started_at_epoch_seconds is not None
+    ):
+        raise ValueError("supervisor status gap requires a process generation")
     generation_started_at = (
         float(generation_started_at_epoch_seconds)
         if generation_started_at_epoch_seconds is not None
@@ -6601,6 +6863,14 @@ def supervisor_status_health_fields(
         )
     ):
         raise ValueError("supervisor status generation bounds are invalid")
+    status_path = _inferred_supervisor_status_path(track)
+    if status_path is None:
+        return {"supervisor_status": "untracked"}
+    observed_at = datetime.now(timezone.utc)
+    try:
+        status_path_present = status_path.exists()
+    except OSError:
+        status_path_present = True
     payload = _read_json_dict(status_path)
     if not payload:
         if generation_bound:
@@ -6612,7 +6882,17 @@ def supervisor_status_health_fields(
                     generation_started_at
                 ),
                 startup_grace_seconds=grace,
-                reason="status_missing",
+                reason=(
+                    "status_missing_or_invalid"
+                    if status_path_present
+                    else "status_missing"
+                ),
+                generation_live_status_observed=(
+                    generation_live_status_observed
+                ),
+                status_gap_started_at_epoch_seconds=(
+                    status_gap_started_at_epoch_seconds
+                ),
             )
         return {
             "supervisor_status": "missing",
@@ -6635,6 +6915,12 @@ def supervisor_status_health_fields(
                 ),
                 startup_grace_seconds=grace,
                 reason="status_timestamp_missing_or_invalid",
+                generation_live_status_observed=(
+                    generation_live_status_observed
+                ),
+                status_gap_started_at_epoch_seconds=(
+                    status_gap_started_at_epoch_seconds
+                ),
             )
         return {
             "supervisor_status": "unknown",
@@ -6663,6 +6949,12 @@ def supervisor_status_health_fields(
             ),
             observed_supervisor_pid=observed_pid,
             status_age_seconds=age_seconds,
+            generation_live_status_observed=(
+                generation_live_status_observed
+            ),
+            status_gap_started_at_epoch_seconds=(
+                status_gap_started_at_epoch_seconds
+            ),
         )
     if (
         generation_bound
@@ -6677,12 +6969,27 @@ def supervisor_status_health_fields(
             reason="status_predates_process_generation",
             observed_supervisor_pid=observed_pid,
             status_age_seconds=age_seconds,
+            generation_live_status_observed=(
+                generation_live_status_observed
+            ),
+            status_gap_started_at_epoch_seconds=(
+                status_gap_started_at_epoch_seconds
+            ),
         )
+    generation_fields: dict[str, object] = {}
+    if generation_bound:
+        generation_fields = {
+            "supervisor_status_generation": "valid",
+            "supervisor_status_generation_valid": True,
+            "expected_supervisor_pid": int(expected_supervisor_pid),
+            "observed_supervisor_pid": observed_pid,
+        }
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
             "supervisor_status_path": str(status_path),
             "supervisor_status_age_seconds": round(age_seconds, 1),
+            **generation_fields,
         }
 
     child_state_path = _relative_or_absolute_path(
@@ -6700,7 +7007,124 @@ def supervisor_status_health_fields(
         "supervisor_active_task_id": active_task_id,
         "supervisor_child_in_progress": implementation_in_progress,
         "restart_supervisor": not active_child,
+        **generation_fields,
     }
+
+
+@dataclass
+class _SupervisorStatusGenerationBinding:
+    """Retain health state for one exact managed ``Popen`` generation."""
+
+    expected_supervisor_pid: int
+    generation_started_at_epoch_seconds: float
+    startup_grace_seconds: float
+    live_status_observed: bool = False
+    status_gap_started_at_epoch_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.expected_supervisor_pid) is not int
+            or self.expected_supervisor_pid <= 0
+            or isinstance(self.generation_started_at_epoch_seconds, bool)
+            or not isinstance(
+                self.generation_started_at_epoch_seconds,
+                (int, float),
+            )
+            or not math.isfinite(self.generation_started_at_epoch_seconds)
+            or self.generation_started_at_epoch_seconds <= 0
+            or isinstance(self.startup_grace_seconds, bool)
+            or not isinstance(self.startup_grace_seconds, (int, float))
+            or not math.isfinite(self.startup_grace_seconds)
+            or self.startup_grace_seconds < 0
+            or type(self.live_status_observed) is not bool
+        ):
+            raise ValueError("supervisor status generation binding is invalid")
+        if self.status_gap_started_at_epoch_seconds is not None:
+            if (
+                not self.live_status_observed
+                or isinstance(
+                    self.status_gap_started_at_epoch_seconds,
+                    bool,
+                )
+                or not isinstance(
+                    self.status_gap_started_at_epoch_seconds,
+                    (int, float),
+                )
+                or not math.isfinite(
+                    self.status_gap_started_at_epoch_seconds
+                )
+                or self.status_gap_started_at_epoch_seconds
+                < self.generation_started_at_epoch_seconds
+            ):
+                raise ValueError("supervisor status gap binding is invalid")
+
+    def health_fields(
+        self,
+        track: SupervisorTrack,
+        *,
+        repo_root: Path,
+        stale_seconds: float,
+    ) -> dict[str, object]:
+        """Read health using only this exact process generation's bounds."""
+
+        return supervisor_status_health_fields(
+            track,
+            repo_root=repo_root,
+            stale_seconds=stale_seconds,
+            expected_supervisor_pid=self.expected_supervisor_pid,
+            generation_started_at_epoch_seconds=(
+                self.generation_started_at_epoch_seconds
+            ),
+            startup_grace_seconds=self.startup_grace_seconds,
+            generation_live_status_observed=self.live_status_observed,
+            status_gap_started_at_epoch_seconds=(
+                self.status_gap_started_at_epoch_seconds
+            ),
+        )
+
+    def record_observation(self, fields: Mapping[str, object]) -> None:
+        """Advance the gap state without allowing bad reads to reset it."""
+
+        if fields.get("supervisor_status") == "untracked":
+            return
+        expected_pid = fields.get("expected_supervisor_pid")
+        if (
+            type(expected_pid) is not int
+            or expected_pid != self.expected_supervisor_pid
+        ):
+            raise ValueError(
+                "supervisor status observation escaped its process generation"
+            )
+        if fields.get("supervisor_status_generation_valid") is True:
+            observed_pid = fields.get("observed_supervisor_pid")
+            if (
+                type(observed_pid) is not int
+                or observed_pid != self.expected_supervisor_pid
+                or fields.get("supervisor_status")
+                not in {"live", "stale", "stale_active"}
+            ):
+                raise ValueError(
+                    "supervisor valid status escaped its process generation"
+                )
+            self.status_gap_started_at_epoch_seconds = None
+            if fields.get("supervisor_status") == "live":
+                self.live_status_observed = True
+            return
+        if not self.live_status_observed:
+            return
+        observed_gap = fields.get(
+            "supervisor_status_gap_started_at_epoch_seconds"
+        )
+        if isinstance(observed_gap, bool) or not isinstance(
+            observed_gap,
+            (int, float),
+        ):
+            raise ValueError("supervisor status gap observation is invalid")
+        observed_gap = float(observed_gap)
+        if self.status_gap_started_at_epoch_seconds is None:
+            self.status_gap_started_at_epoch_seconds = observed_gap
+        elif observed_gap != self.status_gap_started_at_epoch_seconds:
+            raise ValueError("supervisor status gap origin changed without recovery")
 
 
 def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
@@ -6727,6 +7151,9 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     startup_age = fields.get("supervisor_startup_age_seconds")
     if startup_age is not None:
         parts.append(f"supervisor_startup_age_seconds={startup_age}")
+    gap_age = fields.get("supervisor_status_gap_age_seconds")
+    if gap_age is not None:
+        parts.append(f"supervisor_status_gap_age_seconds={gap_age}")
     if fields.get("supervisor_within_startup_grace"):
         parts.append("supervisor_within_startup_grace=true")
     transient_misses = fields.get("supervisor_status_transient_miss_count")
@@ -6736,6 +7163,8 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
         )
     if fields.get("supervisor_status_restart_deferred"):
         parts.append("supervisor_status_restart_deferred=true")
+    if fields.get("supervisor_within_status_gap_grace"):
+        parts.append("supervisor_within_status_gap_grace=true")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
     return " ".join(parts)
@@ -7581,12 +8010,28 @@ def start_track(
         )
 
     resolved = track.resolve(repo_root)
+    plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
+    effective_common_args = tuple(str(item) for item in common_args)
+    state_owner_bootstrap_fd: int | None = None
+    if not plan_bound_dispatch:
+        state_owner_bootstrap_fd = _validated_state_owner_bootstrap_fd(
+            effective_common_args
+        )
+        if state_owner_bootstrap_fd is not None:
+            effective_common_args = _lane_scoped_state_owner_common_args(
+                effective_common_args,
+                track=resolved,
+            )
     child_command = (
         [python_executable, "-m", resolved.module_name, *resolved.extra_args]
         if resolved.module_name
-        else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
+        else [
+            python_executable,
+            str(resolved.script_path),
+            *effective_common_args,
+            *resolved.extra_args,
+        ]
     )
-    plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     if plan_bound_dispatch and lgcvf_live_dispatch:
         raise ValueError("plan-bound and LGCVF live dispatch cannot be combined")
     if eaaef_live_dispatch:
@@ -8043,6 +8488,25 @@ def start_track(
             module_name=LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MODULE,
             argv=gate_argv,
         )
+    if state_owner_bootstrap_fd is not None:
+        lane_parents = {
+            resolved.log_path.parent,
+            resolved.supervisor_pid_path.parent,
+            resolved.daemon_pid_path.parent,
+            *(
+                (resolved.supervisor_status_path.parent,)
+                if resolved.supervisor_status_path is not None
+                else ()
+            ),
+        }
+        if len(lane_parents) != 1:
+            raise ValueError(
+                "state-owner bootstrap runtime projections must share one lane"
+            )
+        _seal_state_owner_bootstrap_lane_directory(next(iter(lane_parents)))
+    else:
+        resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
     pid_reservation_fd: int | None = None
     pid_reservation_identity: tuple[int, int] | None = None
     live_daemon_termination_authority: (
@@ -8253,7 +8717,11 @@ def start_track(
                         (plan_bound_dispatch or lgcvf_live_dispatch)
                         and gate_read_fd is not None
                     )
-                    else ()
+                    else (
+                        (state_owner_bootstrap_fd,)
+                        if state_owner_bootstrap_fd is not None
+                        else ()
+                    )
                 ),
             )
         except BaseException:
@@ -13473,6 +13941,14 @@ def run_supervisor_tracks(
     track_startup_grace_seconds: dict[str, float] = {}
     track_generation_observed_live: set[str] = set()
     track_transient_status_misses: dict[str, int] = {}
+    track_status_generations: dict[
+        str,
+        _SupervisorStatusGenerationBinding,
+    ] = {}
+    track_status_generation_processes: dict[
+        str,
+        subprocess.Popen[bytes],
+    ] = {}
 
     def start_generation(track: SupervisorTrack) -> subprocess.Popen[bytes]:
         """Start one track and retain the lower bound for its status generation."""
@@ -13500,6 +13976,14 @@ def run_supervisor_tracks(
         track_startup_grace_seconds[track.name] = startup_grace
         track_generation_observed_live.discard(track.name)
         track_transient_status_misses.pop(track.name, None)
+        track_status_generations[track.name] = (
+            _SupervisorStatusGenerationBinding(
+                expected_supervisor_pid=int(process.pid),
+                generation_started_at_epoch_seconds=generation_started_at,
+                startup_grace_seconds=startup_grace,
+            )
+        )
+        track_status_generation_processes[track.name] = process
         return process
 
     def retire_fenced_generation_projection(
@@ -13656,21 +14140,41 @@ def run_supervisor_tracks(
                     resolved.daemon_pid_path,
                     cleanup_stale_marker=True,
                 )
-                supervisor_fields = supervisor_status_health_fields(
-                    resolved,
-                    repo_root=resolved_repo_root,
-                    stale_seconds=float(supervisor_status_stale_seconds),
-                    expected_supervisor_pid=(
-                        None if process is None else int(process.pid)
-                    ),
-                    generation_started_at_epoch_seconds=(
-                        track_generation_started_at.get(track.name)
-                    ),
-                    startup_grace_seconds=track_startup_grace_seconds.get(
-                        track.name,
-                        0.0,
-                    ),
+                generation = track_status_generations.get(track.name)
+                generation_process = track_status_generation_processes.get(
+                    track.name
                 )
+                if process is None:
+                    if generation is not None or generation_process is not None:
+                        raise SupervisorRunInterrupted(
+                            f"{track.name} status generation lost its Popen"
+                        )
+                    supervisor_fields = supervisor_status_health_fields(
+                        resolved,
+                        repo_root=resolved_repo_root,
+                        stale_seconds=float(
+                            supervisor_status_stale_seconds
+                        ),
+                    )
+                else:
+                    if (
+                        generation is None
+                        or generation_process is not process
+                        or generation.expected_supervisor_pid
+                        != int(process.pid)
+                    ):
+                        raise SupervisorRunInterrupted(
+                            f"{track.name} status generation does not match "
+                            "its managed Popen"
+                        )
+                    supervisor_fields = generation.health_fields(
+                        resolved,
+                        repo_root=resolved_repo_root,
+                        stale_seconds=float(
+                            supervisor_status_stale_seconds
+                        ),
+                    )
+                    generation.record_observation(supervisor_fields)
                 supervisor_status = str(
                     supervisor_fields.get("supervisor_status") or ""
                 )

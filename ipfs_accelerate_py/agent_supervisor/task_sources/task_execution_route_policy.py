@@ -32,6 +32,16 @@ TASK_EXECUTION_ROUTE_BINDING_SCHEMA: Final = (
 TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-execution-route-summary@1"
 )
+TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: Final = (
+    "fresh_portal_revalidation_requirement"
+)
+TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-blocked-retry-fresh-portal-revalidation@1"
+)
+TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_OPERATION: Final = (
+    "database_operator_blocked_retry_fresh_portal_revalidation_required"
+)
 DETERMINISTIC_ONLY_EXECUTION_MODE: Final = "deterministic-only"
 GROK_CODEX_EXECUTION_MODE: Final = "grok-codex"
 TASK_EXECUTION_ROUTE_MODES: Final = frozenset(
@@ -41,6 +51,7 @@ MAX_TASK_EXECUTION_ROUTE_ENTRIES: Final = 1_000
 MAX_TASK_EXECUTION_ROUTE_POLICY_BYTES: Final = 49_152
 _CONTENT_ID = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*:)?[^\s]{1,4096}$")
 _TASK_ID = re.compile(r"^[^\s]{1,1024}$")
+_SHA256_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def _required_text(value: Any, *, noun: str, pattern: re.Pattern[str]) -> str:
@@ -49,17 +60,111 @@ def _required_text(value: Any, *, noun: str, pattern: re.Pattern[str]) -> str:
     return value
 
 
+def validated_typed_database_blocked_retry_revalidation_requirement(
+    value: Any,
+    *,
+    task_cid: str,
+) -> dict[str, Any]:
+    """Validate the sole operational marker excluded from task semantics."""
+
+    expected_fields = {
+        "schema",
+        "operation",
+        "task_cid",
+        "source_completion_receipt_id",
+        "operator_handoff_receipt_id",
+        "sidecar_evidence_id",
+        "recovered_from_revision",
+        "fresh_attempt_number",
+        "requirement_id",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
+        raise TaskSourceIntegrityError(
+            "fresh Portal revalidation requirement differs from its schema"
+        )
+    requirement = dict(value)
+    requirement_id = requirement.pop("requirement_id", None)
+    if (
+        value.get("schema")
+        != TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_SCHEMA
+        or value.get("operation")
+        != TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_OPERATION
+        or value.get("task_cid") != task_cid
+        or any(
+            type(value.get(name)) is not str
+            or _SHA256_ID.fullmatch(value[name]) is None
+            for name in (
+                "source_completion_receipt_id",
+                "operator_handoff_receipt_id",
+                "sidecar_evidence_id",
+            )
+        )
+        or any(
+            type(value.get(name)) is not int or int(value[name]) < 1
+            for name in (
+                "recovered_from_revision",
+                "fresh_attempt_number",
+            )
+        )
+        or requirement_id
+        != content_identity(
+            {"fresh_portal_revalidation_requirement": requirement}
+        )
+    ):
+        raise TaskSourceIntegrityError(
+            "fresh Portal revalidation requirement is malformed"
+        )
+    return dict(value)
+
+
+def typed_database_blocked_retry_revalidation_requirement(
+    *,
+    task_cid: str,
+    source_completion_receipt_id: str,
+    operator_handoff_receipt_id: str,
+    sidecar_evidence_id: str,
+    recovered_from_revision: int,
+    fresh_attempt_number: int,
+) -> dict[str, Any]:
+    """Seal the durable task-body marker requiring a fresh Portal proof."""
+
+    requirement = {
+        "schema": TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_SCHEMA,
+        "operation": TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_OPERATION,
+        "task_cid": task_cid,
+        "source_completion_receipt_id": source_completion_receipt_id,
+        "operator_handoff_receipt_id": operator_handoff_receipt_id,
+        "sidecar_evidence_id": sidecar_evidence_id,
+        "recovered_from_revision": recovered_from_revision,
+        "fresh_attempt_number": fresh_attempt_number,
+    }
+    requirement["requirement_id"] = content_identity(
+        {"fresh_portal_revalidation_requirement": requirement}
+    )
+    return validated_typed_database_blocked_retry_revalidation_requirement(
+        requirement,
+        task_cid=task_cid,
+    )
+
+
 def task_execution_contract_cid(task: TaskRecord) -> str:
     """Identify immutable task semantics while excluding operational status."""
 
     if not isinstance(task, TaskRecord):
         raise TaskSourceIntegrityError("execution route task is not canonical")
-    body = {
-        str(key): value
-        for key, value in task.body.items()
-        if str(key).strip().lower().replace("_", " ")
-        not in {"status", "completion receipt"}
-    }
+    body: dict[str, Any] = {}
+    for key, value in task.body.items():
+        selected = str(key)
+        normalized = selected.strip().lower().replace("_", " ")
+        if normalized in {"status", "completion receipt"}:
+            continue
+        if selected == TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD:
+            validated_typed_database_blocked_retry_revalidation_requirement(
+                value,
+                task_cid=task.task_cid,
+            )
+            continue
+        body[selected] = value
     return content_identity(
         {
             "task_cid": task.task_cid,
@@ -463,8 +568,13 @@ __all__ = [
     "TASK_EXECUTION_ROUTE_MODES",
     "TASK_EXECUTION_ROUTE_POLICY_SCHEMA",
     "TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA",
+    "TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD",
+    "TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_OPERATION",
+    "TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_SCHEMA",
     "TaskExecutionRouteBinding",
     "TaskExecutionRouteEntry",
     "TaskExecutionRoutePolicy",
     "task_execution_contract_cid",
+    "typed_database_blocked_retry_revalidation_requirement",
+    "validated_typed_database_blocked_retry_revalidation_requirement",
 ]

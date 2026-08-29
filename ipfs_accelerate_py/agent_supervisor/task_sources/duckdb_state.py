@@ -110,6 +110,22 @@ _THREAD_LOCKS: dict[str, threading.RLock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 
 
+_DEAD_NATIVE_HANDLE_TYPES = frozenset(
+    {
+        "FatalException",
+        "InternalException",
+        "ConnectionException",
+        "InterruptException",
+    }
+)
+
+
+def native_handle_is_dead(exc: BaseException) -> bool:
+    """Return whether a native DuckDB error destroyed the live handle."""
+
+    return type(exc).__name__ in _DEAD_NATIVE_HANDLE_TYPES
+
+
 class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
 
@@ -636,6 +652,10 @@ class DuckDBConnection:
         self._closed = False
         self._closing_owner = 0
         self._poisoned = False
+        self._memory_limit = memory_limit
+        self._threads = threads
+        self._quack_owner = bool(quack_owner)
+        self._preload_quack_for_state_owner = bool(_preload_quack_for_state_owner)
         self._default_catalog = None
         self._quack_mutation_binding: dict[str, Any] | None = None
         self._quack_mutation_token = ""
@@ -701,6 +721,10 @@ class DuckDBConnection:
         instance._closed = False
         instance._closing_owner = 0
         instance._poisoned = False
+        instance._memory_limit = DEFAULT_MEMORY_LIMIT
+        instance._threads = 1
+        instance._quack_owner = False
+        instance._preload_quack_for_state_owner = False
         instance._lock_context = None
         instance._default_catalog = None
         instance._quack_mutation_binding = None
@@ -753,12 +777,70 @@ class DuckDBConnection:
                 self._closing_owner
                 and self._closing_owner != thread_id
             )
-            or self._poisoned
-            or self._connection is None
         ):
             raise DuckDBConnectionPolicyError(
                 "DuckDB connection is unusable after an uncertain transaction"
             )
+        if self._poisoned or self._connection is None:
+            self._recover_exclusive_handle_locked()
+        if self._poisoned or self._connection is None:
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+
+    def _exclusive_handle_connector(self) -> Any:
+        if bool(getattr(self, "_preload_quack_for_state_owner", False)):
+            return connect_duckdb_quack_owner_with_policy
+        if bool(getattr(self, "_quack_owner", False)):
+            return connect_duckdb_with_quack_owner_policy
+        return connect_duckdb_with_policy
+
+    def _can_recover_exclusive_handle_locked(self) -> bool:
+        """File-backed exclusive owners may reopen after an uncertain native handle."""
+
+        return (
+            not self._closed
+            and not bool(getattr(self, "_pooled", False))
+            and self.path is not None
+            and not self._closing_owner
+        )
+
+    def _recover_exclusive_handle_locked(self) -> None:
+        """Replace a poisoned exclusive native handle while keeping the file lock."""
+
+        if not self._can_recover_exclusive_handle_locked():
+            return
+        raw = self._connection
+        self._connection = None
+        self._quack_pending_mutations = []
+        self._transaction_finished_locked()
+        if raw is not None:
+            try:
+                raw.close()
+            except Exception:
+                pass
+            _unregister_duckdb_wrapper(self, raw)
+        try:
+            import duckdb
+
+            connection = self._exclusive_handle_connector()(
+                duckdb,
+                self.path,
+                configuration={
+                    "threads": getattr(self, "_threads", 1),
+                    "memory_limit": getattr(
+                        self, "_memory_limit", DEFAULT_MEMORY_LIMIT
+                    ),
+                },
+            )
+            _register_duckdb_wrapper(self, connection)
+        except BaseException:
+            self._poisoned = True
+            self._execution_condition.notify_all()
+            raise
+        self._connection = connection
+        self._poisoned = False
+        self._execution_condition.notify_all()
 
     def _poison_locked(self) -> str:
         """Close an uncertain native handle and wake every excluded peer."""
@@ -869,7 +951,7 @@ class DuckDBConnection:
                     )
                 try:
                     result = self._execute_locked(statement, normalized, parameters)
-                except BaseException:
+                except BaseException as exc:
                     if begins_transaction:
                         self._quack_pending_mutations = []
                         try:
@@ -878,7 +960,7 @@ class DuckDBConnection:
                             evict_uri = self._poison_locked()
                         else:
                             self._transaction_finished_locked()
-                    elif ends_transaction:
+                    elif ends_transaction or native_handle_is_dead(exc):
                         evict_uri = self._poison_locked()
                     raise
                 if begins_transaction and self._transaction_active:
@@ -3327,6 +3409,29 @@ def _quote_duckdb_ident(name: str) -> str:
     return '"' + str(name).replace('"', '""') + '"'
 
 
+_ART_INDEX_DELETE_FATAL = "failed to delete all rows from index"
+_TASK_STATUS_INDEX_DDL = (
+    ("tasks_status_idx", "CREATE INDEX tasks_status_idx ON tasks(status, ordinal)"),
+    ("tasks_goal_idx", "CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)"),
+)
+_LEASE_STATE_INDEX_DDL = (
+    (
+        "leases_scheduler_state_idx",
+        "CREATE INDEX leases_scheduler_state_idx ON leases(state, expires_at_ms, retry_not_before_ms)",
+    ),
+    (
+        "leases_claimant_idx",
+        "CREATE INDEX leases_claimant_idx ON leases(claimant_did, state)",
+    ),
+)
+
+
+def is_art_index_delete_fatal(exc: BaseException) -> bool:
+    """Return whether DuckDB poisoned the handle on a status-index UPDATE."""
+
+    return native_handle_is_dead(exc) and _ART_INDEX_DELETE_FATAL in str(exc).casefold()
+
+
 def _drop_task_status_indexes(connection: Any) -> list[str]:
     """Drop status-bearing task indexes that can fatal status UPDATEs.
 
@@ -3363,6 +3468,58 @@ def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> 
         if not text:
             continue
         connection.execute(text)
+
+
+def _drop_lease_state_indexes(connection: Any) -> list[str]:
+    """Drop lease-state ART indexes that can fatal cooldown / retry CAS."""
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'leases'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "state" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
+def rebuild_task_status_indexes(connection: Any) -> list[str]:
+    """Recreate status-bearing ART indexes after a fatal status or cooldown CAS.
+
+    Reopening the exclusive DuckDB handle does not repair a poisoned ART
+    index.  The next ``tasks.status`` or ``leases.state`` UPDATE then fatals
+    again on COMMIT.  Dropping and recreating the indexes from live table
+    bytes makes a later claim or retry CAS succeed without operator surgery.
+    """
+
+    statements = _drop_task_status_indexes(connection)
+    statements.extend(_drop_lease_state_indexes(connection))
+    if not statements:
+        for name, sql in (*_TASK_STATUS_INDEX_DDL, *_LEASE_STATE_INDEX_DDL):
+            try:
+                connection.execute(
+                    "DROP INDEX IF EXISTS " + _quote_duckdb_ident(name)
+                )
+            except Exception:
+                continue
+            statements.append(sql)
+    _restore_task_status_indexes(connection, statements)
+    try:
+        connection.execute("CHECKPOINT")
+    except Exception:
+        pass
+    return list(statements)
 
 
 def unstall_stale_in_progress_tasks(

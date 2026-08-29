@@ -818,6 +818,7 @@ def test_landed_bypass_without_terminal_implementation_is_not_completion(
         {
             "task_id": task_alias,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": "task-key:bypass-only",
             **bypass,
         },
     )
@@ -839,6 +840,7 @@ def test_landed_bypass_without_terminal_implementation_is_not_completion(
             paths,
             alias=task_alias,
             task_cid=task_cid,
+            completion_task_key="task-key:bypass-only",
             verified_landed_completion_claim_seed=seed,
         )
 
@@ -849,6 +851,8 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
     repository = tmp_path / "repo"
     task_alias = "REC-003C"
     task_cid = "task:cid:ambiguous-bypass"
+    event_task_cid = "task:cid:projection:ambiguous-bypass"
+    event_task_key = "task-key:projection:ambiguous-bypass"
     _candidate, integration, target_tree, outputs = _landed_repository(
         repository,
         task_alias=task_alias,
@@ -890,13 +894,15 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
     event_envelope = {
         "type": "implementation_provider_bypassed_already_satisfied",
         "task_id": task_alias,
-        "canonical_task_cid": task_cid,
+        "canonical_task_cid": event_task_cid,
+        "canonical_task_key": event_task_key,
     }
     terminal = {
         "type": "implementation_finished",
         "event_id": "sha256:" + "a" * 64,
         "task_id": task_alias,
-        "canonical_task_cid": task_cid,
+        "canonical_task_cid": event_task_cid,
+        "canonical_task_key": event_task_key,
         "attempt": 1,
         "returncode": 0,
         "provider_dispatched": False,
@@ -928,6 +934,41 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
         },
     }
 
+    admitted = DatabasePortalExecutionBridge._landed_no_change_completion_source(
+        [{**event_envelope, **bypass}, terminal],
+        terminal_index=1,
+        terminal=terminal,
+        alias=task_alias,
+        event_task_cid=event_task_cid,
+        event_task_key=event_task_key,
+        authority_task_cid=task_cid,
+        verified_claim_seed=seed,
+    )
+    assert admitted is not None
+    assert admitted["implementation_commit"] == integration
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="absent or ambiguous",
+    ):
+        DatabasePortalExecutionBridge._landed_no_change_completion_source(
+            [
+                {
+                    **event_envelope,
+                    **bypass,
+                    "canonical_task_key": "task-key:foreign",
+                },
+                terminal,
+            ],
+            terminal_index=1,
+            terminal=terminal,
+            alias=task_alias,
+            event_task_cid=event_task_cid,
+            event_task_key=event_task_key,
+            authority_task_cid=task_cid,
+            verified_claim_seed=seed,
+        )
+
     with pytest.raises(
         DatabasePortalBridgeError,
         match="absent or ambiguous",
@@ -941,7 +982,9 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
             terminal_index=2,
             terminal=terminal,
             alias=task_alias,
-            task_cid=task_cid,
+            event_task_cid=event_task_cid,
+            event_task_key=event_task_key,
+            authority_task_cid=task_cid,
             verified_claim_seed=seed,
         )
 
@@ -968,7 +1011,9 @@ def test_landed_terminal_rejects_additional_conflicting_bypass(
                 terminal_index=1,
                 terminal=inexact_terminal,
                 alias=task_alias,
-                task_cid=task_cid,
+                event_task_cid=event_task_cid,
+                event_task_key=event_task_key,
+                authority_task_cid=task_cid,
                 verified_claim_seed=seed,
             )
 

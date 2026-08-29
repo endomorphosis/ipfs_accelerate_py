@@ -2,32 +2,38 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
-    reconciliation_guardrail_records,
-    resolved_reconciliation_guardrail_keys,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     PREPARED_COMPLETION_STATUS,
     TASK_COMPLETION_PREPARATION_SCHEMA,
     DatabaseCoordinator,
 )
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+    reconciliation_guardrail_records,
+    resolved_reconciliation_guardrail_keys,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseTaskAttempt,
     PortalTask,
     TodoImplementationDaemon,
     TodoTaskState,
+    parse_task_file,
+    portal_task_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    DatabaseProgramConfig,
 )
 
 
@@ -90,6 +96,261 @@ def _database_program() -> DatabaseProgramConfig:
         store_generation="test-generation",
         schema_revision="1",
     )
+
+
+class _ProjectionTaskSource:
+    def __init__(self, record: object) -> None:
+        self.record = record
+
+    def get_task(self, task_cid: str) -> object | None:
+        return (
+            self.record
+            if task_cid == str(getattr(self.record, "task_cid", "") or "")
+            else None
+        )
+
+    def snapshot(self) -> object:
+        return SimpleNamespace(repository_tree_id="tree:completion-proof")
+
+
+def _seed_completed_database_portal_attempt(
+    supervisor: TodoImplementationSupervisor,
+    *,
+    task_alias: str,
+    task_cid: str,
+    task_revision: int = 1,
+    attempt_number: int = 4,
+    completion_receipt_extension: dict[str, object] | None = None,
+) -> tuple[object, object, object, object]:
+    """Persist the same immutable attempt evidence Portal execution uses."""
+
+    attempt = DatabaseTaskAttempt(
+        attempt_id=f"attempt:{task_alias.lower()}",
+        claim_id=f"claim:{task_alias.lower()}",
+        task_cid=task_cid,
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        owner_session_id=f"owner:{task_alias.lower()}",
+        fencing_token=4,
+        fence_epoch=1,
+        lease_id=f"lease:{task_alias.lower()}",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=1786946656000,
+    )
+    record = SimpleNamespace(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        goal_cid="goal:completion-proof",
+        plan_cid="plan:completion-proof",
+        revision=task_revision,
+        priority="P1",
+        dependencies=(),
+        outputs=({"path": "src/app.py"},),
+        validations=({"argv": ["python", "-m", "pytest", "focused.py"]},),
+        acceptance=({"criterion": "Focused validation passes"},),
+        body={
+            "objective": "Land the exact completed implementation",
+            "completion": "auto",
+            "track": "ops",
+            "allowed_paths": ["src/app.py"],
+            "completion_contract": "Focused validation passes",
+        },
+    )
+    attempt_root = (
+        supervisor.config.state_dir
+        / f"{supervisor.config.state_prefix}_database_portal_attempts"
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_ProjectionTaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    [projected_task] = parse_task_file(
+        paths.task_projection,
+        f"## {task_alias.split('-', 1)[0]}-",
+    )
+    portal_identity = portal_task_identity(
+        projected_task,
+        todo_path=paths.task_projection,
+    )
+
+    preparation = {
+        "schema": TASK_COMPLETION_PREPARATION_SCHEMA,
+        "task_cid": task_cid,
+        "attempt_id": binding["attempt_id"],
+        # The obsolete rescue is attempt 1; a later retry is the accepted
+        # canonical completion.  Reconciliation must not conflate them.
+        "attempt_number": binding["attempt_number"],
+        "claim_id": binding["claim_id"],
+        "lease_id": binding["lease_id"],
+        "owner_session_id": binding["owner_session_id"],
+        "fencing_token": binding["fencing_token"],
+        "fence_epoch": binding["fence_epoch"],
+        "control_expected_revision": binding["task_revision"],
+        "control_expected_status": "in_progress",
+        "evidence_digest": "sha256:passed",
+        "prepared_at_ms": 1786946656000,
+        "body": {"validation": {"outcome": "passed"}},
+    }
+    preparation["preparation_digest"] = (
+        DatabaseCoordinator._preparation_digest(preparation)
+    )
+    preparation["status"] = PREPARED_COMPLETION_STATUS
+    preparation["replayed"] = False
+    completion_receipt: dict[str, object] = {
+        "operation": "database_complete",
+        "attempt_id": binding["attempt_id"],
+        "claim_id": binding["claim_id"],
+        "lease_id": binding["lease_id"],
+        "owner_session_id": binding["owner_session_id"],
+        "fencing_token": binding["fencing_token"],
+        "fence_epoch": binding["fence_epoch"],
+        "evidence_digest": "sha256:passed",
+        "coordination_preparation": preparation,
+        "validation": {
+            "outcome": "passed",
+            "evidence_digest": "sha256:passed",
+        },
+    }
+    if completion_receipt_extension:
+        assert not set(completion_receipt) & set(completion_receipt_extension)
+        completion_receipt.update(completion_receipt_extension)
+    canonical_task = SimpleNamespace(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        status="completed",
+        revision=record.revision + 1,
+        body={"completion_receipt": completion_receipt},
+    )
+    return paths, projected_task, portal_identity, canonical_task
+
+
+def _seed_rescue_worktree(
+    repo: Path,
+    *,
+    worktree_root: Path,
+    task_alias: str,
+    fingerprint: str,
+) -> tuple[str, Path]:
+    branch_name = (
+        "rescue/worktree/implementation-"
+        f"{task_alias.lower()}-{fingerprint[:12]}-"
+        "attempt-1-1786946656-2b2ccc291a04"
+    )
+    marker = repo / "src" / "app.py"
+    _git(repo, "checkout", "-b", branch_name)
+    marker.write_text("leftover rescue change\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "stale rescue of completed task")
+    _git(repo, "checkout", "main")
+    marker.write_text("landed completion\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "completion already on main")
+    worktree_path = worktree_root / f"{task_alias.lower()}-rescue"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    return branch_name, worktree_path
+
+
+def _completed_rescue_proof_fixture(
+    tmp_path: Path,
+    *,
+    task_alias: str,
+    task_cid: str = "",
+    task_revision: int = 1,
+    attempt_number: int = 4,
+    completion_receipt_extension: dict[str, object] | None = None,
+) -> tuple[Path, object, Path, object, object, object, object]:
+    repo = _init_repo(tmp_path / "repo")
+    marker = repo / "src" / "app.py"
+    marker.parent.mkdir()
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "src/app.py")
+    _git(repo, "commit", "-m", "base")
+    worktree_root = repo / "worktrees"
+    supervisor = _supervisor(
+        repo,
+        worktree_root=worktree_root,
+        todo_text=(
+            "# Agent Todos\n\n"
+            f"## {task_alias} Already landed\n\n"
+            "- Status: completed\n"
+            "- Completion: validated-implementation\n"
+            "- Priority: P1\n"
+            "- Track: ops\n"
+            "- Outputs: src/app.py\n"
+        ),
+        database_program=_database_program(),
+    )
+    task_cid = task_cid or f"task-cid:{task_alias.lower()}"
+    paths, projected_task, portal_identity, canonical_task = (
+        _seed_completed_database_portal_attempt(
+            supervisor,
+            task_alias=task_alias,
+            task_cid=task_cid,
+            task_revision=task_revision,
+            attempt_number=attempt_number,
+            completion_receipt_extension=completion_receipt_extension,
+        )
+    )
+    return (
+        repo,
+        supervisor,
+        worktree_root,
+        paths,
+        projected_task,
+        portal_identity,
+        canonical_task,
+    )
+
+
+_PCSM_HISTORICAL_COMPLETION_CASES = (
+    (
+        "PCSM-023",
+        "baguqeeraupubf5hqv7sg3de6ylhu4lfbhmdh6stvwow5lzli7h37fux435ia",
+        7,
+        2,
+        "baguqeeraks4c4cc2gody65itaawqajdt3b5bcaotitrs6v4kexxqvpuau2xq",
+    ),
+    (
+        "PCSM-040",
+        "baguqeeracpy55nht3icjbnyopccuv7iqojmedl3y2bchtxmusowfpzjwnaea",
+        15,
+        4,
+        "baguqeerasfnaw2h6jgj2au27ohgs2x2gecg3qwhs5vi7yoygfnare277dscq",
+    ),
+)
+
+
+def _pcsm_historical_execution_route_receipt_fields(
+    *,
+    task_alias: str,
+    task_cid: str,
+    task_contract_cid: str,
+) -> dict[str, object]:
+    route = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "task-execution-route-binding@1"
+        ),
+        "policy_id": (
+            "baguqeerahvwjwfbexnsqdflng54qvtuqoiwf4junsjaafyuhvl2fmjkeettq"
+        ),
+        "plan_root_cid": (
+            "baguqeerax2gqeo7n5uy3uw3q7h5zn7ruicibrzfy65yv2vachdvbfnnvyfla"
+        ),
+        "repository_tree_id": "cd81f5731ee64c29161830c9933d6739e0dd3eb3",
+        "source_revision": 1,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "task_revision": 1,
+        "task_contract_cid": task_contract_cid,
+        "execution_mode": "grok-codex",
+    }
+    return {
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -268,22 +529,7 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
     marker.write_text("base\n", encoding="utf-8")
     _git(repo, "add", "src/app.py")
     _git(repo, "commit", "-m", "base")
-    task_cid = "task-cid:portal-060"
-    task_fingerprint = hashlib.sha256(task_cid.encode("utf-8")).hexdigest()
-    branch_name = (
-        "rescue/worktree/implementation-portal-060-"
-        f"{task_fingerprint[:12]}-attempt-1-1786946656-2b2ccc291a04"
-    )
-    _git(repo, "checkout", "-b", branch_name)
-    marker.write_text("leftover rescue change\n", encoding="utf-8")
-    _git(repo, "commit", "-am", "stale rescue of completed task")
-    _git(repo, "checkout", "main")
-    marker.write_text("landed completion\n", encoding="utf-8")
-    _git(repo, "commit", "-am", "completion already on main")
-
     worktree_root = repo / "worktrees"
-    worktree_path = worktree_root / "portal-060-rescue"
-    _git(repo, "worktree", "add", str(worktree_path), branch_name)
     supervisor = _supervisor(
         repo,
         worktree_root=worktree_root,
@@ -298,54 +544,33 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
         ),
         database_program=_database_program(),
     )
-    preparation = {
-        "schema": TASK_COMPLETION_PREPARATION_SCHEMA,
-        "task_cid": task_cid,
-        "attempt_id": "attempt:portal-060",
-        # The obsolete rescue is attempt 1; a later retry is the accepted
-        # canonical completion.  Reconciliation must not conflate them.
-        "attempt_number": 4,
-        "claim_id": "claim:portal-060",
-        "lease_id": "lease:portal-060",
-        "owner_session_id": "owner:portal-060",
-        "fencing_token": 4,
-        "fence_epoch": 1,
-        "control_expected_revision": 1,
-        "control_expected_status": "in_progress",
-        "evidence_digest": "sha256:passed",
-        "prepared_at_ms": 1786946656000,
-        "body": {"validation": {"outcome": "passed"}},
-    }
-    preparation["preparation_digest"] = (
-        DatabaseCoordinator._preparation_digest(preparation)
+    task_cid = "task-cid:portal-060"
+    paths, projected_task, portal_identity, canonical_task = (
+        _seed_completed_database_portal_attempt(
+            supervisor,
+            task_alias="PORTAL-060",
+            task_cid=task_cid,
+        )
     )
-    # The coordinator hashes the durable preparation before adding these
-    # returned projection fields.  The exact returned mapping is what the
-    # task completion receipt persists.
-    preparation["status"] = PREPARED_COMPLETION_STATUS
-    preparation["replayed"] = False
-    canonical_task = SimpleNamespace(
+    database_fingerprint = hashlib.sha256(
+        task_cid.encode("utf-8")
+    ).hexdigest()
+    projection_fingerprint = projected_task.canonical_task_key.rsplit(
+        "/", 1
+    )[-1]
+    assert len(
+        {
+            database_fingerprint,
+            projection_fingerprint,
+            portal_identity.semantic_fingerprint,
+        }
+    ) == 3
+    assert paths.task_projection.is_file()
+    branch_name, worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
         task_alias="PORTAL-060",
-        task_cid=task_cid,
-        status="completed",
-        revision=2,
-        body={
-            "completion_receipt": {
-                "operation": "database_complete",
-                "attempt_id": "attempt:portal-060",
-                "claim_id": "claim:portal-060",
-                "lease_id": "lease:portal-060",
-                "owner_session_id": "owner:portal-060",
-                "fencing_token": 4,
-                "fence_epoch": 1,
-                "evidence_digest": "sha256:passed",
-                "coordination_preparation": preparation,
-                "validation": {
-                    "outcome": "passed",
-                    "evidence_digest": "sha256:passed",
-                },
-            },
-        },
+        fingerprint=portal_identity.semantic_fingerprint,
     )
     completion_proof = supervisor._database_completion_receipt_proof(
         canonical_task,
@@ -407,6 +632,282 @@ def test_reconcile_skips_completed_rescue_leftover_before_preflight(
         cleanup_result={"skipped": []},
     )
     assert not any(item["kind"] == "preflight_merge_conflict" for item in records)
+
+
+@pytest.mark.parametrize(
+    (
+        "task_alias",
+        "task_cid",
+        "task_revision",
+        "attempt_number",
+        "task_contract_cid",
+    ),
+    _PCSM_HISTORICAL_COMPLETION_CASES,
+)
+def test_completed_rescue_accepts_exact_pcsm_historical_route_receipt_shapes(
+    tmp_path: Path,
+    task_alias: str,
+    task_cid: str,
+    task_revision: int,
+    attempt_number: int,
+    task_contract_cid: str,
+) -> None:
+    route_fields = _pcsm_historical_execution_route_receipt_fields(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_contract_cid=task_contract_cid,
+    )
+    (
+        repo,
+        supervisor,
+        worktree_root,
+        _paths,
+        _projected_task,
+        portal_identity,
+        canonical_task,
+    ) = _completed_rescue_proof_fixture(
+        tmp_path,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        attempt_number=attempt_number,
+        completion_receipt_extension=route_fields,
+    )
+    branch_name, _worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
+        task_alias=task_alias,
+        fingerprint=portal_identity.semantic_fingerprint,
+    )
+
+    receipt = canonical_task.body["completion_receipt"]
+    assert set(receipt) == {
+        "operation",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "evidence_digest",
+        "coordination_preparation",
+        "validation",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+    assert {
+        key: receipt[key]
+        for key in (
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        )
+    } == route_fields
+
+    proof = supervisor._database_completion_receipt_proof(
+        canonical_task,
+        expected_alias=task_alias,
+        branch=branch_name,
+    )
+
+    assert proof["verified"] is True
+    assert proof["revision"] == task_revision + 1
+    assert proof["completion_attempt_number"] == attempt_number
+    assert proof["branch_attempt_number"] == 1
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_reason"),
+    (
+        (
+            "partial_route_receipt",
+            "database_completion_receipt_shape_invalid",
+        ),
+        (
+            "route_lineage_tampered",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "route_origin_after_attempt",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "route_origin_boolean",
+            "database_completion_execution_route_unverified",
+        ),
+        (
+            "duplicate_attempt_projection",
+            "database_portal_attempt_projection_ambiguous",
+        ),
+    ),
+)
+def test_pcsm_historical_route_receipt_tamper_or_ambiguity_is_rejected(
+    tmp_path: Path,
+    fault: str,
+    expected_reason: str,
+) -> None:
+    task_alias, task_cid, task_revision, attempt_number, task_contract_cid = (
+        _PCSM_HISTORICAL_COMPLETION_CASES[0]
+    )
+    route_fields = _pcsm_historical_execution_route_receipt_fields(
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_contract_cid=task_contract_cid,
+    )
+    (
+        repo,
+        supervisor,
+        worktree_root,
+        paths,
+        _projected_task,
+        portal_identity,
+        canonical_task,
+    ) = _completed_rescue_proof_fixture(
+        tmp_path,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        attempt_number=attempt_number,
+        completion_receipt_extension=route_fields,
+    )
+    branch_name, worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
+        task_alias=task_alias,
+        fingerprint=portal_identity.semantic_fingerprint,
+    )
+    receipt = canonical_task.body["completion_receipt"]
+    if fault == "partial_route_receipt":
+        receipt.pop("execution_route_policy_id")
+    elif fault == "route_lineage_tampered":
+        receipt["execution_route_policy_id"] = (
+            "baguqeeraaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+    elif fault == "route_origin_after_attempt":
+        route = receipt["execution_route_binding"]
+        assert isinstance(route, dict)
+        route["task_revision"] = task_revision + 1
+        receipt["execution_route_origin_revision"] = task_revision + 1
+    elif fault == "route_origin_boolean":
+        receipt["execution_route_origin_revision"] = True
+    elif fault == "duplicate_attempt_projection":
+        duplicate = (
+            repo
+            / "sibling-state"
+            / "sibling_database_portal_attempts"
+            / paths.root.name
+        )
+        shutil.copytree(paths.root, duplicate)
+    else:  # pragma: no cover - the parameter table is intentionally closed.
+        raise AssertionError(f"unknown fault: {fault}")
+
+    proof = supervisor._database_completion_receipt_proof(
+        canonical_task,
+        expected_alias=task_alias,
+        branch=branch_name,
+    )
+
+    assert proof["verified"] is False
+    assert proof["reason"] == expected_reason
+    assert worktree_path.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_reason"),
+    (
+        ("database_identity", "branch_task_generation_mismatch"),
+        ("projection_identity", "branch_task_generation_mismatch"),
+        ("missing", "database_portal_attempt_projection_missing"),
+        ("duplicate", "database_portal_attempt_projection_ambiguous"),
+        ("tampered", "database_portal_attempt_projection_unverified"),
+    ),
+)
+def test_completed_rescue_unverified_identity_is_preserved(
+    tmp_path: Path,
+    monkeypatch,
+    fault: str,
+    expected_reason: str,
+) -> None:
+    (
+        repo,
+        supervisor,
+        worktree_root,
+        paths,
+        projected_task,
+        portal_identity,
+        canonical_task,
+    ) = _completed_rescue_proof_fixture(
+        tmp_path,
+        task_alias="PORTAL-061",
+    )
+    branch_fingerprint = portal_identity.semantic_fingerprint
+    if fault == "database_identity":
+        branch_fingerprint = hashlib.sha256(
+            canonical_task.task_cid.encode("utf-8")
+        ).hexdigest()
+    elif fault == "projection_identity":
+        branch_fingerprint = projected_task.canonical_task_key.rsplit(
+            "/", 1
+        )[-1]
+    branch_name, worktree_path = _seed_rescue_worktree(
+        repo,
+        worktree_root=worktree_root,
+        task_alias="PORTAL-061",
+        fingerprint=branch_fingerprint,
+    )
+    if fault == "missing":
+        shutil.rmtree(paths.root)
+    elif fault == "duplicate":
+        duplicate = (
+            repo
+            / "sibling-state"
+            / "sibling_database_portal_attempts"
+            / paths.root.name
+        )
+        shutil.copytree(paths.root, duplicate)
+    elif fault == "tampered":
+        projection_text = paths.task_projection.read_text(encoding="utf-8")
+        paths.task_projection.write_text(
+            projection_text.replace(
+                "Land the exact completed implementation",
+                "Tampered completed implementation",
+            ),
+            encoding="utf-8",
+        )
+
+    completion_proof = supervisor._database_completion_receipt_proof(
+        canonical_task,
+        expected_alias="PORTAL-061",
+        branch=branch_name,
+    )
+    assert completion_proof["verified"] is False
+    assert completion_proof["reason"] == expected_reason
+    if fault.endswith("_identity"):
+        assert branch_fingerprint != portal_identity.semantic_fingerprint
+        assert completion_proof["expected_fingerprint"] == (
+            portal_identity.semantic_fingerprint[:12]
+        )
+    monkeypatch.setattr(
+        supervisor,
+        "_canonical_completed_reconciliation_task",
+        lambda **_kwargs: {
+            "applicable": True,
+            "authority_available": True,
+            **completion_proof,
+        },
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    preserved = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "canonical_completion_proof_unavailable"
+    )
+    assert preserved["completion_proof"]["reason"] == expected_reason
+    assert worktree_path.is_dir()
+    assert _git(repo, "rev-parse", branch_name) == preserved["head"]
 
 
 def test_markdown_completed_status_is_not_canonical_rescue_prune_authority(

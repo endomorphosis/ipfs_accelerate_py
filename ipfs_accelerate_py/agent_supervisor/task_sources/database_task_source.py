@@ -454,6 +454,7 @@ class TaskRecord:
     outputs: tuple[Mapping[str, Any], ...] = ()
     acceptance: tuple[Mapping[str, Any], ...] = ()
     validations: tuple[Mapping[str, Any], ...] = ()
+    updated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -471,6 +472,7 @@ class TaskRecord:
             "outputs": [dict(item) for item in self.outputs],
             "acceptance": [dict(item) for item in self.acceptance],
             "validations": [dict(item) for item in self.validations],
+            "updated_at": self.updated_at,
         }
 
 
@@ -1847,6 +1849,7 @@ def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
         validations=tuple(
             MappingProxyType(dict(item)) for item in validations if isinstance(item, Mapping)
         ),
+        updated_at=str(row.get("updated_at") or ""),
     )
 
 

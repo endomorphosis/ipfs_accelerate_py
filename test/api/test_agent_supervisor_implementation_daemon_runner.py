@@ -781,6 +781,102 @@ def test_periodic_maintenance_obeys_daemon_cooldown(tmp_path: Path, monkeypatch)
     assert calls == ["worktrees", "locks", "submodules", "gc", "queue"]
 
 
+def test_stale_worktree_cleanup_delegates_protected_dirty_checkout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str, cwd: Path = repo) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    git("init")
+    git("checkout", "-b", "main")
+    git("config", "user.name", "Test User")
+    git("config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "stale-protected"
+    branch = "implementation/pcsm-012-stale-protected"
+    git("worktree", "add", "-b", branch, str(worktree_path), "main")
+    dirty_path = worktree_path / "uncommitted-proof.json"
+    dirty_path.write_text('{"preserve": true}\n', encoding="utf-8")
+
+    state_root = tmp_path / "state"
+    peer_attempt = (
+        state_root
+        / "lane-1"
+        / "lane_1_database_portal_attempts"
+        / "stale-attempt"
+    )
+    peer_attempt.mkdir(parents=True)
+    active_snapshot = peer_attempt / "implementation-protected-path-active.json"
+    active_snapshot.write_text(
+        "{\n"
+        '  "schema": "implementation-protected-path-active-v1",\n'
+        '  "task_id": "PCSM-012",\n'
+        '  "attempt": 1,\n'
+        f'  "workspace_path": "{worktree_path}"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    own_state = state_root / "lane-0" / "portal-task-state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=own_state,
+        strategy_path=own_state.with_name("strategy.json"),
+        events_path=own_state.with_name("events.jsonl"),
+        repo_root=repo,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+    )
+    monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("daemon stale cleanup must not remove a worktree")
+        ),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.time.time",
+        lambda: 4_000_000_000.0,
+    )
+
+    result = daemon._cleanup_stale_worktrees(max_age_seconds=1)
+
+    assert result["removed_count"] == 0
+    assert result["delegated_count"] == 1
+    assert result["delegated"] == [
+        {
+            "worktree_path": str(worktree_path),
+            "branch": branch,
+            "age_seconds": result["delegated"][0]["age_seconds"],
+            "reason": "stale_worktree_cleanup_delegated_to_supervisor",
+            "remedy": "supervisor_worktree_reconciliation",
+        }
+    ]
+    assert dirty_path.read_text(encoding="utf-8") == '{"preserve": true}\n'
+    assert active_snapshot.exists()
+    assert git("branch", "--show-current", cwd=worktree_path) == branch
+    assert git("branch", "--format=%(refname:short)", "--list", branch) == branch
+    assert '"type":"stale_worktree_cleanup_delegated"' in (
+        own_state.with_name("events.jsonl").read_text(encoding="utf-8")
+    )
+
+
 def test_task_claim_liveness_accepts_module_style_daemon_invocation(tmp_path: Path, monkeypatch):
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",

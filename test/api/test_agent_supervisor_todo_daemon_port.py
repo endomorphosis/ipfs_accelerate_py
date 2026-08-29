@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -3835,6 +3836,10 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
             "hallucinate_app,swissknife",
             "--objective-interoperability-component-path",
             "hallucinate_app, external/ipfs_accelerate",
+            "--objective-refill-max-epochs",
+            "20",
+            "--objective-refill-max-total-tasks",
+            "130",
             "--no-worktree-reconciliation",
             "--worktree-reconciliation-max-merges",
             "3",
@@ -3891,6 +3896,44 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
         "hallucinate_app",
         "external/ipfs_accelerate",
     )
+    assert config.objective_refill_max_epochs == 20
+    assert config.objective_refill_max_total_tasks == 130
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("objective_refill_max_epochs", 0),
+        ("objective_refill_max_epochs", -1),
+        ("objective_refill_max_epochs", True),
+        ("objective_refill_max_total_tasks", 0),
+        ("objective_refill_max_total_tasks", -1),
+        ("objective_refill_max_total_tasks", True),
+    ),
+)
+def test_supervisor_config_rejects_invalid_objective_refill_caps(
+    tmp_path,
+    field,
+    value,
+):
+    state_dir = tmp_path / "state"
+    kwargs = {
+        "todo_path": tmp_path / "board.md",
+        "state_path": state_dir / "task_state.json",
+        "strategy_path": state_dir / "strategy.json",
+        "events_path": state_dir / "events.jsonl",
+        "state_dir": state_dir,
+        field: value,
+    }
+    with pytest.raises(ValueError, match=rf"{field} must be a positive integer"):
+        TodoSupervisorConfig(**kwargs)
+
+
+def test_supervisor_objective_refill_caps_default_to_legacy_unbounded():
+    args = parse_implementation_supervisor_args([])
+
+    assert args.objective_refill_max_epochs is None
+    assert args.objective_refill_max_total_tasks is None
 
 
 def test_supervisor_reconciliation_only_disables_producers(tmp_path):
@@ -18178,7 +18221,20 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         outputs=["README.md"],
         validation=["python -m pytest"],
     )
-    state = TodoTaskState()
+    state = TodoTaskState(
+        task_statuses={task.task_id: "ready"},
+        ready_task_ids=[task.task_id],
+        selectable_ready_task_ids=[task.task_id],
+        eligible_ready_task_ids=[task.task_id],
+        strict_deprioritized_ready_task_ids=[],
+        waiting_task_ids=[],
+        ready_count=1,
+        selectable_ready_count=1,
+        eligible_ready_count=1,
+        strict_deprioritized_ready_count=0,
+        waiting_count=0,
+        task_count=1,
+    )
     enqueued: list[dict[str, object]] = []
     queue_outcomes: list[tuple[object, ...]] = []
     validation_order: list[str] = []
@@ -18301,6 +18357,11 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     assert result["returncode"] == 0
     assert result["implementation_commit"] == "provider-root-commit"
     assert result["merge_result"]["queued"] is True
+    assert result["board_completion"] == {
+        "complete": False,
+        "pending_merge": True,
+        "reason": "merge_queued_awaiting_integration",
+    }
     assert enqueued[0]["baseline_ref"] == "baseline-commit"
     assert enqueued[0]["implementation_commit"] == "provider-root-commit"
     assert "todo_update_result" not in result
@@ -18310,6 +18371,25 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         "restore_then_bind",
         "finalize_fence",
     ]
+    persisted = TodoTaskState.load(daemon.state_path)
+    task_cid = daemon._canonical_ref(task)
+    assert persisted.task_statuses[task.task_id] == "merge-queued"
+    assert task.task_id not in persisted.ready_task_ids
+    assert task.task_id not in persisted.selectable_ready_task_ids
+    assert task.task_id not in persisted.eligible_ready_task_ids
+    assert task.task_id not in persisted.strict_deprioritized_ready_task_ids
+    assert persisted.waiting_task_ids == [task.task_id]
+    assert persisted.ready_count == 0
+    assert persisted.selectable_ready_count == 0
+    assert persisted.eligible_ready_count == 0
+    assert persisted.strict_deprioritized_ready_count == 0
+    assert persisted.waiting_count == 1
+    assert persisted.implementation_attempts[task.task_id] == 1
+    assert persisted.implementation_attempts_by_cid[task_cid] == 1
+    assert persisted.last_implementation_task_id == task.task_id
+    assert persisted.last_implementation_task_cid == task_cid
+    assert persisted.last_implementation_commit == "provider-root-commit"
+    assert persisted.last_implementation_returncode == 0
 
 
 def test_integrated_merge_reuses_durable_completion_with_float_validation(
@@ -20958,6 +21038,366 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
         "generation_path": state_dir.parent / "objective_generation.json",
         "generation_max_new_work": 6,
     }
+
+
+def _bounded_refill_board(task_count: int) -> str:
+    return "# Board\n\n" + "".join(
+        f"## AUTO-{index:03d} Completed task\n\n- Status: completed\n\n"
+        for index in range(1, task_count + 1)
+    )
+
+
+def _bounded_refill_supervisor(
+    repo: Path,
+    state_dir: Path,
+    *,
+    max_epochs: int = 20,
+    max_total_tasks: int = 130,
+    max_findings: int = 10,
+    timeout_seconds: float = 0.0,
+):
+    return TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            board_namespace="pcsm-refill-test",
+            task_prefix="## AUTO-",
+            objective_refill_enabled=True,
+            objective_path=repo / "objective.md",
+            objective_reconcile_goal_completion=False,
+            objective_scan_min_open_tasks=0,
+            objective_scan_max_findings=max_findings,
+            objective_scan_cooldown_seconds=0,
+            objective_refill_max_epochs=max_epochs,
+            objective_refill_max_total_tasks=max_total_tasks,
+            objective_refill_timeout_seconds=timeout_seconds,
+            objective_persist_ast_dataset=False,
+        )
+    )
+
+
+def test_objective_refill_rejects_twentieth_completed_epoch_with_partial_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text(_bounded_refill_board(1), encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(repo, repo / "state")
+    supervisor._write_objective_refill_budget(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/objective-refill-budget@1"
+            ),
+            "board_namespace": "pcsm-refill-test",
+            "epochs_started": 20,
+            "status": "active",
+        }
+    )
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: pytest.fail("the twenty-epoch cap must reject generation"),
+    )
+
+    result = supervisor.refill_objective_backlog()
+    projection = supervisor._persist_refill_result("objective", result)
+
+    assert result.terminal_reason.value == "partial"
+    assert result.scan_mode == "budget_exhausted"
+    assert result.safe_for_completion_reasoning is False
+    exhaustion = result.metadata["objective_refill_budget_exhaustion"]
+    assert exhaustion["reason"] == "max_epochs"
+    assert exhaustion["epochs_started"] == 20
+    assert projection["terminal_reason"] == "partial"
+    strategy = json.loads(supervisor.config.strategy_path.read_text(encoding="utf-8"))
+    assert strategy["scan_receipts"]["objective"]["latest_successful_scan"] is None
+
+
+def test_objective_refill_rejects_board_at_130_task_cap(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text(_bounded_refill_board(130), encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(repo, repo / "state")
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: pytest.fail("the total-task cap must reject generation"),
+    )
+
+    result = supervisor.refill_objective_backlog()
+
+    assert result.terminal_reason.value == "partial"
+    assert result.metadata["objective_refill_budget_exhaustion"]["reason"] == (
+        "max_total_tasks"
+    )
+    assert result.metadata["objective_refill_budget"]["task_count"] == 130
+
+
+def test_objective_refill_clamps_findings_to_remaining_total_capacity(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text(_bounded_refill_board(128), encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(repo, repo / "state")
+    captured = {}
+
+    def capture(args):
+        captured["max_findings"] = args.max_findings
+        captured["max_new_work"] = args.objective_generation_max_new_work
+        return {"generated_count": 0, "task_ids": []}
+
+    monkeypatch.setattr(objective_daemon, "run_objective_daemon", capture)
+
+    result = supervisor.refill_objective_backlog()
+
+    assert captured == {"max_findings": 2, "max_new_work": 2}
+    assert result.metadata["objective_refill_budget"]["epochs_started"] == 1
+    assert result.metadata["objective_refill_budget"]["remaining_task_capacity"] == 2
+
+
+@pytest.mark.parametrize("completion", ("returns", "raises", "times_out"))
+def test_objective_refill_quarantines_generator_that_exceeds_total_cap(
+    tmp_path,
+    monkeypatch,
+    completion,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    original = _bounded_refill_board(128)
+    (repo / "todo.md").write_text(original, encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(
+        repo,
+        repo / "state",
+        timeout_seconds=0.01 if completion == "times_out" else 0.0,
+    )
+
+    def violate_cap(args):
+        assert args.max_findings == 2
+        with (repo / "todo.md").open("a", encoding="utf-8") as stream:
+            added = _bounded_refill_board(3).replace("# Board\n\n", "")
+            for old, new in (
+                ("AUTO-001", "AUTO-129"),
+                ("AUTO-002", "AUTO-130"),
+                ("AUTO-003", "AUTO-131"),
+            ):
+                added = added.replace(old, new)
+            stream.write(added)
+        if completion == "raises":
+            raise RuntimeError("generator failed after writing")
+        if completion == "times_out":
+            time.sleep(0.1)
+        return {
+            "generated_count": 3,
+            "task_ids": ["AUTO-129", "AUTO-130", "AUTO-131"],
+        }
+
+    monkeypatch.setattr(objective_daemon, "run_objective_daemon", violate_cap)
+
+    result = supervisor.refill_objective_backlog()
+
+    assert result.terminal_reason.value == "failed"
+    assert result.scan_mode == "budget_postcondition_quarantined"
+    assert (repo / "todo.md").read_text(encoding="utf-8") == original
+    budget = json.loads(
+        supervisor._objective_refill_budget_path().read_text(encoding="utf-8")
+    )
+    assert budget["status"] == "quarantined"
+    assert budget["last_violation"]["observed_task_count"] == 131
+    expected_failure = {
+        "returns": None,
+        "raises": "RuntimeError",
+        "times_out": "ObjectiveRefillTimeoutError",
+    }[completion]
+    assert budget["last_violation"].get("failure_type") == expected_failure
+
+
+def test_objective_refill_quarantines_unverifiable_postcondition(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    original = _bounded_refill_board(1)
+    (repo / "todo.md").write_text(original, encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(repo, repo / "state")
+    authoritative_count = supervisor._objective_refill_authoritative_task_count
+    calls = 0
+
+    def fail_postcondition_count(todo_text, *, task_prefix):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("canonical count unavailable after generation")
+        return authoritative_count(todo_text, task_prefix=task_prefix)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_objective_refill_authoritative_task_count",
+        fail_postcondition_count,
+    )
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: {"generated_count": 0, "task_ids": []},
+    )
+
+    result = supervisor.refill_objective_backlog()
+
+    assert result.terminal_reason.value == "failed"
+    evidence = result.metadata["objective_refill_budget_quarantine"]
+    assert evidence["reason"] == "task_count_postcondition_unavailable"
+    assert evidence["failure_type"] == "RuntimeError"
+    assert evidence["restoration_verified"] is True
+    assert (repo / "todo.md").read_text(encoding="utf-8") == original
+
+
+def test_objective_refill_epoch_reservation_is_shared_across_lane_directories(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text(_bounded_refill_board(1), encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    lane_zero = _bounded_refill_supervisor(
+        repo,
+        repo / "state" / "lane-0",
+        max_epochs=1,
+    )
+    lane_one = _bounded_refill_supervisor(
+        repo,
+        repo / "state" / "lane-1",
+        max_epochs=1,
+    )
+    calls = []
+
+    def one_slow_epoch(_args):
+        calls.append("called")
+        time.sleep(0.1)
+        return {"generated_count": 0, "task_ids": []}
+
+    monkeypatch.setattr(objective_daemon, "run_objective_daemon", one_slow_epoch)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda supervisor: supervisor.refill_objective_backlog(),
+                (lane_zero, lane_one),
+            )
+        )
+
+    assert lane_zero._objective_refill_budget_path() == (
+        lane_one._objective_refill_budget_path()
+    )
+    assert calls == ["called"]
+    assert sorted(result.scan_mode for result in results) == [
+        "budget_exhausted",
+        "drained_exhaustive",
+    ]
+    budget = json.loads(
+        lane_zero._objective_refill_budget_path().read_text(encoding="utf-8")
+    )
+    assert budget["epochs_started"] == 1
+
+
+def test_objective_refill_quack_count_uses_overlap_and_pending_projection(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        DatabaseProgramConfig,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import database_task_source
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "todo.md").write_text(_bounded_refill_board(3), encoding="utf-8")
+    (repo / "objective.md").write_text("# Objective\n", encoding="utf-8")
+    supervisor = _bounded_refill_supervisor(repo, repo / "state")
+    supervisor.config.database_program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle="handle:pcsm-test",
+        quack_endpoint="quack:127.0.0.1:41327",
+        store_id="control.duckdb",
+        store_generation="pcsm-v1",
+        schema_revision="1",
+        runtime_registry_path="state/registry",
+    )
+
+    class FakeTaskSource:
+        aliases = ("AUTO-001", "AUTO-002")
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def snapshot(self):
+            return SimpleNamespace(task_count=len(self.aliases))
+
+        def list_tasks(self, **_kwargs):
+            return SimpleNamespace(
+                tasks=tuple(
+                    SimpleNamespace(task_alias=alias, task_cid=f"cid-{index}")
+                    for index, alias in enumerate(self.aliases, start=1)
+                ),
+                next_cursor="",
+            )
+
+    monkeypatch.setattr(database_task_source, "DatabaseTaskSource", FakeTaskSource)
+
+    count, authority = supervisor._objective_refill_authoritative_task_count(
+        (repo / "todo.md").read_text(encoding="utf-8"),
+        task_prefix="AUTO-",
+    )
+
+    assert count == 3
+    assert authority["canonical_task_count"] == 2
+    assert authority["projection_task_count"] == 3
+    assert authority["overlap_task_count"] == 2
+    assert authority["projection_only_task_count"] == 1
+
+    FakeTaskSource.aliases = ("AUTO-001", "AUTO-004")
+    with pytest.raises(
+        ValueError,
+        match="projection omits canonical task aliases: AUTO-004",
+    ):
+        supervisor._objective_refill_authoritative_task_count(
+            (repo / "todo.md").read_text(encoding="utf-8"),
+            task_prefix="AUTO-",
+        )
 
 
 def test_disabled_objective_janitor_ignores_stale_force_goal_ids(

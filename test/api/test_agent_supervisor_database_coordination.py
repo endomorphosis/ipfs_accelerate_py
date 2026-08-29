@@ -823,6 +823,47 @@ def test_coordination_registry_projection_is_exact_and_timestamp_free(
         second.close()
 
 
+def test_authoritative_task_sync_rebuilds_retrying_projection_body(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        blocked = coordinator.synchronize_authoritative_task(
+            task_cid="task:pcsm-010",
+            task_id="PCSM-010",
+            authoritative_status="blocked",
+            authoritative_revision=12,
+            authoritative_ready=False,
+            authoritative_completed=False,
+            now_ms=1_000_000,
+        )
+        assert blocked["changed"] is True
+        retrying = coordinator.synchronize_authoritative_task(
+            task_cid="task:pcsm-010",
+            task_id="PCSM-010",
+            authoritative_status="retrying",
+            authoritative_revision=13,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_200,
+        )
+        assert retrying["changed"] is True
+        assert retrying["authoritative_status"] == "retrying"
+        assert retrying["authoritative_revision"] == 13
+        replay = coordinator.synchronize_authoritative_task(
+            task_cid="task:pcsm-010",
+            task_id="PCSM-010",
+            authoritative_status="retrying",
+            authoritative_revision=13,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            now_ms=1_000_300,
+        )
+        assert replay["changed"] is False
+    finally:
+        coordinator.close()
+
+
 def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepared(
     tmp_path: Path,
 ) -> None:

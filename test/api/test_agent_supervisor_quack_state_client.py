@@ -1061,6 +1061,16 @@ def test_retry_policy_jitter_is_bounded() -> None:
     assert classify_exception(OptimisticConflictError()) is (
         TransactionConflictKind.OPTIMISTIC
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerRemoteError,
+    )
+
+    remote_fatal = TypedStateOwnerRemoteError(
+        "operation_failed",
+        "FatalException",
+    )
+    assert classify_exception(remote_fatal) is TransactionConflictKind.TRANSIENT
+    assert is_retryable_exception(remote_fatal)
 
 
 def test_result_digest_stable() -> None:

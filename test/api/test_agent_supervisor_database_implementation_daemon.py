@@ -93,6 +93,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    _process_birth_content_id,
+    typed_database_blocked_retry_revalidation_requirement,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
@@ -152,6 +158,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     open_database_implementation_daemon,
     parse_args,
     parse_task_text,
+    portal_task_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -274,6 +281,8 @@ def _open_daemon(
     strict_task_sharding: bool = False,
     idle_lane_work_stealing: str = "",
     control_path: Path | None = None,
+    coordination_path: Path | None = None,
+    execution_path: Path | None = None,
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
@@ -287,8 +296,12 @@ def _open_daemon(
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     suffix = f"-{lane}" if lane else ""
-    coordination_path = tmp_path / f"coordination{suffix}.duckdb"
-    execution_path = tmp_path / f"execution{suffix}.duckdb"
+    resolved_coordination_path = coordination_path or (
+        tmp_path / f"coordination{suffix}.duckdb"
+    )
+    resolved_execution_path = execution_path or (
+        tmp_path / f"execution{suffix}.duckdb"
+    )
 
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
@@ -322,8 +335,8 @@ def _open_daemon(
 
     return DatabaseImplementationDaemon(
         database_path=database_path,
-        coordination_path=coordination_path,
-        execution_path=execution_path,
+        coordination_path=resolved_coordination_path,
+        execution_path=resolved_execution_path,
         owner_session_id=session,
         process_instance_id=process_instance_id,
         authority_mode="embedded",
@@ -750,6 +763,7 @@ def _capacity_retry_receipt(
     attempt: DatabaseTaskAttempt,
     *,
     retry_not_before_ms: int = 2_000_000,
+    portal_task_cid: str = "",
 ) -> dict[str, object]:
     digest = daemon._database_portal_evidence_digest
     primary: dict[str, object] = {
@@ -817,7 +831,7 @@ def _capacity_retry_receipt(
         ),
         "task_id": attempt.task_alias,
         "attempt": 1,
-        "task_revision_cid": attempt.task_cid,
+        "task_revision_cid": portal_task_cid or attempt.task_cid,
         "logical_attempt_id": logical_id,
         "invocation_binding_id": invocation_id,
         "route_id": route_id,
@@ -1628,6 +1642,136 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         idle.close()
 
 
+def _sparse_post_merge_history_fixture(
+    task: Any,
+    *,
+    current_operation: str,
+) -> tuple[Any, dict[str, Any]]:
+    semantic_body = {
+        key: value
+        for key, value in dict(task.body).items()
+        if key != "completion_receipt"
+    }
+    revision_numbers = (1, 5, 6, 7, 8)
+    statuses = ("ready", "in_progress", "retrying", "in_progress", "blocked")
+    operations = (
+        "database_materialize_task",
+        "database_claim",
+        "database_portal_retry",
+        "database_claim",
+        current_operation,
+    )
+    entries = [
+        {
+            "revision": revision,
+            "status": statuses[index],
+            "body": {
+                **semantic_body,
+                "completion_receipt": {
+                    "operation": operations[index],
+                },
+            },
+        }
+        for index, revision in enumerate(revision_numbers)
+    ]
+    projection_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": task.task_cid,
+        "revisions": entries,
+    }
+    projection = {
+        **projection_body,
+        "projection_cid": content_identity(projection_body),
+    }
+    current = replace(
+        task,
+        revision=revision_numbers[-1],
+        status=statuses[-1],
+        body=entries[-1]["body"],
+    )
+    return current, projection
+
+
+def test_post_merge_completion_crash_fence_allows_sparse_ordinary_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sparse-ordinary-history",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        sparse_task, projection = _sparse_post_merge_history_fixture(
+            task,
+            current_operation="database_portal_terminal_failure",
+        )
+        assert [
+            entry["revision"] for entry in projection["revisions"]
+        ] == [1, 5, 6, 7, 8]
+        history_reads = 0
+
+        def sparse_history(_task_cid: str) -> dict[str, Any]:
+            nonlocal history_reads
+            history_reads += 1
+            return projection
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            sparse_history,
+        )
+
+        assert (
+            daemon._post_merge_completion_crash_recovery_context(
+                sparse_task,
+                require_current_blocked=True,
+            )
+            is None
+        )
+        assert history_reads == 0
+    finally:
+        daemon.close()
+
+
+def test_post_merge_completion_crash_fence_rejects_sparse_dedicated_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sparse-dedicated-history",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        sparse_task, projection = _sparse_post_merge_history_fixture(
+            task,
+            current_operation=(
+                "database_portal_typed_deferral_budget_exhausted"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: projection,
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed or stale canonical history",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                sparse_task,
+                require_current_blocked=True,
+            )
+    finally:
+        daemon.close()
+
+
 def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1713,12 +1857,24 @@ def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
         assert context["canonical_task_revision"] == 7
         assert daemon._automatic_claim_exclusions() == {task.task_cid}
 
+        blocked_candidate = replace(
+            stale_task,
+            status="blocked",
+            body={
+                **semantic_body,
+                "completion_receipt": {
+                    "operation": (
+                        "database_portal_typed_deferral_budget_exhausted"
+                    ),
+                },
+            },
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="malformed or stale canonical history",
         ):
             daemon._post_merge_completion_crash_recovery_context(
-                stale_task,
+                blocked_candidate,
                 require_current_blocked=True,
             )
         forged_task = replace(
@@ -5039,6 +5195,11 @@ def test_database_task_state_compatibility_projection_marks_exact_idle_completio
         assert active_projection["task_count"] == 1
         assert active_projection["completed_count"] == 1
         assert active_projection["implementation_in_progress"] is True
+        assert active_projection["last_progress_at"]
+        assert (
+            active_projection["last_progress_at"]
+            == active_projection["heartbeat_at"]
+        )
 
         idle_pass = daemon.run_once()
         assert idle_pass["selection_idle_reason"] == "no_ready_tasks"
@@ -5059,6 +5220,8 @@ def test_database_task_state_compatibility_projection_marks_exact_idle_completio
         assert projection["external_reserved_count"] == 0
         assert projection["active_task_id"] == ""
         assert projection["implementation_in_progress"] is False
+        assert projection["last_progress_at"]
+        assert projection["last_progress_at"] == projection["heartbeat_at"]
         assert projection["task_statuses"] == {"DQP-T001": "completed"}
         persisted = json.loads(state_path.read_text(encoding="utf-8"))
         assert persisted == {
@@ -6705,12 +6868,14 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     provider_reset_ms: int,
 ) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
+    source_portal_task_cid = "baguqeera" + "a" * 52
 
     def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         receipt = _capacity_retry_receipt(
             holder["daemon"],
             attempt,
             retry_not_before_ms=provider_reset_ms,
+            portal_task_cid=source_portal_task_cid,
         )
         raise DatabasePortalCapacityRetry(receipt)
 
@@ -6744,6 +6909,11 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert evidence is not None
         assert evidence["typed_deferral_budget"] is None
         seed = evidence["typed_capacity_retry"]
+        assert seed["task_cid"] == source.task_cid
+        assert seed["post_dispatch_capacity_proof"][
+            "task_revision_cid"
+        ] == source_portal_task_cid
+        assert source_portal_task_cid != source.task_cid
         assert seed["portal_attempt"] == 1
         assert seed["retry_not_before_ms"] == provider_reset_ms
         assert seed["remaining_task_attempts"] == 2
@@ -9603,6 +9773,153 @@ def test_database_observer_without_real_execution_never_resumes_or_claims(
         observer.close()
 
 
+def test_failed_attempt_observes_fresh_typed_admission_as_superseding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-admission-supersession",
+    )
+    stale = DatabaseTaskAttempt(
+        attempt_id="attempt:stale",
+        claim_id="claim:stale",
+        task_cid="task:typed-admission-supersession",
+        task_alias="CASF-TYPED-ADMISSION-SUPERSESSION",
+        attempt_number=1,
+        owner_session_id="session:stale",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:stale",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=1_000,
+        finished_at_ms=2_000,
+    )
+    admitted_pid = 12_345
+    admitted_start_ticks = 19
+    admitted_boot_id = "boot:typed-admission-supersession"
+    admitted_parent_pid = 1
+    admitted_receipt = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": (
+            implementation_daemon_module.TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ),
+        "claim_process_attestation": {
+            "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+            "grant_id": "owner-grant:typed-admission-supersession",
+            "client_id": "client:typed-admission-supersession",
+            "process_birth_id": _process_birth_content_id(
+                admitted_pid,
+                admitted_start_ticks,
+                admitted_boot_id,
+                admitted_parent_pid,
+            ),
+            "pid": admitted_pid,
+            "uid": 0,
+            "start_time_ticks": admitted_start_ticks,
+            "boot_id": admitted_boot_id,
+            "parent_pid": admitted_parent_pid,
+        },
+        "attempt_id": "attempt:fresh",
+        "claim_id": "claim:fresh",
+        "attempt_number": 2,
+        "lease_id": "lease:fresh",
+        "owner_session_id": "session:fresh",
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "claimed_from_revision": 6,
+        "admitted_from_revision": 7,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    task = SimpleNamespace(
+        status="in_progress",
+        revision=8,
+        body={"completion_receipt": admitted_receipt},
+    )
+    try:
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            lambda: admitted_receipt["claim_process_attestation"],
+            raising=False,
+        )
+        monkeypatch.setattr(daemon.task_source, "get", lambda _task_cid: task)
+        supersession = daemon._fresh_failed_attempt_control_supersession(stale)
+        assert supersession is not None
+        assert supersession["reason"] == "failed_attempt_control_superseded"
+        assert supersession["control_operation"] == "database_attempt_admitted"
+        assert supersession["successor_attempt_id"] == "attempt:fresh"
+        assert supersession["control_revision"] == 8
+        monkeypatch.setattr(daemon, "_latest_failed_attempts", lambda: [stale])
+        monkeypatch.setattr(
+            daemon,
+            "_terminal_portal_failure_reason",
+            lambda _attempt: "portal_provider_failed",
+        )
+        assert daemon.reconcile_terminal_portal_failures() == [supersession]
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "lease_id": stale.lease_id,
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {"completion_receipt": admitted_receipt}
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            None,
+            raising=False,
+        )
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            lambda: admitted_receipt["claim_process_attestation"],
+            raising=False,
+        )
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_phase_schema": "database-attempt-admission@forged",
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_process_attestation": {
+                    **admitted_receipt["claim_process_attestation"],
+                    "unexpected": "forged",
+                },
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_process_attestation": {
+                    **admitted_receipt["claim_process_attestation"],
+                    "process_birth_id": "birth:forged",
+                },
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {"completion_receipt": admitted_receipt}
+        task.revision = 9
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+    finally:
+        daemon.close()
+
+
 def test_portal_failure_terminal_cas_refetches_advanced_attempt(
     tmp_path: Path,
 ) -> None:
@@ -10841,6 +11158,181 @@ def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_reconcile_rearms_blocked_missing_implementation_commit_at_attempt_cap(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-missing-commit-cap",
+        max_task_attempts=1,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["evidence_source"] == (
+            "portal_completion_handshake_reclassified"
+        )
+        task = daemon.task_source.get(failed.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_typed_blocked_reopen_stamps_retry_deadline_before_cas() -> None:
+    """Quack cooldown binds the CAS receipt deadline, not a later clock."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentReceipt,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    captured: dict[str, Any] = {}
+    source = TypedDatabaseTaskSource.__new__(TypedDatabaseTaskSource)
+    source._clock_ms = lambda: 1_700_000  # type: ignore[method-assign]
+
+    def fake_cas(
+        task_cid: str,
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+        *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
+        evidence_digests: object = None,
+    ) -> SimpleNamespace:
+        captured["cas_receipt"] = dict(receipt or {})
+        captured["cas_status"] = status
+        captured["expected_revision"] = expected_revision
+        captured["expected_control_receipt"] = expected_control_receipt
+        return SimpleNamespace(
+            previous_status="blocked",
+            changed=True,
+            revision=int(expected_revision) + 1,
+        )
+
+    def fake_cooldown(**kwargs: Any) -> IntentReceipt:
+        captured["cooldown"] = dict(kwargs)
+        deadline = int(kwargs["now_ms"]) + int(kwargs["delay_ms"])
+        return IntentReceipt(
+            event_id="event:cooldown",
+            event_type="TASK_RETRY_COOLDOWN_RECORDED",
+            global_sequence=1,
+            recorded_at="typed-state-owner",
+            subject_id=str(kwargs["task_cid"]),
+            revision=1,
+            changed=True,
+            details={"retry_not_before_ms": deadline, "queue_revision": 1},
+        )
+
+    source.compare_and_set_status = fake_cas  # type: ignore[method-assign]
+    source.record_task_retry_cooldown = fake_cooldown  # type: ignore[method-assign]
+    receipt = {
+        "operation": "database_portal_validation_retry_recovery",
+        "attempt_id": "attempt:c2c70e3776d84c3b80aab21dece3b915",
+        "claim_id": "claim:30ef15e81c1a412fb329da1b6f1131da",
+        "lease_id": "lease:c74f619dda6a4bf897f1a689a4d59cc1",
+        "owner_session_id": "pcsm-v1-executor:shard:0-of-4:track:ef26cb9db64a",
+        "attempt_number": 2,
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "queue_reason": (
+            "database_portal_retry:attempt:c2c70e3776d84c3b80aab21dece3b915:"
+            "portal_completion_handshake_retry"
+        ),
+        "backoff_ms": 0,
+        "retry_not_before_ms": 0,
+        "control_expected_revision": 8,
+        "evidence_source": "portal_completion_handshake_reclassified",
+    }
+    result = source.record_queue_backoff_and_cas_status(
+        task_cid="baguqeera6mvj3326qcksmlmwafo3s7ppd4s22vnbsn4tjnk4ylbjyqiesypa",
+        expected_revision=8,
+        expected_control_receipt={
+            "operation": "database_portal_terminal_failure"
+        },
+        status="retrying",
+        receipt=receipt,
+        delay_ms=0,
+        reason=str(receipt["queue_reason"]),
+    )
+    assert captured["cas_status"] == "retrying"
+    assert captured["expected_revision"] == 8
+    assert captured["cas_receipt"]["retry_not_before_ms"] == 1_700_000
+    assert captured["cas_receipt"]["backoff_ms"] == 0
+    assert captured["cooldown"]["now_ms"] == 1_700_000
+    assert captured["cooldown"]["delay_ms"] == 0
+    assert captured["cooldown"]["expected_task_status"] == "retrying"
+    assert captured["cooldown"]["expected_task_revision"] == 8
+    assert captured["cooldown"]["attempt_number"] == 2
+    assert result["retry_not_before_ms"] == 1_700_000
+    assert result["transition_receipt"]["retry_not_before_ms"] == 1_700_000
+    assert result["previous_status"] == "blocked"
+
+
+def test_blocked_retry_prefers_atomic_queue_status_over_typed_cooldown(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:blocked-retry-atomic-queue",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        def typed_cooldown(**_kwargs: object) -> object:
+            raise AssertionError(
+                "typed cooldown must not run for blocked recovery"
+            )
+
+        daemon.task_source.record_task_retry_cooldown = typed_cooldown  # type: ignore[method-assign]
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     tmp_path: Path,
 ) -> None:
@@ -11383,6 +11875,94 @@ def test_run_once_unstalls_stale_in_progress_gate_and_claims(
         attempt = daemon.claim_next()
         assert attempt is not None
         assert attempt.task_cid == "task:cid:001"
+    finally:
+        daemon.close()
+
+
+def test_orphan_in_progress_unstall_retries_gate_without_live_claim(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:orphan-unstall",
+        max_task_attempts=3,
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [stale, "task:cid:001"],
+            )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert any(
+            item.get("task_cid") == "task:cid:001"
+            and item.get("reason")
+            == "in_progress_without_live_worktree_lifecycle_owner"
+            for item in unstalled
+        )
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_orphan_in_progress_unstall_leaves_live_lifecycle_owner_alone(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        WorktreeLifecycleStore,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:orphan-live",
+        max_task_attempts=3,
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [stale, "task:cid:001"],
+            )
+        store = WorktreeLifecycleStore(repo_root=repo)
+        store.begin_preparing(
+            task_id="DQP-T001",
+            canonical_task_cid="task:cid:001",
+            attempt=1,
+            lane_id="lane-0",
+            workspace_path=tmp_path / "live-ws",
+            branch="implementation/dqp-t001",
+            merge_target="main",
+            state_dir=str(tmp_path / "state" / "lane-0"),
+        )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert unstalled == []
+        live = daemon.task_source.get("task:cid:001")
+        assert live is not None
+        assert live.status == "in_progress"
     finally:
         daemon.close()
 
@@ -13296,6 +13876,461 @@ def test_typed_retrying_reuse_validates_immutable_admitted_delay() -> None:
     assert result["retry_not_before_ms"] == 5_000
 
 
+def test_retrying_cooldown_repair_payload_follows_control_receipt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    receipt = {
+        "operation": "database_portal_validation_retry_recovery",
+        "attempt_id": "attempt:stale-cooldown",
+        "claim_id": "claim:stale-cooldown",
+        "lease_id": "lease:stale-cooldown",
+        "owner_session_id": "session:stale-cooldown",
+        "attempt_number": 629,
+        "fencing_token": 629,
+        "fence_epoch": 629,
+        "queue_reason": (
+            "database_portal_retry:attempt:stale-cooldown:"
+            "portal_pending_merge_claim_retry"
+        ),
+        "backoff_ms": 0,
+        "retry_not_before_ms": 1_000,
+        "control_expected_revision": 12,
+    }
+    task = SimpleNamespace(
+        task_cid="task:stale-cooldown",
+        task_alias="PCSM-010",
+        status="retrying",
+        revision=13,
+        body={"completion_receipt": receipt},
+    )
+    payload = TypedDatabaseTaskSource._retrying_cooldown_repair_payload(task)
+    assert payload == {
+        "task_cid": "task:stale-cooldown",
+        "expected_task_revision": 12,
+        "expected_task_status": "retrying",
+        "attempt_id": "attempt:stale-cooldown",
+        "claim_id": "claim:stale-cooldown",
+        "lease_id": "lease:stale-cooldown",
+        "owner_session_id": "session:stale-cooldown",
+        "attempt_number": 629,
+        "fencing_token": 629,
+        "fence_epoch": 629,
+        "delay_ms": 0,
+        "reason": receipt["queue_reason"],
+        "now_ms": 1_000,
+    }
+    stale = dict(receipt)
+    stale["control_expected_revision"] = 8
+    task.body = {"completion_receipt": stale}
+    assert TypedDatabaseTaskSource._retrying_cooldown_repair_payload(task) is None
+
+
+def test_reconcile_retrying_cooldown_bindings_uses_typed_repair() -> None:
+    calls: list[str] = []
+
+    class _TypedSource:
+        @staticmethod
+        def repair_retrying_cooldown_bindings() -> list[dict[str, object]]:
+            calls.append("repair")
+            return [
+                {
+                    "task_cid": "task:stale-cooldown",
+                    "task_alias": "PCSM-010",
+                    "changed": True,
+                    "reason": "retrying_cooldown_rebound_to_control_receipt",
+                }
+            ]
+
+    daemon = SimpleNamespace(
+        task_source=_TypedSource(),
+        _require_execution_authority=lambda _name: None,
+    )
+    outcomes = DatabaseImplementationDaemon.reconcile_retrying_cooldown_bindings(
+        daemon
+    )
+    assert calls == ["repair"]
+    assert outcomes == [
+        {
+            "task_cid": "task:stale-cooldown",
+            "task_alias": "PCSM-010",
+            "changed": True,
+            "reason": "retrying_cooldown_rebound_to_control_receipt",
+        }
+    ]
+
+    empty = SimpleNamespace(
+        task_source=SimpleNamespace(),
+        _require_execution_authority=lambda _name: None,
+    )
+    assert (
+        DatabaseImplementationDaemon.reconcile_retrying_cooldown_bindings(empty)
+        == []
+    )
+
+
+def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> None:
+    daemon = SimpleNamespace(phase_history=lambda _attempt_id: [])
+    attempt = SimpleNamespace(attempt_id="attempt:missing-failed-phase")
+    assert (
+        DatabaseImplementationDaemon._terminal_portal_failure_reason(
+            daemon,
+            attempt,
+        )
+        is None
+    )
+    assert (
+        DatabaseImplementationDaemon._terminal_retry_evidence(
+            daemon,
+            attempt,
+        )
+        is None
+    )
+
+
+def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() -> None:
+    cas: list[dict[str, object]] = []
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcsm-010",
+            task_alias="PCSM-010",
+            status="retrying",
+            revision=45,
+            body={"completion_receipt": {"operation": "legacy_retry"}},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            selected = (
+                {str(status).strip().lower()}
+                if isinstance(status, str)
+                else {str(item).strip().lower() for item in (status or ())}
+            )
+            tasks = (self.task,) if self.task.status in selected else ()
+            return SimpleNamespace(tasks=tasks)
+
+        def get(self, _cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            return None
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        merge_target_ref="HEAD",
+        task_source=source,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_semantic_minification/receipts/PCSM-010.json",
+        ),
+        _record_event=lambda *_args, **_kwargs: None,
+    )
+
+    def cas_status(
+        task_cid,
+        *,
+        expected_revision,
+        new_status,
+        receipt,
+        expected_control_receipt,
+        evidence_digests,
+    ):
+        cas.append(
+            {
+                "task_cid": task_cid,
+                "expected_revision": expected_revision,
+                "new_status": new_status,
+                "evidence_digests": list(evidence_digests),
+                "expected_control_receipt": dict(expected_control_receipt),
+            }
+        )
+        source.task.status = new_status
+        source.task.revision = int(expected_revision) + 1
+        return None
+
+    daemon._cas_task_status_database = cas_status
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+    assert len(outcomes) == 1
+    assert outcomes[0]["completed"] is True
+    assert outcomes[0]["task_alias"] == "PCSM-010"
+    assert outcomes[0]["reason"] == "database_landed_merge_repair"
+    assert cas[0]["new_status"] == "completed"
+    assert cas[0]["expected_revision"] == 45
+    assert cas[0]["expected_control_receipt"] == {
+        "operation": "legacy_retry"
+    }
+
+
+def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid="task:pcsm-013",
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcsm-013",
+            task_alias="PCSM-013",
+            status="retrying",
+            revision=9,
+            body={
+                "completion_receipt": {"operation": "operator_retry"},
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: requirement,
+            },
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            return SimpleNamespace(tasks=(self.task,))
+
+        def get(self, _task_cid: str):
+            return self.task
+
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        task_source=_Source(),
+        _task_outputs_landed_on_target=lambda _task: (_ for _ in ()).throw(
+            AssertionError("landed outputs must not bypass fresh Portal proof")
+        ),
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+
+    assert DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon) == []
+
+
+def test_fresh_portal_requirement_survives_control_receipt_rotations() -> None:
+    task_cid = "task:pcsm-013"
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid=task_cid,
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+    daemon = SimpleNamespace()
+
+    for operation in (
+        "database_operator_blocked_retry_recovery",
+        "database_claim",
+        "database_attempt_admitted",
+        "database_portal_neutral_failure_quarantine",
+        "database_portal_terminal_failure",
+        "database_portal_validation_retry",
+    ):
+        task = SimpleNamespace(
+            task_cid=task_cid,
+            body={
+                "completion_receipt": {"operation": operation},
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: requirement,
+            },
+        )
+        assert DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            daemon,
+            task,
+        )
+
+
+def test_malformed_fresh_portal_requirement_fails_closed() -> None:
+    task = SimpleNamespace(
+        task_cid="task:pcsm-013",
+        body={
+            "completion_receipt": {"operation": "operator_retry"},
+            TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: "invalid",
+        },
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="fresh Portal revalidation requirement is malformed",
+    ):
+        DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            SimpleNamespace(),
+            task,
+        )
+
+
+def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race() -> None:
+    task_cid = "task:pcsm-013"
+    requirement = typed_database_blocked_retry_revalidation_requirement(
+        task_cid=task_cid,
+        source_completion_receipt_id="sha256:" + "a" * 64,
+        operator_handoff_receipt_id="sha256:" + "b" * 64,
+        sidecar_evidence_id="sha256:" + "c" * 64,
+        recovered_from_revision=8,
+        fresh_attempt_number=3,
+    )
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid=task_cid,
+            task_alias="PCSM-013",
+            status="blocked",
+            revision=8,
+            body={
+                "completion_receipt": {"operation": "terminal_failure"}
+            },
+        )
+        validation_recorded = False
+
+        def get(self, _task_cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            self.validation_recorded = True
+            self.task = SimpleNamespace(
+                task_cid=task_cid,
+                task_alias="PCSM-013",
+                status="retrying",
+                revision=9,
+                body={
+                    "completion_receipt": {"operation": "operator_retry"},
+                    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD: (
+                        requirement
+                    ),
+                },
+            )
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: ("receipt.json",),
+        merge_target_ref="HEAD",
+        _cas_task_status_database=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("stale landed repair must not complete recovered work")
+        ),
+    )
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+
+    assert (
+        DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            source.task,
+        )
+        is None
+    )
+    assert source.validation_recorded is True
+
+
+def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    calls: list[str] = []
+    entry = SimpleNamespace(
+        retry_not_before_ms=1_000,
+        reason=(
+            "database_portal_retry:attempt:bound-receipt:"
+            "portal_pending_merge_claim_retry"
+        ),
+    )
+
+    class _TypedRetryingSource:
+        task = SimpleNamespace(
+            task_cid="task:bound-receipt-cooldown",
+            status="retrying",
+            revision=13,
+            body={
+                "completion_receipt": {
+                    "operation": "database_portal_validation_retry_recovery"
+                }
+            },
+        )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace:
+            return entry
+
+        @staticmethod
+        def record_task_retry_cooldown(**_kwargs: object) -> None:
+            raise AssertionError("bound receipt cooldown must not be rewritten")
+
+        @staticmethod
+        def validate_retrying_task_cooldown(
+            _task_cid: str,
+            **kwargs: object,
+        ) -> SimpleNamespace:
+            if kwargs:
+                calls.append("expected")
+                raise TaskSourceIntegrityError(
+                    "retrying task cooldown differs from the expected delay"
+                )
+            calls.append("bound")
+            return entry
+
+    source = _TypedRetryingSource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 5_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:local-failed-delay",
+        claim_id="claim:local-failed-delay",
+        task_cid=source.task.task_cid,
+        task_alias="PCSM-010",
+        attempt_number=1,
+        owner_session_id="session:local-failed-delay",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:local-failed-delay",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+    outcome = DatabaseImplementationDaemon._persist_task_retry_state(
+        daemon,
+        attempt,
+        reason="typed_deferral",
+        backoff_ms=300_000,
+        evidence_source="portal_provider_failed",
+    )
+    assert calls == ["expected", "bound"]
+    assert outcome["changed"] is False
+    assert outcome["queue_reused"] is True
+    assert outcome["reason"] == "retrying_cooldown_bound_to_control_receipt"
+    assert outcome["retry_not_before_ms"] == 1_000
+
+
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:
@@ -15020,6 +16055,68 @@ def _post_merge_preauthorization(
     }
 
 
+def _post_merge_repair_recovery_evidence(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    *,
+    request_id: str = "merge-request:portable-ordinary",
+    candidate_commit: str = "a" * 40,
+    repair_commit: str = "b" * 40,
+) -> dict[str, object]:
+    repair_receipt: dict[str, object] = {
+        "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+        "task_ids": [failed.task_alias],
+        "candidate_commit": candidate_commit,
+        "candidate_tree": "1" * 40,
+        "baseline_commit": "2" * 40,
+        "failed_integration_commit": "3" * 40,
+        "repair_parent_commit": "4" * 40,
+        "repair_commit": repair_commit,
+        "repair_tree": "5" * 40,
+        "entries": [
+            {
+                "path": "output.py",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": "6" * 40,
+            }
+        ],
+        "validation": [
+            {
+                "task_id": failed.task_alias,
+                "passed": True,
+                "returncode": 0,
+                "validation_result_digests": ["sha256:" + "7" * 64],
+                "command_count": 1,
+                "log_sha256": "8" * 64,
+            }
+        ],
+        "rollback_target": "4" * 40,
+    }
+    repair_receipt["receipt_id"] = content_identity(repair_receipt)
+    evidence: dict[str, object] = {
+        "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+        "request_id": request_id,
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "candidate_commit": candidate_commit,
+        "repair_commit": repair_commit,
+        "repair_receipt_id": repair_receipt["receipt_id"],
+        "repair_receipt": repair_receipt,
+        "source_attempt_id": failed.attempt_id,
+        "source_claim_id": failed.claim_id,
+        "source_lease_id": failed.lease_id,
+        "source_fencing_token": failed.fencing_token,
+        "source_fence_epoch": failed.fence_epoch,
+        "source_binding_id": "sha256:" + "c" * 64,
+        "source_projection_immutable_digest": "sha256:" + "d" * 64,
+    }
+    evidence["evidence_id"] = daemon._database_portal_evidence_digest(
+        evidence
+    )
+    return evidence
+
+
 def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
     tmp_path: Path,
 ) -> None:
@@ -15070,6 +16167,473 @@ def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
         assert authorized["task_status"] == "blocked"
     finally:
         daemon.close()
+
+
+def test_post_merge_recovery_accepts_complete_execution_route_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-execution-route-lineage",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        route = {
+            "policy_id": "policy:sealed-route",
+            "task_revision": 1,
+        }
+        receipt = {
+            **blocked.body["completion_receipt"],
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        routed = replace(
+            blocked,
+            body={**blocked.body, "completion_receipt": receipt},
+        )
+        original_get = daemon.task_source.get
+
+        def get_routed(task_cid: str) -> object:
+            return routed if task_cid == failed.task_cid else original_get(task_cid)
+
+        def validate_route(
+            value: object,
+            *,
+            task: object,
+            allow_claim_revision: bool,
+        ) -> Mapping[str, object]:
+            assert task is routed
+            assert allow_claim_revision is True
+            if not isinstance(value, Mapping) or dict(value) != route:
+                raise ValueError("foreign execution route")
+            return route
+
+        monkeypatch.setattr(daemon.task_source, "get", get_routed)
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda task: route if task is routed else {},
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            validate_route,
+            raising=False,
+        )
+
+        assert daemon.post_merge_completion_recovery_task_cids() == (
+            failed.task_cid,
+        )
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+
+        partial_receipt = dict(receipt)
+        partial_receipt.pop("execution_route_policy_id")
+        partial = replace(
+            routed,
+            body={**routed.body, "completion_receipt": partial_receipt},
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "get",
+            lambda task_cid: (
+                partial if task_cid == failed.task_cid else original_get(task_cid)
+            ),
+        )
+        assert daemon.post_merge_completion_recovery_task_cids() == ()
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="no exact terminal failure control projection",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+
+        stripped_receipt = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            }
+        }
+        stripped = replace(
+            routed,
+            body={**routed.body, "completion_receipt": stripped_receipt},
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "get",
+            lambda task_cid: (
+                stripped if task_cid == failed.task_cid else original_get(task_cid)
+            ),
+        )
+        assert daemon.post_merge_completion_recovery_task_cids() == ()
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="no exact terminal failure control projection",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+    finally:
+        daemon.close()
+
+
+def test_base_only_execution_route_lineage_requires_a_legacy_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:base-only-execution-route-lineage",
+    )
+    try:
+        receipt = {"operation": "legacy-terminal"}
+        task = SimpleNamespace()
+        assert daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: {
+                "policy_id": "policy:typed-route",
+                "task_revision": 1,
+            },
+            raising=False,
+        )
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_base_only_execution_route_lineage_accepts_unsealed_typed_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unsealed-typed-execution-route-lineage",
+    )
+    try:
+        task = SimpleNamespace()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_policy",
+            None,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: pytest.fail(
+                "unsealed typed source binding must not become route authority"
+            ),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda *_args, **_kwargs: pytest.fail(
+                "unsealed typed source validator must not become route authority"
+            ),
+            raising=False,
+        )
+
+        assert daemon._receipt_has_exact_optional_execution_route_lineage(
+            {"operation": "legacy-terminal"},
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_execution_route_lineage_sealed_policy_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sealed-execution-route-lineage-failure",
+    )
+    try:
+        task = SimpleNamespace()
+        route = {
+            "policy_id": "policy:sealed-route",
+            "task_revision": 1,
+        }
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_policy",
+            SimpleNamespace(policy_id=route["policy_id"]),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: (_ for _ in ()).throw(
+                RuntimeError("sealed route binding is unavailable")
+            ),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("sealed route validation is unavailable")
+            ),
+            raising=False,
+        )
+
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            {"operation": "typed-terminal"},
+            base_fields={"operation"},
+            task=task,
+        )
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            {
+                "operation": "typed-terminal",
+                "execution_route_binding": route,
+                "execution_route_policy_id": route["policy_id"],
+                "execution_route_origin_revision": route["task_revision"],
+            },
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "normalized",
+    [
+        pytest.param({}, id="empty-binding"),
+        pytest.param({"mode": "typed"}, id="missing-policy-and-revision"),
+        pytest.param(
+            {"policy_id": "", "task_revision": 1},
+            id="empty-policy-id",
+        ),
+        pytest.param(
+            {"policy_id": 7, "task_revision": 1},
+            id="non-string-policy-id",
+        ),
+        pytest.param(
+            {"policy_id": "policy:typed-route", "task_revision": True},
+            id="boolean-task-revision",
+        ),
+        pytest.param(
+            {"policy_id": "policy:typed-route", "task_revision": "1"},
+            id="non-integer-task-revision",
+        ),
+    ],
+)
+def test_execution_route_lineage_rejects_empty_or_untyped_normalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    normalized: Mapping[str, object],
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:malformed-execution-route-lineage",
+    )
+    try:
+        binding = dict(normalized)
+        task = SimpleNamespace()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: binding,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda _value, *, task, allow_claim_revision: normalized,
+            raising=False,
+        )
+        receipt = {
+            "operation": "typed-terminal",
+            "execution_route_binding": binding,
+            "execution_route_policy_id": normalized.get("policy_id"),
+            "execution_route_origin_revision": normalized.get("task_revision"),
+        }
+
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_callback_recovery_projection_admits_exact_sibling_lane(
+    tmp_path: Path,
+) -> None:
+    shared_state = tmp_path / "state"
+    configured_root = (
+        shared_state
+        / "lane-1"
+        / "pcsm_lane_1_database_portal_attempts"
+    )
+    source_root = (
+        shared_state
+        / "lane-2"
+        / "pcsm_lane_2_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    attempt_root = source_root / ("a" * 24)
+    attempt_root.mkdir(parents=True)
+    projection = attempt_root / "task-projection.md"
+    projection.write_text("# projected task\n", encoding="utf-8")
+
+    verify_root = (
+        DatabaseImplementationDaemon
+        ._callback_recovery_projection_verification_root
+    )
+    verified = verify_root(
+        configured_attempt_root=configured_root,
+        projection_path=projection,
+    )
+
+    assert verified == source_root.resolve(strict=True)
+
+
+@pytest.mark.parametrize(
+    "source_parts",
+    [
+        ("foreign-state", "lane-2", "pcsm_lane_2_database_portal_attempts"),
+        ("state", "lane-2", "other_lane_2_database_portal_attempts"),
+        ("state", "lane-2", "pcsm_lane_3_database_portal_attempts"),
+    ],
+)
+def test_callback_recovery_projection_rejects_foreign_sibling_lane(
+    tmp_path: Path,
+    source_parts: tuple[str, ...],
+) -> None:
+    configured_root = (
+        tmp_path
+        / "state"
+        / "lane-1"
+        / "pcsm_lane_1_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    source_root = tmp_path.joinpath(*source_parts)
+    attempt_root = source_root / ("b" * 24)
+    attempt_root.mkdir(parents=True)
+    projection = attempt_root / "task-projection.md"
+    projection.write_text("# projected task\n", encoding="utf-8")
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="callback recovery source projection",
+    ):
+        DatabaseImplementationDaemon._callback_recovery_projection_verification_root(
+            configured_attempt_root=configured_root,
+            projection_path=projection,
+        )
+
+
+def test_callback_integration_authority_reloads_exact_sibling_lane_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from test.api import test_agent_supervisor_database_portal_bridge as bridge_tests
+
+    source_root = (
+        tmp_path
+        / "state"
+        / "lane-2"
+        / "vrif_lane_2_database_portal_attempts"
+    )
+    original_bridge = bridge_tests.DatabasePortalExecutionBridge
+
+    class SiblingProjectionBridge(original_bridge):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            kwargs["attempt_root"] = source_root
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(
+        bridge_tests,
+        "DatabasePortalExecutionBridge",
+        SiblingProjectionBridge,
+    )
+    daemon, qualification, evidence, _train_path, _repo = (
+        bridge_tests._callback_integration_authority_fixture(tmp_path)
+    )
+    configured_root = (
+        tmp_path
+        / "state"
+        / "lane-1"
+        / "vrif_lane_1_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    daemon._merge_portal_attempt_root = configured_root
+
+    verified = daemon._verified_post_merge_callback_integration_receipt(
+        qualification,
+        recovery_evidence=evidence,
+    )
+    assert verified["receipt_id"] == qualification["receipt_id"]
+
+    foreign_root = (
+        tmp_path
+        / "state"
+        / "lane-3"
+        / "other_lane_3_database_portal_attempts"
+    )
+    foreign_root.mkdir(parents=True)
+    daemon._merge_portal_attempt_root = foreign_root
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="source authority is invalid",
+    ):
+        daemon._verified_post_merge_callback_integration_receipt(
+            qualification,
+            recovery_evidence=evidence,
+        )
 
 
 def test_preauthorize_uses_blocked_receipt_when_phase_omits_portal_flags(
@@ -15841,6 +17405,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 "task_id": "VRIF-029",
                 "title": "Recover exact post-merge completion",
                 "outputs": [{"path": "recovered.txt"}],
+                "allowed_paths": ["recovered.txt"],
                 "validations": [{"argv": ["focused-recovery-validation"]}],
                 "acceptance": [{"criterion": "Recovery is complete"}],
             }
@@ -15865,7 +17430,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             merge_target_branch="main",
             task_header_prefix="## VRIF-",
         )
-        source_paths, _source_binding = (
+        source_paths, source_binding = (
             source_bridge._ensure_attempt_projection(
                 source_attempt,
                 source_record,
@@ -15876,11 +17441,22 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             path=source_paths.task_projection,
             task_header_prefix="## VRIF-",
         )
+        local_identity = portal_task_identity(
+            projected_task,
+            todo_path=source_paths.task_projection,
+        )
+        assert len(
+            {
+                str(source_binding["task_cid"]),
+                projected_task.canonical_task_cid,
+                local_identity.canonical_task_cid,
+            }
+        ) == 3
         request = queue.enqueue(
             branch_name="implementation/completion-recovery",
             task_id=source_attempt.task_alias,
-            canonical_task_id=source_attempt.task_cid,
-            canonical_task_key=str(projected_task.canonical_task_key),
+            canonical_task_id=local_identity.canonical_task_cid,
+            canonical_task_key=local_identity.canonical_task_key,
             commit_sha=candidate_commit,
             metadata={
                 "schema": (
@@ -15901,7 +17477,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 "task_header_prefix": "## VRIF-",
                 "task": asdict(projected_task),
                 "completion_task_cids": {
-                    source_attempt.task_alias: source_attempt.task_cid
+                    source_attempt.task_alias: local_identity.canonical_task_cid
                 },
                 "changed_submodule_paths": [],
             },
@@ -17034,6 +18610,302 @@ def _persist_legacy_empty_coordination_terminal(
             "control_expected_revision": int(task.revision),
         },
     )
+
+
+def test_terminal_coordination_projection_accepts_exact_producer_history(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-coordination-producer-history",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        accepted = daemon._reconcile_failed_attempt_coordination(failed)
+        assert (
+            daemon._terminal_coordination_projection_state(failed, accepted)
+            == "accepted"
+        )
+
+        now["ms"] = 7_000
+        expired_now = daemon._reconcile_failed_attempt_coordination(failed)
+        assert expired_now["expired_now"] is True
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                expired_now,
+            )
+            == "expired"
+        )
+        historical = daemon._reconcile_failed_attempt_coordination(failed)
+        assert historical["claim_absent"] is False
+        assert historical["historical_expired"] is True
+        assert historical["successor"] == {}
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                historical,
+            )
+            == "expired"
+        )
+
+        legacy_historical = dict(historical)
+        legacy_historical.pop("claim_absent")
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                legacy_historical,
+            )
+            == "expired"
+        )
+        for tampered in (
+            {**historical, "claim_absent": True},
+            {**historical, "claim_absent": 0},
+            {**historical, "unexpected": False},
+            {**historical, "claim_id": "claim:foreign"},
+        ):
+            assert not daemon._terminal_coordination_projection_state(
+                failed,
+                tampered,
+            )
+    finally:
+        daemon.close()
+
+
+def test_ordinary_post_merge_recovery_uses_expired_portable_coordination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:ordinary-portable-source",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        now["ms"] = 7_000
+        source_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert source_claim is not None
+        daemon.coordinator.expire_task_claim(source_claim, now_ms=now["ms"])
+        historical = daemon._reconcile_failed_attempt_coordination(failed)
+        assert historical["claim_absent"] is False
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                historical,
+            )
+            == "expired"
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            coordination_evidence=historical,
+        )
+        assert terminal["status"] == "blocked"
+        evidence = _post_merge_repair_recovery_evidence(daemon, failed)
+        preauthorization = _post_merge_preauthorization(
+            daemon,
+            failed,
+            request_id=str(evidence["request_id"]),
+            candidate_commit=str(evidence["candidate_commit"]),
+        )
+        expires_at_ms = int(historical["expires_at_ms"])
+
+        daemon.close()
+        now["ms"] = expires_at_ms - 1
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:ordinary-portable-replacement",
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+            coordination_path=(
+                tmp_path / "coordination-ordinary-portable-replacement.duckdb"
+            ),
+            execution_path=tmp_path / "execution.duckdb",
+        )
+        assert daemon.coordinator.get_task_claim(failed.claim_id) is None
+        assert daemon.coordinator.get_task_attempt(failed.attempt_id) is None
+        assert daemon.coordinator.get_lease(failed.lease_id) is None
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="current terminal coordination fence",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                preauthorization
+            )
+
+        now["ms"] = max(7_001, expires_at_ms + 1)
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            preauthorization
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        control_receipt = dict(blocked.body["completion_receipt"])
+        original_get = daemon.task_source.get
+
+        def reject_forged_portable_receipt(
+            forged_receipt: Mapping[str, object],
+        ) -> None:
+            forged_task = replace(
+                blocked,
+                body={
+                    **blocked.body,
+                    "completion_receipt": dict(forged_receipt),
+                },
+            )
+            with monkeypatch.context() as receipt_patch:
+                receipt_patch.setattr(
+                    daemon.task_source,
+                    "get",
+                    lambda task_cid: (
+                        forged_task
+                        if task_cid == failed.task_cid
+                        else original_get(task_cid)
+                    ),
+                )
+                with pytest.raises(
+                    DatabaseImplementationConflictError,
+                    match="current terminal coordination fence",
+                ):
+                    daemon.preauthorize_post_merge_declared_output_recovery(
+                        preauthorization
+                    )
+
+        legacy_historical = dict(historical)
+        legacy_historical.pop("claim_absent")
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                legacy_historical,
+            )
+            == "expired"
+        )
+        reject_forged_portable_receipt(
+            {**control_receipt, "coordination": legacy_historical}
+        )
+        reject_forged_portable_receipt(
+            {
+                **control_receipt,
+                "reason": (
+                    DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+                ),
+            }
+        )
+
+        # The ordinary retry authority remains closed: only the exact
+        # post-merge transition may use the portable sealed fence.
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="has no coordination claim",
+        ):
+            daemon._reconcile_failed_attempt_coordination(failed)
+
+        original_portable_authority = (
+            daemon._post_merge_completion_portable_coordination_authority
+        )
+        race_checks: list[bool] = []
+
+        def supersede_before_cas(
+            attempt: DatabaseTaskAttempt,
+            *,
+            persisted: Mapping[str, object],
+        ) -> bool:
+            race_checks.append(True)
+            if len(race_checks) == 2:
+                return False
+            return original_portable_authority(
+                attempt,
+                persisted=persisted,
+            )
+
+        with monkeypatch.context() as race_patch:
+            race_patch.setattr(
+                daemon,
+                "_post_merge_completion_portable_coordination_authority",
+                supersede_before_cas,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match=(
+                    "portable post-merge completion authority was superseded"
+                ),
+            ):
+                daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        assert race_checks == [True, True]
+        still_blocked = daemon.task_source.get(failed.task_cid)
+        assert still_blocked is not None
+        assert still_blocked.status == "blocked"
+
+        portable_checks: list[bool] = []
+
+        def count_portable_rechecks(
+            attempt: DatabaseTaskAttempt,
+            *,
+            persisted: Mapping[str, object],
+        ) -> bool:
+            portable_checks.append(True)
+            return original_portable_authority(
+                attempt,
+                persisted=persisted,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_portable_coordination_authority",
+            count_portable_rechecks,
+        )
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert portable_checks == [True, True]
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["coordination"] == historical
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+    finally:
+        daemon.close()
 
 
 def test_preauthorize_accepts_legacy_empty_coordination_only_after_exact_expiry(

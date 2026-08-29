@@ -394,6 +394,72 @@ def test_outer_supervisor_keeps_exact_sealed_runner(
     assert reason == ""
 
 
+def test_watchdog_projection_progress_timestamp_has_bounded_grace(
+    tmp_path: Path,
+) -> None:
+    projected_at = datetime.now(UTC)
+    state = PortalTaskState(
+        heartbeat_at=projected_at.isoformat(),
+        last_progress_at=projected_at.isoformat(),
+        active_task_id="PCSM-061",
+        ready_count=1,
+    )
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path / "state",
+        stale_seconds=60,
+        implementation_timeout=3600,
+        implementation_log_stall_seconds=60,
+    )
+    outer = PortalImplementationSupervisor(config)
+
+    stuck, reason = outer.is_stuck(
+        state,
+        now_ts=(projected_at + timedelta(seconds=59)).timestamp(),
+    )
+    assert stuck is False
+    assert reason == ""
+
+    stuck, reason = outer.is_stuck(
+        state,
+        now_ts=(projected_at + timedelta(seconds=61)).timestamp(),
+    )
+    assert stuck is True
+    assert reason == "heartbeat stale for active task PCSM-061"
+
+
+def test_watchdog_missing_progress_timestamp_remains_fail_closed(
+    tmp_path: Path,
+) -> None:
+    projected_at = datetime.now(UTC)
+    state = PortalTaskState(
+        heartbeat_at=projected_at.isoformat(),
+        active_task_id="PCSM-061",
+        ready_count=1,
+    )
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path / "state",
+        stale_seconds=60,
+        implementation_timeout=3600,
+        implementation_log_stall_seconds=60,
+    )
+    outer = PortalImplementationSupervisor(config)
+
+    stuck, reason = outer.is_stuck(
+        state,
+        now_ts=projected_at.timestamp(),
+    )
+    assert stuck is True
+    assert reason == "no progress on active task PCSM-061"
+
+
 def test_supervisor_loop_graces_exact_sealed_runner_disappearance(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

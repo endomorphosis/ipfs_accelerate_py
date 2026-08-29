@@ -379,6 +379,135 @@ def test_close_finishes_native_cleanup_after_rollback_failure() -> None:
         connection.execute("SELECT 1")
 
 
+def test_exclusive_file_connection_recovers_after_uncertain_transaction(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "recover.duckdb"
+    with open_duckdb_connection(path) as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.execute("INSERT INTO items VALUES (1)")
+        with connection._execution_condition:
+            connection._poison_locked()
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+        connection.execute("INSERT INTO items VALUES (2)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
+
+
+def test_art_index_delete_fatal_is_detected() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        is_art_index_delete_fatal,
+    )
+
+    class FatalException(Exception):
+        pass
+
+    assert is_art_index_delete_fatal(
+        FatalException(
+            "FATAL Error: Invalid Input Error: Failed to delete all rows "
+            "from index. Only deleted 0 out of 1 rows."
+        )
+    )
+    assert not is_art_index_delete_fatal(FatalException("native handle died"))
+    assert not is_art_index_delete_fatal(
+        RuntimeError("Failed to delete all rows from index")
+    )
+
+
+def test_rebuild_task_status_indexes_recreates_status_indexes(tmp_path: Path) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        rebuild_task_status_indexes,
+    )
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            goal_cid VARCHAR NOT NULL,
+            ordinal BIGINT NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    connection.execute("CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)")
+    connection.execute("CREATE INDEX tasks_status_idx ON tasks(status, ordinal)")
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ["cid-010", "PCSM-010", "goal:root", 6, "retrying", 9, "2026-08-27T05:08:42Z"],
+    )
+    rebuilt = rebuild_task_status_indexes(connection)
+    assert any("tasks_status_idx" in sql for sql in rebuilt)
+    assert any("tasks_goal_idx" in sql for sql in rebuilt)
+    names = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    }
+    assert "tasks_status_idx" in names
+    assert "tasks_goal_idx" in names
+    connection.execute(
+        "UPDATE tasks SET status = ?, revision = ? WHERE task_cid = ? AND revision = ?",
+        ["in_progress", 10, "cid-010", 9],
+    )
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_cid = 'cid-010'"
+    ).fetchone()
+    assert tuple(row) == ("in_progress", 10)
+
+
+def test_exclusive_file_connection_recovers_after_native_fatal_dml(
+    tmp_path: Path,
+) -> None:
+    class FatalException(Exception):
+        pass
+
+    class FatalOnce:
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self._fatal_inserts = 1
+
+        def execute(self, sql, parameters=None):
+            if self._fatal_inserts and "INSERT" in str(sql).upper():
+                self._fatal_inserts -= 1
+                raise FatalException("native handle died")
+            if parameters is None:
+                return self._inner.execute(sql)
+            return self._inner.execute(sql, parameters)
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    path = tmp_path / "fatal-dml.duckdb"
+    with open_duckdb_connection(path) as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection._connection = FatalOnce(connection._connection)
+        with pytest.raises(FatalException):
+            connection.execute("INSERT INTO items VALUES (1)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
+        connection.execute("INSERT INTO items VALUES (1)")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+
+
+def test_wrapped_memory_connection_stays_unusable_after_poison() -> None:
+    import duckdb
+
+    raw = duckdb.connect(":memory:")
+    connection = DuckDBConnection.wrap(raw)
+    try:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        with connection._execution_condition:
+            connection._poison_locked()
+        with pytest.raises(DuckDBConnectionPolicyError, match="unusable"):
+            connection.execute("SELECT 1")
+    finally:
+        connection.close()
+
+
 def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(
     tmp_path: Path,
 ) -> None:

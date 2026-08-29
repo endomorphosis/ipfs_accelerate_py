@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as runner_module,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    _SupervisorStatusGenerationBinding,
     _track_supervisor_status_startup_grace_seconds,
     parse_track_spec,
     run_supervisor_tracks,
@@ -61,6 +62,60 @@ def _write_worker(root: Path) -> None:
                 "import sys",
                 "import time",
                 "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "while True:",
+                "    time.sleep(0.05)",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_current_status(root: Path, *, supervisor_pid: int) -> Path:
+    status_path = root / "state" / "example_supervisor_status.json"
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.now(UTC).isoformat(),
+                "supervisor_pid": supervisor_pid,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return status_path
+
+
+def _write_status_gap_worker(
+    root: Path,
+    *,
+    gap_seconds: float,
+    recover: bool,
+) -> None:
+    (root / "worker.py").write_text(
+        "\n".join(
+            (
+                "import json",
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from datetime import datetime, timezone",
+                "from pathlib import Path",
+                "status = Path('state/example_supervisor_status.json')",
+                "def publish():",
+                "    temporary = status.with_suffix('.json.tmp')",
+                "    payload = {'supervisor_pid': os.getpid(),",
+                "               'updated_at': datetime.now(timezone.utc).isoformat()}",
+                "    temporary.write_text(json.dumps(payload), encoding='utf-8')",
+                "    temporary.replace(status)",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "status.parent.mkdir(parents=True, exist_ok=True)",
+                "publish()",
+                "time.sleep(0.12)",
+                "status.unlink(missing_ok=True)",
+                f"time.sleep({gap_seconds!r})",
+                *(('publish()',) if recover else ()),
                 "while True:",
                 "    time.sleep(0.05)",
             )
@@ -172,6 +227,152 @@ def test_missing_current_generation_status_restarts_after_grace(
     assert fields["restart_supervisor"] is True
 
 
+def test_post_live_bad_reads_share_fresh_gap_until_generation_recovers(
+    tmp_path: Path,
+) -> None:
+    expected_pid = 222
+    binding = _SupervisorStatusGenerationBinding(
+        expected_supervisor_pid=expected_pid,
+        generation_started_at_epoch_seconds=time.time() - 3600.0,
+        startup_grace_seconds=30.0,
+    )
+    status_path = _write_current_status(
+        tmp_path,
+        supervisor_pid=expected_pid,
+    )
+
+    live = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+    binding.record_observation(live)
+    assert live["supervisor_status"] == "live"
+    assert binding.live_status_observed is True
+
+    status_path.unlink()
+    missing = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+    binding.record_observation(missing)
+    gap_started_at = binding.status_gap_started_at_epoch_seconds
+    assert gap_started_at is not None
+    assert missing["supervisor_status_generation"] == "status_gap"
+    assert missing["supervisor_status_generation_reason"] == "status_missing"
+    assert missing["restart_supervisor"] is False
+    assert "supervisor_startup_age_seconds" not in missing
+
+    status_path.write_text("{invalid", encoding="utf-8")
+    invalid = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+    binding.record_observation(invalid)
+    assert invalid["supervisor_status_generation_reason"] == (
+        "status_missing_or_invalid"
+    )
+    assert binding.status_gap_started_at_epoch_seconds == gap_started_at
+    assert invalid["restart_supervisor"] is False
+
+    _write_current_status(tmp_path, supervisor_pid=999)
+    mismatched = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+    binding.record_observation(mismatched)
+    assert mismatched["supervisor_status_generation_reason"] == (
+        "supervisor_pid_mismatch"
+    )
+    assert binding.status_gap_started_at_epoch_seconds == gap_started_at
+    assert mismatched["restart_supervisor"] is False
+
+    _write_current_status(tmp_path, supervisor_pid=expected_pid)
+    recovered = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+    binding.record_observation(recovered)
+    assert recovered["supervisor_status_generation_valid"] is True
+    assert binding.status_gap_started_at_epoch_seconds is None
+
+
+def test_post_live_status_gap_restarts_after_its_own_bound(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    binding = _SupervisorStatusGenerationBinding(
+        expected_supervisor_pid=222,
+        generation_started_at_epoch_seconds=now - 3600.0,
+        startup_grace_seconds=1.0,
+        live_status_observed=True,
+        status_gap_started_at_epoch_seconds=now - 2.0,
+    )
+
+    fields = binding.health_fields(
+        _track().resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=60.0,
+    )
+
+    assert fields["supervisor_status"] == "stale"
+    assert fields["supervisor_status_generation"] == "status_gap"
+    assert fields["supervisor_status_gap_age_seconds"] >= 2.0
+    assert fields["restart_supervisor"] is True
+    assert "supervisor_startup_age_seconds" not in fields
+
+
+def test_status_gap_state_fails_closed_outside_exact_generation(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    with pytest.raises(ValueError, match="gap binding"):
+        _SupervisorStatusGenerationBinding(
+            expected_supervisor_pid=222,
+            generation_started_at_epoch_seconds=now - 2.0,
+            startup_grace_seconds=1.0,
+            live_status_observed=False,
+            status_gap_started_at_epoch_seconds=now - 1.0,
+        )
+
+    binding = _SupervisorStatusGenerationBinding(
+        expected_supervisor_pid=222,
+        generation_started_at_epoch_seconds=now - 2.0,
+        startup_grace_seconds=1.0,
+    )
+    with pytest.raises(ValueError, match="escaped its process generation"):
+        binding.record_observation(
+            {
+                "supervisor_status": "starting",
+                "expected_supervisor_pid": 333,
+            }
+        )
+    with pytest.raises(ValueError, match="valid status escaped"):
+        binding.record_observation(
+            {
+                "supervisor_status": "live",
+                "supervisor_status_generation_valid": True,
+                "expected_supervisor_pid": 222,
+                "observed_supervisor_pid": 333,
+            }
+        )
+
+    with pytest.raises(ValueError, match="prior valid live status"):
+        supervisor_status_health_fields(
+            _track().resolve(tmp_path),
+            repo_root=tmp_path,
+            stale_seconds=60.0,
+            expected_supervisor_pid=222,
+            generation_started_at_epoch_seconds=now - 2.0,
+            startup_grace_seconds=1.0,
+            status_gap_started_at_epoch_seconds=now - 1.0,
+        )
+
+
 @pytest.mark.parametrize(
     "common_args",
     (
@@ -266,16 +467,43 @@ def _run_status_observation_sequence(
 ) -> tuple[dict[str, object], list[str]]:
     _write_worker(tmp_path)
     observed = iter(observations)
+    gap_started_at: float | None = None
 
     def status_fields(*args, **kwargs):
-        del args, kwargs
-        return next(
-            observed,
-            {
-                "supervisor_status": "live",
-                "restart_supervisor": False,
-            },
+        nonlocal gap_started_at
+        del args
+        fields = dict(
+            next(
+                observed,
+                {
+                    "supervisor_status": "live",
+                    "restart_supervisor": False,
+                },
+            )
         )
+        expected_pid = kwargs.get("expected_supervisor_pid")
+        fields["expected_supervisor_pid"] = expected_pid
+        if fields.get("supervisor_status") == "live":
+            gap_started_at = None
+            fields.update(
+                {
+                    "supervisor_status_generation": "valid",
+                    "supervisor_status_generation_valid": True,
+                    "observed_supervisor_pid": expected_pid,
+                }
+            )
+        else:
+            if gap_started_at is None:
+                gap_started_at = time.time()
+            fields.update(
+                {
+                    "supervisor_status_generation_valid": False,
+                    "supervisor_status_gap_started_at_epoch_seconds": (
+                        gap_started_at
+                    ),
+                }
+            )
+        return fields
 
     monkeypatch.setattr(
         runner_module,
@@ -413,13 +641,17 @@ def _strict_projection_restart_harness(
         return True, (process.pid,)
 
     def status_fields(*args, **kwargs):
-        del args, kwargs
+        del args
         restart = len(processes) == 1
+        expected_pid = kwargs.get("expected_supervisor_pid")
         return {
-            "supervisor_status": "stale" if restart else "ok",
-            "supervisor_status_generation": "current",
+            "supervisor_status": "stale" if restart else "live",
+            "supervisor_status_generation": "valid",
+            "supervisor_status_generation_valid": True,
             "supervisor_status_generation_reason": "status_missing",
             "supervisor_status_age_seconds": 999.0 if restart else 0.0,
+            "expected_supervisor_pid": expected_pid,
+            "observed_supervisor_pid": expected_pid,
             "restart_supervisor": restart,
         }
 
@@ -502,3 +734,80 @@ def test_strict_projection_substitution_blocks_same_track_restart(
     )
     assert len(processes) == 1
     assert pid_path.read_text(encoding="ascii") == "999999\n"
+
+def test_runner_preserves_live_popen_across_transient_post_live_gap(
+    tmp_path: Path,
+) -> None:
+    _write_status_gap_worker(tmp_path, gap_seconds=0.08, recover=True)
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [_track()],
+        repo_root=tmp_path,
+        common_args=("--watchdog-startup-grace-seconds", "0.2"),
+        duration_seconds=0.4,
+        heartbeat_interval_seconds=0.03,
+        supervisor_status_stale_seconds=1.0,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="transient status-gap runner",
+        output=output.append,
+    )
+
+    assert result["completed"] is True
+    assert sum("started T supervisor" in line for line in output) == 1
+    assert not any("restarting stale T supervisor" in line for line in output)
+    assert any(
+        "supervisor_status_generation=status_gap" in line
+        and "supervisor_within_status_gap_grace=true" in line
+        for line in output
+    )
+
+
+def test_runner_restarts_live_popen_after_persistent_post_live_gap(
+    tmp_path: Path,
+) -> None:
+    _write_status_gap_worker(tmp_path, gap_seconds=5.0, recover=False)
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [_track()],
+        repo_root=tmp_path,
+        common_args=("--watchdog-startup-grace-seconds", "0.06"),
+        duration_seconds=0.36,
+        heartbeat_interval_seconds=0.03,
+        supervisor_status_stale_seconds=1.0,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="persistent status-gap runner",
+        output=output.append,
+    )
+
+    assert result["completed"] is True
+    assert sum("started T supervisor" in line for line in output) >= 2
+    assert any("restarting stale T supervisor" in line for line in output)
+    assert any(
+        "supervisor_status_generation=status_gap" in line
+        and "restart_supervisor=true" in line
+        for line in output
+    )
+
+
+def test_adopt_master_pid_quarantines_dead_legacy_projection(tmp_path: Path) -> None:
+    import os
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _adopt_or_create_current_master_pid_projection,
+    )
+
+    pid_path = tmp_path / "configured-board-master.pid"
+    dead_pid = 999_999_999
+    pid_path.write_bytes(f"{dead_pid}\n".encode("ascii"))
+    os.chmod(pid_path, 0o600)
+
+    _adopt_or_create_current_master_pid_projection(pid_path)
+
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    quarantines = list(tmp_path.glob(".configured-board-master.pid.stale-*.quarantine"))
+    assert len(quarantines) == 1
+    assert quarantines[0].read_bytes() == f"{dead_pid}\n".encode("ascii")

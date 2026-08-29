@@ -83,9 +83,14 @@ _LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
     MappingProxyType(
         {
             "task.status.cas.receipt": frozenset(
-                {"body_json", "evidence_digests_json"}
+                {
+                    "body_json",
+                    "evidence_digests_json",
+                    "expected_control_receipt_json",
+                }
             ),
             "task.claim.reservation.recover": frozenset({"body_json"}),
+            "task.blocked.retry.recover": frozenset({"body_json"}),
             "task.validation.record.passed": frozenset(
                 {
                     "run_body_json",

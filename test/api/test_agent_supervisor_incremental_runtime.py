@@ -2291,6 +2291,132 @@ def test_worktree_pool_orphan_reconciliation_preserves_any_recovery_signal(
     _git(repo, "branch", "-D", "implementation/surviving-branch")
 
 
+def test_completed_rescued_dead_pool_workspace_retires_in_three_passes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(
+        repo_root=repo,
+        worktree_root=worktree_root,
+    )
+    original_branch = (
+        "implementation/pcsm-012-attempt-2-dead-pool-owner"
+    )
+    lease = pool.acquire(
+        cache_key=f"stale:{original_branch}",
+        base_ref="main",
+        branch_name=original_branch,
+    )
+    receipt = (
+        lease.path
+        / "artifacts"
+        / "proof_carrying_semantic_minification"
+        / "receipts"
+        / "PCSM-012.json"
+    )
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(
+        '{"completion_authoritative": false}\n',
+        encoding="utf-8",
+    )
+
+    dead_pid = 2**30
+    state_path = pool.state_root / f"{lease.entry_id}.json"
+    lock_path = pool.state_root / f"{lease.entry_id}.lock"
+    pool_state = json.loads(state_path.read_text(encoding="utf-8"))
+    pool_state["lease_pid"] = dead_pid
+    state_path.write_text(json.dumps(pool_state), encoding="utf-8")
+    lock_path.write_text(
+        json.dumps({"pid": dead_pid}),
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "supervisor-state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "portal-task-state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "portal-events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+
+    rescue_pass = supervisor.cleanup_backlogged_worktrees()
+
+    rescued = next(
+        item
+        for item in rescue_pass["skipped"]
+        if item["reason"] == "dirty_worktree_rescued"
+    )
+    rescue_result = rescued["rescue_result"]
+    retirement = rescue_result["original_branch_retirement"]
+    rescue_branch = rescue_result["rescue_branch"]
+    assert rescue_pass["removed_count"] == 0
+    assert retirement["retired"] is True
+    assert retirement["delete_mode"] == "non_force"
+    assert retirement["command"] == [
+        "git",
+        "branch",
+        "--delete",
+        original_branch,
+    ]
+    assert _git(repo, "branch", "--list", original_branch) == ""
+    assert _git(lease.path, "branch", "--show-current") == rescue_branch
+    assert state_path.exists()
+    assert lock_path.exists()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_canonical_completed_reconciliation_task",
+        lambda **_kwargs: {
+            "applicable": True,
+            "authority_available": True,
+            "verified": True,
+            "reason": "canonical_task_completed_receipt_verified",
+            "task_id": "PCSM-012",
+            "receipt_cid": "baguqeera-authoritative-completion",
+        },
+    )
+
+    completion_pass = supervisor.reconcile_backlogged_worktrees()
+
+    completed = next(
+        item
+        for item in completion_pass["skipped"]
+        if item["reason"] == "completed_task_leftover"
+    )
+    assert completed["completion_proof"]["verified"] is True
+    assert completed["prune_result"]["removed"] is True
+    assert completed["prune_result"]["branch_preserved"] is True
+    assert not lease.path.exists()
+    assert _git(repo, "branch", "--list", rescue_branch) == rescue_branch
+    assert state_path.exists()
+    assert lock_path.exists()
+
+    metadata_pass = (
+        supervisor.reconcile_orphaned_worktree_pool_metadata()
+    )
+
+    assert metadata_pass["removed_count"] == 1
+    assert metadata_pass["removed"][0]["reason"] == (
+        "dead_lease_workspace_and_branch_absent"
+    )
+    assert metadata_pass["removed"][0]["branch"] == original_branch
+    assert not state_path.exists()
+    assert not lock_path.exists()
+
+
 def test_worktree_pool_orphan_reconciliation_preserves_replaced_state(
     tmp_path: Path,
     monkeypatch,

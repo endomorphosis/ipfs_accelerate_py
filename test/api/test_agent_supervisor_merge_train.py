@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -78,7 +79,15 @@ def _database_projection_record(
     goal_cid: str = "goal:ref-040",
     plan_cid: str = "plan:merge-continuation",
     revision: int = 1,
+    allowed_paths: str = "",
 ) -> SimpleNamespace:
+    body = {
+        "objective": "Continue one exact database task merge",
+        "completion": "auto",
+        "track": "implementation",
+    }
+    if allowed_paths:
+        body["allowed_paths"] = allowed_paths
     return SimpleNamespace(
         task_cid=task_cid,
         task_alias=task_alias,
@@ -90,11 +99,7 @@ def _database_projection_record(
         outputs=({"path": "base.txt"},),
         validations=(),
         acceptance=({"criterion": "The exact candidate is integrated"},),
-        body={
-            "objective": "Continue one exact database task merge",
-            "completion": "auto",
-            "track": "implementation",
-        },
+        body=body,
     )
 
 
@@ -765,6 +770,85 @@ def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Pat
     assert result["merge_result"]["nested_handoff"] == "completed"
     assert callbacks == [request.request_id]
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+def test_filtered_train_rejects_substituted_exact_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    selected = queue.enqueue(
+        branch_name="implementation/selected",
+        task_id="SELECTED",
+        canonical_task_id="canonical-selected",
+        commit_sha=candidate,
+    )
+    foreign = queue.enqueue(
+        branch_name="implementation/foreign",
+        task_id="FOREIGN",
+        canonical_task_id="canonical-foreign",
+        commit_sha=candidate,
+    )
+    callbacks: list[str] = []
+    monkeypatch.setattr(
+        queue,
+        "claim_pending_request",
+        lambda _request_id, *, consumer_id="": queue.get(
+            foreign.request_id
+        ),
+    )
+
+    result = MergeTrain(
+        repo,
+        queue,
+        merge_callback=lambda request: callbacks.append(request.request_id)
+        or {"merged": True},
+    ).run_once(
+        request_filter=lambda request: request.request_id
+        == selected.request_id
+    )
+
+    assert result is None
+    assert callbacks == []
+    assert queue.get(selected.request_id).status == "pending"  # type: ignore[union-attr]
+    assert queue.get(foreign.request_id).status == "pending"  # type: ignore[union-attr]
+
+
+def test_filtered_train_does_not_retry_empty_consumer_aware_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/selected",
+        task_id="SELECTED",
+        canonical_task_id="canonical-selected",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+    )
+    calls: list[tuple[str, str]] = []
+
+    def empty_claim(
+        request_id: str,
+        *,
+        consumer_id: str = "",
+    ) -> None:
+        calls.append((request_id, consumer_id))
+        return None
+
+    monkeypatch.setattr(queue, "claim_pending_request", empty_claim)
+    train = MergeTrain(repo, queue)
+
+    result = train.run_once(
+        request_filter=lambda candidate: candidate.request_id
+        == request.request_id
+    )
+
+    assert result is None
+    assert calls == [(request.request_id, train.owner_id)]
+    assert queue.get(request.request_id).status == "pending"  # type: ignore[union-attr]
 
 
 def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path: Path) -> None:
@@ -1487,9 +1571,10 @@ def test_declared_output_and_ancestry_git_errors_remain_indeterminate(
     )
     assert train._is_ancestor_state(candidate, candidate) is None
     assert train._is_ancestor(candidate, candidate) is False
-def test_database_portal_retry_continues_merge_into_current_projection(
+
+
+def test_database_portal_retry_consumer_continues_merge_into_current_projection(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _repo(tmp_path)
     merge_queue_dir = tmp_path / "merge-queue"
@@ -1511,14 +1596,115 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         attempt_root=repo / "attempts",
         merge_queue_dir=merge_queue_dir,
         attempt=producer_attempt,
-        record=_database_projection_record(revision=2),
+        record=_database_projection_record(
+            revision=2,
+            allowed_paths="base.txt",
+        ),
     )
     consumer, consumer_paths, consumer_binding = _database_projection_daemon(
         repo=repo,
         attempt_root=repo / "attempts",
         merge_queue_dir=merge_queue_dir,
         attempt=consumer_attempt,
-        record=_database_projection_record(revision=4),
+        record=_database_projection_record(
+            revision=4,
+            allowed_paths="base.txt",
+        ),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/ref-040")
+    (repo / "base.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate ref-040")
+    commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = producer._load_tasks()[0]
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    assert request.metadata["task"]["status"] == "todo"
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+    result = consumer._consume_one_merge_candidate()
+
+    assert result is not None
+    assert result.get("merged") is True or result.get("already_merged") is True
+    merge_result = result.get("merge_result")
+    assert isinstance(merge_result, dict)
+    continuation = merge_result["database_portal_merge_continuation"]
+    assert continuation["task_id"] == "REF-040"
+    assert continuation["task_cid"] == task_cid
+    assert continuation["producer_binding_id"] == producer_binding["binding_id"]
+    assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("producer_event_task_cid", "accepted"),
+    [
+        pytest.param("projection", True, id="sealed-projection-cid"),
+        pytest.param("foreign", False, id="foreign-cid"),
+    ],
+)
+def test_database_portal_retry_normalizes_only_sealed_projection_cid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    producer_event_task_cid: str,
+    accepted: bool,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(
+            revision=2,
+            allowed_paths="base.txt",
+        ),
+    )
+    consumer, consumer_paths, consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(
+            revision=4,
+            allowed_paths="base.txt",
+        ),
     )
     baseline = _git(repo, "rev-parse", "HEAD")
     _git(repo, "switch", "-c", "implementation/ref-040")
@@ -1546,11 +1732,17 @@ def test_database_portal_retry_continues_merge_into_current_projection(
             "selection": {"scope": "pre_merge"},
         },
     )
+    projection_task_cid = request.canonical_task_id
+    assert projection_task_cid != task_cid
     producer._record_event(
         "implementation_finished",
         {
             "task_id": task.task_id,
-            "canonical_task_cid": task_cid,
+            "canonical_task_cid": (
+                projection_task_cid
+                if producer_event_task_cid == "projection"
+                else "task:cid:foreign"
+            ),
             "attempt": 1,
             "returncode": 0,
             "attempt_consumed": True,
@@ -1579,10 +1771,40 @@ def test_database_portal_retry_continues_merge_into_current_projection(
 
     result = consumer._merge_train_callback(request)
 
+    if not accepted:
+        assert result["merged"] is False
+        assert result["integration_occurred"] is True
+        assert result["completion_skipped"] is True
+        assert result["reason"] == (
+            "merge_queue_reconciliation_producer_source_conflict"
+        )
+        assert result["merge_reconciliation_receipt"] == {
+            "recorded": False,
+            "reason": "merge_queue_reconciliation_producer_source_conflict",
+            "request_source_count": 1,
+            "exact_source_count": 0,
+        }
+        assert "- Status: ready" in (
+            consumer_paths.task_projection.read_text(encoding="utf-8")
+        )
+        consumer_events = consumer._iter_merge_lifecycle_events()
+        assert not any(
+            event.get("type")
+            in {
+                "worktree_reconciliation_candidate_queued",
+                "merge_reconciled",
+                "todo_status_updated",
+                "task_completed",
+            }
+            for event in consumer_events
+        )
+        return
+
     assert result.get("merged") is True
     continuation = result["database_portal_merge_continuation"]
     assert continuation["task_id"] == "REF-040"
     assert continuation["task_cid"] == task_cid
+    assert continuation["projection_task_cid"] == projection_task_cid
     assert continuation["producer_binding_id"] == producer_binding["binding_id"]
     assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
     assert "- Status: ready" in producer_paths.task_projection.read_text(
@@ -1619,6 +1841,8 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         provenance["producer_completion_source_event_id"]
         == producer_source["event_id"]
     )
+    assert producer_source["canonical_task_cid"] == projection_task_cid
+    assert local_source["canonical_task_cid"] == projection_task_cid
     assert provenance["producer_binding_id"] == producer_binding["binding_id"]
     assert provenance["consumer_binding_id"] == consumer_binding["binding_id"]
     assert provenance["producer_projection_path"] == str(
@@ -1884,7 +2108,6 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             "selection": {"scope": "pre_merge"},
         },
     )
-
     result = daemon._merge_train_callback(request)
 
     assert result["merged"] is True
@@ -2179,6 +2402,260 @@ def test_reconciliation_failure_precedes_all_completion_publication(
     )
 
 
+def test_database_portal_sibling_request_stays_pending_for_its_producer(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer, producer_paths, _producer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=_database_projection_attempt(
+                attempt_id="attempt:producer",
+                claim_id="claim:producer",
+                task_cid="task:cid:ref-040",
+                task_alias="REF-040",
+                attempt_number=1,
+            ),
+            record=_database_projection_record(
+                task_cid="task:cid:ref-040",
+                task_alias="REF-040",
+                revision=2,
+                allowed_paths="base.txt",
+            ),
+        )
+    )
+    consumer, consumer_paths, _consumer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=_database_projection_attempt(
+                attempt_id="attempt:consumer",
+                claim_id="claim:consumer",
+                task_cid="task:cid:ref-041",
+                task_alias="REF-041",
+                attempt_number=1,
+            ),
+            record=_database_projection_record(
+                task_cid="task:cid:ref-041",
+                task_alias="REF-041",
+                revision=2,
+                allowed_paths="base.txt",
+            ),
+        )
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/shared-candidate")
+    (repo / "base.txt").write_text("shared candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "shared candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(repo, "branch", "implementation/ref-040", candidate)
+    _git(repo, "branch", "implementation/ref-041", candidate)
+    validation = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "results": [],
+        "selection": {"scope": "pre_merge"},
+    }
+    producer_request, _ = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=producer._load_tasks()[0],
+        attempt=1,
+        validation_result=validation,
+    )
+    consumer_request, _ = consumer._enqueue_merge_candidate(
+        branch_name="implementation/ref-041",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=consumer._load_tasks()[0],
+        attempt=1,
+        validation_result=validation,
+    )
+
+    consumer_result = consumer._consume_one_merge_candidate()
+
+    assert consumer_result is not None
+    producer_row = producer.merge_queue.get(producer_request.request_id)
+    consumer_row = consumer.merge_queue.get(consumer_request.request_id)
+    assert producer_row is not None and producer_row.status == "pending"
+    assert producer_row.failure_count == 0
+    assert consumer_row is not None and consumer_row.status == "completed"
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+    producer_result = producer._consume_one_merge_candidate()
+
+    assert producer_result is not None
+    producer_row = producer.merge_queue.get(producer_request.request_id)
+    assert producer_row is not None and producer_row.status == "completed"
+    assert "- Status: completed" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "missing_binding",
+        "projection_authority",
+        "task_cid_mismatch",
+        "attempt_order",
+        "goal_mismatch",
+        "plan_mismatch",
+        "producer_events_path",
+        "producer_state_path",
+        "producer_events_symlink",
+    ),
+)
+def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    consumer_task_cid = (
+        "task:cid:other"
+        if tamper == "task_cid_mismatch"
+        else "task:cid:ref-040"
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=consumer_task_cid,
+        attempt_number=1 if tamper == "attempt_order" else 2,
+    )
+    producer, producer_paths, _producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(
+            revision=2,
+            allowed_paths="base.txt",
+        ),
+    )
+    consumer, consumer_paths, _consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(
+            task_cid=consumer_task_cid,
+            goal_cid=(
+                "goal:other" if tamper == "goal_mismatch" else "goal:ref-040"
+            ),
+            plan_cid=(
+                "plan:other"
+                if tamper == "plan_mismatch"
+                else "plan:merge-continuation"
+            ),
+            revision=4,
+            allowed_paths="base.txt",
+        ),
+    )
+    if tamper == "missing_binding":
+        consumer_paths.binding.unlink()
+    elif tamper == "projection_authority":
+        binding = json.loads(consumer_paths.binding.read_text(encoding="utf-8"))
+        binding.pop("binding_id")
+        binding["projection_authority"] = True
+        binding["binding_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        consumer_paths.binding.write_text(
+            json.dumps(binding, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    if tamper == "producer_events_path":
+        request.metadata["events_path"] = str(
+            tmp_path / "foreign-events.jsonl"
+        )
+    elif tamper == "producer_state_path":
+        request.metadata["state_path"] = str(
+            tmp_path / "foreign-state.json"
+        )
+    elif tamper == "producer_events_symlink":
+        foreign_events = tmp_path / "foreign-events.jsonl"
+        foreign_events.write_bytes(producer_paths.events.read_bytes())
+        producer_paths.events.unlink()
+        producer_paths.events.symlink_to(foreign_events)
+    if tamper in {"producer_events_path", "producer_state_path"}:
+        # ``MergeQueue`` persists metadata by value.  Corrupt the durable row
+        # so the consumer-side queue filter observes the tamper instead of
+        # merely changing the detached request returned by ``enqueue``.
+        with producer.merge_queue._connect() as connection:
+            connection.execute(
+                "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+                (
+                    json.dumps(
+                        request.metadata,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    request.request_id,
+                ),
+            )
+            connection.commit()
+    target_before = _git(repo, "rev-parse", "main")
+
+    result = consumer._consume_one_merge_candidate()
+
+    assert result is None
+    stored = consumer.merge_queue.get(request.request_id)
+    assert stored is not None and stored.status == "pending"
+    assert stored.failure_count == 0
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: ready" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
 @pytest.mark.parametrize(
     "tamper",
     (
@@ -2190,7 +2667,7 @@ def test_reconciliation_failure_precedes_all_completion_publication(
         "producer_events_symlink",
     ),
 )
-def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
+def test_database_portal_retry_callback_fails_closed_on_binding_mismatch(
     tmp_path: Path,
     tamper: str,
 ) -> None:
@@ -2295,6 +2772,81 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
     assert "- Status: ready" in consumer_paths.task_projection.read_text(
         encoding="utf-8"
     )
+
+
+def test_database_portal_retry_filter_rejects_tampered_request_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer, _producer_paths, _producer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=_database_projection_attempt(
+                attempt_id="attempt:producer",
+                claim_id="claim:producer",
+                task_cid="task:cid:ref-040",
+                attempt_number=1,
+            ),
+            record=_database_projection_record(
+                revision=2,
+                allowed_paths="base.txt",
+            ),
+        )
+    )
+    consumer, _consumer_paths, _consumer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=_database_projection_attempt(
+                attempt_id="attempt:consumer",
+                claim_id="claim:consumer",
+                task_cid="task:cid:ref-040",
+                attempt_number=2,
+            ),
+            record=_database_projection_record(
+                revision=4,
+                allowed_paths="base.txt",
+            ),
+        )
+    )
+    _git(repo, "branch", "implementation/ref-040")
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _ = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=producer._load_tasks()[0],
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    tampered = replace(
+        request,
+        canonical_task_id="baguqeera-forged-projection",
+    )
+    monkeypatch.setattr(
+        consumer.merge_queue,
+        "pending_requests",
+        lambda *, limit=32, after_request_id=None: (tampered,),
+    )
+
+    result = consumer._consume_one_merge_candidate()
+
+    assert result is None
+    stored = consumer.merge_queue.get(request.request_id)
+    assert stored is not None and stored.status == "pending"
+    assert stored.failure_count == 0
 
 
 def test_same_git_worktree_todo_path_is_not_cross_board(tmp_path: Path) -> None:

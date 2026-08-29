@@ -2269,19 +2269,59 @@ def _nonnegative_int(value: Any, *, field: str) -> int:
     return value
 
 
+def _optional_positive_int(
+    payload: Mapping[str, Any],
+    field: str,
+    *,
+    qualified_field: str,
+) -> int | None:
+    """Return one optional, strictly typed positive JSON integer."""
+
+    if field not in payload:
+        return None
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ConfiguredBoardError(
+            f"{qualified_field} must be a positive integer"
+        )
+    return value
+
+
 def _objective_refill_controls(
     payload: Mapping[str, Any],
-) -> tuple[int, int, int] | None:
-    """Return the sealed low-watermark, epoch bound, and cooldown controls."""
+) -> tuple[int, int, int, int | None, int | None] | None:
+    """Return sealed low-watermark, pass, cooldown, and campaign bounds."""
 
+    refill_policy = payload.get("refill_policy")
+    derived = (
+        refill_policy.get("derived_refill")
+        if isinstance(refill_policy, Mapping)
+        else None
+    )
+    max_epochs = (
+        _optional_positive_int(
+            derived,
+            "max_epochs",
+            qualified_field="refill_policy.derived_refill.max_epochs",
+        )
+        if isinstance(derived, Mapping)
+        else None
+    )
+    max_total_tasks = (
+        _optional_positive_int(
+            derived,
+            "max_total_tasks",
+            qualified_field="refill_policy.derived_refill.max_total_tasks",
+        )
+        if isinstance(derived, Mapping)
+        else None
+    )
     if payload.get("objective_refill_enabled") is not True:
         return None
-    refill_policy = payload.get("refill_policy")
     if not isinstance(refill_policy, dict):
         raise ConfiguredBoardError(
             "refill_policy must be an object when objective refill is enabled"
         )
-    derived = refill_policy.get("derived_refill")
     if not isinstance(derived, dict):
         raise ConfiguredBoardError(
             "refill_policy.derived_refill must be an object when objective "
@@ -2308,7 +2348,13 @@ def _objective_refill_controls(
             "refill_policy.derived_refill.min_open_tasks must be below "
             "max_open_tasks"
         )
-    return min_open_tasks, max_findings, cooldown_seconds
+    return (
+        min_open_tasks,
+        max_findings,
+        cooldown_seconds,
+        max_epochs,
+        max_total_tasks,
+    )
 
 
 def _required_string(
@@ -5183,9 +5229,13 @@ def configured_board_common_args(
     for relative in board.protected_paths:
         args.extend(["--implementation-protected-path", relative])
     if objective_refill_controls is not None:
-        min_open_tasks, max_findings, cooldown_seconds = (
-            objective_refill_controls
-        )
+        (
+            min_open_tasks,
+            max_findings,
+            cooldown_seconds,
+            max_epochs,
+            max_total_tasks,
+        ) = objective_refill_controls
         args.extend(
             [
                 "--objective-refill-scan",
@@ -5199,6 +5249,17 @@ def configured_board_common_args(
                 str(cooldown_seconds),
             ]
         )
+        if max_epochs is not None:
+            args.extend(
+                ["--objective-refill-max-epochs", str(max_epochs)]
+            )
+        if max_total_tasks is not None:
+            args.extend(
+                [
+                    "--objective-refill-max-total-tasks",
+                    str(max_total_tasks),
+                ]
+            )
         if payload.get("objective_goal_refinement_enabled") is False:
             args.append("--no-objective-goal-refinement")
     if payload.get("codebase_refill_enabled") is True:

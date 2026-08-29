@@ -6306,6 +6306,71 @@ def _stream_provider_pipe_without_reserved_records(
         destination.flush()
 
 
+def _docker_start_attach_target(command: Sequence[str]) -> tuple[str, str] | None:
+    """Return ``(docker_config, container_id)`` for a ``docker start --attach``."""
+
+    tokens = [str(item) for item in command]
+    if len(tokens) < 6:
+        return None
+    if os.path.basename(tokens[0]) not in {"docker", "docker.exe"}:
+        return None
+    if "start" not in tokens or "--attach" not in tokens:
+        return None
+    try:
+        config = tokens[tokens.index("--config") + 1]
+    except (ValueError, IndexError):
+        return None
+    container_id = tokens[-1]
+    if re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        return None
+    return config, container_id
+
+
+def _docker_inspect_state(
+    container_id: str, *, config: str = ""
+) -> tuple[int, str, int]:
+    """Return ``(returncode, Running field, container pid)`` for one inspect."""
+
+    command = ["/usr/bin/docker", f"--host={_DOCKER_LOCAL_HOST}"]
+    if config:
+        command.extend(["--config", config])
+    command.extend(["inspect", "-f", "{{.State.Running}} {{.State.Pid}}", container_id])
+    try:
+        inspected = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return -1, "", 0
+    parts = inspected.stdout.decode("utf-8", errors="replace").split()
+    running = parts[0].strip().lower() if parts else ""
+    try:
+        pid = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        pid = 0
+    return int(inspected.returncode), running, pid
+
+
+def _docker_attach_target_missing(config: str, container_id: str) -> bool:
+    """Return whether the attached container can no longer be inspected.
+
+    Isolated ``--config`` contexts can keep ``Running=true`` after the
+    container pid is already gone. A live pid in ``/proc`` is the stay
+    signal; host default-context inspect is ignored because it is blind
+    to the isolated docker config used by attach.
+    """
+
+    code, running, pid = _docker_inspect_state(container_id, config=config)
+    if code != 0 or running == "false":
+        return True
+    if pid <= 0:
+        return True
+    return not Path("/proc", str(pid)).exists()
+
+
 def _run_grok_with_typed_failure_capture(
     command: Sequence[str],
     *,
@@ -6337,7 +6402,34 @@ def _run_grok_with_typed_failure_capture(
     )
     stdout_thread.start()
     stderr_thread.start()
-    returncode = int(process.wait())
+    attach = _docker_start_attach_target(command)
+    stop = threading.Event()
+
+    def reap_vanished_attach() -> None:
+        if attach is None:
+            return
+        config, container_id = attach
+        gone_ticks = 0
+        while not stop.wait(2.0):
+            if process.poll() is not None:
+                return
+            if not _docker_attach_target_missing(config, container_id):
+                gone_ticks = 0
+                continue
+            gone_ticks += 1
+            # docker start --attach can hang after the container is already
+            # gone, which previously stalled PCCE-021 until inflight timeout.
+            if gone_ticks >= 3:
+                process.terminate()
+                return
+
+    reaper = threading.Thread(target=reap_vanished_attach, daemon=True)
+    reaper.start()
+    try:
+        returncode = int(process.wait())
+    finally:
+        stop.set()
+        reaper.join(timeout=2.0)
     stdout_thread.join()
     stderr_thread.join()
     return returncode

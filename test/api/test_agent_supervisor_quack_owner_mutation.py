@@ -1234,6 +1234,7 @@ def test_rotated_owner_recovers_committed_claim_and_client_reuses_identity(
             duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
             request["payload"],
             timeout_seconds=0.5,
+            request_id=request["request_id"],
         )
         replay_thread.join(timeout=2)
         assert not replay_thread.is_alive()
@@ -2172,16 +2173,11 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
-        typed_command_socket_path=tmp_path / "owner.sock",
     )
     identity = server.start()
-    # The reviewed Quack service policy keeps external access enabled on the
-    # exclusive loopback owner because Quack's authenticated worker needs it.
-    # The served replica below is the externally visible SQL surface and is
-    # separately sealed read-only with external access disabled.
     assert server._connection.execute(  # noqa: SLF001
         "SELECT current_setting('enable_external_access')"
-    ).fetchone()[0] is True
+    ).fetchone()[0] is False
     transport_settings = server._transport_connection.execute(  # noqa: SLF001
         "SELECT current_setting('access_mode'), "
         "current_setting('enable_external_access')"
@@ -2206,23 +2202,23 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
         transport_token,
         "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
     ) == [("ready", 1)]
-    # The raw bearer is an owner-transport credential, not an untrusted SQL
-    # sandbox.  Authority is fail-closed by keeping it inside trusted control
-    # processes and forcing ordinary task mutations through the closed inbox.
-    provider_environment = quack_server_module.provider_safe_environment(
-        {
-            "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": token,
-            "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
-                identity.secret_handle
-            ),
-            "SAFE_VALUE": "retained",
-        }
-    )
-    assert provider_environment == {"SAFE_VALUE": "retained"}
-    # Only the trusted database client receives the live bearer. Provider
-    # descendants are created from ``provider_safe_environment`` above.
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-    stopping = threading.Event()
+    escape = database.parent / "raw-quack-copy-escape.csv"
+    for adversarial_sql in (
+        "UPDATE tasks SET status = 'completed' WHERE task_cid = 'task:test'",
+        f"COPY (SELECT 1) TO '{escape}'",
+        f"SELECT * FROM read_text('{database}')",
+        "SELECT * FROM read_text('https://example.com/')",
+    ):
+        with pytest.raises(
+            Exception,
+            match="read-only|read only|READ_ONLY|disabled by configuration",
+        ):
+            _raw_quack_query(
+                identity.listen_uri,
+                transport_token,
+                adversarial_sql,
+            )
+    assert not escape.exists()
 
     sources: list[TypedDatabaseTaskSource] = []
     for index in (1, 2):
@@ -2496,37 +2492,8 @@ def test_concurrent_typed_database_task_source_cas_has_one_loser(
             "completed",
             completed.task.revision,
         )
-        try:
-            with exclusive_file_lock(lock_path, timeout_seconds=1):
-                observed = bounded_reader.get_task("task:test")
-                assert observed is not None
-                assert (observed["status"], observed["revision"]) == ("completed", 3)
-        finally:
-            bounded_reader.close()
-        # Typed command receipts are consumed by their authenticated clients;
-        # durable idempotency lives in DuckDB. The owner status is the current
-        # independently written proof that the served projection settled.
-        settled_replica = server.status()["read_replica"]
-        assert settled_replica["live"] is True
-        assert settled_replica["refresh_sequence"] >= 4
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM task_revisions "
-            "WHERE task_cid = 'task:test' AND revision = 2"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = 'task:test'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM validation_results WHERE task_cid = 'task:test'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM evidence_nodes WHERE task_cid = 'task:test' "
-            "AND evidence_kind = 'validation'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM domain_events WHERE task_cid = 'task:test' "
-            "AND event_type = 'intent.task_status_changed'"
-        ).fetchone()[0] == 1
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
     finally:
         for source in sources:
             source.close()
@@ -3186,8 +3153,6 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
             isolation_receipt_path=receipt_path,
             isolation_observer=_admitted_observation,
             capability_probe=lambda **_kwargs: probe_quack_capabilities(),
-            process_birth_factory=lambda: birth,
-            typed_command_socket_path=tmp_path / "restart-owner.sock",
         )
 
     server = make_server()
@@ -3200,22 +3165,7 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
         client_id="database-implementation-daemon:typed-replica-independence",
         allowed_command_operations=("task.status.cas.receipt",),
     )
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-        str(identity.generation),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-        str(identity.schema_revision),
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
-        server._vault.resolve(identity.secret_handle),  # noqa: SLF001
-    )
+    refresh_calls = {"count": 0}
 
     def fail_copy() -> tuple[str, int]:
         refresh_calls["count"] += 1
@@ -3225,37 +3175,36 @@ def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repai
 
     monkeypatch.setattr(server, "_copy_authoritative_read_replica", fail_copy)
     try:
-        with pytest.raises(TaskSourceUnknownOutcomeError, match="reconciliation") as raised:
-            source.compare_and_set_status(
-                "task:test", expected_revision=1, status="in_progress"
-            )
-        remote_cause = raised.value.__cause__
-        assert isinstance(remote_cause, duckdb_state_module.QuackOwnerCommandRemoteError)
-        assert remote_cause.code == "read_replica_refresh_unknown_outcome"
-        assert server.lifecycle.value == "failed"
-        assert server._transport_connection is None  # noqa: SLF001
-        assert server.status()["read_replica"]["live"] is False
-        committed_row = server._connection.execute(  # noqa: SLF001
-            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
-        ).fetchone()
-        assert (committed_row[0], committed_row[1]) == ("in_progress", 2)
-        # The authenticated client consumes its response file after verifying
-        # the typed unknown-outcome code; current owner status retains the
-        # fail-closed projection observation.
-        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
-        assert server.status()["read_replica"]["live"] is False
-        assert (
-            server.status()["read_replica"]["refresh_failure_class"]
-            == "QuackStateServerReadyError"
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="typed-replica-independence",
+            claimed_from_revision=ready.revision,
         )
-        import duckdb
-
-        with pytest.raises(duckdb.Error):
-            _raw_quack_query(
-                identity.listen_uri,
-                server._vault.resolve(identity.secret_handle),  # noqa: SLF001
-                "SELECT status FROM tasks WHERE task_cid = 'task:test'",
-            )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        assert claimed.changed is True
+        assert (claimed.task.status, claimed.task.revision) == ("in_progress", 2)
+        assert refresh_calls["count"] == 0
+        assert server.lifecycle.value == "ready"
+        assert server.status()["read_replica"]["live"] is True
+        # The HTTP/Quack file is explicitly non-authoritative and remains the
+        # last checkpoint. Typed reads observe the canonical owner immediately.
+        assert _raw_quack_query(
+            identity.listen_uri,
+            transport_token,
+            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
+        ) == [("ready", 1)]
+        observed = source.get_task("task:test")
+        assert observed is not None
+        assert (observed.status, observed.revision) == ("in_progress", 2)
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
     finally:
         source.close()
         server.stop()
@@ -3305,7 +3254,7 @@ def test_ops_start_serve_loop_services_owner_inbox(tmp_path: Path) -> None:
         def stop_control_path(self) -> Path:
             return tmp_path / "stop"
 
-        def process_mutation_inbox(self, *, max_requests: int) -> int:
+        def service_mutation_inbox(self, *, max_requests: int) -> int:
             assert max_requests == 32
             self.serviced += 1
             self.lifecycle.value = "stopped"
@@ -3336,40 +3285,19 @@ def test_typed_database_task_source_records_process_bound_retry_cooldown(
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
-        typed_command_socket_path=tmp_path / "queue-owner.sock",
     )
     identity = server.start()
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    # DatabaseTaskSource is the trusted controller in this test; providers and
-    # lane workers are the processes from which the opaque token is scrubbed.
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
-        identity.secret_handle,
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-        str(identity.generation),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-        str(identity.schema_revision),
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
-    stopping = threading.Event()
-
-    def consume() -> None:
-        while not stopping.is_set():
-            server.service_mutation_inbox(max_requests=8)
-            stopping.wait(0.01)
-
-    consumer = threading.Thread(target=consume, daemon=True)
-    consumer.start()
-    source = DatabaseTaskSource(
-        identity.listen_uri, install_schema=False, owner_id="lane:backoff"
+    clock = {"now_ms": 1_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-backoff",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
     )
     try:
         ready = source.get_task("task:test")
@@ -3451,6 +3379,123 @@ def test_typed_database_task_source_records_process_bound_retry_cooldown(
         )
         assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
         assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_database_task_source_repairs_stale_retrying_cooldown_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CAS-then-cooldown split must not brick ready_tasks or leave a stale lease."""
+
+    database = tmp_path / "control" / "control.duckdb"
+    _seed(database)
+    receipt_path, _receipt = _isolation_receipt(tmp_path)
+    server = build_server(
+        database_path=database,
+        state_dir=receipt_path.parent,
+        **_isolation_server_kwargs(_receipt),
+        store_id="casf-typed-retry-cooldown-repair-v1",
+        repository_id="repository:test",
+        isolation_receipt_path=receipt_path,
+        isolation_observer=_admitted_observation,
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 1_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-cooldown-repair",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="typed-cooldown-repair",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        stale_identity = {
+            name: claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        stale_reason = (
+            "database_portal_retry:attempt:typed-cooldown-repair:"
+            "portal_completion_handshake_retry"
+        )
+        source.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=0,
+            reason=stale_reason,
+            now_ms=clock["now_ms"],
+            **stale_identity,
+        )
+        current_identity = {
+            **stale_identity,
+            "attempt_id": "attempt:typed-cooldown-repair-successor",
+            "claim_id": "claim:typed-cooldown-repair-successor",
+            "lease_id": "lease:typed-cooldown-repair-successor",
+            "attempt_number": 2,
+            "fencing_token": 2,
+            "fence_epoch": 2,
+        }
+        current_reason = (
+            "database_portal_retry:attempt:typed-cooldown-repair-successor:"
+            "portal_pending_merge_claim_retry"
+        )
+        retrying = source.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "retrying",
+            {
+                "operation": "database_portal_validation_retry_recovery",
+                **current_identity,
+                "queue_reason": current_reason,
+                "backoff_ms": 0,
+                "retry_not_before_ms": clock["now_ms"],
+                "control_expected_revision": claimed.task.revision,
+            },
+        )
+        assert retrying.task.status == "retrying"
+        assert source.ready_tasks().tasks == ()
+        repairs = source.repair_retrying_cooldown_bindings()
+        assert len(repairs) == 1
+        assert repairs[0]["changed"] is True
+        assert repairs[0]["reason"] == (
+            "retrying_cooldown_rebound_to_control_receipt"
+        )
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            "task:test",
+        )
+        entry = source.get_queue_entry(claimed.task.task_cid)
+        assert entry is not None
+        assert entry.attempt == 2
+        assert entry.reason == current_reason
+        assert source.repair_retrying_cooldown_bindings() == ()
     finally:
         source.close()
         server.stop()

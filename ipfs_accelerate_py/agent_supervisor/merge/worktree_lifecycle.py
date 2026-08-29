@@ -397,6 +397,34 @@ def proc_available(*, proc_root: Path = Path("/proc")) -> bool:
         return False
 
 
+def same_process_owner(
+    recorded: ProcessBirthIdentity | None,
+    current: ProcessBirthIdentity | None = None,
+    *,
+    proc_root: Path = Path("/proc"),
+) -> bool:
+    """True when ``recorded`` is this process's birth identity.
+
+    PID reuse is rejected via start-time ticks and boot id. Parent pid is
+    ignored because some writers omit it.
+    """
+
+    if recorded is None or recorded.pid <= 0:
+        return False
+    observed = current or current_process_birth(proc_root=proc_root)
+    if recorded.pid != observed.pid:
+        return False
+    if (
+        recorded.start_time_ticks
+        and observed.start_time_ticks
+        and recorded.start_time_ticks != observed.start_time_ticks
+    ):
+        return False
+    if recorded.boot_id and observed.boot_id and recorded.boot_id != observed.boot_id:
+        return False
+    return True
+
+
 def owner_liveness(
     owner: ProcessBirthIdentity,
     *,
@@ -625,6 +653,37 @@ class WorktreeLifecycleStore:
         if record is not None and record.is_nonterminal:
             return record
         return None
+
+    def find_nonterminal_for_task(
+        self,
+        *,
+        task_id: str = "",
+        canonical_task_cid: str = "",
+    ) -> WorkspaceLifecycleRecord | None:
+        """Return the newest nonterminal claim for one task in this repository."""
+
+        target_id = str(task_id or "").strip()
+        target_cid = str(canonical_task_cid or "").strip()
+        if not target_id and not target_cid:
+            return None
+        expected_repo = normalize_workspace_path(self.repo_root)
+        matches: list[WorkspaceLifecycleRecord] = []
+        for record in self.iter_records():
+            if record.is_terminal:
+                continue
+            if (
+                record.repo_root
+                and normalize_workspace_path(record.repo_root) != expected_repo
+            ):
+                continue
+            if target_id and record.task_id == target_id:
+                matches.append(record)
+                continue
+            if target_cid and record.canonical_task_cid == target_cid:
+                matches.append(record)
+        if not matches:
+            return None
+        return max(matches, key=lambda item: (item.updated_at, item.fence))
 
     # -------------------------------------------------------------- acquisition
 
@@ -1529,7 +1588,12 @@ class WorktreeLifecycleStore:
         record: WorkspaceLifecycleRecord | None,
         expected_state_dir: str | Path = "",
     ) -> bool:
-        """True when the record is owned by the caller's exact lane state dir."""
+        """True when the record is owned by this lane, including nested dirs.
+
+        Portal attempts persist ``state_dir`` under the lane state directory.
+        Exact equality therefore misses dead owners after a bounce, and
+        ``worktree_lifecycle_claim_exists`` then fences the task for hours.
+        """
 
         if record is None:
             return False
@@ -1540,7 +1604,15 @@ class WorktreeLifecycleStore:
             return False
         expected = normalize_workspace_path(expected_raw)
         current = normalize_workspace_path(current_raw)
-        return bool(expected and current and expected == current)
+        if not expected or not current:
+            return False
+        if expected == current:
+            return True
+        try:
+            return Path(current).is_relative_to(Path(expected))
+        except (ValueError, OSError, AttributeError):
+            prefix = expected.rstrip("/") + "/"
+            return current.startswith(prefix)
 
     def evaluate_cleanup(
         self,
@@ -1733,9 +1805,9 @@ class WorktreeLifecycleStore:
                 or normalize_workspace_path(current.repo_root) != expected_repo
             ):
                 return None
-            if (
-                not current.state_dir
-                or normalize_workspace_path(current.state_dir) != expected_state
+            if not self._same_lane_state_dir(
+                current,
+                expected_state,
             ):
                 return None
             if (
@@ -1981,4 +2053,5 @@ __all__ = [
     "owner_liveness",
     "proc_available",
     "read_process_birth",
+    "same_process_owner",
 ]

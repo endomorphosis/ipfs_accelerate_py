@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -39,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     DATABASE_PROGRAM_JSON_ENV,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    CommandOutcome,
     canonical_json_bytes,
     content_identity,
 )
@@ -53,6 +54,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
+    TaskSourceTransitionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
@@ -87,6 +89,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
@@ -99,7 +106,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     _process_birth_content_id,
     _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
+    typed_database_blocked_retry_revalidation_requirement,
     typed_database_strict_resume_rejection_receipt_id,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CLAIMED,
@@ -107,6 +118,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     _database_daemon_quack_sidecar_paths,
@@ -1610,6 +1622,45 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             body={"status": "passed"},
         )
         assert validation.changed is True
+        forged_expected_receipt = {
+            **admitted_receipt,
+            "fencing_token": True,
+        }
+        forged_body = dict(claimed.task.body)
+        forged_body["completion_receipt"] = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+        }
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            client.cas_task_status(
+                task_cid=claimed.task.task_cid,
+                goal_cid=claimed.task.goal_cid,
+                expected_task_revision=claimed.task.revision,
+                new_status="completed",
+                idempotency_key="executor-cas:forged-control-receipt",
+                body=forged_body,
+                expected_control_receipt=forged_expected_receipt,
+                evidence_digests=[evidence_digest],
+            )
+        unchanged = adapter.get(claimed.task.task_cid)
+        assert unchanged is not None
+        assert unchanged.revision == claimed.task.revision
+        assert unchanged.body == claimed.task.body
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="task control receipt CAS is stale",
+        ):
+            adapter.compare_and_set_status(
+                claimed.task.task_cid,
+                claimed.task.revision,
+                "completed",
+                {
+                    "operation": "database_complete",
+                    "evidence_digest": evidence_digest,
+                },
+                expected_control_receipt=forged_expected_receipt,
+                evidence_digests=[evidence_digest],
+            )
         completion_receipt = {
             "operation": "database_complete",
             "evidence_digest": evidence_digest,
@@ -1764,6 +1815,18 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             ],
             "tasks": [
                 {
+                    "task_cid": "task:typed-admitted-completion",
+                    "task_id": "CASF-TYPED-ADMITTED-COMPLETION",
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-admitted-terminal",
+                    "task_id": "CASF-TYPED-ADMITTED-TERMINAL",
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "status": "ready",
+                },
+                {
                     "task_cid": "task:typed-claim-barrier",
                     "task_id": "CASF-TYPED-CLAIM-BARRIER",
                     "goal_cid": "goal:typed-claim-barrier",
@@ -1816,6 +1879,12 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         unsealed = TypedDatabaseTaskSource(client, owns_client=False)
         route_policy = unsealed.seal_execution_route_policy(
             {
+                "CASF-TYPED-ADMITTED-COMPLETION": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-ADMITTED-TERMINAL": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
                 "CASF-TYPED-CLAIM-BARRIER": (
                     DETERMINISTIC_ONLY_EXECUTION_MODE
                 )
@@ -1995,6 +2064,8 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             lane: str,
             *,
             max_task_attempts: int = 4,
+            provider_fn: Callable[[DatabaseTaskAttempt], Mapping[str, Any]]
+            | None = None,
         ) -> DatabaseImplementationDaemon:
             return DatabaseImplementationDaemon(
                 database_path=database,
@@ -2015,10 +2086,14 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 lease_ms=5_000,
                 max_task_attempts=max_task_attempts,
                 clock_ms=lambda: clock["now_ms"],
-                provider_fn=lambda _attempt: {
-                    "status": "ok",
-                    "accepted": True,
-                },
+                provider_fn=(
+                    provider_fn
+                    if provider_fn is not None
+                    else lambda _attempt: {
+                        "status": "ok",
+                        "accepted": True,
+                    }
+                ),
                 effect_fn=lambda _attempt, _provider: {"status": "applied"},
                 validation_fn=lambda _attempt, _effect: {
                     "outcome": "passed",
@@ -2098,7 +2173,15 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             )
         alternate_unsealed = TypedDatabaseTaskSource(client, owns_client=False)
         alternate_policy = alternate_unsealed.seal_execution_route_policy(
-            {"CASF-TYPED-CLAIM-BARRIER": GROK_CODEX_EXECUTION_MODE}
+            {
+                "CASF-TYPED-ADMITTED-COMPLETION": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-ADMITTED-TERMINAL": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-CLAIM-BARRIER": GROK_CODEX_EXECUTION_MODE,
+            }
         )
         alternate_unsealed.close()
         alternate_adapter = TypedDatabaseTaskSource(
@@ -2260,6 +2343,128 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             match="legacy sidecar authority cannot be migrated",
         ):
             open_lane("legacy-core-divergence")
+
+        daemon = open_lane("typed-admitted-completion")
+        completion_attempt = daemon.claim_next()
+        assert completion_attempt is not None
+        daemon._require_typed_attempt_admission(completion_attempt)
+        admitted_completion_task = adapter.get(
+            "CASF-TYPED-ADMITTED-COMPLETION"
+        )
+        assert admitted_completion_task is not None
+        admitted_completion_receipt = admitted_completion_task.body[
+            "completion_receipt"
+        ]
+        assert admitted_completion_receipt["operation"] == (
+            "database_attempt_admitted"
+        )
+        generation_before_admission_replay = client.load_generation()
+        compare_and_set_status = adapter.compare_and_set_status
+
+        def reject_stale_admission_replay(
+            *_args: Any,
+            **_kwargs: Any,
+        ) -> Any:
+            raise TaskSourceTransitionError(
+                "transition_invalid after admitted response loss"
+            )
+
+        with monkeypatch.context() as stale_replay:
+            stale_replay.setattr(
+                adapter,
+                "compare_and_set_status",
+                reject_stale_admission_replay,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="control status replay conflicts",
+            ):
+                daemon._cas_task_status_database(
+                    admitted_completion_task.task_cid,
+                    expected_revision=admitted_completion_task.revision - 2,
+                    new_status="in_progress",
+                    receipt=admitted_completion_receipt,
+                )
+        assert adapter.get(admitted_completion_task.task_cid) == (
+            admitted_completion_task
+        )
+        assert client.load_generation() == generation_before_admission_replay
+        replay_calls = {"count": 0}
+
+        def replay_after_lost_admission_response(
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            replay_calls["count"] += 1
+            if replay_calls["count"] == 1:
+                raise TaskSourceTransitionError(
+                    "transition_invalid after admitted response loss"
+                )
+            return compare_and_set_status(*args, **kwargs)
+
+        with monkeypatch.context() as lost_response:
+            lost_response.setattr(
+                adapter,
+                "compare_and_set_status",
+                replay_after_lost_admission_response,
+            )
+            admission_replay = daemon._cas_task_status_database(
+                admitted_completion_task.task_cid,
+                expected_revision=admitted_completion_task.revision - 1,
+                new_status="in_progress",
+                receipt=admitted_completion_receipt,
+            )
+        # The typed owner forbids a second admission mutation after the exact
+        # admitted receipt is current.  Recovery projects the authoritative
+        # reread as a no-change result instead of issuing that forbidden write.
+        assert replay_calls["count"] == 1
+        assert admission_replay.changed is False
+        assert admission_replay.revision == admitted_completion_task.revision
+        assert adapter.get(admitted_completion_task.task_cid) == (
+            admitted_completion_task
+        )
+        assert client.load_generation() == generation_before_admission_replay
+        completed_result = daemon.resume_attempt(completion_attempt)
+        assert completed_result["status"] == "succeeded"
+        completed_task = adapter.get("CASF-TYPED-ADMITTED-COMPLETION")
+        assert completed_task is not None
+        assert completed_task.status == "completed"
+        completed_receipt = completed_task.body["completion_receipt"]
+        assert completed_receipt["operation"] == "database_complete"
+        assert completed_receipt["attempt_id"] == completion_attempt.attempt_id
+        daemon.close()
+        daemon = None
+
+        def terminal_provider(
+            _attempt: DatabaseTaskAttempt,
+        ) -> Mapping[str, Any]:
+            raise DatabasePortalBridgeError("portal_provider_failed")
+
+        daemon = open_lane(
+            "typed-admitted-terminal",
+            provider_fn=terminal_provider,
+        )
+        terminal_attempt = daemon.claim_next()
+        assert terminal_attempt is not None
+        terminal_result = daemon._resume_attempt_without_process_crash(
+            terminal_attempt
+        )
+        assert terminal_result["status"] == "failed"
+        assert terminal_result["portal_terminal_failure"] is True
+        terminal_task = adapter.get("CASF-TYPED-ADMITTED-TERMINAL")
+        assert terminal_task is not None
+        assert terminal_task.status == "blocked"
+        terminal_receipt = terminal_task.body["completion_receipt"]
+        assert terminal_receipt["operation"] == "database_portal_terminal_failure"
+        assert terminal_receipt["attempt_id"] == terminal_attempt.attempt_id
+        terminal_attempt = daemon.get_attempt(terminal_attempt.attempt_id)
+        assert terminal_attempt is not None
+        assert daemon._persist_terminal_portal_failure(
+            terminal_attempt,
+            reason="portal_provider_failed",
+        )["changed"] is False
+        daemon.close()
+        daemon = None
 
         daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission
@@ -2427,6 +2632,21 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         ) == 2
         assert daemon._typed_authoritative_attempt_floor(requeued) == 2
         assert daemon._shared_claim_binding_for_this_owner(requeued) is None
+        typed_history = adapter.task_revision_history_projection(
+            requeued.task_cid
+        )
+        typed_history_body = dict(typed_history)
+        typed_history_cid = typed_history_body.pop("projection_cid")
+        assert typed_history_cid == content_identity(typed_history_body)
+        assert [
+            revision["revision"]
+            for revision in typed_history["revisions"]
+        ] == list(range(1, requeued.revision + 1))
+        assert typed_history["revisions"][-1] == {
+            "revision": requeued.revision,
+            "status": "ready",
+            "body": dict(requeued.body),
+        }
         intended_quarantine = {
             **requeue_receipt,
             "operation": "database_strict_resume_quarantine",
@@ -4128,6 +4348,475 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
         server.stop()
 
 
+@pytest.mark.parametrize("require_fresh_portal_revalidation", [False, True])
+def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    require_fresh_portal_revalidation: bool,
+) -> None:
+    database = tmp_path / "typed-operator-blocked-retry.duckdb"
+    task_cid = "task:typed-operator-blocked-retry"
+    task_alias = "CASF-TYPED-OPERATOR-BLOCKED-RETRY"
+    lane_id = "database-implementation-daemon:typed-operator-retry"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-operator-blocked-retry",
+            "plan_root_cid": "plan:typed-operator-blocked-retry",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-operator-blocked-retry",
+                    "goal_alias": "CASF-G-TYPED-OPERATOR-BLOCKED-RETRY",
+                    "title": "Typed operator blocked retry",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": task_cid,
+                    "task_id": task_alias,
+                    "goal_cid": "goal:typed-operator-blocked-retry",
+                    "status": "ready",
+                }
+            ],
+        }
+    )
+    original = source.get(task_cid)
+    assert original is not None and original.revision == 1
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=(original,),
+        execution_modes={task_alias: GROK_CODEX_EXECUTION_MODE},
+    )
+    route = route_policy.binding_for_task(original).to_dict()
+    attempt_identity = {
+        "attempt_id": "attempt:typed-operator-blocked-retry:1",
+        "claim_id": "claim:typed-operator-blocked-retry:1",
+        "lease_id": "lease:typed-operator-blocked-retry:1",
+        "owner_session_id": lane_id,
+        "attempt_number": 1,
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    reservation = {
+        "operation": "test_claim_pending",
+        **attempt_identity,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        original,
+        1,
+        "pending",
+        reservation,
+    ).changed
+    reserved = source.get(task_cid)
+    assert reserved is not None and reserved.status == "pending"
+    assert reserved.revision == 2
+    admission = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        **attempt_identity,
+        "admitted_from_revision": 2,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        reserved,
+        2,
+        "in_progress",
+        admission,
+    ).changed
+    admitted = source.get(task_cid)
+    assert admitted is not None and admitted.revision == 3
+    terminal = {
+        "operation": "database_portal_terminal_failure",
+        "reason": "portal_provider_failed",
+        "retryable": False,
+        **attempt_identity,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 3,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        admitted,
+        3,
+        "blocked",
+        terminal,
+    ).changed
+    blocked = source.get(task_cid)
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.revision == 4
+    blocked_body = dict(blocked.body)
+    source.close()
+
+    operator_handoff_receipt_id = "sha256:" + "a" * 64
+    sidecar_evidence_id = "sha256:" + "b" * 64
+    fixed_now_ms = 2_000
+    operator = _operator()
+    assert TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND not in (
+        operator.EXECUTOR_OWNER_COMMAND_OPERATIONS
+    )
+    assert not hasattr(TypedDatabaseTaskSource, "recover_blocked_task_retry")
+    recovery_operations = (
+        "whoami_metadata",
+        "load_store_generation",
+        "select_task_by_cid",
+        "executor_retry_cooldown_by_task",
+        "executor_insert_retry_cooldown",
+        "executor_cas_task_status_receipt",
+        "executor_insert_task_revision",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+    )
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-operator-retry-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-operator-blocked-retry-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+    )
+    identity = server.start()
+
+    def attach_client(
+        *,
+        command_operations: tuple[str, ...],
+        identity_value: Any = identity,
+        owner: Any = server,
+    ) -> tuple[QuackStateClient, Any]:
+        token, grant = owner.issue_typed_client_grant_record(
+            client_id="pcsm-bootstrap:blocked-retry",
+            process_birth_id=identity_value.process_birth_id,
+            allowed_operations=recovery_operations,
+            allowed_command_operations=command_operations,
+            entity_scopes={"task_cid": task_cid},
+            peer_pid=os.getpid(),
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            str(owner.typed_command_socket_path()),
+        )
+        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+        client = QuackStateClient(
+            owner_id="pcsm-bootstrap:blocked-retry",
+            store_id=identity_value.store_id,
+            process_birth_id=identity_value.process_birth_id,
+        )
+        client.attach(
+            identity_value.listen_uri,
+            server_id=identity_value.server_id,
+        )
+        return client, grant
+
+    recovery_arguments = {
+        "task_cid": task_cid,
+        "expected_task_revision": 4,
+        "task_body": blocked_body,
+        "terminal_receipt": terminal,
+        "max_task_attempts_before": 1,
+        "max_task_attempts_after": 2,
+        "operator_handoff_receipt_id": operator_handoff_receipt_id,
+        "sidecar_evidence_id": sidecar_evidence_id,
+        "now_ms": fixed_now_ms,
+        **(
+            {"require_fresh_portal_revalidation": True}
+            if require_fresh_portal_revalidation
+            else {}
+        ),
+    }
+    source_completion_receipt_id = (
+        "sha256:" + hashlib.sha256(canonical_json_bytes(terminal)).hexdigest()
+    )
+    expected_revalidation_requirement = (
+        typed_database_blocked_retry_revalidation_requirement(
+            task_cid=task_cid,
+            source_completion_receipt_id=source_completion_receipt_id,
+            operator_handoff_receipt_id=operator_handoff_receipt_id,
+            sidecar_evidence_id=sidecar_evidence_id,
+            recovered_from_revision=4,
+            fresh_attempt_number=2,
+        )
+    )
+    denial_client: QuackStateClient | None = None
+    recovery_client: QuackStateClient | None = None
+    normal_client: QuackStateClient | None = None
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    denial_grant: Any = None
+    recovery_grant: Any = None
+    normal_grant: Any = None
+    try:
+        denial_client, denial_grant = attach_client(command_operations=())
+        denied_generation = denial_client.load_generation()
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            denial_client.recover_blocked_task_retry(**recovery_arguments)
+        assert denial_client.load_generation().revision == (
+            denied_generation.revision
+        )
+        denial_client.close()
+        denial_client = None
+        server.revoke_typed_client_grant(denial_grant.grant_id)
+        denial_grant = None
+
+        recovery_client, recovery_grant = attach_client(
+            command_operations=(
+                TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+            )
+        )
+        before = recovery_client.load_generation()
+        recovered_result = recovery_client.recover_blocked_task_retry(
+            **recovery_arguments
+        )
+        assert recovered_result.outcome is CommandOutcome.ACCEPTED
+        assert recovered_result.changed is True
+        assert recovered_result.revision == before.revision + 1
+        assert recovered_result.result == {
+            "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+            "task_cid": task_cid,
+            "attempt_id": attempt_identity["attempt_id"],
+            "attempt_number": 1,
+            "fresh_attempt_number": 2,
+            "task_revision": 5,
+            "queue_revision": 1,
+            "retry_not_before_ms": fixed_now_ms,
+            "source_completion_receipt_id": (
+                source_completion_receipt_id
+            ),
+            "operator_handoff_receipt_id": operator_handoff_receipt_id,
+            "sidecar_evidence_id": sidecar_evidence_id,
+            "max_task_attempts_before": 1,
+            "max_task_attempts_after": 2,
+            "attempt_refunded": False,
+            "execution_route_binding_cid": content_identity(
+                {"task_execution_route_binding": route}
+            ),
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+            "store_revision_before": before.revision,
+            **(
+                {
+                    "fresh_portal_revalidation_requirement_id": (
+                        expected_revalidation_requirement["requirement_id"]
+                    )
+                }
+                if require_fresh_portal_revalidation
+                else {}
+            ),
+        }
+        task_row = recovery_client.execute(
+            "select_task_by_cid", {"task_cid": task_cid}
+        )[0]
+        assert task_row["status"] == "retrying"
+        assert task_row["revision"] == 5
+        recovered_body = json.loads(task_row["body_json"])
+        recovery_receipt = recovered_body["completion_receipt"]
+        assert recovery_receipt["operation"] == (
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION
+        )
+        assert recovery_receipt["queue_reason"] == (
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
+        )
+        assert recovery_receipt["attempt_refunded"] is False
+        assert recovery_receipt["fresh_attempt_number"] == 2
+        assert recovery_receipt["execution_route_binding"] == route
+        if require_fresh_portal_revalidation:
+            assert recovered_body[
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+            ] == expected_revalidation_requirement
+        else:
+            assert (
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+                not in recovered_body
+            )
+        cooldown_rows = recovery_client.execute(
+            "executor_retry_cooldown_by_task", {"task_cid": task_cid}
+        )
+        assert len(cooldown_rows) == 1
+        assert cooldown_rows[0]["attempt"] == 1
+        assert cooldown_rows[0]["revision"] == 1
+        assert json.loads(cooldown_rows[0]["extension_json"])["reason"] == (
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
+        )
+
+        stale_generation = recovery_client.load_generation()
+        stale_task = dict(task_row)
+        stale_cooldown = dict(cooldown_rows[0])
+        stale_result = recovery_client.recover_blocked_task_retry(
+            **{**recovery_arguments, "now_ms": fixed_now_ms + 1}
+        )
+        assert stale_result.accepted is False, stale_result
+        assert stale_result.changed is False
+        assert recovery_client.load_generation().revision == (
+            stale_generation.revision
+        )
+        assert dict(
+            recovery_client.execute(
+                "select_task_by_cid", {"task_cid": task_cid}
+            )[0]
+        ) == stale_task
+        assert dict(
+            recovery_client.execute(
+                "executor_retry_cooldown_by_task",
+                {"task_cid": task_cid},
+            )[0]
+        ) == stale_cooldown
+        recovery_client.close()
+        recovery_client = None
+        server.revoke_typed_client_grant(recovery_grant.grant_id)
+        recovery_grant = None
+
+        token, normal_grant = server.issue_typed_client_grant_record(
+            client_id=lane_id,
+            process_birth_id=identity.process_birth_id,
+            allowed_operations=tuple(
+                sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+            ),
+            allowed_command_operations=tuple(
+                sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+            ),
+            peer_pid=os.getpid(),
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            str(server.typed_command_socket_path()),
+        )
+        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+        normal_client = QuackStateClient(
+            owner_id=lane_id,
+            store_id=identity.store_id,
+            process_birth_id=identity.process_birth_id,
+        )
+        normal_client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            normal_client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: fixed_now_ms,
+        )
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=tmp_path / "operator-retry-coordination.duckdb",
+            execution_path=tmp_path / "operator-retry-execution.duckdb",
+            owner_session_id=lane_id,
+            process_instance_id=identity.process_birth_id,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            state_owner_bootstrap_credentials=_typed_bootstrap_credentials(
+                server=server,
+                identity=identity,
+                client_id=lane_id,
+                token=token,
+                route_policy=route_policy,
+            ),
+            lease_ms=5_000,
+            clock_ms=lambda: fixed_now_ms,
+            max_task_attempts=2,
+            provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
+            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            validation_fn=lambda _attempt, _effect: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "c" * 64,
+            },
+            require_real_execution=True,
+        ).open()
+        assert task_cid in daemon.sync_ready_tasks_into_coordination()
+        fresh_attempt = daemon.claim_next()
+        assert fresh_attempt is not None
+        assert fresh_attempt.task_cid == task_cid
+        assert fresh_attempt.attempt_number == 2
+        assert fresh_attempt.attempt_id != attempt_identity["attempt_id"]
+        advanced = adapter.get(task_cid)
+        assert advanced is not None
+        assert advanced.status == "in_progress"
+        assert advanced.revision > 5
+        if require_fresh_portal_revalidation:
+            assert advanced.body[
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+            ] == expected_revalidation_requirement
+        else:
+            assert (
+                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
+                not in advanced.body
+            )
+
+        daemon.close()
+        daemon = None
+        adapter.close()
+        adapter = None
+        normal_client = None
+        server.revoke_typed_client_grant(normal_grant.grant_id)
+        normal_grant = None
+        first_generation = identity.generation
+        server.stop()
+
+        server = build_server(
+            database_path=database,
+            state_dir=tmp_path / "typed-operator-retry-owner-restarted",
+            repository_id="repository:ipfs_accelerate_py",
+            store_id="casf-typed-operator-blocked-retry-v1",
+            transport=FakeQuackTransport(),
+            capability_probe=_capability,
+            migrate=_migrate,
+            connection_factory=open_duckdb_connection,
+        )
+        restarted_identity = server.start()
+        assert restarted_identity.generation > first_generation
+        replay_client, replay_grant = attach_client(
+            command_operations=(
+                TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+            ),
+            identity_value=restarted_identity,
+            owner=server,
+        )
+        try:
+            replay_before = replay_client.load_generation()
+            replay = replay_client.recover_blocked_task_retry(
+                **recovery_arguments
+            )
+            assert replay.outcome is CommandOutcome.IDEMPOTENT_REPLAY
+            assert replay.changed is False
+            assert replay.result == recovered_result.result
+            assert replay_client.load_generation().revision == (
+                replay_before.revision
+            )
+            replay_task = replay_client.execute(
+                "select_task_by_cid", {"task_cid": task_cid}
+            )[0]
+            assert replay_task["status"] == "in_progress"
+            assert replay_task["revision"] == advanced.revision
+        finally:
+            replay_client.close()
+            server.revoke_typed_client_grant(replay_grant.grant_id)
+    finally:
+        if daemon is not None:
+            daemon.close()
+        elif adapter is not None:
+            adapter.close()
+        elif normal_client is not None:
+            normal_client.close()
+        if denial_client is not None:
+            denial_client.close()
+        if recovery_client is not None:
+            recovery_client.close()
+        for grant in (denial_grant, recovery_grant, normal_grant):
+            if grant is not None:
+                server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
 @pytest.mark.parametrize(
     "replacement_now_ms",
     (2_000, 7_000),
@@ -5213,14 +5902,26 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                 )
             )
         )
-        with pytest.raises(
-            DatabaseImplementationAuthorityError,
-            match="atomic retry authority|coordination-coupled owner authority",
-        ):
-            DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
-                post_merge_daemon,
-                post_merge_evidence,
+        # Exercise the fail-closed compatibility path explicitly.  The typed
+        # source now normally exposes guarded blocked-retry authority, which
+        # has separate positive coverage.
+        with monkeypatch.context() as missing_guarded_retry:
+            missing_guarded_retry.setattr(
+                adapter,
+                "record_queue_backoff_and_cas_status",
+                None,
             )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match=(
+                    "atomic retry authority|"
+                    "coordination-coupled owner authority"
+                ),
+            ):
+                DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
+                    post_merge_daemon,
+                    post_merge_evidence,
+                )
         post_merge_entry = adapter.get_queue_entry(post_merge_task.task_cid)
         assert post_merge_entry is None
         post_merge_updated = adapter.get(post_merge_task.task_cid)
@@ -5280,6 +5981,7 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
             "status": "quarantined",
             "revision": 1,
             "priority": "normal",
+            "updated_at": "1970-01-01T00:00:01Z",
             "identity_json": json.dumps({"repository_tree_id": "tree:paged"}),
             "body_json": "{}",
             "dependencies_json": "[]",
@@ -5378,6 +6080,7 @@ def test_typed_task_revision_history_pages_one_closed_owner_read() -> None:
                         "status": "blocked",
                         "revision": revision_count,
                         "priority": "normal",
+                        "updated_at": "1970-01-01T00:00:01Z",
                         "identity_json": "{}",
                         "body_json": json.dumps({"revision": revision_count}),
                         "dependencies_json": "[]",
@@ -5463,6 +6166,7 @@ def _typed_history_fault_adapter(
                         "status": current_status,
                         "revision": head_revision,
                         "priority": "normal",
+                        "updated_at": "1970-01-01T00:00:01Z",
                         "identity_json": "{}",
                         "body_json": json.dumps(body),
                         "dependencies_json": "[]",
@@ -5588,6 +6292,7 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
         "status": "retrying",
         "revision": 3,
         "priority": "normal",
+        "updated_at": "1970-01-01T00:00:01Z",
         "identity_json": json.dumps(
             {"repository_tree_id": "tree:foreign-lease"}
         ),
@@ -5747,11 +6452,17 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
     adapter.path = Path("typed-state-owner")
     adapter.database_path = adapter.path
 
-    with pytest.raises(
-        TaskSourceIntegrityError,
-        match="foreign|differs|no typed cooldown",
-    ):
-        adapter.ready_tasks()
+    if lease_kind in {"legacy", "malformed_typed", "forged_typed"}:
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="foreign|differs|no typed cooldown",
+        ):
+            adapter.ready_tasks()
+    else:
+        # A well-formed stale or missing cooldown no longer fail-closes the
+        # whole board.  The task stays unready until startup reconciliation
+        # binds a cooldown to its current control receipt.
+        assert adapter.ready_tasks().tasks == ()
     if lease_kind in {"legacy", "malformed_typed", "forged_typed"}:
         with pytest.raises(TaskSourceIntegrityError, match="foreign"):
             adapter.get_queue_entry(task_row["task_cid"])

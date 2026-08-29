@@ -11,13 +11,15 @@ import os
 import re
 import shlex
 import signal
+import socket
 import stat
 import subprocess
 import sys
 import time
 import threading
 from collections import Counter
-from dataclasses import dataclass, field, replace
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -99,6 +101,7 @@ from .implementation_supervisor_runner import (
 )
 from ..runtime.multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
+    AUTHORITY_MODE_QUACK,
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
@@ -109,6 +112,7 @@ from ..runtime.multi_supervisor_runner import (
     STATE_LIVE_SCHEMA_REVISION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    TASK_SOURCE_DUCKDB,
     TRUSTED_DUCKDB_HOME_ENV,
     _eaaef_source_addressed_host_receipts,
     _lgcvf_configured_board_live_positive_child_environment,
@@ -140,7 +144,9 @@ from .database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
     DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE,
     DatabasePortalBridgeError,
+    _projection_immutable_digest,
     verify_database_portal_attempt_projection,
+    verify_database_portal_attempt_projection_identity,
 )
 from .implementation_daemon import (
     AUTHORITY_VALIDATION_CONTAINER_BACKEND,
@@ -174,7 +180,9 @@ from .implementation_daemon import (
     normalize_implementation_protected_paths,
     normalize_relative_path_list,
     parse_task_file,
+    parse_task_text,
     parse_timestamp,
+    portal_task_identity,
     process_command_line,
     process_is_running,
     state_file_repair_reason,
@@ -220,6 +228,23 @@ INTERRUPTED_RECOVERY_FRESH_LEASE_TIMEOUT_SECONDS = 5.0
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
+_DATABASE_PORTAL_CALLBACK_PHASES = frozenset({"merge_queue"})
+_DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS = frozenset(
+    {
+        "kind",
+        "lease_id",
+        "pid",
+        "owner_script",
+        "repo_root",
+        "state_dir",
+        "task_id",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+        "attempt",
+        "started_at",
+    }
+)
 CONTROL_PLANE_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"
 )
@@ -8713,6 +8738,10 @@ class ObjectiveRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned objective refill exceeds its local budget."""
 
 
+class ObjectiveRefillBudgetLockTimeoutError(TimeoutError):
+    """Raised when another lane retains the board-shared refill transaction."""
+
+
 class CodebaseRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned codebase refill exceeds its local budget."""
 
@@ -8723,6 +8752,12 @@ class ObjectiveCompletionArtifactRefreshError(RuntimeError):
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
+OBJECTIVE_REFILL_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-refill-budget@1"
+)
+OBJECTIVE_REFILL_EXHAUSTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-refill-budget-exhaustion@1"
+)
 
 # Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
 # the set explicit lets a long-running supervisor replace the whole projection
@@ -9003,6 +9038,8 @@ class PortalSupervisorConfig:
     objective_scan_cooldown_seconds: int = 21600
     objective_scan_exclude_paths: tuple[str, ...] = field(default_factory=tuple)
     objective_refill_timeout_seconds: float = 0.0
+    objective_refill_max_epochs: int | None = None
+    objective_refill_max_total_tasks: int | None = None
     objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     objective_max_refinement_children: int = 3
     objective_max_refinement_depth: int = 4
@@ -9021,6 +9058,53 @@ class PortalSupervisorConfig:
     )
 
     def __post_init__(self) -> None:
+        for field_name in (
+            "objective_refill_max_epochs",
+            "objective_refill_max_total_tasks",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            ):
+                raise ValueError(f"{field_name} must be a positive integer")
+        if (
+            isinstance(self.state_owner_bootstrap_fd, bool)
+            or not isinstance(self.state_owner_bootstrap_fd, int)
+            or (
+                self.state_owner_bootstrap_fd != -1
+                and self.state_owner_bootstrap_fd < 3
+            )
+        ):
+            raise ValueError(
+                "state_owner_bootstrap_fd must be -1 or a valid descriptor"
+            )
+        owner_session_id = str(self.database_owner_session_id or "").strip()
+        if any(
+            character in owner_session_id for character in ("\x00", "\n", "\r")
+        ):
+            raise ValueError(
+                "database_owner_session_id must be a single-line identity"
+            )
+        self.database_owner_session_id = owner_session_id
+        bootstrap_store_id = str(
+            self.state_owner_bootstrap_store_id or ""
+        ).strip()
+        if any(
+            character in bootstrap_store_id
+            for character in ("\x00", "\n", "\r")
+        ):
+            raise ValueError(
+                "state_owner_bootstrap_store_id must be a single-line identity"
+            )
+        if self.state_owner_bootstrap_fd >= 3 and not bootstrap_store_id:
+            raise ValueError(
+                "state_owner_bootstrap_store_id is required with the "
+                "bootstrap descriptor"
+            )
+        self.state_owner_bootstrap_store_id = bootstrap_store_id
+
         self.idle_lane_work_stealing = str(
             self.idle_lane_work_stealing or ""
         ).strip().lower()
@@ -9279,6 +9363,9 @@ class PortalImplementationSupervisor:
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
+        self._state_owner_task_source: Any | None = None
+        self._state_owner_task_source_binding: dict[str, Any] = {}
+        self._state_owner_task_source_lock = threading.Lock()
         self._control_plane_update_detected_at = ""
         self._loaded_control_plane_source = dict(
             IMPORTED_CONTROL_PLANE_SOURCE
@@ -9325,6 +9412,149 @@ class PortalImplementationSupervisor:
             and branch_reason in {"created", "already_exists"}
         ):
             self.config.merge_target_branch = resolved_branch
+
+    def _uses_supervisor_state_owner_bootstrap(self) -> bool:
+        """Return whether this non-plan supervisor owns a typed Quack reader."""
+
+        program = self.config.database_program
+        return bool(
+            not self.config.plan_bound_dispatch
+            and self.config.state_owner_bootstrap_fd >= 3
+            and program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.task_source_kind == TASK_SOURCE_DUCKDB
+        )
+
+    def _typed_supervisor_task_source(self) -> Any:
+        """Lazily attach this supervisor birth to the closed state-owner API.
+
+        ``request_state_owner_bootstrap`` consumes its inherited listener.  The
+        managed daemon still needs the original listener descriptor, so the
+        supervisor deliberately bootstraps over a duplicate and retains the
+        original for ``pass_fds``.
+        """
+
+        if not self._uses_supervisor_state_owner_bootstrap():
+            raise RuntimeError("typed supervisor state-owner bootstrap is unavailable")
+        with self._state_owner_task_source_lock:
+            if self._state_owner_task_source is not None:
+                return self._state_owner_task_source
+            owner_session_id = str(self.config.database_owner_session_id or "").strip()
+            if not owner_session_id:
+                raise RuntimeError(
+                    "state-owner bootstrap requires an explicit database owner session"
+                )
+            program = self.config.database_program
+            assert program is not None
+            expected_endpoint = str(program.quack_endpoint or "").strip()
+            if not expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap requires the canonical Quack endpoint"
+                )
+
+            from ..task_sources.state_owner_bootstrap import (
+                request_state_owner_bootstrap,
+            )
+            bootstrap_copy = os.dup(self.config.state_owner_bootstrap_fd)
+            try:
+                credentials = request_state_owner_bootstrap(
+                    bootstrap_copy,
+                    client_id=(
+                        "database-implementation-supervisor:"
+                        f"{owner_session_id}"
+                    ),
+                    store_id=self.config.state_owner_bootstrap_store_id,
+                )
+            finally:
+                # The request normally consumes the duplicate while resolving
+                # the rendezvous listener.  Close only if it failed earlier.
+                try:
+                    os.close(bootstrap_copy)
+                except OSError:
+                    pass
+            if credentials.endpoint != expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap endpoint differs from the database program"
+                )
+
+            from ..task_sources.quack_state_client import QuackStateClient
+            from ..task_sources.typed_database_task_source import (
+                TypedDatabaseTaskSource,
+            )
+            from ..task_sources.typed_state_owner import (
+                TypedStateOwnerConnection,
+            )
+
+            def connection_factory(_endpoint: Any) -> TypedStateOwnerConnection:
+                return TypedStateOwnerConnection(
+                    socket_path=Path(credentials.socket_path),
+                    token=credentials.token,
+                    client_id=credentials.client_id,
+                    process_birth_id=credentials.process_birth_id,
+                    store_id=credentials.store_id,
+                    timeout_seconds=30.0,
+                )
+
+            client: Any | None = None
+            try:
+                client = QuackStateClient(
+                    owner_id=credentials.client_id,
+                    store_id=credentials.store_id,
+                    process_birth_id=credentials.process_birth_id,
+                    connection_factory=connection_factory,
+                )
+                client.attach(
+                    credentials.endpoint,
+                    server_id=credentials.server_id,
+                )
+                task_source = TypedDatabaseTaskSource(client)
+            except BaseException:
+                if client is not None:
+                    client.close()
+                raise
+            self._state_owner_task_source = task_source
+            self._state_owner_task_source_binding = {
+                "endpoint": credentials.endpoint,
+                "store_id": credentials.store_id,
+                "server_id": credentials.server_id,
+                "client_id": credentials.client_id,
+                "process_birth_id": credentials.process_birth_id,
+                "credential_transport": "private_inherited_socket",
+                "credential_in_argv": False,
+                "credential_in_environment": False,
+            }
+            return task_source
+
+    @contextmanager
+    def _canonical_database_task_source(
+        self,
+        endpoint: str,
+        *,
+        owner_scope: str,
+    ) -> Any:
+        """Yield the typed reader when bootstrapped, or the legacy adapter."""
+
+        if self._uses_supervisor_state_owner_bootstrap():
+            yield self._typed_supervisor_task_source()
+            return
+        from ..task_sources.database_task_source import DatabaseTaskSource
+
+        with DatabaseTaskSource(
+            endpoint,
+            owner_id=owner_scope,
+            install_schema=False,
+        ) as task_source:
+            yield task_source
+
+    def close(self) -> None:
+        """Release the supervisor-owned typed state client, when attached."""
+
+        with self._state_owner_task_source_lock:
+            task_source = self._state_owner_task_source
+            self._state_owner_task_source = None
+            self._state_owner_task_source_binding = {}
+        if task_source is not None:
+            task_source.close()
 
     @staticmethod
     def _control_plane_source_snapshot() -> dict[str, Any]:
@@ -12129,6 +12359,23 @@ class PortalImplementationSupervisor:
             self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
+            if (
+                self._uses_supervisor_state_owner_bootstrap()
+                and not self._quack_owner_reachable()
+            ):
+                delay = self._supervisor_loop_recovery_delay_seconds()
+                self._record_event(
+                    "supervisor_waiting_for_state_owner",
+                    {
+                        "quack_endpoint": str(
+                            getattr(self.config.database_program, "quack_endpoint", "")
+                            or ""
+                        ),
+                        "delay_seconds": delay,
+                    },
+                )
+                time.sleep(delay)
+                continue
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
@@ -12202,7 +12449,41 @@ class PortalImplementationSupervisor:
     def _supervisor_loop_recovery_delay_seconds(self) -> float:
         """Back off between outer loop recovery attempts without exceeding one check interval."""
 
+        if (
+            self._uses_supervisor_state_owner_bootstrap()
+            and not self._quack_owner_reachable()
+        ):
+            return max(15.0, min(float(self.config.check_interval) * 3.0, 60.0))
         return max(5.0, min(float(self.config.check_interval), 60.0))
+
+    def _quack_owner_reachable(self) -> bool:
+        """True when the configured loopback Quack owner is accepting connects.
+
+        After launch-supervisor exits it stops the owner but session-detached
+        lane supervisors keep the inherited bootstrap listener FD. Daemons then
+        connect to a socket nobody accept()s (EAGAIN) and the child loop flaps.
+        Do not spawn until the TCP owner is live again.
+        """
+
+        program = self.config.database_program
+        if program is None:
+            return True
+        endpoint = str(program.quack_endpoint or "").strip()
+        if not endpoint.startswith("quack:"):
+            return True
+        rest = endpoint[len("quack:") :]
+        host, separator, port_text = rest.rpartition(":")
+        if separator != ":" or not host or not port_text.isdigit():
+            return True
+        try:
+            probe = socket.create_connection((host, int(port_text)), timeout=1.0)
+        except OSError:
+            return False
+        try:
+            probe.close()
+        except OSError:
+            pass
+        return True
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
@@ -12454,6 +12735,125 @@ class PortalImplementationSupervisor:
             return None
         return dict(payload) if isinstance(payload, Mapping) else None
 
+    @classmethod
+    def _stable_single_link_json_snapshot(
+        cls,
+        path: Path,
+    ) -> tuple[dict[str, Any], tuple[int, ...]] | None:
+        """Read one unchanged regular JSON record twice.
+
+        Callback liveness grants exceptional recycle-deferral authority, so a
+        replacement between validation steps must fail closed for that
+        authority.  Ordinary watchdog policy then remains authoritative
+        instead of extending a stale attempt.
+        """
+
+        before = cls._single_link_regular_file_signature(path)
+        first = cls._load_single_link_json_object(path)
+        middle = cls._single_link_regular_file_signature(path)
+        second = cls._load_single_link_json_object(path)
+        after = cls._single_link_regular_file_signature(path)
+        if (
+            before is None
+            or first is None
+            or before != middle
+            or middle != after
+            or first != second
+        ):
+            return None
+        return first, before
+
+    @staticmethod
+    def _single_link_regular_file_signature(
+        path: Path,
+    ) -> tuple[int, ...] | None:
+        try:
+            observed = path.lstat()
+        except OSError:
+            return None
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or int(observed.st_nlink) != 1
+        ):
+            return None
+        return (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_mode),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_mtime_ns),
+        )
+
+    def _verified_post_maintenance_state_for_stuck_override(
+        self,
+    ) -> PortalTaskState | None:
+        """Load exact durable state that may negate a stale stuck result."""
+
+        path = self.config.state_path
+        before_signature = self._single_link_regular_file_signature(path)
+        if before_signature is None:
+            return None
+        try:
+            before_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            not before_bytes
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+            or state_file_repair_reason(path)
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+        ):
+            return None
+
+        state = PortalTaskState.load(path)
+        after_load_signature = self._single_link_regular_file_signature(path)
+        try:
+            after_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            after_load_signature != before_signature
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+            or after_bytes != before_bytes
+        ):
+            return None
+        try:
+            payload = json.loads(before_bytes.decode("utf-8"))
+            canonical_payload = json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                allow_nan=False,
+            )
+            canonical_state = json.dumps(
+                asdict(state),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                allow_nan=False,
+            )
+        except (TypeError, UnicodeDecodeError, ValueError):
+            return None
+        if not isinstance(payload, dict) or canonical_payload != canonical_state:
+            return None
+        try:
+            final_bytes = path.read_bytes()
+        except OSError:
+            return None
+        if (
+            final_bytes != before_bytes
+            or self._single_link_regular_file_signature(path)
+            != before_signature
+        ):
+            return None
+        return state
+
     @staticmethod
     def _stable_process_birth_identity(
         identity: Any,
@@ -12521,7 +12921,14 @@ class PortalImplementationSupervisor:
         *,
         attempt_root: Path,
     ) -> tuple[Path, dict[str, Any]] | None:
-        """Validate the exact database binding behind one lifecycle claim."""
+        """Validate the exact two-identity bridge behind one lifecycle claim.
+
+        Database attempt bindings own the DuckDB task CID, while Portal
+        lifecycle records own the path-bound identity derived from the same
+        immutable projection.  Those identities are deliberately distinct.
+        Accept their correlation only after the bridge binding, projection,
+        parsed task, and Portal identity transform all verify exactly.
+        """
 
         try:
             attempt_dir = Path(record.state_dir).resolve(strict=True)
@@ -12549,7 +12956,8 @@ class PortalImplementationSupervisor:
             or hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
             != attempt_dir.name
             or binding.get("task_alias") != record.task_id
-            or binding.get("task_cid") != record.canonical_task_cid
+            or type(binding.get("task_cid")) is not str
+            or not binding.get("task_cid")
             or type(binding.get("canonical_task_key")) is not str
             or not binding.get("canonical_task_key")
             or type(binding.get("claim_id")) is not str
@@ -12583,6 +12991,67 @@ class PortalImplementationSupervisor:
             ).encode("utf-8")
         ).hexdigest()
         if binding_id != expected_binding_id:
+            return None
+
+        projection_path = attempt_dir / "task-projection.md"
+        try:
+            projection_binding = verify_database_portal_attempt_projection(
+                projection_path,
+                expected_task_alias=record.task_id,
+                expected_task_cid=str(binding["task_cid"]),
+                allowed_root=attempt_root,
+            )
+            verified_projection_path = Path(
+                str(projection_binding.get("projection_path") or "")
+            ).resolve(strict=True)
+            expected_projection_path = projection_path.resolve(strict=True)
+            projection_text = verified_projection_path.read_text(
+                encoding="utf-8"
+            )
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=verified_projection_path,
+                task_header_prefix=f"## {record.task_id}",
+            )
+            if len(projected_tasks) != 1:
+                return None
+            projected_task = projected_tasks[0]
+            portal_identity = portal_task_identity(
+                projected_task,
+                todo_path=verified_projection_path,
+            )
+        except (
+            DatabasePortalBridgeError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            UnicodeError,
+            ValueError,
+        ):
+            return None
+        projected_metadata = projected_task.metadata
+        if (
+            projection_binding.get("verified") is not True
+            or verified_projection_path != expected_projection_path
+            or _projection_immutable_digest(projection_text)
+            != binding.get("projection_immutable_digest")
+            or any(
+                binding.get(key) != value
+                for key, value in projection_binding.items()
+                if key not in {"verified", "projection_path"}
+            )
+            or projected_task.task_id != record.task_id
+            or projected_metadata.get("projection authority") != "false"
+            or projected_metadata.get("database task cid")
+            != binding.get("task_cid")
+            or projected_metadata.get("canonical task cid")
+            != binding.get("task_cid")
+            or projected_metadata.get("canonical task key")
+            != binding.get("canonical_task_key")
+            or not portal_identity.canonical_task_key
+            or portal_identity.canonical_task_cid
+            != record.canonical_task_cid
+        ):
             return None
         return attempt_dir, binding
 
@@ -12722,6 +13191,339 @@ class PortalImplementationSupervisor:
             }
         return None
 
+    def _active_managed_database_portal_callback(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Prove the narrow callback gap after lifecycle and pool handoff.
+
+        ``_enqueue_validated_worktree`` publishes ``merge_queue`` state, then
+        terminalizes/deletes its lifecycle record and releases the pooled
+        checkout before synchronously invoking the merge train.  The database
+        wrapper has no root active-task projection in that interval.  Preserve
+        only the exact live daemon whose immutable database projection derives
+        the Portal identity carried by an unchanged implementation lock and
+        nested state record.  Missing, stale, foreign, or multiple candidates
+        fail closed for callback-deferral authority and return no deferral.
+        """
+
+        worktree_root = self.config.worktree_root
+        if self.config.database_program is None or worktree_root is None:
+            return None
+        child_birth = self._exact_live_managed_child_birth(child)
+        if child_birth is None:
+            return None
+        child_pid = child_birth.pid
+        try:
+            root = Path(worktree_root).resolve(strict=True)
+            repo_root = self.config.repo_root.resolve(strict=True)
+            state_root = self.config.state_dir.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+        attempt_root = (
+            state_root
+            / f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        try:
+            attempt_root_stat = attempt_root.lstat()
+            if (
+                not stat.S_ISDIR(attempt_root_stat.st_mode)
+                or stat.S_ISLNK(attempt_root_stat.st_mode)
+                or attempt_root.resolve(strict=True) != attempt_root
+            ):
+                return None
+            attempt_dirs = sorted(
+                attempt_root.iterdir(),
+                key=lambda path: path.name,
+            )
+        except (OSError, RuntimeError):
+            return None
+
+        grace_seconds = max(
+            30.0,
+            float(self.config.check_interval) * 2.0,
+        )
+        max_age_seconds = max(
+            float(self.config.stale_seconds),
+            self._implementation_watchdog_timeout_seconds(),
+        ) + grace_seconds
+        future_slack_seconds = grace_seconds
+        now_ts = time.time()
+
+        def fresh_timestamp(value: Any, *, max_age: float) -> bool:
+            if type(value) is not str or not value:
+                return False
+            parsed = parse_timestamp(value)
+            if parsed is None:
+                return False
+            age = now_ts - parsed.timestamp()
+            return -future_slack_seconds <= age <= max_age
+
+        candidates: list[dict[str, str]] = []
+        for supplied_attempt_dir in attempt_dirs:
+            if re.fullmatch(r"[0-9a-f]{24}", supplied_attempt_dir.name) is None:
+                continue
+            try:
+                observed_attempt = supplied_attempt_dir.lstat()
+                if (
+                    not stat.S_ISDIR(observed_attempt.st_mode)
+                    or stat.S_ISLNK(observed_attempt.st_mode)
+                ):
+                    continue
+                attempt_dir = supplied_attempt_dir.resolve(strict=True)
+            except (OSError, RuntimeError):
+                continue
+            if attempt_dir != supplied_attempt_dir or attempt_dir.parent != attempt_root:
+                continue
+
+            binding_path = attempt_dir / "database-attempt-binding.json"
+            implementation_lock_path = attempt_dir / "implementation.lock"
+            nested_state_path = attempt_dir / "portal-task-state.json"
+            implementation_lock_snapshot = self._stable_single_link_json_snapshot(
+                implementation_lock_path
+            )
+            if implementation_lock_snapshot is None:
+                continue
+            binding_snapshot = self._stable_single_link_json_snapshot(binding_path)
+            nested_state_snapshot = self._stable_single_link_json_snapshot(
+                nested_state_path
+            )
+            if (
+                binding_snapshot is None
+                or nested_state_snapshot is None
+                or state_file_repair_reason(nested_state_path)
+            ):
+                continue
+            binding, binding_signature = binding_snapshot
+            implementation_lock, implementation_lock_signature = (
+                implementation_lock_snapshot
+            )
+            nested_state, nested_state_signature = nested_state_snapshot
+            task_alias = binding.get("task_alias")
+            database_task_cid = binding.get("task_cid")
+            if (
+                set(binding) != DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
+                or type(task_alias) is not str
+                or not task_alias
+                or type(database_task_cid) is not str
+                or not database_task_cid
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(binding.get("task_contract_digest") or ""),
+                )
+                is None
+                or type(binding.get("repository_tree_id")) is not str
+                or not binding.get("repository_tree_id")
+            ):
+                continue
+            try:
+                verified_identity = (
+                    verify_database_portal_attempt_projection_identity(
+                        attempt_dir / "task-projection.md",
+                        expected_task_alias=task_alias,
+                        expected_task_cid=database_task_cid,
+                        allowed_root=attempt_root,
+                    )
+                )
+            except (
+                DatabasePortalBridgeError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                UnicodeError,
+                ValueError,
+            ):
+                continue
+            portal_identity = verified_identity.get("portal_task_identity")
+            portal_task_key = verified_identity.get("portal_canonical_task_key")
+            portal_task_cid = verified_identity.get("portal_canonical_task_cid")
+            portal_semantic_fingerprint = verified_identity.get(
+                "portal_semantic_fingerprint"
+            )
+            if (
+                verified_identity.get("verified") is not True
+                or not isinstance(portal_identity, Mapping)
+                or type(portal_task_key) is not str
+                or not portal_task_key
+                or type(portal_task_cid) is not str
+                or not portal_task_cid
+                or type(portal_semantic_fingerprint) is not str
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    portal_semantic_fingerprint,
+                )
+                is None
+                or verified_identity.get("task_alias") != task_alias
+                or verified_identity.get("task_cid") != database_task_cid
+                or verified_identity.get("binding_id")
+                != binding.get("binding_id")
+            ):
+                continue
+
+            lock_pid = implementation_lock.get("pid")
+            lock_attempt = implementation_lock.get("attempt")
+            lock_started_at = implementation_lock.get("started_at")
+            if (
+                set(implementation_lock)
+                != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                or implementation_lock.get("kind") != "implementation"
+                or isinstance(lock_pid, bool)
+                or type(lock_pid) is not int
+                or lock_pid != child_pid
+                or type(implementation_lock.get("lease_id")) is not str
+                or re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(implementation_lock.get("lease_id") or ""),
+                )
+                is None
+                or type(implementation_lock.get("owner_script")) is not str
+                or implementation_lock.get("owner_script")
+                != "implementation_daemon.py"
+                or type(implementation_lock.get("board_namespace")) is not str
+                or not implementation_lock.get("board_namespace")
+                or implementation_lock.get("task_id") != task_alias
+                or implementation_lock.get("canonical_task_key")
+                != portal_task_key
+                or implementation_lock.get("canonical_task_cid")
+                != portal_task_cid
+                or implementation_lock.get("board_namespace")
+                != portal_identity.get("board_namespace")
+                or isinstance(lock_attempt, bool)
+                or type(lock_attempt) is not int
+                or lock_attempt < 1
+                or not fresh_timestamp(
+                    lock_started_at,
+                    max_age=max_age_seconds,
+                )
+            ):
+                continue
+            try:
+                raw_lock_repo_root = Path(
+                    str(implementation_lock.get("repo_root") or "")
+                )
+                raw_lock_state_dir = Path(
+                    str(implementation_lock.get("state_dir") or "")
+                )
+                if (
+                    not raw_lock_repo_root.is_absolute()
+                    or raw_lock_repo_root.is_symlink()
+                    or raw_lock_repo_root != repo_root
+                    or raw_lock_repo_root.resolve(strict=True) != repo_root
+                    or not raw_lock_state_dir.is_absolute()
+                    or raw_lock_state_dir.is_symlink()
+                    or raw_lock_state_dir != attempt_dir
+                    or raw_lock_state_dir.resolve(strict=True) != attempt_dir
+                ):
+                    continue
+            except (OSError, RuntimeError):
+                continue
+
+            active_phase = nested_state.get("active_phase")
+            active_worktree_text = nested_state.get("active_worktree_path")
+            active_branch = nested_state.get("active_branch")
+            expected_execution_id = (
+                f"{task_alias.lower().replace('/', '-')}-"
+                f"{portal_semantic_fingerprint[:12]}"
+            )
+            if (
+                nested_state.get("implementation_in_progress") is not True
+                or nested_state.get("active_task_id") != task_alias
+                or nested_state.get("active_task_key") != portal_task_key
+                or nested_state.get("active_task_cid") != portal_task_cid
+                or nested_state.get("active_attempt") != lock_attempt
+                or type(active_phase) is not str
+                or active_phase not in _DATABASE_PORTAL_CALLBACK_PHASES
+                or type(active_worktree_text) is not str
+                or not active_worktree_text
+                or type(active_branch) is not str
+                or not active_branch
+                or re.fullmatch(
+                    rf"implementation/{re.escape(expected_execution_id)}-"
+                    rf"attempt-{lock_attempt}-[1-9][0-9]*",
+                    active_branch.removeprefix("refs/heads/"),
+                )
+                is None
+                or nested_state.get("active_phase_detail") != active_branch
+                or nested_state.get("last_implementation_task_id")
+                != task_alias
+                or nested_state.get("last_implementation_task_key")
+                != portal_task_key
+                or nested_state.get("last_implementation_task_cid")
+                != portal_task_cid
+                or nested_state.get("last_implementation_started_at")
+                != lock_started_at
+                or nested_state.get("last_implementation_finished_at")
+                not in (None, "")
+                or nested_state.get("last_implementation_worktree_path")
+                != active_worktree_text
+                or nested_state.get("last_implementation_branch")
+                != active_branch
+                or not fresh_timestamp(
+                    nested_state.get("active_phase_started_at"),
+                    max_age=max_age_seconds,
+                )
+                or not fresh_timestamp(
+                    nested_state.get("heartbeat_at"),
+                    max_age=max_age_seconds,
+                )
+                or not fresh_timestamp(
+                    nested_state.get("last_progress_at"),
+                    max_age=max_age_seconds,
+                )
+            ):
+                continue
+            try:
+                raw_workspace = Path(active_worktree_text)
+                if not raw_workspace.is_absolute() or raw_workspace.is_symlink():
+                    continue
+                resolved_workspace = raw_workspace.resolve(strict=False)
+                if resolved_workspace != raw_workspace or resolved_workspace == root:
+                    continue
+                resolved_workspace.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+            binding_after = self._stable_single_link_json_snapshot(binding_path)
+            implementation_lock_after = self._stable_single_link_json_snapshot(
+                implementation_lock_path
+            )
+            nested_state_after = self._stable_single_link_json_snapshot(
+                nested_state_path
+            )
+            try:
+                current_birth = read_process_birth(child_pid)
+            except OSError:
+                continue
+            if (
+                binding_after != (binding, binding_signature)
+                or implementation_lock_after
+                != (implementation_lock, implementation_lock_signature)
+                or nested_state_after != (nested_state, nested_state_signature)
+                or self._stable_process_birth_identity(current_birth)
+                != self._stable_process_birth_identity(child_birth)
+                or owner_liveness(current_birth) is not OwnerLiveness.ALIVE
+            ):
+                continue
+            candidates.append(
+                {
+                    "task_id": task_alias,
+                    "database_task_cid": database_task_cid,
+                    "task_cid": portal_task_cid,
+                    "database_attempt": str(
+                        verified_identity.get("attempt_number") or ""
+                    ),
+                    "attempt": str(lock_attempt),
+                    "phase": str(active_phase),
+                    "worktree_path": str(resolved_workspace),
+                    "branch": active_branch,
+                    "lease_pid": str(child_pid),
+                }
+            )
+
+        if len(candidates) != 1:
+            return None
+        return candidates[0]
+
     def _active_managed_database_pool_evidence(
         self,
         child: Any,
@@ -12843,42 +13645,19 @@ class PortalImplementationSupervisor:
             except (OSError, RuntimeError):
                 continue
             # The lifecycle record, pool lease, and nested daemon state expose
-            # the task CID/alias, attempt, branch, workspace, and live process
-            # birth, but they intentionally do not duplicate the database task
-            # key, contract digest, or repository tree.  Those three identities
-            # are therefore proved here at their strongest contention-free
-            # boundary: the bridge's exact canonical schema plus its binding_id
-            # commitment.  The watchdog must not open a competing database
-            # reader merely to decide whether an already-live child may finish.
+            # Portal's path-bound task identity, local attempt, branch,
+            # workspace, and live process birth.  The validator correlates
+            # that identity with the distinct DuckDB CID/attempt through the
+            # immutable projection and exact binding_id commitment.  The
+            # watchdog must not open a competing database reader merely to
+            # decide whether an already-live child may finish.
             validated_binding = self._validated_managed_database_lifecycle_binding(
                 record,
                 attempt_root=attempt_root,
             )
             if validated_binding is None:
                 continue
-            attempt_dir, binding = validated_binding
-            try:
-                projection_binding = verify_database_portal_attempt_projection(
-                    attempt_dir / "task-projection.md",
-                    expected_task_alias=record.task_id,
-                    expected_task_cid=record.canonical_task_cid,
-                    allowed_root=attempt_root,
-                )
-            except (
-                DatabasePortalBridgeError,
-                OSError,
-                RuntimeError,
-                TypeError,
-                ValueError,
-            ):
-                continue
-            if (
-                projection_binding.get("binding_id") != binding.get("binding_id")
-                or projection_binding.get("canonical_task_key")
-                != binding.get("canonical_task_key")
-                or projection_binding.get("attempt_number") != record.attempt
-            ):
-                continue
+            attempt_dir, _binding = validated_binding
 
             nested_state_path = attempt_dir / "portal-task-state.json"
             nested_state_payload = self._load_single_link_json_object(
@@ -12996,8 +13775,19 @@ class PortalImplementationSupervisor:
                 if projected_active or database_pool_activity
                 else self._active_managed_database_nonterminal_claim(_child)
             )
+            database_callback_activity = (
+                None
+                if (
+                    projected_active
+                    or database_pool_activity
+                    or database_nonterminal_activity
+                )
+                else self._active_managed_database_portal_callback(_child)
+            )
             database_activity = (
-                database_pool_activity or database_nonterminal_activity
+                database_pool_activity
+                or database_nonterminal_activity
+                or database_callback_activity
             )
             active = projected_active or bool(database_activity)
             if active:
@@ -13013,7 +13803,11 @@ class PortalImplementationSupervisor:
                         else (
                             "active_managed_database_nonterminal_lifecycle_claim"
                             if database_nonterminal_activity
-                            else "active_task_or_phase"
+                            else (
+                                "active_managed_database_portal_callback"
+                                if database_callback_activity
+                                else "active_task_or_phase"
+                            )
                         )
                     ),
                     "control_plane_reload_deferred_task_id": (
@@ -13062,6 +13856,26 @@ class PortalImplementationSupervisor:
             # the duration of that scan.
             return SupervisorLoopDecision.keep_running()
 
+        database_pool_activity = self._active_managed_database_pool_lease(
+            _child
+        )
+        database_nonterminal_activity = (
+            None
+            if database_pool_activity
+            else self._active_managed_database_nonterminal_claim(_child)
+        )
+        database_callback_activity = (
+            None
+            if database_pool_activity or database_nonterminal_activity
+            else self._active_managed_database_portal_callback(_child)
+        )
+        if (
+            database_pool_activity
+            or database_nonterminal_activity
+            or database_callback_activity
+        ):
+            return SupervisorLoopDecision.keep_running()
+
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
         daemon_process_birth = getattr(_child, "identity_process_birth", None)
@@ -13092,6 +13906,29 @@ class PortalImplementationSupervisor:
             if not failed:
                 finish_maintenance("completed")
 
+        # Maintenance can overlap the lifecycle/pool handoff itself.  Re-read
+        # every exact database activity proof before acting on a stale root
+        # result so a newly entered synchronous callback is not recycled.
+        database_pool_activity = self._active_managed_database_pool_lease(
+            _child
+        )
+        database_nonterminal_activity = (
+            None
+            if database_pool_activity
+            else self._active_managed_database_nonterminal_claim(_child)
+        )
+        database_callback_activity = (
+            None
+            if database_pool_activity or database_nonterminal_activity
+            else self._active_managed_database_portal_callback(_child)
+        )
+        if (
+            database_pool_activity
+            or database_nonterminal_activity
+            or database_callback_activity
+        ):
+            return SupervisorLoopDecision.keep_running()
+
         main_checkout_repair = dict(result.get("main_checkout_repair") or {})
         if main_checkout_repair.get("repaired"):
             return SupervisorLoopDecision.recycle(
@@ -13099,9 +13936,40 @@ class PortalImplementationSupervisor:
                 detail=main_checkout_repair,
             )
         if result.get("stuck"):
+            # Maintenance may repair the stale outer compatibility projection
+            # that produced ``result["stuck"]``.  Re-evaluate durable state
+            # before using that pre-repair result as recycle authority, but
+            # grant the override only from exact stable state evidence.
+            post_maintenance_state = (
+                self._verified_post_maintenance_state_for_stuck_override()
+            )
+            post_maintenance_reason = ""
+            if post_maintenance_state is not None:
+                post_maintenance_stuck, post_maintenance_reason = (
+                    self.is_stuck(
+                        post_maintenance_state,
+                        now_ts=time.time(),
+                    )
+                )
+                if not post_maintenance_stuck:
+                    return SupervisorLoopDecision.keep_running()
             return SupervisorLoopDecision.recycle(
-                str(result.get("reason") or "stuck_progress"),
-                detail={"active_task_id": result.get("active_task_id") or ""},
+                str(
+                    post_maintenance_reason
+                    or result.get("reason")
+                    or "stuck_progress"
+                ),
+                detail={
+                    "active_task_id": (
+                        (
+                            post_maintenance_state.active_task_id
+                            if post_maintenance_state is not None
+                            else ""
+                        )
+                        or result.get("active_task_id")
+                        or ""
+                    )
+                },
             )
         return SupervisorLoopDecision.keep_running()
 
@@ -18398,8 +19266,150 @@ class PortalImplementationSupervisor:
             track="ops",
         )
 
-    @staticmethod
+    def _database_completion_portal_identity_proof(
+        self,
+        *,
+        task_alias: str,
+        task_cid: str,
+        receipt: Mapping[str, Any],
+        completion_attempt_number: int,
+        control_expected_revision: int,
+    ) -> dict[str, Any]:
+        """Recover one exact completed attempt's Portal lifecycle identity.
+
+        Attempt projections are lane-local runtime evidence.  A supervisor can
+        reconcile worktrees created by any sibling lane, so locate only the
+        directory named by the completed receipt's exact attempt ID across the
+        board's live lane namespace.  Missing, duplicate, symlinked, malformed,
+        or receipt-divergent evidence grants no cleanup authority.
+        """
+
+        attempt_id = str(receipt.get("attempt_id") or "").strip()
+        expected_attempt_directory = hashlib.sha256(
+            attempt_id.encode("utf-8")
+        ).hexdigest()[:24]
+        try:
+            namespace_root = self.config.state_path.parent.parent.resolve(
+                strict=True
+            )
+            state_dirs = sorted(namespace_root.iterdir())
+        except (OSError, RuntimeError):
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_namespace_unavailable",
+            }
+
+        candidates: list[Path] = []
+        for state_dir in state_dirs:
+            try:
+                if state_dir.is_symlink() or not state_dir.is_dir():
+                    continue
+                attempt_roots = sorted(state_dir.iterdir())
+            except OSError:
+                continue
+            for attempt_root in attempt_roots:
+                try:
+                    if (
+                        not attempt_root.name.endswith(
+                            "_database_portal_attempts"
+                        )
+                        or attempt_root.is_symlink()
+                        or not attempt_root.is_dir()
+                    ):
+                        continue
+                    candidate = attempt_root / expected_attempt_directory
+                    if candidate.is_symlink() or candidate.exists():
+                        candidates.append(candidate)
+                except OSError:
+                    continue
+
+        if not candidates:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_missing",
+            }
+        if len(candidates) != 1:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_ambiguous",
+                "candidate_count": len(candidates),
+            }
+
+        attempt_dir = candidates[0]
+        attempt_root = attempt_dir.parent
+        try:
+            if attempt_dir.is_symlink() or not attempt_dir.is_dir():
+                raise DatabasePortalBridgeError(
+                    "database Portal attempt directory is not a regular directory"
+                )
+            resolved_attempt_root = attempt_root.resolve(strict=True)
+            resolved_attempt_root.relative_to(namespace_root)
+            verified = verify_database_portal_attempt_projection_identity(
+                attempt_dir / "task-projection.md",
+                expected_task_alias=task_alias,
+                expected_task_cid=task_cid,
+                allowed_root=attempt_root,
+            )
+            if (
+                attempt_dir.is_symlink()
+                or attempt_root.is_symlink()
+                or (attempt_dir / "task-projection.md").parent.resolve(
+                    strict=True
+                )
+                != attempt_dir.resolve(strict=True)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal attempt path changed during verification"
+                )
+        except (DatabasePortalBridgeError, OSError, RuntimeError, ValueError) as exc:
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_projection_unverified",
+                "error_type": type(exc).__name__,
+            }
+
+        expected_binding = {
+            "attempt_id": attempt_id,
+            "claim_id": str(receipt.get("claim_id") or ""),
+            "attempt_number": completion_attempt_number,
+            "owner_session_id": str(
+                receipt.get("owner_session_id") or ""
+            ),
+            "task_alias": task_alias,
+            "task_cid": task_cid,
+            "task_revision": control_expected_revision,
+            "fencing_token": receipt.get("fencing_token"),
+            "fence_epoch": receipt.get("fence_epoch"),
+            "lease_id": str(receipt.get("lease_id") or ""),
+        }
+        if any(
+            verified.get(field) != expected
+            for field, expected in expected_binding.items()
+        ):
+            return {
+                "verified": False,
+                "reason": "database_portal_attempt_binding_mismatch",
+            }
+        return {
+            "verified": True,
+            "reason": "database_portal_attempt_identity_verified",
+            "binding_id": str(verified["binding_id"]),
+            "projection_immutable_digest": str(
+                verified["projection_immutable_digest"]
+            ),
+            "portal_canonical_task_key": str(
+                verified["portal_canonical_task_key"]
+            ),
+            "portal_canonical_task_cid": str(
+                verified["portal_canonical_task_cid"]
+            ),
+            "portal_semantic_fingerprint": str(
+                verified["portal_semantic_fingerprint"]
+            ),
+        }
+
     def _database_completion_receipt_proof(
+        self,
         task: Any,
         *,
         expected_alias: str,
@@ -18429,68 +19439,12 @@ class PortalImplementationSupervisor:
                 "status": status,
             }
 
-        # Database tasks do not have to persist ``task_key``.  Reuse the
-        # database Portal bridge's canonical projection identity instead of
-        # treating that optional projection field as authority.  The bridge
-        # derives ``task/v1/sha256(task_cid)`` when no declared key exists;
-        # Portal's canonical identity then owns the exact branch fingerprint.
-        try:
-            from .database_portal_bridge import (
-                DatabasePortalBridgeError,
-                _canonical_projection_identity,
-            )
-            from ..task_sources.task_identity import canonical_task_identity
-
-            task_key, canonical_task_cid = _canonical_projection_identity(
-                task,
-                body,
-            )
-            identity = canonical_task_identity(
-                {
-                    "task_id": expected_alias,
-                    "canonical task key": task_key,
-                    "canonical task cid": canonical_task_cid,
-                }
-            )
-        except (DatabasePortalBridgeError, ValueError, TypeError) as exc:
-            return {
-                "verified": False,
-                "reason": "canonical_task_projection_identity_invalid",
-                "task_id": expected_alias,
-                "task_cid": task_cid,
-                "status": status,
-                "error_type": type(exc).__name__,
-            }
-        expected_fingerprint = identity.short_id
-        alias_fragment = expected_alias.lower().replace("/", "-")
-        branch_match = re.fullmatch(
-            (
-                r"rescue/worktree/implementation-"
-                + re.escape(alias_fragment)
-                + "-"
-                + re.escape(expected_fingerprint)
-                + r"-attempt-([1-9][0-9]*)-([0-9]+)-([0-9a-f]{12})"
-            ),
-            str(branch or "").removeprefix("refs/heads/").lower(),
-        )
-        if branch_match is None:
-            return {
-                "verified": False,
-                "reason": "branch_task_generation_mismatch",
-                "task_id": expected_alias,
-                "task_cid": task_cid,
-                "task_key": task_key,
-                "status": status,
-                "expected_fingerprint": expected_fingerprint,
-            }
-        branch_attempt_number = int(branch_match.group(1))
         if status != "completed":
             return {
                 "verified": False,
                 "reason": "canonical_task_not_completed",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
@@ -18508,19 +19462,85 @@ class PortalImplementationSupervisor:
             "coordination_preparation",
             "validation",
         }
+        execution_route_receipt_fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        receipt_fields = (
+            frozenset(receipt) if isinstance(receipt, Mapping) else frozenset()
+        )
         if (
             not isinstance(receipt, Mapping)
-            or set(receipt) != required_receipt_fields
+            or receipt_fields
+            not in {
+                frozenset(required_receipt_fields),
+                frozenset(
+                    required_receipt_fields | execution_route_receipt_fields
+                ),
+            }
         ):
             return {
                 "verified": False,
                 "reason": "database_completion_receipt_shape_invalid",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
+
+        execution_route_task_revision: int | None = None
+        if execution_route_receipt_fields <= receipt_fields:
+            from ..task_sources.database_task_source import (
+                TaskSourceIntegrityError,
+            )
+            from ..task_sources.task_execution_route_policy import (
+                TaskExecutionRouteBinding,
+            )
+
+            route_value = receipt.get("execution_route_binding")
+            try:
+                if not isinstance(route_value, Mapping):
+                    raise TaskSourceIntegrityError(
+                        "completion execution route is not an object"
+                    )
+                normalized_route = TaskExecutionRouteBinding.from_dict(
+                    route_value
+                ).to_dict()
+                exact_route = dict(route_value)
+            except (TaskSourceIntegrityError, TypeError, ValueError):
+                return {
+                    "verified": False,
+                    "reason": "database_completion_execution_route_unverified",
+                    "task_id": expected_alias,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": revision,
+                }
+            route_policy_id = receipt.get("execution_route_policy_id")
+            route_origin_revision = receipt.get(
+                "execution_route_origin_revision"
+            )
+            if (
+                exact_route != normalized_route
+                or normalized_route["task_alias"] != expected_alias
+                or normalized_route["task_cid"] != task_cid
+                or type(route_policy_id) is not str
+                or route_policy_id != normalized_route["policy_id"]
+                or type(route_origin_revision) is not int
+                or route_origin_revision != normalized_route["task_revision"]
+            ):
+                return {
+                    "verified": False,
+                    "reason": "database_completion_execution_route_unverified",
+                    "task_id": expected_alias,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": revision,
+                }
+            execution_route_task_revision = int(
+                normalized_route["task_revision"]
+            )
         validation = receipt.get("validation")
         evidence_digest = str(receipt.get("evidence_digest") or "").strip()
         validation_digest = (
@@ -18561,7 +19581,6 @@ class PortalImplementationSupervisor:
                 "reason": "database_completion_receipt_unverified",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
             }
@@ -18629,12 +19648,73 @@ class PortalImplementationSupervisor:
                 "reason": "database_completion_preparation_unverified",
                 "task_id": expected_alias,
                 "task_cid": task_cid,
-                "task_key": task_key,
                 "status": status,
                 "revision": revision,
-                "branch_attempt_number": branch_attempt_number,
                 "completion_attempt_number": completion_attempt_number,
             }
+        if (
+            execution_route_task_revision is not None
+            and execution_route_task_revision > control_expected_revision
+        ):
+            return {
+                "verified": False,
+                "reason": "database_completion_execution_route_unverified",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "status": status,
+                "revision": revision,
+                "completion_attempt_number": completion_attempt_number,
+            }
+
+        portal_identity = self._database_completion_portal_identity_proof(
+            task_alias=expected_alias,
+            task_cid=task_cid,
+            receipt=receipt,
+            completion_attempt_number=completion_attempt_number,
+            control_expected_revision=control_expected_revision,
+        )
+        if not portal_identity.get("verified"):
+            return {
+                "verified": False,
+                "reason": str(portal_identity.get("reason") or ""),
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "status": status,
+                "revision": revision,
+                "completion_attempt_number": completion_attempt_number,
+                **{
+                    key: portal_identity[key]
+                    for key in ("candidate_count", "error_type")
+                    if key in portal_identity
+                },
+            }
+
+        task_key = str(portal_identity["portal_canonical_task_key"])
+        expected_fingerprint = str(
+            portal_identity["portal_semantic_fingerprint"]
+        )[:12]
+        alias_fragment = expected_alias.lower().replace("/", "-")
+        branch_match = re.fullmatch(
+            (
+                r"rescue/worktree/implementation-"
+                + re.escape(alias_fragment)
+                + "-"
+                + re.escape(expected_fingerprint)
+                + r"-attempt-([1-9][0-9]*)-([0-9]+)-([0-9a-f]{12})"
+            ),
+            str(branch or "").removeprefix("refs/heads/").lower(),
+        )
+        if branch_match is None:
+            return {
+                "verified": False,
+                "reason": "branch_task_generation_mismatch",
+                "task_id": expected_alias,
+                "task_cid": task_cid,
+                "task_key": task_key,
+                "status": status,
+                "expected_fingerprint": expected_fingerprint,
+            }
+        branch_attempt_number = int(branch_match.group(1))
         return {
             "verified": True,
             "reason": "database_completed_task_verified",
@@ -18647,6 +19727,18 @@ class PortalImplementationSupervisor:
             "branch_attempt_number": branch_attempt_number,
             "completion_attempt_number": completion_attempt_number,
             "evidence_digest": evidence_digest,
+            "portal_canonical_task_cid": str(
+                portal_identity["portal_canonical_task_cid"]
+            ),
+            "portal_semantic_fingerprint": str(
+                portal_identity["portal_semantic_fingerprint"]
+            ),
+            "database_portal_attempt_binding_id": str(
+                portal_identity["binding_id"]
+            ),
+            "database_portal_projection_immutable_digest": str(
+                portal_identity["projection_immutable_digest"]
+            ),
         }
 
     def _canonical_completed_reconciliation_task(
@@ -18687,14 +19779,9 @@ class PortalImplementationSupervisor:
                 "task_id": task_id,
             }
         try:
-            from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-                DatabaseTaskSource,
-            )
-
-            with DatabaseTaskSource(
+            with self._canonical_database_task_source(
                 endpoint,
-                owner_id=f"worktree-reconciliation:{os.getpid()}",
-                install_schema=False,
+                owner_scope=f"worktree-reconciliation:{os.getpid()}",
             ) as task_source:
                 task = task_source.get_task(task_id)
         except Exception as exc:
@@ -19447,6 +20534,148 @@ class PortalImplementationSupervisor:
         self._record_event("dirty_worktree_rescued", result)
         return result
 
+    def _retire_original_branch_after_rescue(
+        self,
+        worktree_path: Path,
+        *,
+        original_branch: str,
+        original_head: str,
+        target_ref: str,
+        rescue_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Delete an exact merged implementation branch after rescue.
+
+        Switching a dirty pooled checkout to its rescue branch otherwise
+        leaves the pool sidecar's original branch alive forever.  Orphaned
+        pool metadata deliberately requires both the checkout and recorded
+        branch to be absent, so preserve the rescue branch while retiring the
+        exact original branch with Git's non-forcing delete guard.
+
+        Every identity and ancestry assertion is repeated after the rescue.
+        A missing or changed proof leaves the original branch intact.
+        """
+
+        started_at = utc_now()
+        branch = str(original_branch or "").removeprefix("refs/heads/")
+        expected_head = str(original_head or "").strip()
+        rescue_branch = str(
+            rescue_result.get("rescue_branch") or ""
+        ).removeprefix("refs/heads/")
+        rescue_commit = str(
+            rescue_result.get("rescue_commit") or ""
+        ).strip()
+        detail: dict[str, Any] = {
+            "attempted": False,
+            "retired": False,
+            "deleted": False,
+            "branch": branch,
+            "expected_head": expected_head,
+            "target_ref": target_ref,
+            "rescue_branch": rescue_branch,
+            "rescue_commit": rescue_commit,
+            "delete_mode": "non_force",
+            "started_at": started_at,
+        }
+
+        def finish(reason: str, **extra: Any) -> dict[str, Any]:
+            result = {
+                **detail,
+                "reason": reason,
+                **extra,
+                "finished_at": utc_now(),
+            }
+            self._record_event(
+                "rescued_original_branch_retirement",
+                result,
+            )
+            return result
+
+        if rescue_result.get("preserved") is not True:
+            return finish("rescue_not_preserved")
+        if not branch.startswith("implementation/"):
+            return finish("original_branch_not_implementation")
+        if not expected_head:
+            return finish("original_head_missing")
+        if not rescue_branch.startswith("rescue/worktree/"):
+            return finish("rescue_branch_identity_missing")
+        if not rescue_commit:
+            return finish("rescue_commit_identity_missing")
+
+        actual_branch = self._git_current_branch(worktree_path)
+        actual_head = self._git_ref_commit(worktree_path, "HEAD")
+        rescue_branch_head = self._git_ref_commit(
+            self.config.repo_root,
+            rescue_branch,
+        )
+        if (
+            actual_branch != rescue_branch
+            or actual_head != rescue_commit
+            or rescue_branch_head != rescue_commit
+        ):
+            return finish(
+                "rescue_identity_changed",
+                actual_branch=actual_branch,
+                actual_head=actual_head,
+                rescue_branch_head=rescue_branch_head,
+            )
+
+        original_branch_head = self._git_ref_commit(
+            self.config.repo_root,
+            branch,
+        )
+        if not original_branch_head:
+            return finish(
+                "original_branch_already_absent",
+                retired=True,
+            )
+        if original_branch_head != expected_head:
+            return finish(
+                "original_branch_identity_changed",
+                actual_head=original_branch_head,
+            )
+        if not self._git_ref_is_ancestor(
+            self.config.repo_root,
+            expected_head,
+            rescue_commit,
+        ):
+            return finish(
+                "rescue_commit_does_not_preserve_original_head",
+                actual_head=original_branch_head,
+            )
+        if not self._git_ref_is_ancestor(
+            self.config.repo_root,
+            branch,
+            target_ref,
+        ):
+            return finish(
+                "original_branch_no_longer_merged",
+                actual_head=original_branch_head,
+            )
+
+        command = ["git", "branch", "--delete", branch]
+        delete = subprocess.run(
+            command,
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        deleted = delete.returncode == 0
+        return finish(
+            (
+                "merged_original_branch_retired"
+                if deleted
+                else "merged_original_branch_retirement_failed"
+            ),
+            attempted=True,
+            retired=deleted,
+            deleted=deleted,
+            command=command,
+            returncode=delete.returncode,
+            stdout=delete.stdout[-4000:],
+            stderr=delete.stderr[-4000:],
+        )
+
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
@@ -19624,6 +20853,21 @@ class PortalImplementationSupervisor:
                         reason=f"cleanup_dirty_worktree:{dirty_reason}",
                     )
                     if rescue_result.get("preserved"):
+                        original_branch_retirement = (
+                            self._retire_original_branch_after_rescue(
+                                path,
+                                original_branch=branch,
+                                original_head=head,
+                                target_ref=target_ref,
+                                rescue_result=rescue_result,
+                            )
+                        )
+                        rescue_result = {
+                            **rescue_result,
+                            "original_branch_retirement": (
+                                original_branch_retirement
+                            ),
+                        }
                         skipped.append(
                             {
                                 "path": str(path),
@@ -20797,6 +22041,356 @@ class PortalImplementationSupervisor:
             events_path=self.config.events_path,
         )
 
+    def _objective_refill_budget_path(self) -> Path:
+        """Return one board-shared budget artifact for all configured lanes."""
+
+        state_root = self.config.state_dir
+        if re.fullmatch(r"lane-\d+", state_root.name):
+            state_root = state_root.parent
+        namespace = re.sub(
+            r"[^a-zA-Z0-9_.-]+",
+            "-",
+            str(self.board_namespace or "objective-refill").strip(),
+        ).strip("-.") or "objective-refill"
+        return state_root / f"{namespace}_objective_refill_budget.json"
+
+    def _load_objective_refill_budget(self) -> dict[str, Any]:
+        """Load the durable epoch counter, rejecting malformed budget state."""
+
+        path = self._objective_refill_budget_path()
+        if not path.exists():
+            return {
+                "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                "board_namespace": self.board_namespace,
+                "epochs_started": 0,
+            }
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"objective refill budget is unreadable: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ValueError("objective refill budget must be an object")
+        if payload.get("schema") != OBJECTIVE_REFILL_BUDGET_SCHEMA:
+            raise ValueError("objective refill budget schema is unsupported")
+        if str(payload.get("board_namespace") or "") != self.board_namespace:
+            raise ValueError("objective refill budget board namespace mismatches")
+        status = str(payload.get("status") or "active")
+        if status == "quarantined":
+            raise ValueError("objective refill budget is quarantined")
+        if status not in {"active", "exhausted"}:
+            raise ValueError("objective refill budget status is unsupported")
+        epochs_started = payload.get("epochs_started")
+        if (
+            isinstance(epochs_started, bool)
+            or not isinstance(epochs_started, int)
+            or epochs_started < 0
+        ):
+            raise ValueError(
+                "objective refill budget epochs_started must be a nonnegative integer"
+            )
+        return payload
+
+    def _write_objective_refill_budget(
+        self,
+        budget: Mapping[str, Any],
+    ) -> None:
+        write_json_atomic(self._objective_refill_budget_path(), dict(budget))
+
+    @contextmanager
+    def _objective_refill_budget_transaction(self):
+        """Serialize cap admission, reservation, generation, and verification."""
+
+        lock_path = self._objective_refill_budget_path().with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_CREAT | os.O_RDWR
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(lock_path, flags, 0o600)
+        locked = False
+        try:
+            lock_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+                raise RuntimeError(
+                    "objective refill budget lock must be one regular file"
+                )
+            deadline = time.monotonic() + min(
+                30.0,
+                max(1.0, float(self.config.check_interval)),
+            )
+            while True:
+                try:
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    locked = True
+                    break
+                except BlockingIOError as exc:
+                    if time.monotonic() >= deadline:
+                        raise ObjectiveRefillBudgetLockTimeoutError(
+                            "objective refill budget lock remained busy"
+                        ) from exc
+                    time.sleep(0.05)
+            yield
+        finally:
+            if locked:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+
+    def _objective_refill_budget_summary(
+        self,
+        budget: Mapping[str, Any],
+        *,
+        task_count: int,
+    ) -> dict[str, Any]:
+        max_total_tasks = self.config.objective_refill_max_total_tasks
+        summary = {
+            "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+            "board_namespace": self.board_namespace,
+            "epochs_started": int(budget.get("epochs_started") or 0),
+            "max_epochs": self.config.objective_refill_max_epochs,
+            "max_total_tasks": max_total_tasks,
+            "task_count": int(task_count),
+            "remaining_task_capacity": (
+                None
+                if max_total_tasks is None
+                else max(0, max_total_tasks - int(task_count))
+            ),
+            "budget_path": str(self._objective_refill_budget_path()),
+        }
+        task_count_authority = budget.get("task_count_authority")
+        if isinstance(task_count_authority, Mapping):
+            summary["task_count_authority"] = dict(task_count_authority)
+        return summary
+
+    def _objective_refill_authoritative_task_count(
+        self,
+        todo_text: str,
+        *,
+        task_prefix: str,
+    ) -> tuple[int, dict[str, Any]]:
+        """Count canonical DB tasks plus any not-yet-ingested projection rows."""
+
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+            task_ids_from_todo_text,
+        )
+
+        projection_task_records = task_ids_from_todo_text(
+            todo_text,
+            task_prefix=task_prefix,
+        )
+        projection_task_ids = set(projection_task_records)
+        if len(projection_task_records) != len(projection_task_ids):
+            raise ValueError(
+                "objective refill projection contains duplicate task aliases"
+            )
+        projection_count = len(projection_task_ids)
+        program = self.config.database_program
+        if not (
+            program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.task_source_kind == TASK_SOURCE_DUCKDB
+        ):
+            return projection_count, {
+                "authority": "markdown",
+                "canonical_task_count": projection_count,
+                "projection_task_count": projection_count,
+                "effective_task_count": projection_count,
+            }
+        endpoint = str(program.quack_endpoint or "").strip()
+        if not endpoint:
+            raise ValueError(
+                "Quack objective refill budget requires its canonical endpoint"
+            )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+            MAX_QUERY_LIMIT,
+        )
+
+        with self._canonical_database_task_source(
+            endpoint,
+            owner_scope=f"objective-refill-budget:{os.getpid()}",
+        ) as task_source:
+            snapshot = task_source.snapshot()
+            canonical_task_ids: set[str] = set()
+            cursor = ""
+            while True:
+                page = task_source.list_tasks(
+                    cursor=cursor,
+                    limit=MAX_QUERY_LIMIT,
+                )
+                canonical_task_ids.update(
+                    str(task.task_alias or task.task_cid)
+                    for task in page.tasks
+                )
+                cursor = str(page.next_cursor or "")
+                if not cursor:
+                    break
+            canonical_count = int(snapshot.task_count)
+        if canonical_count != len(canonical_task_ids):
+            raise ValueError(
+                "Quack objective refill task snapshot changed during counting"
+            )
+        canonical_only = canonical_task_ids - projection_task_ids
+        if canonical_only:
+            raise ValueError(
+                "Quack objective refill projection omits canonical task aliases: "
+                + ", ".join(sorted(canonical_only)[:10])
+            )
+        overlap_count = len(canonical_task_ids & projection_task_ids)
+        projection_only_count = len(projection_task_ids - canonical_task_ids)
+        effective_count = len(canonical_task_ids | projection_task_ids)
+        return effective_count, {
+            "authority": "quack_duckdb",
+            "task_source_transport": (
+                "pid_bound_typed_state_owner"
+                if self._uses_supervisor_state_owner_bootstrap()
+                else "legacy_database_adapter"
+            ),
+            "canonical_task_count": canonical_count,
+            "projection_task_count": projection_count,
+            "effective_task_count": effective_count,
+            "overlap_task_count": overlap_count,
+            "canonical_only_task_count": 0,
+            "projection_only_task_count": projection_only_count,
+            "store_id": program.store_id,
+            "store_generation": program.store_generation,
+            "schema_revision": program.schema_revision,
+        }
+
+    def _objective_refill_budget_exhausted(
+        self,
+        *,
+        reason: str,
+        budget: dict[str, Any],
+        strategy: dict[str, Any],
+        task_count: int,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Persist and emit typed non-completion evidence for a closed cap."""
+
+        summary = self._objective_refill_budget_summary(
+            budget,
+            task_count=task_count,
+        )
+        evidence_fields = {
+            **summary,
+            "schema": OBJECTIVE_REFILL_EXHAUSTION_SCHEMA,
+            "status": "exhausted",
+            "reason": reason,
+        }
+        previous = budget.get("last_exhaustion")
+        previous = previous if isinstance(previous, Mapping) else {}
+        unchanged = all(
+            previous.get(field) == value
+            for field, value in evidence_fields.items()
+        )
+        evidence = (
+            dict(previous)
+            if unchanged
+            else {**evidence_fields, "observed_at": utc_now()}
+        )
+        budget.update(
+            {
+                "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                "board_namespace": self.board_namespace,
+                "configured_max_epochs": self.config.objective_refill_max_epochs,
+                "configured_max_total_tasks": (
+                    self.config.objective_refill_max_total_tasks
+                ),
+                "status": "exhausted",
+                "last_exhaustion": evidence,
+            }
+        )
+        self._write_objective_refill_budget(budget)
+        strategy["objective_refill_budget"] = summary
+        strategy["last_objective_refill_budget_exhaustion"] = evidence
+        write_json_atomic(self.config.strategy_path, strategy)
+        if not unchanged:
+            self._record_event("objective_refill_budget_exhausted", evidence)
+        return self._terminal_refill_result(
+            # A campaign budget closing is not analyzer search-space
+            # exhaustion and must never become successful/completion evidence.
+            ScanTerminalReason.PARTIAL,
+            scan_mode="budget_exhausted",
+            analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            metadata={
+                "generated_count": 0,
+                "task_ids": [],
+                "objective_refill_budget": summary,
+                "objective_refill_budget_exhaustion": evidence,
+            },
+        )
+
+    def _quarantine_objective_refill_budget(
+        self,
+        *,
+        reason: str,
+        budget: dict[str, Any],
+        original_todo_text: str,
+        task_prefix: str,
+        starting_task_count: int,
+        effective_max_findings: int,
+        started_at: datetime,
+        observed_task_count: int | None = None,
+        failure: BaseException | None = None,
+    ) -> RefillScanResult:
+        """Restore the board projection and permanently close an unsafe budget."""
+
+        restoration_error = ""
+        restored_task_count: int | None = None
+        restored_task_count_authority: dict[str, Any] | None = None
+        try:
+            write_text_atomic(self.config.todo_path, original_todo_text)
+            restored_task_count, restored_task_count_authority = (
+                self._objective_refill_authoritative_task_count(
+                    self.config.todo_path.read_text(encoding="utf-8"),
+                    task_prefix=task_prefix,
+                )
+            )
+        except Exception as exc:
+            restoration_error = f"{type(exc).__name__}: {exc}"
+        evidence: dict[str, Any] = {
+            "schema": OBJECTIVE_REFILL_EXHAUSTION_SCHEMA,
+            "status": "quarantined",
+            "reason": reason,
+            "max_total_tasks": self.config.objective_refill_max_total_tasks,
+            "starting_task_count": starting_task_count,
+            "restored_task_count": restored_task_count,
+            "restored_task_count_authority": restored_task_count_authority,
+            "restoration_verified": not restoration_error,
+            "effective_max_findings": effective_max_findings,
+            "observed_at": utc_now(),
+        }
+        if observed_task_count is not None:
+            evidence["observed_task_count"] = observed_task_count
+        if failure is not None:
+            evidence["failure_type"] = type(failure).__name__
+            evidence["failure"] = str(failure)
+        if restoration_error:
+            evidence["restoration_error"] = restoration_error
+        budget.update(
+            {
+                "status": "quarantined",
+                "last_violation": evidence,
+            }
+        )
+        self._write_objective_refill_budget(budget)
+        strategy = self._load_strategy()
+        strategy["objective_refill_budget_quarantine"] = evidence
+        write_json_atomic(self.config.strategy_path, strategy)
+        self._record_event("objective_refill_budget_quarantined", evidence)
+        return self._terminal_refill_result(
+            ScanTerminalReason.FAILED,
+            scan_mode="budget_postcondition_quarantined",
+            analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            error=f"objective refill budget postcondition failed: {reason}",
+            metadata={"objective_refill_budget_quarantine": evidence},
+        )
+
     def _adapt_legacy_objective_result(
         self,
         value: Any,
@@ -21660,6 +23254,42 @@ class PortalImplementationSupervisor:
                 analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
                 started_at=started_at,
             )
+        if (
+            self.config.objective_refill_max_epochs is not None
+            or self.config.objective_refill_max_total_tasks is not None
+        ):
+            try:
+                with self._objective_refill_budget_transaction():
+                    return self._refill_objective_backlog_transaction(
+                        started_at=started_at,
+                    )
+            except ObjectiveRefillBudgetLockTimeoutError as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "deferred",
+                    "reason": "budget_lock_busy",
+                    "board_namespace": self.board_namespace,
+                    "budget_path": str(self._objective_refill_budget_path()),
+                    "error": str(exc),
+                }
+                self._record_event("objective_refill_budget_lock_deferred", evidence)
+                return self._terminal_refill_result(
+                    ScanTerminalReason.PARTIAL,
+                    scan_mode="budget_lock_deferred",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    metadata={"objective_refill_budget_deferred": evidence},
+                )
+        return self._refill_objective_backlog_transaction(
+            started_at=started_at,
+        )
+
+    def _refill_objective_backlog_transaction(
+        self,
+        *,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Run one refill while any configured campaign budget is locked."""
 
         from argparse import Namespace
 
@@ -21734,6 +23364,36 @@ class PortalImplementationSupervisor:
             cooldown_seconds=self.config.objective_scan_cooldown_seconds,
             force=bool(force_goal_ids),
         )
+        budget_enabled = (
+            self.config.objective_refill_max_epochs is not None
+            or self.config.objective_refill_max_total_tasks is not None
+        )
+        budget: dict[str, Any] = {
+            "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+            "board_namespace": self.board_namespace,
+            "epochs_started": 0,
+        }
+        if budget_enabled:
+            try:
+                budget = self._load_objective_refill_budget()
+            except ValueError as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "invalid",
+                    "reason": "budget_state_invalid",
+                    "board_namespace": self.board_namespace,
+                    "budget_path": str(self._objective_refill_budget_path()),
+                    "error": str(exc),
+                }
+                self._record_event("objective_refill_budget_invalid", evidence)
+                return self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="budget_state_invalid",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    error=str(exc),
+                    metadata={"objective_refill_budget_failure": evidence},
+                )
         if not should_scan:
             try:
                 artifact_refresh = (
@@ -21793,6 +23453,94 @@ class PortalImplementationSupervisor:
                 },
             )
 
+        if budget_enabled:
+            try:
+                task_count, task_count_authority = (
+                    self._objective_refill_authoritative_task_count(
+                        todo_text,
+                        task_prefix=task_prefix,
+                    )
+                )
+            except Exception as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "invalid",
+                    "reason": "canonical_task_count_unavailable",
+                    "board_namespace": self.board_namespace,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                self._record_event(
+                    "objective_refill_task_count_unavailable",
+                    evidence,
+                )
+                return self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="budget_task_count_unavailable",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    error=str(exc),
+                    metadata={
+                        "objective_refill_budget_failure": evidence,
+                    },
+                )
+            budget["task_count_authority"] = task_count_authority
+            max_total_tasks = self.config.objective_refill_max_total_tasks
+            if max_total_tasks is not None and task_count >= max_total_tasks:
+                return self._objective_refill_budget_exhausted(
+                    reason="max_total_tasks",
+                    budget=budget,
+                    strategy=strategy,
+                    task_count=task_count,
+                    started_at=started_at,
+                )
+            max_epochs = self.config.objective_refill_max_epochs
+            if (
+                max_epochs is not None
+                and int(budget.get("epochs_started") or 0) >= max_epochs
+            ):
+                return self._objective_refill_budget_exhausted(
+                    reason="max_epochs",
+                    budget=budget,
+                    strategy=strategy,
+                    task_count=task_count,
+                    started_at=started_at,
+                )
+
+        effective_max_findings = self.config.objective_scan_max_findings
+        if self.config.objective_refill_max_total_tasks is not None:
+            effective_max_findings = min(
+                effective_max_findings,
+                self.config.objective_refill_max_total_tasks - task_count,
+            )
+        if budget_enabled:
+            budget.update(
+                {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "board_namespace": self.board_namespace,
+                    "epochs_started": int(budget.get("epochs_started") or 0)
+                    + 1,
+                    "configured_max_epochs": (
+                        self.config.objective_refill_max_epochs
+                    ),
+                    "configured_max_total_tasks": (
+                        self.config.objective_refill_max_total_tasks
+                    ),
+                    "status": "active",
+                    "last_epoch_started_at": utc_now(),
+                    "last_epoch_starting_task_count": task_count,
+                    "last_epoch_max_findings": effective_max_findings,
+                }
+            )
+            self._write_objective_refill_budget(budget)
+            strategy["objective_refill_budget"] = (
+                self._objective_refill_budget_summary(
+                    budget,
+                    task_count=task_count,
+                )
+            )
+            write_json_atomic(self.config.strategy_path, strategy)
+
         state_root = self.config.state_dir.parent
         discovery_dir = self.config.objective_discovery_dir or state_root / "discovery"
         bundle_dir = self.config.objective_bundle_dir or state_root / "objective_bundles"
@@ -21832,9 +23580,9 @@ class PortalImplementationSupervisor:
             seen_fingerprint=sorted(seen_fingerprints),
             force_goal_id=sorted(set(force_goal_ids)),
             repeat_existing=False,
-            max_findings=self.config.objective_scan_max_findings,
+            max_findings=effective_max_findings,
             objective_generation_max_new_work=(
-                self.config.objective_scan_max_findings
+                effective_max_findings
             ),
             ensure_tracking_document=self.config.objective_ensure_tracking_document,
             ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
@@ -21909,9 +23657,57 @@ class PortalImplementationSupervisor:
                     }
                 },
             )
+        refill_error: BaseException | None = None
+        refill_traceback = None
         try:
-            payload = self._run_objective_refill_with_timeout(run_objective_daemon, objective_args)
-        except ObjectiveRefillTimeoutError as exc:
+            payload = self._run_objective_refill_with_timeout(
+                run_objective_daemon,
+                objective_args,
+            )
+        except BaseException as exc:
+            # Validate and, if necessary, restore the capped board before an
+            # objective-daemon exception or timeout can escape this transaction.
+            refill_error = exc
+            refill_traceback = exc.__traceback__
+            payload = {}
+
+        final_task_count = task_count
+        if budget_enabled:
+            try:
+                final_task_count, final_task_count_authority = (
+                    self._objective_refill_authoritative_task_count(
+                        self.config.todo_path.read_text(encoding="utf-8"),
+                        task_prefix=task_prefix,
+                    )
+                )
+            except Exception as exc:
+                return self._quarantine_objective_refill_budget(
+                    reason="task_count_postcondition_unavailable",
+                    budget=budget,
+                    original_todo_text=todo_text,
+                    task_prefix=task_prefix,
+                    starting_task_count=task_count,
+                    effective_max_findings=effective_max_findings,
+                    started_at=started_at,
+                    failure=exc,
+                )
+            budget["task_count_authority"] = final_task_count_authority
+            max_total_tasks = self.config.objective_refill_max_total_tasks
+            if max_total_tasks is not None and final_task_count > max_total_tasks:
+                return self._quarantine_objective_refill_budget(
+                    reason="max_total_tasks_postcondition",
+                    budget=budget,
+                    original_todo_text=todo_text,
+                    task_prefix=task_prefix,
+                    starting_task_count=task_count,
+                    effective_max_findings=effective_max_findings,
+                    started_at=started_at,
+                    observed_task_count=final_task_count,
+                    failure=refill_error,
+                )
+
+        if isinstance(refill_error, ObjectiveRefillTimeoutError):
+            exc = refill_error
             strategy = load_strategy(self.config.strategy_path)
             strategy["last_objective_goal_scan_at"] = utc_now()
             strategy["last_objective_goal_scan_mode"] = f"{mode}_timeout"
@@ -21950,8 +23746,16 @@ class PortalImplementationSupervisor:
                 error=str(exc),
                 metadata=payload,
             )
-
+        if refill_error is not None:
+            raise refill_error.with_traceback(refill_traceback)
         payload["completion_artifact_refresh"] = artifact_refresh
+        if budget_enabled:
+            payload["objective_refill_budget"] = (
+                self._objective_refill_budget_summary(
+                    budget,
+                    task_count=final_task_count,
+                )
+            )
         result = self._adapt_legacy_objective_result(
             payload,
             scan_mode=mode,
@@ -25816,6 +27620,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--objective-refill-max-epochs",
+        type=int,
+        default=None,
+        help=(
+            "Maximum supervisor-owned objective refill epochs for this board. "
+            "Absent preserves the legacy unbounded epoch policy."
+        ),
+    )
+    parser.add_argument(
+        "--objective-refill-max-total-tasks",
+        type=int,
+        default=None,
+        help=(
+            "Maximum total task records the objective refill may leave on the "
+            "board. Absent preserves the legacy unbounded total-task policy."
+        ),
+    )
+    parser.add_argument(
         "--objective-scan-depends-on",
         action="append",
         default=[],
@@ -26159,6 +27981,10 @@ def supervisor_config_from_args(
             args.objective_scan_exclude_path
         ),
         objective_refill_timeout_seconds=args.objective_refill_timeout_seconds,
+        objective_refill_max_epochs=args.objective_refill_max_epochs,
+        objective_refill_max_total_tasks=(
+            args.objective_refill_max_total_tasks
+        ),
         objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
         objective_max_refinement_children=args.objective_max_refinement_children,
         objective_max_refinement_depth=args.objective_max_refinement_depth,
@@ -26267,6 +28093,7 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    supervisor: PortalImplementationSupervisor | None = None
     try:
         supervisor = PortalImplementationSupervisor(
             supervisor_config_from_args(args, repo_root=REPO_ROOT)
@@ -26295,6 +28122,9 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
         return 78
+    finally:
+        if supervisor is not None:
+            supervisor.close()
 
 
 if __name__ == "__main__":

@@ -3157,6 +3157,8 @@ def test_static_objective_heap_disables_goal_refinement(
             "max_tasks_per_epoch": 3,
             "max_open_tasks": 5,
             "cooldown_seconds": 60,
+            "max_epochs": 20,
+            "max_total_tasks": 130,
         }
     }
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -3167,12 +3169,70 @@ def test_static_objective_heap_disables_goal_refinement(
         implement=True,
     )
     assert common.count("--no-objective-goal-refinement") == 1
+    parsed = supervisor_module.parse_args(common)
+    assert parsed.objective_refill_max_epochs == 20
+    assert parsed.objective_refill_max_total_tasks == 130
 
     payload["objective_goal_refinement_enabled"] = "false"
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     with pytest.raises(
         ConfiguredBoardError,
         match="objective_goal_refinement_enabled must be boolean",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("max_epochs", 0),
+        ("max_epochs", True),
+        ("max_total_tasks", "130"),
+        ("max_total_tasks", -1),
+    ),
+)
+def test_objective_refill_campaign_bounds_are_strict_positive_integers(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["objective_refill_enabled"] = True
+    payload["refill_policy"] = {
+        "derived_refill": {
+            "min_open_tasks": 4,
+            "max_tasks_per_epoch": 3,
+            "max_open_tasks": 5,
+            "cooldown_seconds": 60,
+            "max_epochs": 20,
+            "max_total_tasks": 130,
+            field: value,
+        }
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=rf"refill_policy\.derived_refill\.{field} must be a positive integer",
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
+def test_present_objective_refill_cap_is_validated_while_refill_is_disabled(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["objective_refill_enabled"] = False
+    payload["refill_policy"] = {
+        "derived_refill": {"max_epochs": False}
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="refill_policy.derived_refill.max_epochs must be a positive integer",
     ):
         load_configured_board(config_path, repo_root=repo)
 
