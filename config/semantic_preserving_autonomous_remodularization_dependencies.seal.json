@@ -3,9 +3,9 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "e23fa4eb12a48bc40239b6ff32c33eecc165966c264caf351037ac2ecd9dbc21",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "ef5722ff8d1e47765ada85e5058736bb3cd66bcf47e0ab049a118dfd0b10f84d",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "a47e4cfe10a6fd331249444c8f0f9c76507c10a3ce9174802e0f383ba9e0dcb3",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "f52911c3d7ed130c4fe30eb3e7db3973cd566a29a675a6b4cc2b5a0ffbd3654d",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "032b6fb32163efce1495e4501f47de762c23a6653e012c24d32a8d0cc3a26f0e",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "eae6b5833bd077f346c28ba4da9b1c4ce62cd9d5d917e821112a26a6ee38d54a",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8b3d948d5ab5dccc2d716e812de7ceb9e80142d2ab73c65922d64c038118c1a4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "9540072568ddb155733581dea5ca451aa35574d9c6ba0951e13ca32e6c60fba6",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "09fdab4621eeb0de7c2ee6e53e2696c295362517f8a0c7c81de660fc56e266ac",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "3f6f4777432c064f5e6023d43fb490b2add33da38ac7107b34e577f09b4b4a38",
     "pyproject.toml": "2d0e49455ebbeb87e8af037a8f3d1fd0d479800c8aaa6b8d4bb144021475a35e"
   },
@@ -485,7 +485,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:9b330b264612b64724cd82d538f6e427e4041117c13d924783c2fddb280ad4ac",
+  "seal_cid": "sha256:7ff1ce872fc1c534931a9a50632aa7ffc7637b58f810fc2dd547fe4248333e8e",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
