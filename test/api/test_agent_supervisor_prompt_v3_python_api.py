@@ -142,6 +142,54 @@ def test_prompt_preview_rejects_scanner_program_root_mismatch_before_planning() 
     assert admission.calls == 0
 
 
+def test_prompt_service_does_not_replace_the_planners_graph_with_campaign_ids() -> None:
+    """Campaign identifiers in evidence do not authorize post-planner task minting."""
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+        PromptSupervisorService,
+    )
+    from test.api.test_agent_supervisor_prompt_goal_planner import (
+        _evidence,
+        _request,
+        _scan,
+    )
+    from test.api.test_agent_supervisor_prompt_workflow_service import (
+        _Admission,
+        _Planner,
+    )
+
+    request = _request()
+    evidence = replace(
+        _evidence(),
+        claim_keys=("PCPR-000", "PCPR-001"),
+    )
+    planner_scan = _scan(request, evidence=(evidence,))
+
+    class _Scanner:
+        calls = 0
+
+        def scan(self, _request_value: object) -> object:
+            self.calls += 1
+            return planner_scan
+
+    scanner = _Scanner()
+    planner = _Planner()
+    admission = _Admission()
+    service = PromptSupervisorService(
+        scanner=scanner,
+        planner=planner,
+        admission=admission,
+        catalog_root=_cid("campaign-neutral-catalog"),
+    )
+
+    preview = service.preview(request)
+
+    assert scanner.calls == 1
+    assert planner.calls == 1
+    assert admission.calls == 1
+    assert len(preview.admitted_task_cids) == 1
+
+
 def test_run_without_bound_runtime_is_typed_unavailable() -> None:
     supervisor = facade_mod.Supervisor.open(repository=REPO_ROOT)
     with pytest.raises(facade_mod.SupervisorUnavailableError):
