@@ -163,6 +163,32 @@ def test_allowlisted_repository_accepted(
     assert result["ok"] is True
 
 
+def test_mcp_run_reports_plan_identities(tmp_path: Path) -> None:
+    from test.api.test_agent_supervisor_prompt_v3_python_api import (
+        _production_supervisor,
+    )
+
+    supervisor, prompt = _production_supervisor(tmp_path)
+    configure_prompt_lifecycle_supervisor(supervisor)
+    try:
+        result = asyncio.run(pe.agent_supervisor_run(prompt=prompt))
+    finally:
+        configure_prompt_lifecycle_supervisor(None)
+    assert result["ok"] is True
+    assert result["result"]["workflow_request_cid"]
+    assert result["result"]["plan_create_request_cid"]
+    assert result["result"]["objective_cid"]
+    assert prompt not in str(result)
+
+
+def test_mcp_start_tool_is_registered() -> None:
+    assert "agent_supervisor_start" in PROMPT_LIFECYCLE_TOOLS
+    manager = _RecordingManager()
+    register_prompt_lifecycle_tools(manager)
+    names = {item["name"] for item in manager.tools}
+    assert "agent_supervisor_start" in names
+
+
 def test_empty_prompt_invalid() -> None:
     configure_prompt_lifecycle_supervisor(_FakeSupervisor())
     try:

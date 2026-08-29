@@ -8,6 +8,8 @@ No process starts and no provider call is made during composition.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Mapping
@@ -120,6 +122,62 @@ class ProductionServiceCompositionManifest:
         }
 
 
+@dataclass(frozen=True)
+class ProductionBindingObservation:
+    """Body-free observation of authenticated production bindings."""
+
+    repository_root: str
+    repository_id: str
+    repository_root_cid: str
+    tree_id: str
+    dirty_worktree_root: str
+    head_commit: str
+    head_tree: str
+    state_root: str
+    policy_root: str
+    capability_catalog_root: str
+    provider_catalog_root: str
+    program_root: str
+    intent_ir_root: str
+    legal_ir_root: str
+    security_ir_root: str
+    usage_policy_root: str
+    configuration_root: str
+    allowlist_cid: str
+    caller: str
+    board_namespace: str
+    supervisor_profile: str
+    composition_cid: str
+    duckdb_available: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "repository_root": self.repository_root,
+            "repository_id": self.repository_id,
+            "repository_root_cid": self.repository_root_cid,
+            "tree_id": self.tree_id,
+            "dirty_worktree_root": self.dirty_worktree_root,
+            "head_commit": self.head_commit,
+            "head_tree": self.head_tree,
+            "state_root": self.state_root,
+            "policy_root": self.policy_root,
+            "capability_catalog_root": self.capability_catalog_root,
+            "provider_catalog_root": self.provider_catalog_root,
+            "program_root": self.program_root,
+            "intent_ir_root": self.intent_ir_root,
+            "legal_ir_root": self.legal_ir_root,
+            "security_ir_root": self.security_ir_root,
+            "usage_policy_root": self.usage_policy_root,
+            "configuration_root": self.configuration_root,
+            "allowlist_cid": self.allowlist_cid,
+            "caller": self.caller,
+            "board_namespace": self.board_namespace,
+            "supervisor_profile": self.supervisor_profile,
+            "composition_cid": self.composition_cid,
+            "duckdb_available": self.duckdb_available,
+        }
+
+
 @dataclass
 class ProductionServiceComposition:
     """Resolved production registry for one open Supervisor session."""
@@ -133,6 +191,64 @@ class ProductionServiceComposition:
     @property
     def composition_cid(self) -> str:
         return self.manifest.composition_cid
+
+    def prompt_supervisor_service(self) -> Any:
+        existing = self.extras.get("prompt_supervisor_service")
+        if existing is not None:
+            return existing
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+            PromptSupervisorService,
+        )
+
+        kwargs: dict[str, Any] = {}
+        if self.extras.get("scanner") is not None:
+            kwargs["scanner"] = self.extras["scanner"]
+        if self.extras.get("planner") is not None:
+            kwargs["planner"] = self.extras["planner"]
+        if self.extras.get("admission") is not None:
+            kwargs["admission"] = self.extras["admission"]
+        if self.extras.get("markdown_materializer") is not None:
+            kwargs["markdown_materializer"] = self.extras["markdown_materializer"]
+        if self.extras.get("duckdb_materializer") is not None:
+            kwargs["duckdb_materializer"] = self.extras["duckdb_materializer"]
+        if self.repository_root is not None:
+            kwargs["repository_allowlist"] = (str(self.repository_root),)
+        service = PromptSupervisorService(**kwargs)
+        self.extras["prompt_supervisor_service"] = service
+        return service
+
+    def plan_supervisor_service(self) -> Any:
+        existing = self.extras.get("plan_supervisor_service")
+        if existing is not None:
+            return existing
+        from ipfs_accelerate_py.agent_supervisor.prompt.plan_supervisor_service import (
+            PlanSupervisorService,
+        )
+
+        kwargs: dict[str, Any] = {}
+        if self.state_root is not None:
+            kwargs["revision_store_root"] = Path(self.state_root) / "plan_revision_store"
+        if self.extras.get("revision_store") is not None:
+            kwargs["revision_store"] = self.extras["revision_store"]
+        service = PlanSupervisorService(**kwargs)
+        self.extras["plan_supervisor_service"] = service
+        return service
+
+    def plan_revision_store(self) -> Any:
+        existing = self.extras.get("revision_store")
+        if existing is not None:
+            return existing
+        if self.state_root is None:
+            raise ConfigurationUnavailableError(
+                "state_root is required for PlanRevisionStore"
+            )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.plan_revision_store import (
+            PlanRevisionStore,
+        )
+
+        store = PlanRevisionStore(Path(self.state_root) / "plan_revision_store")
+        self.extras["revision_store"] = store
+        return store
 
 
 def _load_scheduler_config(repository_root: Path | None) -> Mapping[str, Any] | None:
@@ -260,14 +376,190 @@ def resolve_production_composition(
     )
 
 
+def _git(root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or " ".join(args)).strip()
+        raise ConfigurationUnavailableError(
+            f"repository observation failed: {message}"
+        )
+    return completed.stdout.strip()
+
+
+def _default_state_root(repository_id: str) -> Path:
+    env = os.environ.get("IPFS_ACCELERATE_AGENT_STATE_HOME")
+    if env:
+        return Path(env) / repository_id.replace(":", "_")
+    xdg = os.environ.get("XDG_STATE_HOME")
+    if xdg:
+        return (
+            Path(xdg)
+            / "ipfs_accelerate_py"
+            / "agent_supervisor"
+            / repository_id.replace(":", "_")
+        )
+    return (
+        Path.home()
+        / ".local"
+        / "share"
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / repository_id.replace(":", "_")
+    )
+
+
+def observe_production_bindings(
+    composition: ProductionServiceComposition,
+) -> ProductionBindingObservation:
+    """Observe repository, state, policy, capability, provider, and tree."""
+
+    injected = composition.extras.get("observation")
+    if isinstance(injected, ProductionBindingObservation):
+        return injected
+    if isinstance(injected, Mapping):
+        return ProductionBindingObservation(**dict(injected))
+    if composition.repository_root is None:
+        raise ConfigurationUnavailableError(
+            "production observation requires a repository_root"
+        )
+    root = Path(composition.repository_root).resolve()
+    if not root.is_dir():
+        raise ConfigurationUnavailableError(
+            f"repository_root is not a directory: {root}"
+        )
+    head_commit = _git(root, "rev-parse", "HEAD")
+    head_tree = _git(root, "rev-parse", "HEAD^{tree}")
+    dirty_status = _git(root, "status", "--porcelain")
+    repository_root_cid = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-repository-root@1",
+            "root": str(root),
+            "head_tree": head_tree,
+        }
+    )
+    dirty_worktree_root = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-dirty-tree@1",
+            "head_tree": head_tree,
+            "dirty": dirty_status,
+        }
+    )
+    tree_id = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-tree@1",
+            "head_commit": head_commit,
+            "head_tree": head_tree,
+            "dirty_worktree_root": dirty_worktree_root,
+        }
+    )
+    repository_id = f"repository:{repository_root_cid}"
+    config = _load_scheduler_config(root)
+    config_cid = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-scheduler-config@1",
+            "present": config is not None,
+            "activation_task_id": (
+                (config or {}).get("protected_runtime_activation") or {}
+            ).get("task_id")
+            if isinstance(config, Mapping)
+            else "",
+        }
+    )
+    provider = (config or {}).get("provider") if isinstance(config, Mapping) else {}
+    provider_id = ""
+    if isinstance(provider, Mapping):
+        provider_id = str(provider.get("primary_provider_id") or "")
+    policy_root = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-policy@1",
+            "configuration_root": config_cid,
+            "composition_cid": composition.composition_cid,
+        }
+    )
+    capability_root = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-capability@1",
+            "backends": dict(composition.manifest.backends),
+        }
+    )
+    provider_root = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-provider@1",
+            "provider_id": provider_id,
+        }
+    )
+    program_root = cid_for_dag_json(
+        {
+            "schema": "ipfs_accelerate_py.agent_supervisor.observed-program@1",
+            "composition_cid": composition.composition_cid,
+            "head_tree": head_tree,
+        }
+    )
+    board_namespace = "prompt-workflow"
+    if isinstance(config, Mapping) and config.get("board_namespace"):
+        board_namespace = str(config["board_namespace"])
+    state = composition.state_root
+    if state is None:
+        state = _default_state_root(repository_id)
+    else:
+        state = Path(state).resolve()
+    duckdb_available = False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+            DatabaseTaskSource,
+        )
+
+        duckdb_available = bool(DatabaseTaskSource.available())
+    except Exception:
+        duckdb_available = False
+    return ProductionBindingObservation(
+        repository_root=str(root),
+        repository_id=repository_id,
+        repository_root_cid=repository_root_cid,
+        tree_id=tree_id,
+        dirty_worktree_root=dirty_worktree_root,
+        head_commit=head_commit,
+        head_tree=head_tree,
+        state_root=str(state),
+        policy_root=policy_root,
+        capability_catalog_root=capability_root,
+        provider_catalog_root=provider_root,
+        program_root=program_root,
+        intent_ir_root=policy_root,
+        legal_ir_root=policy_root,
+        security_ir_root=policy_root,
+        usage_policy_root=policy_root,
+        configuration_root=config_cid,
+        allowlist_cid=cid_for_dag_json(
+            {
+                "schema": "ipfs_accelerate_py.agent_supervisor.observed-allowlist@1",
+                "roots": [str(root)],
+            }
+        ),
+        caller="principal:local",
+        board_namespace=board_namespace,
+        supervisor_profile="implementation-daemon",
+        composition_cid=composition.composition_cid,
+        duckdb_available=duckdb_available,
+    )
+
+
 __all__ = [
     "ACTIVATION_TASK_ID",
     "COMPOSITION_MANIFEST_SCHEMA",
     "ActivationNotReadyError",
     "ConfigurationUnavailableError",
+    "ProductionBindingObservation",
     "ProductionServiceComposition",
     "ProductionServiceCompositionManifest",
     "ServiceCompositionError",
     "build_production_composition_manifest",
+    "observe_production_bindings",
     "resolve_production_composition",
 ]

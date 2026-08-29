@@ -1241,5 +1241,20 @@
     "final_forced_residual_scan_required": true,
     "active_signed_rollout_required": true,
     "stale_partial_simulated_skipped_soft_or_print_only_evidence_satisfies_release": false
+  },
+  "direct_objective_handoff": {
+    "enabled": true,
+    "complete_launch_plan_caller_injection_required": false,
+    "start_is_separate_authorized_control_operation": true,
+    "initial_task_ceiling": 80,
+    "automatic_refill_task_ceiling": 12,
+    "prompt_supervisor_service": "PromptSupervisorService@1",
+    "plan_supervisor_service": "PlanSupervisorService@1",
+    "plan_revision_store": "PlanRevisionStore@1",
+    "task_source": "DatabaseTaskSource@1",
+    "configured_board_runtime": "ConfiguredBoard",
+    "campaign_identifiers_are_not_planner_authority": true,
+    "model_assertion_cannot_complete": true,
+    "empty_queue_cannot_complete": true
   }
 }

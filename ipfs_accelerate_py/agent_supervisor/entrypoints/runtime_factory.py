@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final
 
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
@@ -211,6 +212,122 @@ def reject_fixture_launch_plan(plan: CompleteLaunchPlan) -> CompleteLaunchPlan:
     return plan
 
 
+def complete_launch_plan_from_materialization(
+    *,
+    launch_plan: LaunchPlan,
+    task_source_cid: str,
+    task_source_revision_cid: str,
+    objective_cid: str = "",
+    objective_revision_cid: str = "",
+) -> CompleteLaunchPlan:
+    """Bind a launch plan to exact task-source identities after apply."""
+
+    if not task_source_cid or not task_source_revision_cid:
+        raise RuntimeConstructionError(
+            "materialization did not publish task-source identities"
+        )
+    return reject_fixture_launch_plan(
+        CompleteLaunchPlan(
+            launch_plan=launch_plan,
+            task_source_cid=str(task_source_cid),
+            task_source_revision_cid=str(task_source_revision_cid),
+            objective_cid=str(objective_cid or ""),
+            objective_revision_cid=str(objective_revision_cid or ""),
+        )
+    )
+
+
+def launch_plan_from_observation(
+    observation: Mapping[str, Any],
+    *,
+    invocation_cid: str,
+    idempotency_key: str,
+    lease_required: bool = True,
+) -> LaunchPlan:
+    """Construct a LaunchPlan from observed production bindings, not fixtures."""
+
+    from .contracts import (
+        CoordinationShardBinding,
+        ExpectedEffect,
+        ReplicationBinding,
+        ReplicationMode,
+    )
+
+    repository_root = str(observation.get("repository_root") or "")
+    state_root = str(observation.get("state_root") or "")
+    if not repository_root or not state_root:
+        raise RuntimeConstructionError(
+            "launch plan requires observed repository_root and state_root"
+        )
+    if not invocation_cid or not idempotency_key:
+        raise RuntimeConstructionError(
+            "launch plan requires invocation identity and idempotency"
+        )
+    if "fixture" in invocation_cid.lower() or "fixture" in idempotency_key.lower():
+        raise RuntimeConstructionError("fixture launch-plan identities are forbidden")
+    shard = CoordinationShardBinding(
+        backend="duckdb",
+        database_path=str(Path(state_root) / "coord.duckdb"),
+        shard_id="shard-0",
+        shard_count=1,
+        shard_index=0,
+        owner_principal_ref=str(observation.get("caller") or "principal:local"),
+        coordinator_cid=cid_for_dag_json(
+            {
+                "schema": "ipfs_accelerate_py.agent_supervisor.observed-coordinator@1",
+                "composition_cid": str(observation.get("composition_cid") or ""),
+            }
+        ),
+        lease_namespace=str(observation.get("board_namespace") or "prompt-workflow"),
+        fencing_generation=1,
+        writable=True,
+    )
+    replication = ReplicationBinding(
+        mode=ReplicationMode.PARQUET_IPLD,
+        parquet_dataset_path=str(Path(state_root) / "parquet"),
+        parquet_schema_cid=cid_for_dag_json(
+            {"schema": "ipfs_accelerate_py.agent_supervisor.parquet-schema@1"}
+        ),
+        partition_keys=("repository_id", "run_id", "event_date", "shard_id"),
+        ipld_manifest_schema_cid=cid_for_dag_json(
+            {"schema": "ipfs_accelerate_py.agent_supervisor.ipld-manifest@1"}
+        ),
+    )
+    return LaunchPlan(
+        invocation_cid=invocation_cid,
+        target_resolution_receipt_cid=str(
+            observation.get("tree_id") or invocation_cid
+        ),
+        resolved_profile_cid=str(
+            observation.get("program_root") or invocation_cid
+        ),
+        working_directory=repository_root,
+        state_path=str(Path(state_root) / "run.json"),
+        task_source_path=str(Path(state_root) / "projections" / "tasks.duckdb"),
+        supervisor_argv=("python", "-m", "ipfs_accelerate_py.cli_entry", "supervisor"),
+        daemon_argv=("python", "-m", "ipfs_accelerate_py.cli_entry", "supervisor"),
+        environment_names=(),
+        provider_route_cid=str(
+            observation.get("provider_catalog_root") or invocation_cid
+        ),
+        resource_budget_cid=str(observation.get("policy_root") or invocation_cid),
+        validation_profile_cid=str(
+            observation.get("configuration_root") or invocation_cid
+        ),
+        lifecycle_profile_cid=str(
+            observation.get("program_root") or invocation_cid
+        ),
+        coordination_shard=shard,
+        replication=replication,
+        expected_effects=(ExpectedEffect.LAUNCH_LOCAL_PROCESS,),
+        idempotency_key=idempotency_key,
+        adoption_key="adoption:" + idempotency_key,
+        lease_required=bool(lease_required),
+        authorization_required=True,
+        dry_run=False,
+    )
+
+
 def lifecycle_start_handler(
     orchestrator: Any,
     request_builder: Callable[[CompleteLaunchPlan, Any], Any],
@@ -254,6 +371,8 @@ __all__ = [
     "RuntimeEffectError",
     "RuntimeEffectReceipt",
     "StandardSupervisorRuntimeFactory",
+    "complete_launch_plan_from_materialization",
+    "launch_plan_from_observation",
     "lifecycle_start_handler",
     "reject_fixture_launch_plan",
 ]

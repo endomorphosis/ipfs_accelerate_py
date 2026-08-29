@@ -1509,6 +1509,45 @@ class PlanRevisionStore:
             with self._guard():
                 return self._apply_locked(request)
 
+    def apply_authorized(
+        self, request: PlanRevisionApplyRequest | Mapping[str, Any]
+    ) -> PlanRevisionApplyReceipt:
+        """Apply only when idempotency, lease, fence, effects, and tree bind."""
+
+        if not isinstance(request, PlanRevisionApplyRequest):
+            if not isinstance(request, Mapping):
+                raise PlanRevisionStoreError(
+                    "request must be PlanRevisionApplyRequest or mapping"
+                )
+            request = PlanRevisionApplyRequest(**dict(request))
+        if not request.idempotency_key:
+            raise PlanRevisionStoreError(
+                "authorized apply requires idempotency_key"
+            )
+        if not request.lease_id:
+            raise PlanRevisionStoreError("authorized apply requires lease_id")
+        if request.fencing_token < 1:
+            raise PlanRevisionStoreError(
+                "authorized apply requires a positive fencing_token"
+            )
+        if not request.expected_effects:
+            raise PlanRevisionStoreError(
+                "authorized apply requires expected_effects"
+            )
+        if not request.repository_tree_id:
+            raise PlanRevisionStoreError(
+                "authorized apply requires repository_tree_id"
+            )
+        if not request.observed_roots:
+            raise PlanRevisionStoreError(
+                "authorized apply requires observed_roots"
+            )
+        if request.duckdb_source is None and request.markdown_source is None:
+            raise PlanRevisionStoreError(
+                "authorized apply requires a task-source projection backend"
+            )
+        return self.apply(request)
+
     def _apply_locked(
         self, request: PlanRevisionApplyRequest
     ) -> PlanRevisionApplyReceipt:

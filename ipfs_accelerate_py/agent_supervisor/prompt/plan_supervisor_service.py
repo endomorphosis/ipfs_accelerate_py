@@ -1,9 +1,13 @@
 """PlanSupervisorService@1 — shared create/steer facade for control transports.
 
 Python, CLI, and MCP all dispatch the same closed control operations into this
-module.  Preview paths are proposal-only; apply paths require the normal
-control-plane permit, lease, fence, idempotency, and expected-effects gates
-before any revision-store write is attempted.
+module.  Preview paths remain read-only and never write task sources.  When the
+domain create pipeline admits a candidate, the control preview returns
+``status=admitted`` with complete materialization inputs rather than a
+proposal-only or review-only preview.  Sparse previews without a plan request,
+doctor residual refill, and dry-run apply stay proposal-only.  Apply paths
+require the normal control-plane permit, lease, fence, idempotency, and
+expected-effects gates before any revision-store write is attempted.
 
 Default control-service construction binds live handlers from
 :func:`build_default_plan_control_handlers` so create/steer and the workflow
@@ -177,7 +181,12 @@ class PlanSupervisorService:
         materials: Any = None,
         compatibility_alias: str = "",
     ) -> Any:
-        """Proposal-only create preview; never writes task sources."""
+        """Read-only create preview; never writes task sources.
+
+        An admitted domain verdict is returned as-is.  Callers that need the
+        control envelope with complete materialization inputs should use
+        :meth:`preview_create_admitted`.
+        """
 
         service = self._create()
         kwargs: dict[str, Any] = {}
@@ -188,6 +197,24 @@ class PlanSupervisorService:
         if compatibility_alias:
             kwargs["compatibility_alias"] = compatibility_alias
         return service.preview_create(request, **kwargs)
+
+    def preview_create_admitted(
+        self,
+        request: Any,
+        *,
+        mode: Any = None,
+        materials: Any = None,
+        compatibility_alias: str = "",
+    ) -> dict[str, Any]:
+        """Read-only create preview with admitted status and apply inputs."""
+
+        receipt = self.preview_create(
+            request,
+            mode=mode,
+            materials=materials,
+            compatibility_alias=compatibility_alias,
+        )
+        return self._preview_envelope(receipt, plan_request=request)
 
     def preview_steer(
         self,
@@ -351,16 +378,289 @@ class PlanSupervisorService:
         apply_request: Any,
         *,
         control_request: OperationRequest | None = None,
+        authorized: bool = False,
     ) -> Any:
         """Authorized durable apply through the revision store."""
 
         store = self._store(control_request)
+        if authorized and hasattr(store, "apply_authorized"):
+            return store.apply_authorized(apply_request)
         return store.apply(apply_request)
+
+    def build_apply_request_from_admitted_preview(
+        self,
+        *,
+        preview: Any,
+        plan_request: Any,
+        admission: Any,
+        goal_graph: Any,
+        observed_roots: Any,
+        idempotency_key: str,
+        lease_id: str,
+        fencing_token: int,
+        expected_effects: Sequence[str],
+        markdown_source: Any = None,
+        duckdb_source: Any = None,
+        repository_tree_id: str = "",
+        event_cursor: str = "",
+        goal_cids: Sequence[str] = (),
+        task_cids: Sequence[str] = (),
+    ) -> Any:
+        """Construct a complete create apply request from an admitted preview."""
+
+        from ..planning.plan_revision_contracts import (
+            CompletionAuthority,
+            MergeStrategyKind,
+            PlanCompletionRule,
+            PlanConflictContract,
+            PlanLeaseContract,
+            PlanMergeStrategy,
+            PlanOrigin,
+            PlanPopulationDigest,
+            PlanProviderContract,
+            PlanResourceContract,
+            PlanRetryContract,
+            PlanRevision,
+            PlanValidationNode,
+            PlanWorktreeContract,
+            PopulationKind,
+        )
+        from ..task_sources.plan_revision_store import PlanRevisionApplyRequest
+
+        admitted = bool(getattr(preview, "admitted", False))
+        status = getattr(preview, "status", None)
+        status_value = str(getattr(status, "value", status) or "")
+        if not admitted and status_value != "admitted":
+            raise PlanSupervisorServiceError(
+                "apply request requires an admitted preview"
+            )
+        if not idempotency_key or not lease_id:
+            raise PlanSupervisorServiceError(
+                "apply request requires idempotency and lease"
+            )
+        if (
+            isinstance(fencing_token, bool)
+            or not isinstance(fencing_token, int)
+            or fencing_token < 1
+        ):
+            raise PlanSupervisorServiceError(
+                "apply request requires a positive fencing token"
+            )
+        expected = tuple(str(item) for item in expected_effects if str(item))
+        if not expected:
+            raise PlanSupervisorServiceError(
+                "apply request requires expected_effects"
+            )
+        plan_root = str(getattr(preview, "plan_root_cid", "") or "")
+        if not plan_root:
+            raise PlanSupervisorServiceError(
+                "admitted preview did not publish a plan root"
+            )
+        selected_goals = tuple(str(item) for item in goal_cids if str(item))
+        selected_tasks = tuple(str(item) for item in task_cids if str(item))
+        if not selected_goals and goal_graph is not None:
+            selected_goals = tuple(
+                str(getattr(item, "goal_cid", "") or "")
+                for item in getattr(goal_graph, "goals", ())
+                if str(getattr(item, "goal_cid", "") or "")
+            )
+        if not selected_tasks and goal_graph is not None:
+            selected_tasks = tuple(
+                str(getattr(item, "task_cid", "") or "")
+                for item in getattr(goal_graph, "tasks", ())
+                if str(getattr(item, "task_cid", "") or "")
+            )
+        if not selected_tasks:
+            raise PlanSupervisorServiceError(
+                "apply request requires admitted task identities"
+            )
+        roots = observed_roots or getattr(preview, "roots", None)
+        if roots is None and plan_request is not None:
+            roots = getattr(plan_request, "roots", None)
+        if roots is None:
+            raise PlanSupervisorServiceError(
+                "apply request requires observed authority roots"
+            )
+        request_cid = str(
+            getattr(preview, "request_cid", "")
+            or getattr(plan_request, "request_cid", "")
+            or ""
+        )
+        scan_cid = str(getattr(preview, "scan_cid", "") or request_cid)
+        admission_cid = str(
+            getattr(preview, "admission_receipt_cid", "") or request_cid
+        )
+        execution_cid = str(
+            getattr(preview, "execution_plan_cid", "") or ""
+        )
+        def _population(kind: PopulationKind, members: Sequence[str]) -> PlanPopulationDigest:
+            return PlanPopulationDigest(kind=kind, member_cids=tuple(members))
+
+        revision = PlanRevision(
+            plan_root_cid=plan_root,
+            semantic_revision=1,
+            parent_plan_root="",
+            origin=PlanOrigin.CREATE,
+            roots=roots,
+            request_cid=request_cid,
+            delta_cid="",
+            scan_receipt_cid=scan_cid,
+            query_plan_cid=str(getattr(preview, "query_plan_cid", "") or ""),
+            evidence_bundle_cid=str(
+                getattr(preview, "evidence_bundle_cid", "") or ""
+            ),
+            admission_receipt_cid=admission_cid,
+            execution_plan_cid=execution_cid,
+            goal_population=_population(PopulationKind.RETAINED, selected_goals),
+            task_population=_population(PopulationKind.RETAINED, selected_tasks),
+            added_population=_population(
+                PopulationKind.ADDED, (*selected_goals, *selected_tasks)
+            ),
+            superseded_population=_population(PopulationKind.SUPERSEDED, ()),
+            retained_population=_population(PopulationKind.RETAINED, ()),
+            deferred_population=_population(PopulationKind.DEFERRED, ()),
+            claimed_population=_population(PopulationKind.CLAIMED, ()),
+            completed_population=_population(PopulationKind.COMPLETED, ()),
+            blocked_population=_population(PopulationKind.BLOCKED, ()),
+            resource_contract=PlanResourceContract(),
+            provider_contract=PlanProviderContract(),
+            lease_contract=PlanLeaseContract(
+                fencing_epoch=int(fencing_token),
+            ),
+            retry_contract=PlanRetryContract(),
+            worktree_contract=PlanWorktreeContract(),
+            merge_strategy=PlanMergeStrategy(kind=MergeStrategyKind.SERIAL),
+            conflict_contract=PlanConflictContract(
+                predicted_files=("projections/tasks.md",),
+            ),
+            completion_rule=PlanCompletionRule(
+                authority=CompletionAuthority.VALIDATION_GATE,
+                forbidden_authorities=("model", "provider", "task"),
+            ),
+            validation_dag=(
+                PlanValidationNode(
+                    validation_key="validation:pytest",
+                    argv=("python", "-m", "pytest", "-q"),
+                ),
+            ),
+            event_cursor=event_cursor
+            or str(getattr(preview, "input_snapshot_cid", "") or ""),
+        )
+        tree_id = repository_tree_id or str(
+            getattr(roots, "dirty_worktree_root", "") or ""
+        )
+        return PlanRevisionApplyRequest(
+            revision=revision,
+            observed_roots=roots,
+            idempotency_key=idempotency_key,
+            expected_effects=expected,
+            admission=admission,
+            goal_graph=goal_graph,
+            markdown_source=markdown_source,
+            duckdb_source=duckdb_source,
+            repository_tree_id=tree_id,
+            fencing_token=int(fencing_token),
+            lease_id=lease_id,
+            base_event_cursor=event_cursor,
+        )
 
     plan_create_preview = preview_create
     plan_steer_preview = preview_steer
     plan_create_apply = apply_revision
     plan_steer_apply = apply_revision
+
+    @staticmethod
+    def _complete_materialization_inputs(
+        receipt: Any,
+        *,
+        plan_request: Any = None,
+    ) -> dict[str, Any]:
+        roots = getattr(receipt, "roots", None)
+        roots_payload = roots.to_dict() if hasattr(roots, "to_dict") else {}
+        kind = str(
+            getattr(getattr(plan_request, "task_source_kind", None), "value", "")
+            or ""
+        )
+        expected: list[str] = []
+        markdown_path = ""
+        duckdb_path = ""
+        if kind in {"markdown", "both", ""}:
+            markdown_path = "projections/tasks.md"
+            expected.append("write_markdown:projections/tasks.md")
+        if kind in {"duckdb", "both", ""}:
+            duckdb_path = "projections/tasks.duckdb"
+            expected.append("write_duckdb:projections/tasks.duckdb")
+        return {
+            "request_cid": str(getattr(receipt, "request_cid", "") or ""),
+            "plan_root_cid": str(getattr(receipt, "plan_root_cid", "") or ""),
+            "admission_receipt_cid": str(
+                getattr(receipt, "admission_receipt_cid", "") or ""
+            ),
+            "scan_cid": str(getattr(receipt, "scan_cid", "") or ""),
+            "query_plan_cid": str(getattr(receipt, "query_plan_cid", "") or ""),
+            "evidence_bundle_cid": str(
+                getattr(receipt, "evidence_bundle_cid", "") or ""
+            ),
+            "execution_plan_cid": str(
+                getattr(receipt, "execution_plan_cid", "") or ""
+            ),
+            "input_snapshot_cid": str(
+                getattr(receipt, "input_snapshot_cid", "") or ""
+            ),
+            "roots": roots_payload,
+            "markdown_path": markdown_path,
+            "duckdb_path": duckdb_path,
+            "expected_effects": expected,
+            "read_only": True,
+            "wrote_effects": (),
+            "apply_requires": [
+                "authorization",
+                "idempotency",
+                "lease",
+                "fence",
+                "event_cursor",
+                "current_roots",
+                "source_revision",
+            ],
+            "completion_authority": False,
+            "model_assertion_cannot_complete": True,
+            "empty_queue_cannot_complete": True,
+        }
+
+    def _preview_envelope(
+        self,
+        receipt: Any,
+        *,
+        plan_request: Any = None,
+        compatibility_alias: str = "",
+        operation: str = "",
+    ) -> dict[str, Any]:
+        data = _record(receipt)
+        admitted = bool(getattr(receipt, "admitted", False))
+        verdict = getattr(getattr(receipt, "verdict", None), "value", None) or (
+            "admitted" if admitted else data.get("verdict") or "proposal"
+        )
+        if admitted:
+            status = "admitted"
+        elif str(verdict) == "review_only":
+            status = "review_only"
+        elif str(verdict) in {"rejected", "blocked"}:
+            status = str(verdict)
+        else:
+            status = str(data.get("status") or "proposal")
+        data["status"] = status
+        data["read_only"] = True
+        data["wrote_effects"] = ()
+        data["completion_authority"] = False
+        if operation:
+            data.setdefault("operation", operation)
+        if compatibility_alias:
+            data.setdefault("compatibility_alias", compatibility_alias)
+        if admitted:
+            data["materialization_inputs"] = self._complete_materialization_inputs(
+                receipt, plan_request=plan_request
+            )
+        return data
 
     # -- control dispatch ---------------------------------------------------
 
@@ -452,17 +752,21 @@ class PlanSupervisorService:
             materials=parameters.get("materials"),
             compatibility_alias=alias,
         )
-        data = _record(receipt)
-        data.setdefault("operation", request.operation.value)
-        data.setdefault("read_only", True)
-        data.setdefault("wrote_effects", ())
-        if alias:
-            data.setdefault("compatibility_alias", alias)
-        # Hard guarantee: proposal tier cannot report applied effects.
+        data = self._preview_envelope(
+            receipt,
+            plan_request=plan_request,
+            compatibility_alias=alias,
+            operation=request.operation.value,
+        )
+        admitted = data.get("status") == "admitted"
         return BackendResponse(
             data=data,
             changed=False,
-            checks=("schema", "proposal_only", "body_free"),
+            checks=(
+                "schema",
+                "admitted_preview" if admitted else "proposal_only",
+                "body_free",
+            ),
         )
 
     def _handle_steer_preview(
@@ -542,7 +846,7 @@ class PlanSupervisorService:
             )
 
         receipt = self.apply_revision(
-            apply_request, control_request=request
+            apply_request, control_request=request, authorized=True
         )
         data = _record(receipt)
         data.setdefault("operation", request.operation.value)

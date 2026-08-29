@@ -147,5 +147,70 @@ class SupervisorIntentService:
     def adopt_or_resume(self, complete_plan: CompleteLaunchPlan) -> SupervisorInvocationResult:
         return self.run(complete_plan, adopt=True)
 
+    def start_only(self, complete_plan: CompleteLaunchPlan) -> SupervisorInvocationResult:
+        """Authorized START after materialization; never materializes."""
+
+        if not isinstance(complete_plan, CompleteLaunchPlan):
+            raise PromptToRunError("complete_plan must be a CompleteLaunchPlan")
+        if not complete_plan.task_source_cid or not complete_plan.task_source_revision_cid:
+            raise PromptToRunUnavailableError(
+                "START requires materialized task-source identities"
+            )
+        initial = self._initial_handle(complete_plan, adopt=False)
+        try:
+            self.factory.registry.create(
+                initial, run_namespace="default", repository_id="prompt-runtime"
+            )
+            current = initial
+        except RunExistsError:
+            current = self.factory.registry.reconstruct(initial.run_id)
+        if current.state is RunState.RUNNING:
+            return self._result(complete_plan, current, ())
+        if current.continuation_action is ContinuationAction.MATERIALIZE:
+            current = self._advance(
+                current,
+                state=RunState.STARTING,
+                continuation_action=ContinuationAction.START,
+            )
+        if current.continuation_action is not ContinuationAction.START:
+            raise PromptToRunUnavailableError(
+                "START is a separate control operation and the run is not startable"
+            )
+        receipts: list[str] = []
+        try:
+            started = self.factory.invoke("start", complete_plan, current)
+            receipts.append(started.receipt_cid)
+            process_cid = str(started.values.get("process_cid") or "")
+            lease_id = str(started.values.get("lease_id") or "")
+            fencing = int(started.values.get("fencing_generation") or 0)
+            state_revision = str(
+                started.values.get("state_revision_cid") or started.receipt_cid
+            )
+            health_revision = str(
+                started.values.get("health_revision_cid") or started.receipt_cid
+            )
+            cursor = str(started.values.get("event_cursor") or "lifecycle-started")
+            if not process_cid or not lease_id or fencing < 1:
+                raise RuntimeEffectError(
+                    "start receipt lacks process identity or fenced lease"
+                )
+            current = self._advance(
+                current,
+                process_cid=process_cid,
+                lease_id=lease_id,
+                fencing_generation=fencing,
+                state=RunState.RUNNING,
+                health=RunHealth.HEALTHY,
+                state_revision_cid=state_revision,
+                health_revision_cid=health_revision,
+                event_cursor=cursor,
+                continuation_action=ContinuationAction.MONITOR,
+            )
+            return self._result(complete_plan, current, tuple(receipts))
+        except Exception as exc:
+            if isinstance(exc, PromptToRunError):
+                raise
+            raise PromptToRunUnavailableError(str(exc)) from exc
+
 
 __all__ = ["PromptToRunError", "PromptToRunSaga", "PromptToRunUnavailableError", "SupervisorIntentService"]

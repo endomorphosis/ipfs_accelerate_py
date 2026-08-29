@@ -24,6 +24,7 @@ EXIT_CONFIG = 4
 SUPERVISOR_COMMANDS: Final[tuple[str, ...]] = (
     "run",
     "preview",
+    "start",
     "steer",
     "status",
     "follow",
@@ -96,7 +97,7 @@ def register_supervisor_cli(
             help="Read prompt body from stdin (bounded).",
         )
 
-    run_p = commands.add_parser("run", help="Start or resume a durable run from a prompt.")
+    run_p = commands.add_parser("run", help="Admit and materialize a durable run from a prompt.")
     _add_common(run_p)
     _add_prompt(run_p)
 
@@ -105,6 +106,12 @@ def register_supervisor_cli(
     )
     _add_common(preview_p)
     _add_prompt(preview_p)
+
+    start_p = commands.add_parser(
+        "start", help="Authorized START of a materialized run (separate from admit/apply)."
+    )
+    _add_common(start_p)
+    start_p.add_argument("--run-id", required=True, help="Exact run identifier.")
 
     steer_p = commands.add_parser("steer", help="Steer an existing run with a prompt.")
     _add_common(steer_p)
@@ -268,14 +275,26 @@ def run_supervisor_cli(
         if command == "run":
             prompt = _resolve_prompt(args, stdin=stdin)
             run = supervisor.run(prompt)
+            identities = dict(getattr(run, "identities", {}) or {})
             payload = {
                 "run_id": run.run_id,
                 "state": run.state,
                 "health": run.health,
                 "event_cursor": run.event_cursor,
                 "effect_receipt_cids": list(run.effect_receipt_cids),
-                "summary": f"run started run_id={run.run_id}",
+                "summary": f"run admitted run_id={run.run_id}",
+                "objective_cid": identities.get("objective_cid"),
+                "workflow_request_cid": identities.get("workflow_request_cid"),
+                "plan_create_request_cid": identities.get(
+                    "plan_create_request_cid"
+                ),
+                "preview_receipt_cid": identities.get("preview_receipt_cid"),
+                "plan_root_cid": identities.get("plan_root_cid"),
+                "identities": identities,
             }
+        elif command == "start":
+            obs = supervisor.start(str(args.run_id))
+            payload = obs.to_dict()
         elif command == "preview":
             prompt = _resolve_prompt(args, stdin=stdin)
             obs = supervisor.preview(prompt)

@@ -21,6 +21,7 @@ STATE_ALLOWLIST_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_ALLOWLIST"
 PROMPT_LIFECYCLE_TOOLS: Final[tuple[str, ...]] = (
     "agent_supervisor_run",
     "agent_supervisor_preview",
+    "agent_supervisor_start",
     "agent_supervisor_steer",
     "agent_supervisor_status",
     "agent_supervisor_follow",
@@ -159,6 +160,7 @@ async def agent_supervisor_run(
             return _result_err("prompt must be a non-empty string", code="invalid")
         supervisor = _open_supervisor(repository=repository)
         run = supervisor.run(prompt)
+        identities = dict(getattr(run, "identities", {}) or {})
         return _result_ok(
             {
                 "run_id": run.run_id,
@@ -166,6 +168,14 @@ async def agent_supervisor_run(
                 "health": run.health,
                 "event_cursor": run.event_cursor,
                 "effect_receipt_cids": list(run.effect_receipt_cids),
+                "objective_cid": identities.get("objective_cid"),
+                "workflow_request_cid": identities.get("workflow_request_cid"),
+                "plan_create_request_cid": identities.get(
+                    "plan_create_request_cid"
+                ),
+                "preview_receipt_cid": identities.get("preview_receipt_cid"),
+                "plan_root_cid": identities.get("plan_root_cid"),
+                "identities": identities,
             },
             composition_cid=supervisor.composition_cid,
         )
@@ -190,6 +200,26 @@ async def agent_supervisor_preview(
         blob = str(payload)
         if prompt in blob:
             return _result_err("prompt body leak denied", code="prompt_leak")
+        return _result_ok(payload, composition_cid=supervisor.composition_cid)
+    except PathInjectionDenied as exc:
+        return _result_err(str(exc), code="path_denied")
+    except Exception as exc:
+        return _result_err(str(exc), code=type(exc).__name__)
+
+
+async def agent_supervisor_start(
+    run_id: str,
+    repository: str | None = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Authorized START of a materialized run."""
+
+    try:
+        if not isinstance(run_id, str) or not run_id.strip():
+            return _result_err("run_id is required", code="invalid")
+        supervisor = _open_supervisor(repository=repository)
+        obs = supervisor.start(run_id)
+        payload = obs.to_dict()
         return _result_ok(payload, composition_cid=supervisor.composition_cid)
     except PathInjectionDenied as exc:
         return _result_err(str(exc), code="path_denied")
@@ -283,6 +313,7 @@ async def agent_supervisor_doctor(
 _TOOL_FUNCS: Final[Mapping[str, Any]] = {
     "agent_supervisor_run": agent_supervisor_run,
     "agent_supervisor_preview": agent_supervisor_preview,
+    "agent_supervisor_start": agent_supervisor_start,
     "agent_supervisor_steer": agent_supervisor_steer,
     "agent_supervisor_status": agent_supervisor_status,
     "agent_supervisor_follow": agent_supervisor_follow,
@@ -293,6 +324,15 @@ _TOOL_FUNCS: Final[Mapping[str, Any]] = {
 _TOOL_SCHEMAS: Final[Mapping[str, dict[str, Any]]] = {
     "agent_supervisor_run": _prompt_schema(require_prompt=True),
     "agent_supervisor_preview": _prompt_schema(require_prompt=True),
+    "agent_supervisor_start": {
+        "type": "object",
+        "properties": {
+            "run_id": {"type": "string", "minLength": 1},
+            "repository": {"type": "string"},
+        },
+        "required": ["run_id"],
+        "additionalProperties": False,
+    },
     "agent_supervisor_steer": {
         "type": "object",
         "properties": {
@@ -345,6 +385,7 @@ __all__ = [
     "agent_supervisor_follow",
     "agent_supervisor_preview",
     "agent_supervisor_run",
+    "agent_supervisor_start",
     "agent_supervisor_status",
     "agent_supervisor_steer",
     "configure_prompt_lifecycle_supervisor",
