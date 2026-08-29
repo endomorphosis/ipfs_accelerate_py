@@ -23642,6 +23642,27 @@ def _assert_m16_prior_anchor(
         shutil.copyfile(control, control_copy)
         shutil.copyfile(control, replay_copy)
         shutil.copyfile(coordination, coordination_copy)
+        copy_root = Path(td)
+        copy_expectations = (
+            (control_copy, anchors["control"], "stopped M15 control copy"),
+            (replay_copy, anchors["control"], "stopped M15 replay copy"),
+            (
+                coordination_copy,
+                anchors["coordination"],
+                "stopped M15 coordination copy",
+            ),
+        )
+        if any(
+            _stable_regular_sha256(
+                path,
+                root=copy_root,
+                noun=noun,
+                required_link_count=1,
+            )
+            != expected_anchor
+            for path, expected_anchor, noun in copy_expectations
+        ):
+            raise MaterializationError("M16 predecessor copy differs")
         connection = duckdb.connect(str(control_copy), read_only=True)
         try:
             prefix = _event_prefix_digest(connection, 205)

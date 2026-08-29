@@ -3816,7 +3816,9 @@ def test_m16_disposable_stage_preserves_failures_and_rearms_exactly(
         )
 
 
-def test_m16_prior_anchor_is_verified_without_replay_mutation() -> None:
+def test_m16_prior_anchor_is_verified_without_replay_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_m16_prior_anchor_test",
@@ -3828,11 +3830,44 @@ def test_m16_prior_anchor_is_verified_without_replay_mutation() -> None:
         materializer._store_sha256(prior_control),
         materializer._store_sha256(prior_coordination),
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    replay_paths: list[Path] = []
+    digest_paths: list[Path] = []
+    original_replay = DatabaseTaskSource.projection_matches_events
+
+    def tracked_replay(source: DatabaseTaskSource) -> bool:
+        replay_paths.append(Path(source.database_path))
+        return original_replay(source)
+
+    monkeypatch.setattr(
+        DatabaseTaskSource,
+        "projection_matches_events",
+        tracked_replay,
+    )
+    for name in (
+        "_semantic_authority_digest",
+        "_frozen_base_authority_digest",
+        "_append_surface_digest",
+    ):
+        original_digest = getattr(materializer, name)
+
+        def tracked_digest(path: Path, *, _digest=original_digest) -> str:
+            digest_paths.append(Path(path))
+            return _digest(path)
+
+        monkeypatch.setattr(materializer, name, tracked_digest)
 
     assert materializer._assert_m16_prior_anchor(REPO_ROOT, authority) == (
         prior_control,
         prior_coordination,
     )
+    assert len(replay_paths) == 1
+    assert len(digest_paths) == 3
+    assert len(set(digest_paths)) == 1
+    assert replay_paths[0] not in set(digest_paths)
     assert (
         materializer._store_sha256(prior_control),
         materializer._store_sha256(prior_coordination),
