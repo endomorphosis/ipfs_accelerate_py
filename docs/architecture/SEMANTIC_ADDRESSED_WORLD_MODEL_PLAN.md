@@ -1007,7 +1007,73 @@ ignored receipt-last runtime marker.  This removes a control/self-addressing
 cycle without weakening exact-source verification.  After M17 is materialized,
 any further tracked repair requires a stopped append-only M18 successor.
 
-## 26. Current limitations at seal time
+## 26. M18 portal-completion persistence successor
+
+M17 ran through accepted SAWM-003, SAWM-004, and SAWM-005, then landed the
+SAWM-007 merge at `a37a63feab36978b5d1f856ae8811cbd1fe6bc87`.  SAWM-007
+was not accepted: the portal settled it as blocked revision 4 under immutable
+settlement
+`baguqeerannajvghqvxu3ssb5cuiw2k66a7iymdypxqax2j2wneecfm4y6pza`.
+The generation-18 owner was then stopped cleanly.  M17 remains immutable
+history, including every accepted completion and the failed attempt, claim,
+lease, settlement, and source transition.
+
+The bounded portal repair was reviewed in two commits.  The precursor
+`d24d6dd2ae955d115da1c34150c2a84f83d1d799` sealed queued completion
+persistence; its fail-closed successor
+`37f45a54ed5b93dec356cfe3e1f81f18deb567a9` preserves the prior `@1`
+nested canonical-CID/key requirement.  M18 binds the successor tree
+`875340accca120b6f2382735ede7c9ca7096d99b` and the exact bridge and focused
+test blobs.  It appends one plan revision, one operator evidence record, and
+one SAWM-007 `blocked@4 -> retrying@5` control event, then consumes that same
+settlement through one coordination rearm.  It changes no accepted task
+definition, accepted completion, provider invocation, effect, implementation
+commit, or merge attempt.
+
+The stopped M17 predecessor is sealed at control SHA-256
+`6ae3d7ba8196c84c9dc9b50b60f10888fbcfdd07a6985010d4257975a283f814`
+(43,528,192 bytes), coordination SHA-256
+`bfb52452ae7f3bc4390a519a782ee02cb496c463f989a7d2255f02e6aa25e630`
+(14,168,064 bytes), event cursor 222, coordination event count 1,124,
+projection
+`baguqeeraamamss7bxjuotpkrgbtbievdukvu27b2q5dy747vk5bxmmpx72oq`,
+and historical M17 migration receipt CID
+`sha256:b91ffc4156cdf31e935416a55837e66717d2f1c212afdb69566cc0de500efd3b`.
+That non-authoritative receipt carries pre-launch publication hashes; the
+stopped-live store and sidecar anchors above govern the M18 predecessor.
+Execution-sidecar, read-replica, status, lifecycle, catalog, semantic,
+frozen-base, append-surface, and coordination-root anchors are also checked
+before any copy is opened.
+
+M18's fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m18/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m18/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m18
+Quack port    24061
+generation    19
+plan revision 19
+event cursor  225
+projection    baguqeeraqsmnfs6rzwc6bvjjdszmryjtdrtg5aosnk2wdsppaxymsrrpqyxa
+coord events  1125
+coord root    sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1
+semantic      sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f
+frozen base   sha256:7b8d7e8b0c7d59697978c1ebfd4eca854886783a061cc0219f3145e803523d84
+```
+
+Key presence selects
+`portal_completion_persistence_successor_materialization` before M17 and all
+historical successors.  A null, partial, or malformed M18 declaration fails
+closed.  The control/coordination pair is built from exact stopped M17 copies,
+verified on disposable copies, published as a pair, and only then receives its
+non-authoritative receipt-last marker.  The safe operational sequence is:
+confirm M17 stopped; commit the bounded portal repair; commit these nine
+operator controls; validate dependencies and board; materialize once;
+preflight; dry-run implementation launch; then relaunch generation 19.  This
+control commit performs none of the last four runtime operations.
+
+## 27. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

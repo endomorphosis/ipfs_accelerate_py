@@ -6,6 +6,7 @@ authority database, start Quack, probe a provider, or launch a supervisor.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 import importlib.util
@@ -14,6 +15,7 @@ import os
 import shutil
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -935,9 +937,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation. M17 through M9 keys
+    # Exercise the historical M8 selector in isolation. M18 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("portal_completion_persistence_successor_materialization")
     malformed_successor.pop("source_binding_successor_materialization")
     malformed_successor.pop("accepted_source_retry_successor_materialization")
     malformed_successor.pop("runtime_root_rebind_successor_materialization")
@@ -2020,6 +2023,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
@@ -2028,6 +2032,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
@@ -2036,6 +2041,9 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop(
+        "portal_completion_persistence_successor_materialization_cid"
+    )
     historical_seal.pop("source_binding_successor_materialization_cid")
     historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
@@ -2833,6 +2841,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
@@ -2840,6 +2849,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
@@ -2847,6 +2857,9 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop(
+        "portal_completion_persistence_successor_materialization_cid"
+    )
     historical_seal.pop("source_binding_successor_materialization_cid")
     historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
@@ -3661,8 +3674,25 @@ def test_m17_source_seal_binds_repair_and_nine_control_delta() -> None:
         "sawm_materializer_m17_source_seal_test",
     )
     authority = materializer._expected_m17_source_binding_authority()
-    population = materializer.build_population(REPO_ROOT)
-    materializer._assert_m17_source_delta(REPO_ROOT, population, authority)
+    m18 = materializer._expected_m18_portal_completion_persistence_authority()
+    historical_head = m18["prior_source_head"]
+    assert historical_head == "e675b96cdb3eba7479d3ddb32beefb439489d986"
+    assert materializer._git(
+        REPO_ROOT, "rev-parse", f"{historical_head}^{{tree}}"
+    ) == m18["prior_source_tree"]
+    changed = {
+        line.split("\t", 1)[1]
+        for line in materializer._git(
+            REPO_ROOT,
+            "diff",
+            "--name-status",
+            "--no-renames",
+            authority["repair_source_commit"],
+            historical_head,
+            "--",
+        ).splitlines()
+    }
+    assert changed == set(authority["operator_control_paths"])
     assert set(authority["accepted_source_repair"]["changed_paths"]) == {
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
@@ -3671,6 +3701,1149 @@ def test_m17_source_seal_binds_repair_and_nine_control_delta() -> None:
     assert set(authority["operator_control_paths"]) == set(
         authority["bounded_control_plane_repair_paths"]
     )
+
+
+def test_m18_portal_completion_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m18_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "portal_completion_persistence_successor_materialization"
+    authority = materializer._expected_m18_portal_completion_persistence_authority()
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert materializer._m18_successor_configured(config) is True
+    assert authority["prior_event_watermark"] == 222
+    assert authority["target_event_watermark"] == 225
+    assert authority["target_generation"] == 19
+    assert authority["target_plan_revision"] == 19
+    assert authority["target_quack_port"] == 24_061
+    assert authority["prior_owner_marker_present"] is False
+    assert authority["prior_stop_control_present"] is False
+    assert authority["prior_token_handoff_present"] is False
+    assert authority["prior_wals_absent"] is True
+    assert authority["prior_listener_present"] is False
+    assert authority["prior_pid_present"] is False
+    assert authority["prior_active_count"] == 0
+    assert set(authority["failure_receipts"]) == {"SAWM-007"}
+    assert set(authority["task_rearms"]) == {"SAWM-007"}
+    assert authority["accepted_runtime_source_transitions"][2]["merge_commit"] == (
+        "2675ecdf5462c0be90d4a8825773c403172edf66"
+    )
+    assert authority["accepted_source_repair"]["blob_oids"] == {
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "database_portal_bridge.py"
+        ): "5ff1def4410f184c3f41f1b468e230df3a5e4794",
+        "test/api/test_agent_supervisor_database_portal_bridge.py": (
+            "91459021212f4bc4366950def56962c2ce623a89"
+        ),
+    }
+    malformed = dict(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M18 portal completion persistence authority is invalid",
+    ):
+        materializer._m18_successor_configured(malformed)
+
+
+def test_m18_scheduler_uses_fresh_generation_19_runtime_namespace() -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m18"
+    assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
+    assert config["database_program"]["store_generation"] == "19"
+    assert config["database_program"]["quack_endpoint"] == (
+        "quack:127.0.0.1:24061"
+    )
+    assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
+    assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
+    assert config["quack_owner"]["port"] == 24_061
+    assert config["runtime_paths"] == {
+        "root": root,
+        "state": f"{root}/state",
+        "worktrees": f"{root}/worktrees",
+        "merge_queue": f"{root}/merge-queue",
+        "logs": f"{root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+
+
+def test_m18_operator_and_validators_are_presence_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "portal_completion_persistence_successor_materialization"
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m18_presence_test",
+    )
+    assert dict(operator._active_source_repair_materialization(config)) == config[key]
+    malformed = copy.deepcopy(config)
+    malformed[key] = None
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M18 portal-completion successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_validator_m18_presence_test",
+    )
+    dependency_errors = dependency_validator._m18_portal_completion_persistence_errors(
+        malformed,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+    )
+    assert "M18 portal-completion authority differs across controls" in (
+        dependency_errors
+    )
+
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_validator_m18_presence_test",
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m18_migration_errors",
+        lambda *_args, **_kwargs: ["M18 malformed"],
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m17_migration_errors",
+        lambda *_args, **_kwargs: ["M17 history checked"],
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m16_migration_errors",
+        lambda *_args, **_kwargs: ["M16 history checked"],
+    )
+    assert board_validator._active_successor_migration_errors(
+        malformed,
+        seal,
+        inventory,
+    ) == ["M18 malformed", "M17 history checked", "M16 history checked"]
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    (
+        "quack-state-server.pid",
+        "quack-state-server.owner.json",
+        "control.execution.duckdb.wal",
+        "control.read-replica.duckdb.wal",
+        "stale.quack-token",
+    ),
+)
+def test_m18_prior_anchor_rejects_every_stale_lifecycle_class(
+    artifact: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m18_lifecycle_{artifact.replace('.', '_')}",
+    )
+    authority = materializer._expected_m18_portal_completion_persistence_authority()
+    expected_by_noun = {
+        "stopped M17 control store": (
+            authority["prior_control_store_sha256"],
+            authority["prior_control_store_size"],
+        ),
+        "stopped M17 coordination store": (
+            authority["prior_coordination_store_sha256"],
+            authority["prior_coordination_store_size"],
+        ),
+        "stopped M17 status projection": (
+            authority["prior_stopped_status_projection_sha256"],
+            authority["prior_stopped_status_projection_size"],
+        ),
+        "historical M17 migration receipt": (
+            authority["prior_migration_receipt_sha256"],
+            authority["prior_migration_receipt_size"],
+        ),
+        "stopped M17 execution sidecar": (
+            authority["prior_execution_sidecar_sha256"],
+            authority["prior_execution_sidecar_size"],
+        ),
+        "stopped M17 read replica": (
+            authority["prior_read_replica_sha256"],
+            authority["prior_read_replica_size"],
+        ),
+    }
+
+    def sealed_anchor(
+        _path: Path, *, noun: str, **_kwargs: object
+    ) -> tuple[str, int]:
+        return expected_by_noun[noun]
+
+    monkeypatch.setattr(materializer, "_stable_regular_sha256", sealed_anchor)
+    control = (REPO_ROOT / authority["prior_store_id"]).resolve()
+    owner_dir = control.parent / "quack-owner"
+    if artifact == "control.execution.duckdb.wal":
+        injected = control.with_name(artifact)
+    elif artifact == "control.read-replica.duckdb.wal":
+        injected = control.with_name(artifact)
+    else:
+        injected = owner_dir / artifact
+
+    if artifact.endswith(".quack-token"):
+        original_glob = Path.glob
+
+        def lifecycle_glob(path: Path, pattern: str):
+            if path == owner_dir and pattern == "*.quack-token":
+                return iter((injected,))
+            return original_glob(path, pattern)
+
+        monkeypatch.setattr(Path, "glob", lifecycle_glob)
+    else:
+        original_lexists = os.path.lexists
+
+        def lifecycle_lexists(path: os.PathLike[str] | str) -> bool:
+            return Path(path) == injected or original_lexists(path)
+
+        monkeypatch.setattr(materializer.os.path, "lexists", lifecycle_lexists)
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="stopped M17 byte or lifecycle anchor differs",
+    ):
+        materializer._assert_m18_prior_anchor(REPO_ROOT, authority)
+
+
+def test_m18_listener_observation_is_present_and_parse_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m18_listener_observation_test",
+    )
+    header = (
+        "sl local_address rem_address st tx_queue rx_queue tr "
+        "tm->when retrnsmt uid timeout inode\n"
+    )
+    inactive = (
+        "0: 0100007F:0001 00000000:0000 01 00000000:00000000 "
+        "00:00000000 00000000 0 0 1\n"
+    )
+    active = (
+        "0: 0100007F:5DFC 00000000:0000 0A 00000000:00000000 "
+        "00:00000000 00000000 0 0 1\n"
+    )
+    observations: dict[str, str | BaseException] = {}
+
+    def proc_read_text(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        del encoding, errors
+        observed = observations[path.name]
+        if isinstance(observed, BaseException):
+            raise observed
+        return observed
+
+    monkeypatch.setattr(Path, "read_text", proc_read_text)
+    observations.update({"tcp": FileNotFoundError(), "tcp6": header + inactive})
+    assert materializer._m18_prior_listener_is_active(24_060) is False
+
+    observations.update({"tcp": FileNotFoundError(), "tcp6": FileNotFoundError()})
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="listener observation is unavailable",
+    ):
+        materializer._m18_prior_listener_is_active(24_060)
+
+    observations.update({"tcp": header + "malformed\n", "tcp6": header + inactive})
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="listener observation is malformed",
+    ):
+        materializer._m18_prior_listener_is_active(24_060)
+
+    observations.update({"tcp": PermissionError(), "tcp6": header + inactive})
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="listener observation is unavailable",
+    ):
+        materializer._m18_prior_listener_is_active(24_060)
+
+    observations.update({"tcp": header + active, "tcp6": FileNotFoundError()})
+    assert materializer._m18_prior_listener_is_active(24_060) is True
+
+
+@pytest.mark.parametrize("entrypoint", ("ensure", "verify"))
+@pytest.mark.parametrize("race", ("store_swap", "pending_receipt"))
+def test_m18_existing_marker_rechecks_pair_and_pending_after_receipt_load(
+    entrypoint: str,
+    race: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m18_marker_race_{entrypoint}_{race}",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control_bytes = b"sealed-control\n"
+    coordination_bytes = b"sealed-coordination\n"
+    control.write_bytes(control_bytes)
+    coordination.write_bytes(coordination_bytes)
+    body = {
+        "schema": "sawm/test-m18-final-marker@1",
+        "control_store_sha256": hashlib.sha256(control_bytes).hexdigest(),
+        "control_store_size": len(control_bytes),
+        "coordination_store_sha256": hashlib.sha256(
+            coordination_bytes
+        ).hexdigest(),
+        "coordination_store_size": len(coordination_bytes),
+    }
+    expected = {**body, "receipt_cid": materializer._identity(body)}
+    receipt_path = tmp_path / "migration-receipt.json"
+    receipt_path.write_bytes(materializer._canonical(expected) + b"\n")
+    pending = tmp_path / ".migration-receipt.json.race.tmp"
+    verified = {"verified": True}
+
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m18_migration_receipt",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    original_load = materializer._load_nofollow_json
+
+    def load_then_race(*args: object, **kwargs: object):
+        observed = original_load(*args, **kwargs)
+        if kwargs.get("noun") == "M18 final pair marker":
+            if race == "store_swap":
+                control.write_bytes(b"swapped-after-receipt-load\n")
+            else:
+                pending.write_text("pending\n", encoding="utf-8")
+        return observed
+
+    monkeypatch.setattr(materializer, "_load_nofollow_json", load_then_race)
+    if entrypoint == "ensure":
+        monkeypatch.setattr(
+            materializer,
+            "_m18_portal_completion_persistence_authority",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(
+            materializer,
+            "_assert_committed_clean_source",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            materializer,
+            "_assert_m18_source_delta",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            materializer,
+            "_assert_m18_prior_anchor",
+            lambda *_args, **_kwargs: (control, coordination),
+        )
+        monkeypatch.setattr(
+            materializer,
+            "_verify_m18_store_pair",
+            lambda *_args, **_kwargs: dict(verified),
+        )
+        def invoke() -> dict[str, object]:
+            return materializer._ensure_m18_migration_receipt(
+                tmp_path,
+                control,
+                coordination,
+                {},
+                {},
+                verified,
+                "sha256:test",
+            )
+    else:
+        def invoke() -> dict[str, object]:
+            return materializer._verify_existing_m18_migration_receipt(
+                tmp_path,
+                control,
+                coordination,
+                {},
+                {},
+                verified,
+                "sha256:test",
+            )
+
+    match = (
+        "M18 store pair changed at receipt commit"
+        if race == "store_swap"
+        else "M18 retained a pending receipt temporary"
+    )
+    with pytest.raises(materializer.MigrationRequired, match=match):
+        invoke()
+
+
+@pytest.mark.parametrize("write_mode", ("short", "zero_progress"))
+def test_m18_receipt_writer_handles_short_write_or_fails_closed(
+    write_mode: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m18_short_write_{write_mode}",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control.write_bytes(b"sealed-control\n")
+    coordination.write_bytes(b"sealed-coordination\n")
+    body = {
+        "schema": "sawm/test-m18-final-marker@1",
+        "control_store_sha256": hashlib.sha256(control.read_bytes()).hexdigest(),
+        "control_store_size": control.stat().st_size,
+        "coordination_store_sha256": hashlib.sha256(
+            coordination.read_bytes()
+        ).hexdigest(),
+        "coordination_store_size": coordination.stat().st_size,
+    }
+    expected = {**body, "receipt_cid": materializer._identity(body)}
+    verified = {"verified": True}
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m18_migration_receipt",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m18_portal_completion_persistence_authority",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_committed_clean_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m18_source_delta",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m18_prior_anchor",
+        lambda *_args, **_kwargs: (control, coordination),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m18_store_pair",
+        lambda *_args, **_kwargs: dict(verified),
+    )
+    original_write = materializer.os.write
+
+    def bounded_write(descriptor: int, payload: bytes | memoryview) -> int:
+        if write_mode == "zero_progress":
+            return 0
+        return original_write(descriptor, payload[:7])
+
+    monkeypatch.setattr(materializer.os, "write", bounded_write)
+
+    def publish() -> dict[str, object]:
+        return materializer._ensure_m18_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            {},
+            {},
+            verified,
+            "sha256:test",
+        )
+
+    receipt_path = tmp_path / "migration-receipt.json"
+    if write_mode == "short":
+        assert publish() == expected
+        assert receipt_path.read_bytes() == materializer._canonical(expected) + b"\n"
+        assert not tuple(tmp_path.glob(".migration-receipt.json.*.tmp"))
+        return
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M18 receipt write made no progress",
+    ):
+        publish()
+    assert not receipt_path.exists()
+    pending = tuple(tmp_path.glob(".migration-receipt.json.*.tmp"))
+    assert len(pending) == 1
+    monkeypatch.setattr(materializer.os, "write", original_write)
+    with pytest.raises((json.JSONDecodeError, materializer.MigrationRequired)):
+        publish()
+    assert not receipt_path.exists()
+    pending[0].unlink()
+    assert publish() == expected
+
+
+def test_m18_live_marker_rejects_rehashed_fields_and_tail_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m18_live_marker_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m18_live_marker_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m18_portal_completion_persistence_authority()
+    validation_digest = "sha256:" + "1" * 64
+    target_root = tmp_path / authority["target_runtime_root"]
+    target_root.mkdir(parents=True)
+    staged = materializer._stage_m18_store_pair(
+        REPO_ROOT,
+        target_root,
+        REPO_ROOT / authority["prior_store_id"],
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        population,
+        config,
+        validation_digest,
+    )
+    prior_coordination = tmp_path / authority["prior_coordination_store_id"]
+    prior_coordination.parent.mkdir(parents=True)
+    prior_control = tmp_path / authority["prior_store_id"]
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_store_id"],
+        prior_control,
+    )
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        prior_coordination,
+    )
+    prior_artifacts = {
+        noun: tmp_path / authority[path_key]
+        for noun, path_key in (
+            ("status", "prior_stopped_status_projection_path"),
+            ("receipt", "prior_migration_receipt_path"),
+            ("execution", "prior_execution_sidecar_path"),
+            ("read replica", "prior_read_replica_path"),
+        )
+    }
+    for noun, path_key in (
+        ("status", "prior_stopped_status_projection_path"),
+        ("receipt", "prior_migration_receipt_path"),
+        ("execution", "prior_execution_sidecar_path"),
+        ("read replica", "prior_read_replica_path"),
+    ):
+        target = prior_artifacts[noun]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / authority[path_key], target)
+    monkeypatch.setattr(
+        materializer,
+        "_m18_portal_completion_persistence_authority",
+        lambda *_args, **_kwargs: dict(authority),
+    )
+    receipt = materializer._expected_m18_migration_receipt(
+        tmp_path,
+        staged["stage_control"],
+        staged["stage_coordination"],
+        population,
+        config,
+        staged["verified"],
+        validation_digest,
+    )
+    receipt_path = target_root / "migration-receipt.json"
+    receipt_path.write_bytes(materializer._canonical(receipt) + b"\n")
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        materializer,
+        "build_population",
+        lambda _root: population,
+    )
+
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        PINNED_PROFILE_ID,
+        PINNED_QUACK_EXTENSION,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    live_identity = {
+        "server_id": "server:00000000-0000-4000-8000-000000000019",
+        "store_id": authority["target_store_id"],
+        "database_uuid": authority["prior_database_uuid"],
+        "process_birth_id": "birth:" + "1" * 32,
+        "listen_uri": config["database_program"]["quack_endpoint"],
+        "extension_fingerprint": "sha256:"
+        + config["quack_owner"]["pinned_extension"]["sha256"],
+        "schema_revision": 1,
+        "schema_fingerprint": "sha256:" + "2" * 64,
+        "generation": 19,
+        "fence_epoch": 19,
+        "revision": 0,
+        "credential_generation": 19,
+        "secret_handle": config["quack_owner"]["secret_handle"],
+        "repository_id": config["quack_owner"]["repository_id"],
+        "startup_epoch": 1_788_016_500,
+        "started_at": "2026-08-29T16:35:00Z",
+        "status": "ready",
+    }
+    remote_identity = {
+        key: live_identity[key]
+        for key in (
+            "server_id",
+            "store_id",
+            "database_uuid",
+            "process_birth_id",
+            "listen_uri",
+            "extension_fingerprint",
+            "schema_revision",
+            "generation",
+            "credential_generation",
+            "schema_fingerprint",
+        )
+    }
+    remote_identity.update({"live": True, "canonical_rows_verified": True})
+    lifecycle = duckdb.connect(str(staged["stage_control"]))
+    try:
+        lifecycle.execute(
+            "INSERT INTO store_generations VALUES (?,?,?,?,?,?,?,?,?)",
+            [
+                19,
+                1,
+                19,
+                0,
+                live_identity["database_uuid"],
+                live_identity["process_birth_id"],
+                live_identity["started_at"],
+                "",
+                "{}",
+            ],
+        )
+        lifecycle.execute(
+            "INSERT INTO state_servers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                live_identity["server_id"],
+                live_identity["store_id"],
+                live_identity["database_uuid"],
+                live_identity["process_birth_id"],
+                live_identity["listen_uri"],
+                live_identity["extension_fingerprint"],
+                1,
+                19,
+                live_identity["started_at"],
+                None,
+                "ready",
+                1,
+                "",
+                "{}",
+            ],
+        )
+        lifecycle.execute(
+            "INSERT INTO server_epochs VALUES (?,?,?,?,?)",
+            [
+                live_identity["server_id"],
+                live_identity["startup_epoch"],
+                19,
+                live_identity["started_at"],
+                None,
+            ],
+        )
+        capability_body = json.dumps(
+            {
+                "status": "compatible",
+                "profile_id": PINNED_PROFILE_ID,
+                "extension_fingerprint": live_identity["extension_fingerprint"],
+            },
+            sort_keys=True,
+        )
+        lifecycle.execute(
+            "INSERT INTO capability_snapshots VALUES (?,?,?,?,?,?,?,?,?)",
+            [
+                f"cap:{live_identity['server_id']}:19",
+                live_identity["server_id"],
+                PINNED_PROFILE_ID,
+                duckdb.__version__,
+                PINNED_QUACK_EXTENSION,
+                live_identity["extension_fingerprint"],
+                "compatible",
+                live_identity["started_at"],
+                capability_body,
+            ],
+        )
+        lifecycle.execute(
+            "INSERT INTO credentials VALUES (?,?,?,?,?,?,?,?)",
+            [
+                f"cred:{live_identity['server_id']}:19",
+                live_identity["secret_handle"],
+                19,
+                "quack-auth",
+                live_identity["started_at"],
+                None,
+                None,
+                0,
+            ],
+        )
+        lifecycle.execute("CHECKPOINT")
+    finally:
+        lifecycle.close()
+
+    source = DatabaseTaskSource(staged["stage_control"], install_schema=False)
+    try:
+        lifecycle_reads = {
+            table: 0
+            for table in (
+                "state_servers",
+                "store_generations",
+                "server_epochs",
+                "capability_snapshots",
+                "credentials",
+            )
+        }
+        original_connection = source.intent._connection
+
+        class CountingConnection:
+            def __init__(self, connection: object) -> None:
+                self._wrapped = connection
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self._wrapped, name)
+
+            def execute(
+                self,
+                sql: str,
+                parameters: object = None,
+            ) -> object:
+                normalized = " ".join(str(sql).split())
+                for table in lifecycle_reads:
+                    if f'SELECT * FROM "{table}" ORDER BY' in normalized:
+                        lifecycle_reads[table] += 1
+                if parameters is None:
+                    return self._wrapped.execute(sql)
+                return self._wrapped.execute(sql, parameters)
+
+        @contextlib.contextmanager
+        def counted_connection(*, write: bool = False):
+            with original_connection(write=write) as connection:
+                yield CountingConnection(connection)
+
+        source.intent._connection = counted_connection
+        canonical_prior_paths = {
+            prior_control.resolve(),
+            prior_coordination.resolve(),
+        }
+        connected_paths: list[Path] = []
+        real_connect = duckdb.connect
+
+        def guarded_connect(
+            database: object = ":memory:",
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            raw = os.fspath(database)
+            if raw != ":memory:":
+                path = Path(raw).resolve()
+                assert path not in canonical_prior_paths
+                connected_paths.append(path)
+            return real_connect(database, *args, **kwargs)
+
+        with monkeypatch.context() as connect_guard:
+            connect_guard.setattr(duckdb, "connect", guarded_connect)
+            accepted = operator._require_m18_final_pair_marker(
+                config,
+                authority,
+                materializer,
+                live_source=source,
+                validation_digest=validation_digest,
+                live_identity=live_identity,
+                remote_identity=remote_identity,
+            )
+        assert accepted == receipt
+        prior_copy_paths = {
+            path.name
+            for path in connected_paths
+            if "sawm-r2-m18-live-prior-" in str(path.parent)
+        }
+        assert prior_copy_paths == {
+            "control.duckdb",
+            "control.coordination.duckdb",
+        }
+        assert lifecycle_reads == {table: 1 for table in lifecycle_reads}
+        source.intent._connection = original_connection
+        mutations: dict[str, object] = {
+            "control_database_is_authority": False,
+            "coordination_database_is_authority": False,
+            "validation_digest": "sha256:" + "0" * 64,
+            "migration_digest": "sha256:" + "0" * 64,
+            "migration_evidence_id": "forged-evidence",
+            "plan_migration_event_id": "forged-plan-event",
+            "migration_evidence_event_id": "forged-evidence-event",
+            "task_rearm_event_ids": {"SAWM-007": "forged-task-event"},
+            "task_rearm_receipt_cids": {"SAWM-007": "forged-task-receipt"},
+            "coordination_rearm_event_ids": {
+                "SAWM-007": "lease-event:" + "0" * 32
+            },
+            "coordination_rearm_ids": {"SAWM-007": "forged-rearm"},
+            "plan_projection_cid": "forged-plan-projection",
+            "migration_event_watermark": 224,
+            "control_store_sha256": "not-a-sha256",
+            "control_store_size": 0,
+            "append_surface_digest": "sha256:" + "0" * 64,
+            "catalog_digest": "sha256:" + "0" * 64,
+        }
+        for field, value in mutations.items():
+            forged = {**receipt, field: value}
+            unhashed = dict(forged)
+            unhashed.pop("receipt_cid")
+            forged["receipt_cid"] = materializer._identity(unhashed)
+            receipt_path.write_bytes(materializer._canonical(forged) + b"\n")
+            with pytest.raises(operator.OperatorError):
+                operator._require_m18_final_pair_marker(
+                    config,
+                    authority,
+                    materializer,
+                    live_source=source,
+                    validation_digest=validation_digest,
+                    live_identity=live_identity,
+                    remote_identity=remote_identity,
+                )
+        receipt_path.write_bytes(materializer._canonical(receipt) + b"\n")
+
+        for _noun, path in prior_artifacts.items():
+            with path.open("r+b") as handle:
+                first = handle.read(1)
+                assert first
+                handle.seek(0)
+                handle.write(b"\x00" if first != b"\x00" else b"\x01")
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                with pytest.raises(operator.OperatorError):
+                    operator._require_m18_final_pair_marker(
+                        config,
+                        authority,
+                        materializer,
+                        live_source=source,
+                        validation_digest=validation_digest,
+                        live_identity=live_identity,
+                        remote_identity=remote_identity,
+                    )
+            finally:
+                with path.open("r+b") as handle:
+                    handle.seek(0)
+                    handle.write(first)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+
+        prior_owner_dir = prior_control.parent / "quack-owner"
+        forbidden_artifacts = (
+            prior_control.with_name(prior_control.name + ".wal"),
+            prior_coordination.with_name(prior_coordination.name + ".wal"),
+            prior_artifacts["execution"].with_name(
+                prior_artifacts["execution"].name + ".wal"
+            ),
+            prior_artifacts["read replica"].with_name(
+                prior_artifacts["read replica"].name + ".wal"
+            ),
+            prior_control.with_name(f".{prior_control.name}.state-owner.json"),
+            prior_owner_dir / "quack-state-server.pid",
+            prior_owner_dir / "quack-state-server.stop",
+            prior_owner_dir / "quack-state-server.owner.json",
+            prior_owner_dir / "forged.quack-token",
+        )
+        for path in forbidden_artifacts:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"forged\n")
+            try:
+                with pytest.raises(operator.OperatorError):
+                    operator._require_m18_final_pair_marker(
+                        config,
+                        authority,
+                        materializer,
+                        live_source=source,
+                        validation_digest=validation_digest,
+                        live_identity=live_identity,
+                        remote_identity=remote_identity,
+                    )
+            finally:
+                path.unlink()
+
+        with monkeypatch.context() as listener_patch:
+            listener_patch.setattr(
+                materializer,
+                "_m18_prior_listener_is_active",
+                lambda _port: True,
+            )
+            with pytest.raises(operator.OperatorError):
+                operator._require_m18_final_pair_marker(
+                    config,
+                    authority,
+                    materializer,
+                    live_source=source,
+                    validation_digest=validation_digest,
+                    live_identity=live_identity,
+                    remote_identity=remote_identity,
+                )
+
+        from ipfs_accelerate_py.agent_supervisor.merge import worktree_lifecycle
+
+        for liveness in (
+            worktree_lifecycle.OwnerLiveness.ALIVE,
+            worktree_lifecycle.OwnerLiveness.UNKNOWN,
+        ):
+            with monkeypatch.context() as process_patch:
+                process_patch.setattr(
+                    worktree_lifecycle,
+                    "owner_liveness",
+                    lambda _identity, state=liveness: state,
+                )
+                with pytest.raises(operator.OperatorError):
+                    operator._require_m18_final_pair_marker(
+                        config,
+                        authority,
+                        materializer,
+                        live_source=source,
+                        validation_digest=validation_digest,
+                        live_identity=live_identity,
+                        remote_identity=remote_identity,
+                    )
+
+        original_prior_snapshot = materializer._m18_prior_artifact_anchor_snapshot
+        snapshot_calls = 0
+
+        def mutate_status_before_final_snapshot(
+            root: Path,
+            sealed_authority: Mapping[str, object],
+        ) -> Mapping[str, object]:
+            nonlocal snapshot_calls
+            snapshot_calls += 1
+            if snapshot_calls == 2:
+                prior_artifacts["status"].write_bytes(b"forged-after-first-read\n")
+            return original_prior_snapshot(root, sealed_authority)
+
+        monkeypatch.setattr(
+            materializer,
+            "_m18_prior_artifact_anchor_snapshot",
+            mutate_status_before_final_snapshot,
+        )
+        with pytest.raises(operator.OperatorError):
+            operator._require_m18_final_pair_marker(
+                config,
+                authority,
+                materializer,
+                live_source=source,
+                validation_digest=validation_digest,
+                live_identity=live_identity,
+                remote_identity=remote_identity,
+            )
+        shutil.copyfile(
+            REPO_ROOT / authority["prior_stopped_status_projection_path"],
+            prior_artifacts["status"],
+        )
+    finally:
+        source.close()
+
+    pristine_control = tmp_path / "m18-live-pristine.duckdb"
+    shutil.copyfile(staged["stage_control"], pristine_control)
+    tamper_cases: tuple[tuple[str, str, list[object]], ...] = (
+        (
+            "historical plan revision",
+            "UPDATE plan_revisions SET body_json=? WHERE revision=18",
+            ["{}"],
+        ),
+        (
+            "historical evidence",
+            "UPDATE evidence_nodes SET body_json=? WHERE evidence_id=("
+            "SELECT evidence_id FROM evidence_nodes WHERE evidence_id<>? "
+            "ORDER BY evidence_id LIMIT 1)",
+            ["{}", staged["verified"]["migration_evidence_id"]],
+        ),
+        (
+            "catalog",
+            "CREATE VIEW forged_m18_catalog AS SELECT 1 AS value",
+            [],
+        ),
+        (
+            "unchecked stable metadata",
+            "UPDATE control_plane_metadata SET value=? WHERE key='tool_version'",
+            ["forged"],
+        ),
+        (
+            "lifecycle",
+            "UPDATE capability_snapshots SET profile_id=? WHERE server_id=?",
+            ["forged-profile", live_identity["server_id"]],
+        ),
+        (
+            "extra lifecycle row",
+            "INSERT INTO state_servers SELECT ?,store_id,database_uuid,"
+            "?,listen_uri,extension_fingerprint,schema_revision,"
+            "generation,started_at,stopped_at,status,revision,extension_schema,"
+            "extension_json FROM state_servers WHERE server_id=?",
+            [
+                "server:00000000-0000-4000-8000-000000000099",
+                "birth:" + "9" * 32,
+                live_identity["server_id"],
+            ],
+        ),
+        (
+            "intent tail",
+            "UPDATE domain_events SET body_json=? WHERE global_sequence=225",
+            ["{}"],
+        ),
+    )
+    for noun, sql, parameters in tamper_cases:
+        shutil.copyfile(pristine_control, staged["stage_control"])
+        database = duckdb.connect(str(staged["stage_control"]))
+        try:
+            database.execute(sql, parameters)
+            database.execute("CHECKPOINT")
+            forged_receipt = dict(receipt)
+            if noun in {"historical plan revision", "historical evidence"}:
+                forged_receipt["append_surface_digest"] = (
+                    materializer._authority_table_digest_on(
+                        database,
+                        (
+                            "plans",
+                            "plan_revisions",
+                            "evidence_nodes",
+                            "domain_events",
+                        ),
+                    )
+                )
+            elif noun == "catalog":
+                forged_receipt["catalog_digest"] = (
+                    materializer._main_catalog_digest_on(database)
+                )
+        finally:
+            database.close()
+        unhashed = dict(forged_receipt)
+        unhashed.pop("receipt_cid")
+        forged_receipt["receipt_cid"] = materializer._identity(unhashed)
+        receipt_path.write_bytes(materializer._canonical(forged_receipt) + b"\n")
+        tampered_source = DatabaseTaskSource(
+            staged["stage_control"], install_schema=False
+        )
+        try:
+            with pytest.raises(
+                operator.OperatorError,
+                match=(
+                    "M18 live intent-event tail differs"
+                    if noun == "intent tail"
+                    else None
+                ),
+            ):
+                operator._require_m18_final_pair_marker(
+                    config,
+                    authority,
+                    materializer,
+                    live_source=tampered_source,
+                    validation_digest=validation_digest,
+                    live_identity=live_identity,
+                    remote_identity=remote_identity,
+                )
+        finally:
+            tampered_source.close()
+            receipt_path.write_bytes(materializer._canonical(receipt) + b"\n")
+
+
+def test_m18_verifier_rejects_forged_evidence_parent(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m18_evidence_parent_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m18_portal_completion_persistence_authority()
+    validation_digest = "sha256:" + "1" * 64
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    staged = materializer._stage_m18_store_pair(
+        REPO_ROOT,
+        stage,
+        REPO_ROOT / authority["prior_store_id"],
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        population,
+        config,
+        validation_digest,
+    )
+
+    import duckdb
+
+    database = duckdb.connect(str(staged["stage_control"]))
+    try:
+        database.execute(
+            "UPDATE evidence_nodes SET parent_evidence_id=? "
+            "WHERE evidence_id=?",
+            ["forged-parent", staged["verified"]["migration_evidence_id"]],
+        )
+        database.execute("CHECKPOINT")
+    finally:
+        database.close()
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="plan/evidence append differs",
+    ):
+        materializer._verify_m18_store_pair_copy(
+            staged["stage_control"],
+            staged["stage_coordination"],
+            staged["stage_prior_control"],
+            staged["stage_prior_coordination"],
+            population,
+            config,
+            validation_digest,
+        )
 
 
 def test_m16_accepted_source_retry_authority_is_presence_first_and_exact() -> None:
@@ -3788,31 +4961,23 @@ def test_m16_source_seal_binds_repair_blobs_and_both_exact_deltas(
         )
 
 
-def test_m17_scheduler_uses_fresh_generation_18_runtime_namespace() -> None:
+def test_m17_namespace_is_preserved_as_historical_under_m18() -> None:
     config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
+    authority = config["source_binding_successor_materialization"]
     root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m17"
-    assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
-    assert config["database_program"]["store_generation"] == "18"
-    assert config["database_program"]["quack_endpoint"] == "quack:127.0.0.1:24060"
-    assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
-    assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
-    assert config["quack_owner"]["port"] == 24060
-    assert config["runtime_paths"] == {
-        "root": root,
-        "state": f"{root}/state",
-        "worktrees": f"{root}/worktrees",
-        "merge_queue": f"{root}/merge-queue",
-        "logs": f"{root}/logs",
-        "generated_runtime_artifacts_are_completion_authority": False,
-    }
+    assert authority["target_store_id"] == f"{root}/control.duckdb"
+    assert authority["target_generation"] == 18
+    assert authority["target_quack_port"] == 24_060
+    assert config["runtime_paths"]["root"].endswith("run-r2-m18")
+    assert config["database_program"]["store_generation"] == "19"
 
 
-def test_m17_validators_keep_m16_authority_but_not_its_active_runtime() -> None:
+def test_m18_validators_keep_m17_and_m16_historical_authority() -> None:
     dependency_validator = _load(
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
         "sawm_dependency_validator_m17_historical_m16_test",
@@ -3842,7 +5007,14 @@ def test_m17_validators_keep_m16_authority_but_not_its_active_runtime() -> None:
         seal,
         inventory,
         root=REPO_ROOT,
+        require_active_runtime=False,
     ) == []
+    assert dependency_validator._m17_source_binding_successor_errors(
+        config,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+    ) == ["scheduler M17 target/runtime binding is not exact"]
     assert dependency_validator._m16_accepted_source_retry_errors(
         config,
         seal,
@@ -4105,6 +5277,7 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
     population = materializer.build_population(REPO_ROOT)
     authority = materializer._expected_m16_accepted_source_retry_authority()
     historical_config = copy.deepcopy(config)
+    historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
     historical_config["runtime_paths"] = {
         "root": authority["target_runtime_root"],
@@ -4917,11 +6090,11 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m16() -> None:
     }
     assert historical_runtime["root"] == authority["target_runtime_root"]
     assert config["runtime_paths"]["root"] == (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m17"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m18"
     )
     assert config["runtime_paths"] != historical_runtime
-    assert config["database_program"]["store_generation"] == "18"
-    assert config["quack_owner"]["port"] == 24_060
+    assert config["database_program"]["store_generation"] == "19"
+    assert config["quack_owner"]["port"] == 24_061
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 

@@ -2983,12 +2983,204 @@ def _m12_declared_output_retry_errors(
     return errors
 
 
+def _m18_portal_completion_persistence_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+) -> list[str]:
+    """Check M18's stopped-M17, portal repair, and one-task rearm controls."""
+
+    key = "portal_completion_persistence_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m18_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M18 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m18_portal_completion_persistence_authority()
+        )
+        errors: list[str] = []
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M18 portal-completion authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M18 portal-completion authority CID is not exact")
+
+        required = {
+            "schema": "sawm/portal-completion-persistence-repair-authorization@1",
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M18",
+            "migration_kind": "portal_completion_persistence_repair",
+            "supersession_mode": (
+                "append_only_portal_completion_persistence_repair_and_exact_rearm"
+            ),
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m17/control.duckdb"
+            ),
+            "prior_control_store_sha256": (
+                "6ae3d7ba8196c84c9dc9b50b60f10888fbcfdd07a6985010d4257975a283f814"
+            ),
+            "prior_coordination_store_sha256": (
+                "bfb52452ae7f3bc4390a519a782ee02cb496c463f989a7d2255f02e6aa25e630"
+            ),
+            "prior_event_watermark": 222,
+            "prior_plan_revision": 18,
+            "prior_generation": 18,
+            "prior_owner_marker_present": False,
+            "prior_stop_control_present": False,
+            "prior_token_handoff_present": False,
+            "prior_wals_absent": True,
+            "prior_listener_present": False,
+            "prior_pid_present": False,
+            "prior_active_count": 0,
+            "repair_precursor_source_commit": (
+                "d24d6dd2ae955d115da1c34150c2a84f83d1d799"
+            ),
+            "repair_source_commit": (
+                "37f45a54ed5b93dec356cfe3e1f81f18deb567a9"
+            ),
+            "repair_source_tree": "875340accca120b6f2382735ede7c9ca7096d99b",
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m18"
+            ),
+            "target_generation": 19,
+            "target_quack_port": 24_061,
+            "target_plan_revision": 19,
+            "target_event_watermark": 225,
+            "target_projection_cid": (
+                "baguqeeraqsmnfs6rzwc6bvjjdszmryjtdrtg5aosnk2wdsppaxymsrrpqyxa"
+            ),
+            "target_coordination_event_count": 1_125,
+            "event_suffix_length": 3,
+            "coordination_semantic_changes": 1,
+            "task_revision_changes": 1,
+            "task_status_changes": 1,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append("M18 portal-completion authority is not exact")
+        repair = expected.get("accepted_source_repair")
+        wanted_blobs = {
+            (
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                "database_portal_bridge.py"
+            ): "5ff1def4410f184c3f41f1b468e230df3a5e4794",
+            "test/api/test_agent_supervisor_database_portal_bridge.py": (
+                "91459021212f4bc4366950def56962c2ce623a89"
+            ),
+        }
+        if (
+            not isinstance(repair, Mapping)
+            or repair.get("blob_oids") != wanted_blobs
+            or set(repair.get("changed_paths", ())) != set(wanted_blobs)
+            or repair.get("repository_authority_weakened") is not False
+        ):
+            errors.append("M18 exact fail-closed portal repair blobs differ")
+        rearms = expected.get("task_rearms")
+        failure = expected.get("failure_receipts")
+        if (
+            not isinstance(rearms, Mapping)
+            or set(rearms) != {"SAWM-007"}
+            or not isinstance(failure, Mapping)
+            or set(failure) != {"SAWM-007"}
+            or rearms["SAWM-007"].get("settlement_id")
+            != failure["SAWM-007"].get("settlement_id")
+            or rearms["SAWM-007"].get("from_revision") != 4
+            or rearms["SAWM-007"].get("to_revision") != 5
+            or rearms["SAWM-007"].get("to_status") != "retrying"
+            or rearms["SAWM-007"].get("worker_self_approval") is not False
+        ):
+            errors.append("M18 exact SAWM-007 rearm authority differs")
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m18_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M18 exact repair/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        target_root = str(expected["target_runtime_root"])
+        target_store = str(expected["target_store_id"])
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "19",
+                "quack:127.0.0.1:24061",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_061,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M18 target/runtime binding is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M18 portal-completion authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m17_source_binding_successor_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
     *,
     root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
 ) -> list[str]:
     """Check M17's exact stopped-M16, source-only successor controls."""
 
@@ -3138,6 +3330,20 @@ def _m17_source_binding_successor_errors(
             errors.append("M17 bounded source repair paths are not exact")
         try:
             current_head = _git(root, "rev-parse", "HEAD")
+            if (
+                "portal_completion_persistence_successor_materialization"
+                in scheduler
+            ):
+                # M18 preserves M17's committed control endpoint as immutable
+                # history.  Re-run the full M17 source-delta verifier against
+                # that sealed endpoint rather than weakening the check or
+                # incorrectly treating the later M18 source as M17 output.
+                current_head = str(
+                    materializer
+                    ._expected_m18_portal_completion_persistence_authority()[
+                        "prior_source_head"
+                    ]
+                )
             materializer._assert_m17_source_delta(
                 root,
                 {
@@ -3162,7 +3368,7 @@ def _m17_source_binding_successor_errors(
         program = scheduler.get("database_program", {})
         owner = scheduler.get("quack_owner", {})
         runtime = scheduler.get("runtime_paths")
-        if (
+        if require_active_runtime and (
             (
                 program.get("store_id"),
                 program.get("store_generation"),
@@ -3498,6 +3704,15 @@ def _m16_accepted_source_retry_errors(
         # and prior->successor to the aggregate twelve-file delta.
         try:
             current_head = _git(root, "rev-parse", "HEAD")
+            if "source_binding_successor_materialization" in scheduler:
+                # M17 records the exact committed M16 control endpoint.  Use
+                # that endpoint for the unchanged M16 source-seal verifier
+                # when a later successor owns the active runtime namespace.
+                current_head = str(
+                    materializer._expected_m17_source_binding_authority()[
+                        "prior_source_head"
+                    ]
+                )
             source_binding = {
                 "head": current_head,
                 "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
@@ -5621,6 +5836,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m18_key = "portal_completion_persistence_successor_materialization"
+        m18_presence = (
+            m18_key in scheduler_probe,
+            m18_key in migration_probe,
+            f"{m18_key}_cid" in seal,
+        )
         m17_key = "source_binding_successor_materialization"
         m17_presence = (
             m17_key in scheduler_probe,
@@ -5641,7 +5862,43 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m17_presence):
+        if any(m18_presence):
+            if (
+                not all(m18_presence)
+                or not isinstance(scheduler_probe.get(m18_key), Mapping)
+                or scheduler_probe.get(m18_key) != migration_probe.get(m18_key)
+            ):
+                unexpected = [
+                    "M18 authority is partial or differs across source controls"
+                ]
+            else:
+                authority = scheduler_probe[m18_key]
+                expected_paths = set(
+                    str(path)
+                    for path in authority.get(
+                        "bounded_control_plane_repair_paths", ()
+                    )
+                )
+                expected = {path: "M" for path in expected_paths}
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(authority.get("runtime_source_head")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = (
+                    []
+                    if observed == expected and working.issubset(expected_paths)
+                    else ["M18 status-qualified bounded source delta differs"]
+                )
+        elif any(m17_presence):
             if (
                 not all(m17_presence)
                 or not isinstance(scheduler_probe.get(m17_key), Mapping)
@@ -6094,7 +6351,34 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if "source_binding_successor_materialization" in scheduler:
+        if "portal_completion_persistence_successor_materialization" in scheduler:
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif "source_binding_successor_materialization" in scheduler:
             protocol_errors.extend(
                 _m17_source_binding_successor_errors(
                     scheduler, seal, migration, root=root
@@ -6148,6 +6432,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "portal_completion_persistence_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M18 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "live_recovery_successor_materialization",
