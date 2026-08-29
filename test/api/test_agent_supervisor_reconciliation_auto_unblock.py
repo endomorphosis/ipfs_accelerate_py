@@ -95,6 +95,69 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def test_rescue_source_fragment_strips_stacked_prefixes() -> None:
+    assert TodoImplementationSupervisor._rescue_source_branch_fragment(
+        "implementation/pctdd-001-40d3ba7341cb-attempt-1-1788000460",
+        "workspace",
+    ) == "implementation-pctdd-001-40d3ba7341cb-attempt-1-1788000460"
+    assert TodoImplementationSupervisor._rescue_source_branch_fragment(
+        "rescue/worktree/implementation-pctdd-001-40d3ba7341cb-attempt-1-1788000460-abc",
+        "workspace",
+    ) == "implementation-pctdd-001-40d3ba7341cb-attempt-1-1788000460-abc"
+    stacked = (
+        "rescue/worktree/rescue-worktree-rescue-worktree-implementation-pctdd-001-"
+        "40d3ba7341cb-attempt-1-1788000460-abc"
+    )
+    assert TodoImplementationSupervisor._rescue_source_branch_fragment(
+        stacked,
+        "workspace",
+    ) == "implementation-pctdd-001-40d3ba7341cb-attempt-1-1788000460-abc"
+
+
+def test_second_dirty_rescue_does_not_stack_rescue_prefix(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/pctdd-001-attempt-1-1"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "README.md").write_text("impl\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "impl")
+    _git(repo, "checkout", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "pctdd-001"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = _supervisor(repo, worktree_root=worktree_root)
+    (worktree_path / "README.md").write_text("dirty-1\n", encoding="utf-8")
+    first = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch_name,
+        head=_git(worktree_path, "rev-parse", "HEAD"),
+        target_ref="main",
+        status_lines=[" M README.md"],
+        reason="dirty_worktree",
+    )
+    assert first["preserved"] is True
+    assert first["rescue_branch"].startswith(
+        "rescue/worktree/implementation-pctdd-001-"
+    )
+    assert "rescue-worktree-" not in first["rescue_branch"]
+    (worktree_path / "README.md").write_text("dirty-2\n", encoding="utf-8")
+    second = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=first["rescue_branch"],
+        head=_git(worktree_path, "rev-parse", "HEAD"),
+        target_ref="main",
+        status_lines=[" M README.md"],
+        reason="dirty_worktree",
+    )
+    assert second["preserved"] is True
+    assert second["rescue_branch"].startswith(
+        "rescue/worktree/implementation-pctdd-001-"
+    )
+    assert "rescue-worktree-" not in second["rescue_branch"]
+
+
 def test_redundant_dirty_treats_matching_submodule_working_tree_as_redundant(
     tmp_path: Path,
     monkeypatch,

@@ -67434,6 +67434,14 @@ DATABASE_RETRY_BUDGET_SCHEMA = (
 DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-retry-budget-backpressure@1"
 )
+DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS = frozenset(
+    {
+        "provider_dispatch_outcome_unknown",
+        "effect_dispatch_outcome_unknown",
+    }
+)
+DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION = "database_unknown_outcome_rearmed"
+DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT = 3
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -69216,6 +69224,123 @@ class DatabaseImplementationDaemon:
             if len(exhausted) >= 128:
                 break
         return exhausted
+
+    def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
+        """Rearm dead unknown-outcome blocks after the blocking session ends.
+
+        A same-session unknown callback must not be redispatched: the original
+        provider/effect may still be racing.  A later owner session may grant
+        one fresh budget once the blocked attempt has no live claim or running
+        projection, so control-plane loss cannot permanently stall the board.
+        """
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            page = list_tasks(status="blocked", limit=TASK_SOURCE_QUERY_LIMIT)
+        except Exception:
+            return []
+        running_cids = {
+            str(getattr(attempt, "task_cid", "") or "")
+            for attempt in self.list_running_attempts()
+        }
+        outcomes: list[dict[str, Any]] = []
+        for task in getattr(page, "tasks", ()):
+            alias = str(getattr(task, "task_alias", "") or "")
+            if self.task_prefix and not alias.startswith(self.task_prefix):
+                continue
+            if self._automatic_claim_forbidden(task):
+                continue
+            if self.strict_task_sharding and self.task_shard_count > 1:
+                if not self._task_belongs_to_shard(
+                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                ):
+                    continue
+            receipt = dict(task.body.get("completion_receipt") or {})
+            if receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA:
+                continue
+            reason = str(receipt.get("reason") or "")
+            operation = str(receipt.get("operation") or "")
+            if (
+                operation != "database_unknown_outcome_blocked"
+                and reason not in DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS
+                and receipt.get("authority_outcome") != "unknown"
+            ):
+                continue
+            if not receipt.get("forced_block"):
+                continue
+            blocking_session = str(receipt.get("owner_session_id") or "")
+            if blocking_session and blocking_session == self.owner_session_id:
+                continue
+            if str(task.task_cid) in running_cids:
+                continue
+            try:
+                prior_rearms = int(
+                    receipt.get("unknown_outcome_rearm_count") or 0
+                )
+            except (TypeError, ValueError):
+                prior_rearms = 0
+            if prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
+                continue
+            claim_id = str(receipt.get("claim_id") or "")
+            if claim_id:
+                claim = self.coordinator.get_task_claim(claim_id)
+                if claim is not None:
+                    claim_state = str(
+                        getattr(
+                            getattr(claim, "state", ""),
+                            "value",
+                            claim.state,
+                        )
+                        or ""
+                    )
+                    try:
+                        expires_at_ms = int(getattr(claim, "expires_at_ms", 0) or 0)
+                    except (TypeError, ValueError):
+                        expires_at_ms = 0
+                    if claim_state == "accepted" and expires_at_ms > self._now_ms():
+                        continue
+            rearm_receipt = self._retry_budget_receipt(
+                task,
+                attempts_used=0,
+                operation=DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                reason=reason or "unknown_dispatch_session_ended",
+            )
+            rearm_receipt.update(
+                {
+                    "forced_block": False,
+                    "authority_outcome": "rearmed",
+                    "previous_operation": operation,
+                    "previous_owner_session_id": blocking_session,
+                    "previous_attempt_id": str(receipt.get("attempt_id") or ""),
+                    "previous_claim_id": claim_id,
+                    "unknown_outcome_rearm_count": prior_rearms + 1,
+                    "owner_session_id": self.owner_session_id,
+                }
+            )
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="retrying",
+                receipt=rearm_receipt,
+            )
+            outcome = {
+                "task_cid": str(task.task_cid),
+                "task_alias": alias,
+                "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "previous_owner_session_id": blocking_session,
+                "unknown_outcome_rearm_count": prior_rearms + 1,
+            }
+            outcomes.append(outcome)
+            self._record_event(
+                DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                task_cid=str(task.task_cid),
+                body=outcome,
+            )
+            if len(outcomes) >= 128:
+                break
+        return outcomes
 
     def _eligible_ready_task_cids(self) -> list[str]:
         try:
@@ -71699,8 +71824,11 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "unknown_outcome_rearms": [],
             }
 
+        unknown_outcome_rearms = self.reconcile_blocked_unknown_outcome_tasks()
+        reconciliation_write_count += len(unknown_outcome_rearms)
         attempt = self.claim_next()
         if attempt is None:
             retry_exhausted_tasks = self._retry_exhausted_tasks()
@@ -71754,6 +71882,7 @@ class DatabaseImplementationDaemon:
                 "expired_attempt_reconciliations": (
                     expired_attempt_reconciliations
                 ),
+                "unknown_outcome_rearms": unknown_outcome_rearms,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -71769,6 +71898,7 @@ class DatabaseImplementationDaemon:
             "control_schema_evidence": dict(self.control_schema_evidence),
             "completion_reconciliations": completion_reconciliations,
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
+            "unknown_outcome_rearms": unknown_outcome_rearms,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

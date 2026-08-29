@@ -13824,6 +13824,28 @@ class PortalImplementationSupervisor:
             fragment = fragment.replace("--", "-")
         return fragment[:96] or "worktree"
 
+    @staticmethod
+    def _rescue_source_branch_fragment(branch: str, worktree_name: str = "") -> str:
+        """Return a bounded fragment that does not restack rescue prefixes.
+
+        Repeated dirty-worktree rescue used to encode the previous
+        ``rescue/worktree/...`` name inside the next fragment, producing
+        unbounded ``rescue-worktree-rescue-worktree-...`` branch names that
+        later merge and claim matching could not recognize.
+        """
+
+        source = str(branch or worktree_name or "").strip()
+        prefix = "rescue/worktree/"
+        while source.startswith(prefix):
+            source = source[len(prefix) :]
+        fragment = PortalImplementationSupervisor._safe_rescue_branch_fragment(
+            source
+        )
+        stacked = "rescue-worktree-"
+        while fragment.startswith(stacked):
+            fragment = fragment[len(stacked) :]
+        return fragment or "worktree"
+
     def _rescue_dirty_worktree(
         self,
         worktree_path: Path,
@@ -13869,7 +13891,9 @@ class PortalImplementationSupervisor:
             ).encode("utf-8")
         ).hexdigest()[:12]
         rescue_branch = (
-            f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+            "rescue/worktree/"
+            f"{self._rescue_source_branch_fragment(branch, worktree_path.name)}"
+            f"-{fingerprint}"
         )
 
         checkout = subprocess.run(

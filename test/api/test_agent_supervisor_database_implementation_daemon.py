@@ -43,6 +43,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA,
     DATABASE_RETRY_BUDGET_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
+    DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
@@ -679,8 +680,67 @@ def test_effect_exception_is_unknown_and_blocks_without_replay(
         daemon.run_once()
         assert len(provider_calls) == 1
         assert len(effect_calls) == 1
+        same_session = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert same_session == []
+        assert daemon.task_source.get("task:cid:001").status == "blocked"
     finally:
         daemon.close()
+
+
+def test_later_session_rearms_dead_unknown_outcome_block(tmp_path: Path) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def effect(attempt: DatabaseTaskAttempt, _result: object) -> dict[str, object]:
+        effect_calls.append(attempt.attempt_id)
+        raise RuntimeError("effect outcome unknown")
+
+    blocker = _open_daemon(
+        tmp_path,
+        session="session:effect-exception-block",
+        provider_calls=provider_calls,
+        effect_fn=effect,
+        max_task_attempts=3,
+    )
+    try:
+        blocker.materialize_population(_population(1))
+        failed = blocker.run_once()
+        assert failed["implementation_result"]["retry_exhausted"] is True
+        assert blocker.task_source.get("task:cid:001").status == "blocked"
+    finally:
+        blocker.close()
+
+    successor_calls: list[str] = []
+    successor = _open_daemon(
+        tmp_path,
+        session="session:effect-exception-rearm",
+        provider_calls=successor_calls,
+        max_task_attempts=3,
+    )
+    try:
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert len(rearms) == 1
+        assert rearms[0]["task_cid"] == "task:cid:001"
+        assert rearms[0]["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+        task = successor.task_source.get("task:cid:001")
+        assert task is not None and task.status == "retrying"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+        assert receipt["attempts_used"] == 0
+        assert receipt["retry_exhausted"] is False
+        assert receipt["unknown_outcome_rearm_count"] == 1
+        assert successor.reconcile_blocked_unknown_outcome_tasks() == []
+        claimed = successor.run_once()
+        assert claimed["implementation_result"] is not None
+        assert claimed["implementation_result"]["status"] in {
+            "succeeded",
+            "completed",
+            "ok",
+        } or claimed["claimed_task_cid"] == "task:cid:001"
+        assert successor_calls == ["task:cid:001"]
+        assert len(provider_calls) == 1
+    finally:
+        successor.close()
 
 
 def test_post_effect_dispatch_journal_failure_blocks_without_reapplying(
