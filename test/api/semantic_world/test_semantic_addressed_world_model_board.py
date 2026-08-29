@@ -3874,6 +3874,83 @@ def test_m16_prior_anchor_is_verified_without_replay_mutation(
     ) == before
 
 
+def test_m16_live_head_uses_read_only_projection_inspection() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_live_inspector_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m16_live_inspector_test",
+    )
+
+    class ReadOnlySource:
+        def snapshot(self) -> object:
+            return type(
+                "Snapshot",
+                (),
+                {
+                    "event_cursor": materializer._M16_TARGET_EVENT_WATERMARK,
+                    "projection_cid": materializer._M16_EXPECTED_PROJECTION_CID,
+                },
+            )()
+
+        def get_plan(self, _plan_cid: str) -> dict[str, object]:
+            return {"revision": materializer._M16_TARGET_PLAN_REVISION}
+
+        def get_task(self, alias: str) -> object:
+            failure = materializer._M16_FAILURE_RECEIPTS[alias]
+            return type(
+                "Task",
+                (),
+                {
+                    "task_cid": failure["task_cid"],
+                    "status": "retrying",
+                    "revision": 5,
+                    "body": {
+                        "completion_receipt": materializer._m16_task_rearm_receipt(
+                            alias
+                        )
+                    },
+                },
+            )()
+
+        def projection_matches_events(self) -> bool:
+            raise AssertionError("live inspection must not rebuild projections")
+
+    inspected = materializer._inspect_m16_head_task_projection(
+        ReadOnlySource(),
+        {"plan_root_cid": "sha256:test-plan"},
+    )
+    assert inspected["event_watermark"] == materializer._M16_TARGET_EVENT_WATERMARK
+    assert set(inspected["tasks"]) == {"SAWM-003", "SAWM-004"}
+
+    class MaterializerStub:
+        MigrationRequired = materializer.MigrationRequired
+
+        @staticmethod
+        def _inspect_m16_head_task_projection(
+            _source: object, _population: object
+        ) -> dict[str, object]:
+            return {}
+
+        @staticmethod
+        def _verify_m16_head_task_projection(
+            _source: object, _population: object
+        ) -> dict[str, object]:
+            raise AssertionError("live operator selected destructive replay")
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M16 live head projection differs",
+    ):
+        operator._verify_m16_live_head_task_projection(
+            object(),
+            {},
+            MaterializerStub(),
+        )
+
+
 def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

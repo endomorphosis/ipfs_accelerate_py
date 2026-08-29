@@ -4313,17 +4313,17 @@ def _verify_m16_live_head_task_projection(
 ) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
     """Verify M16's exact all-task head after both operator rearms."""
 
-    replay = materializer._verify_m16_head_task_projection(source, population)
+    head = materializer._inspect_m16_head_task_projection(source, population)
     if (
-        not isinstance(replay, Mapping)
-        or int(replay.get("event_watermark") or 0)
+        not isinstance(head, Mapping)
+        or int(head.get("event_watermark") or 0)
         != _M16_TARGET_EVENT_WATERMARK
-        or replay.get("projection_cid") != _M16_TARGET_PROJECTION_CID
-        or int(replay.get("plan_revision") or 0)
+        or head.get("projection_cid") != _M16_TARGET_PROJECTION_CID
+        or int(head.get("plan_revision") or 0)
         != _M16_TARGET_PLAN_REVISION
-        or set(replay.get("tasks") or {}) != {"SAWM-003", "SAWM-004"}
+        or set(head.get("tasks") or {}) != {"SAWM-003", "SAWM-004"}
     ):
-        raise materializer.MigrationRequired("M16 replay projection differs")
+        raise materializer.MigrationRequired("M16 live head projection differs")
 
     expected_heads = {
         "SAWM-000": ("completed", 2),

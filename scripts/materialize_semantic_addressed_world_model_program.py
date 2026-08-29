@@ -23988,10 +23988,10 @@ def _stage_m16_store_pair(
     }
 
 
-def _verify_m16_head_task_projection(
+def _inspect_m16_head_task_projection(
     source: Any, population: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Verify M16's exact replay head and the two operator-rearmed tasks."""
+    """Read M16's exact head and two operator-rearmed tasks without mutation."""
 
     snapshot = source.snapshot()
     plan = source.get_plan(str(population["plan_root_cid"]))
@@ -24018,15 +24018,25 @@ def _verify_m16_head_task_projection(
         or snapshot.projection_cid != _M16_EXPECTED_PROJECTION_CID
         or plan is None
         or int(plan.get("revision") or 0) != _M16_TARGET_PLAN_REVISION
-        or not source.projection_matches_events()
     ):
-        raise MigrationRequired("M16 replay head projection differs")
+        raise MigrationRequired("M16 head projection differs")
     return {
         "event_watermark": snapshot.event_cursor,
         "projection_cid": snapshot.projection_cid,
         "plan_revision": int(plan["revision"]),
         "tasks": tasks,
     }
+
+
+def _verify_m16_head_task_projection(
+    source: Any, population: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Verify M16's exact head plus replay on a disposable task source."""
+
+    head = _inspect_m16_head_task_projection(source, population)
+    if not source.projection_matches_events():
+        raise MigrationRequired("M16 replay head projection differs")
+    return head
 
 
 def _verify_m16_store_pair_copy(
