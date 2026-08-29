@@ -49,6 +49,11 @@ from ..merge.protected_recovery_fence import (
     is_protected_recovery_fence_contention,
 )
 from ..runtime.event_log import append_jsonl_event, utc_now
+from ..task_sources.typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TypedStateOwnerAuthorizationError,
+    _validated_database_claim_process_attestation,
+)
 from ..validation.validation_commands import validation_command_repository_root
 from .implementation_timeout import DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS
 from .landed_completion_recovery import (
@@ -18056,6 +18061,51 @@ class DatabasePortalExecutionBridge:
             )
         return dict(validated)
 
+    @staticmethod
+    def _post_merge_completion_recovery_claim_phase_matches(
+        status_receipt: Mapping[str, Any],
+        *,
+        record_revision: Any,
+        recovery_control_revision: Any,
+    ) -> bool:
+        """Accept the exact seed-carrying claim or its typed promotion.
+
+        A typed owner first commits ``database_claim`` at control revision
+        ``N + 2`` and then promotes that same identity to
+        ``database_attempt_admitted`` at ``N + 3`` before Portal can run.
+        The promotion is authority-preserving only when its process
+        attestation and both revision links reconstruct exactly.
+        """
+
+        operation = status_receipt.get("operation")
+        if (
+            isinstance(record_revision, bool)
+            or not isinstance(record_revision, int)
+            or isinstance(recovery_control_revision, bool)
+            or not isinstance(recovery_control_revision, int)
+        ):
+            return False
+        if operation == "database_claim":
+            return int(recovery_control_revision) + 2 == record_revision
+        if operation != "database_attempt_admitted":
+            return False
+        try:
+            _validated_database_claim_process_attestation(status_receipt)
+        except (TypeError, TypedStateOwnerAuthorizationError):
+            return False
+        return bool(
+            int(recovery_control_revision) + 3 == record_revision
+            and status_receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            and status_receipt.get("claimed_from_revision")
+            == int(recovery_control_revision) + 1
+            and status_receipt.get("admitted_from_revision")
+            == int(recovery_control_revision) + 2
+            and status_receipt.get("attempt_execution_phase") == "claimed"
+            and type(status_receipt.get("attempt_execution_revision")) is int
+            and status_receipt.get("attempt_execution_revision") == 1
+        )
+
     def _post_merge_completion_recovery_seed_from_record(
         self,
         *,
@@ -18128,6 +18178,14 @@ class DatabasePortalExecutionBridge:
             "recovery_control_revision",
             value.get("source_task_revision"),
         )
+        claim_phase_matches = bool(
+            isinstance(status_receipt, Mapping)
+            and self._post_merge_completion_recovery_claim_phase_matches(
+                status_receipt,
+                record_revision=record_revision,
+                recovery_control_revision=recovery_control_revision,
+            )
+        )
         if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2:
             integer_fields = (*integer_fields, "recovery_control_revision")
         if (
@@ -18168,7 +18226,7 @@ class DatabasePortalExecutionBridge:
             )
             or not seed_id
             or not isinstance(status_receipt, Mapping)
-            or status_receipt.get("operation") != "database_claim"
+            or not claim_phase_matches
             or status_receipt.get("post_merge_completion_recovery_source_attempt_id")
             != value.get("attempt_id")
             or status_receipt.get("post_merge_completion_recovery_seed")
@@ -18186,11 +18244,6 @@ class DatabasePortalExecutionBridge:
             or value.get("attempt_id") == str(attempt.attempt_id)
             or value.get("claim_id") == str(attempt.claim_id)
             or value.get("lease_id") == str(attempt.lease_id)
-            or isinstance(record_revision, bool)
-            or not isinstance(record_revision, int)
-            or isinstance(recovery_control_revision, bool)
-            or not isinstance(recovery_control_revision, int)
-            or int(recovery_control_revision) + 2 != record_revision
             or (
                 schema
                 == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2

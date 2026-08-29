@@ -191,7 +191,7 @@ def resolve_post_merge_retry_predecessor_lineage(
         )
     revision_rows = tuple(revisions)
     if (
-        len(revision_rows) != task.revision
+        len(revision_rows) < task.revision
         or any(
             not isinstance(row, Mapping)
             or row.get("revision") != index
@@ -201,8 +201,16 @@ def resolve_post_merge_retry_predecessor_lineage(
         raise TaskSourceIntegrityError(
             "post-merge route recovery history is incomplete or noncanonical"
         )
-    predecessor = revision_rows[-2] if len(revision_rows) >= 2 else None
-    current = revision_rows[-1] if revision_rows else None
+    # The task population and history are separate generation-stable reads.
+    # Another lane may advance the head between them, so prove the exact
+    # snapshot prefix named by ``task.revision`` rather than requiring that
+    # the stale task is still the history tip.  The caller's later CAS remains
+    # revision-fenced; successor rows never authorize a stale mutation.
+    task_revision_rows = revision_rows[: task.revision]
+    predecessor = (
+        task_revision_rows[-2] if len(task_revision_rows) >= 2 else None
+    )
+    current = task_revision_rows[-1] if task_revision_rows else None
     if (
         not isinstance(predecessor, Mapping)
         or predecessor.get("status") != "blocked"

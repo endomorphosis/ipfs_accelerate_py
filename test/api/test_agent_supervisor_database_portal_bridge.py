@@ -12097,6 +12097,83 @@ def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
     ]
 
 
+def test_post_merge_completion_seed_accepts_only_exact_typed_admission() -> None:
+    pid = 123
+    start_time_ticks = 456
+    boot_id = "boot:test"
+    parent_pid = 7
+    birth_material = f"{pid}:{start_time_ticks}:{boot_id}:{parent_pid}"
+    receipt = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-attempt-admission@1"
+        ),
+        "claimed_from_revision": 11,
+        "admitted_from_revision": 12,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+        "claim_process_attestation": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "typed-database-claim-process@1"
+            ),
+            "grant_id": "grant:test",
+            "client_id": "client:test",
+            "process_birth_id": (
+                "birth:"
+                + hashlib.sha256(birth_material.encode("utf-8")).hexdigest()[:32]
+            ),
+            "pid": pid,
+            "uid": 1000,
+            "start_time_ticks": start_time_ticks,
+            "boot_id": boot_id,
+            "parent_pid": parent_pid,
+        },
+    }
+    matches = (
+        DatabasePortalExecutionBridge
+        ._post_merge_completion_recovery_claim_phase_matches
+    )
+
+    assert matches(
+        {"operation": "database_claim"},
+        record_revision=12,
+        recovery_control_revision=10,
+    )
+    assert matches(
+        receipt,
+        record_revision=13,
+        recovery_control_revision=10,
+    )
+
+    tampered = (
+        ("claim_phase_schema", "schema:foreign"),
+        ("claimed_from_revision", 10),
+        ("admitted_from_revision", 11),
+        ("attempt_execution_phase", "running"),
+        ("attempt_execution_revision", True),
+        (
+            "claim_process_attestation",
+            {
+                **receipt["claim_process_attestation"],
+                "process_birth_id": "birth:" + "0" * 32,
+            },
+        ),
+    )
+    for field, value in tampered:
+        assert not matches(
+            {**receipt, field: value},
+            record_revision=13,
+            recovery_control_revision=10,
+        )
+    assert not matches(
+        receipt,
+        record_revision=12,
+        recovery_control_revision=10,
+    )
+
+
 def test_post_merge_completion_recovery_never_repairs_bare_completion(
     tmp_path: Path,
 ) -> None:

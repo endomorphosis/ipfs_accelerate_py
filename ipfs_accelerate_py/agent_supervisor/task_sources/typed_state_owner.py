@@ -2649,12 +2649,13 @@ def validated_post_merge_retry_predecessor_lineage(
 ) -> Mapping[str, Any]:
     """Validate the exact legacy post-merge lineage omission, without I/O."""
 
+    revision_rows = tuple(revisions)
     lineage = dict(
-        resolve_post_merge_retry_predecessor_lineage(task, revisions)
+        resolve_post_merge_retry_predecessor_lineage(task, revision_rows)
     )
     body = task.body if isinstance(task.body, Mapping) else {}
     current_receipt = body.get("completion_receipt")
-    predecessor_body = revisions[-2].get("body")
+    predecessor_body = revision_rows[task.revision - 2].get("body")
     predecessor_receipt = (
         predecessor_body.get("completion_receipt")
         if isinstance(predecessor_body, Mapping)

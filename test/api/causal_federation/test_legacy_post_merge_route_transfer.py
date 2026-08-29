@@ -54,6 +54,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    validated_post_merge_retry_predecessor_lineage,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DatabaseImplementationDaemon,
@@ -609,6 +610,45 @@ def test_legacy_post_merge_omission_retains_exact_route_and_transfer_authority(
         assert rotated_cursor["cursor_id"] != initial_cursor["cursor_id"]
         assert rotated_cursor["claimed_from_revision"] == successor_revision
         assert rotated_cursor["fencing_token"] > initial_cursor["fencing_token"]
+
+        # Reproduce the cross-lane TOCTOU window: ``legacy`` came from the
+        # stable ready projection, while the exact history now includes the
+        # successful claim as a later canonical revision.  The stale snapshot
+        # may recover its read-only route/transfer prefix, but malformed
+        # successor numbering and a forged snapshot prefix still fail closed.
+        advanced_history = adapter.task_revision_history_projection(task_cid)
+        advanced_revisions = advanced_history["revisions"]
+        assert len(advanced_revisions) > legacy.revision
+        assert dict(
+            adapter.post_merge_retry_predecessor_lineage(legacy)
+        ) == dict(lineage)
+        stale_lineage = validated_post_merge_retry_predecessor_lineage(
+            legacy,
+            advanced_revisions,
+        )
+        assert dict(stale_lineage) == dict(lineage)
+
+        malformed_successor = json.loads(json.dumps(advanced_revisions))
+        malformed_successor[-1]["revision"] += 1
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="history is incomplete or noncanonical",
+        ):
+            validated_post_merge_retry_predecessor_lineage(
+                legacy,
+                malformed_successor,
+            )
+
+        forged_prefix = json.loads(json.dumps(advanced_revisions))
+        forged_prefix[legacy.revision - 1]["body"]["fixture_tamper"] = True
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="lacks its exact predecessor/head",
+        ):
+            validated_post_merge_retry_predecessor_lineage(
+                legacy,
+                forged_prefix,
+            )
     finally:
         for daemon in reversed(daemons):
             daemon.close()
