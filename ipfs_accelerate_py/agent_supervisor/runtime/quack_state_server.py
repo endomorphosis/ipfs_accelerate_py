@@ -108,6 +108,7 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+PROVISIONAL_OWNER_MARKER_GENERATION: Final[int] = 1
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
     {
@@ -1845,12 +1846,15 @@ class QuackStateServer:
                     marker_path=self.owner_marker_path(),
                     liveness=self.owner_liveness_probe,
                 )
-                # Generation is finalized after opening the DB; provisional 1.
+                # Generation is finalized after opening the DB.  The marker is
+                # an OS-bootstrap projection and therefore retains this
+                # deliberately provisional generation rather than claiming the
+                # later durable store generation.
                 owner.acquire(
                     server_id=server_id,
                     process_birth=birth,
                     database_path=self.config.database_path,
-                    generation=1,
+                    generation=PROVISIONAL_OWNER_MARKER_GENERATION,
                 )
                 self._owner = owner
 
@@ -2478,7 +2482,11 @@ def recover_stale_state_server(
     if marker is not None and (
         marker.server_id != identity.server_id
         or marker.process_birth != identity.process_birth
-        or marker.generation != identity.generation
+        # The owner marker is acquired before DuckDB can assign the durable
+        # store generation.  Its @1 contract consequently carries the fixed
+        # provisional lease generation, while the status and canonical rows
+        # below bind and verify the independently assigned store generation.
+        or marker.generation != PROVISIONAL_OWNER_MARKER_GENERATION
         or Path(marker.database_path).resolve() != database
     ):
         raise QuackStateServerControlError(

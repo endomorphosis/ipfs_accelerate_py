@@ -444,6 +444,18 @@ def test_dead_ready_owner_recovery_settles_database_and_receipt(
         tool_version="1.5.2",
         owner_id="recovery-test",
     )
+    predecessor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_455, ticks=76),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    predecessor_identity = predecessor.start()
+    predecessor.stop()
+
     server = build_server(
         database_path=db,
         state_dir=state,
@@ -454,6 +466,12 @@ def test_dead_ready_owner_recovery_settles_database_and_receipt(
         owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
     )
     identity = server.start()
+    marker = OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert identity.generation == predecessor_identity.generation + 1
+    assert marker.generation == 1
+    assert marker.generation != identity.generation
 
     # Rehearse process death: operating-system locks and the database handle
     # disappear, while the ready marker/status and canonical rows remain.
