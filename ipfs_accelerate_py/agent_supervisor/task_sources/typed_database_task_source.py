@@ -58,6 +58,8 @@ from .quack_state_client import (
 )
 from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
+    EXECUTION_ROUTE_RECEIPT_FIELDS,
+    VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS,
     TaskExecutionRouteBinding,
     TaskExecutionRoutePolicy,
     task_execution_contract_cid,
@@ -85,6 +87,7 @@ from .typed_state_owner import (
     _validated_legacy_unstall_claim_receipt,
     _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
+    validated_post_merge_retry_predecessor_lineage,
 )
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
@@ -1139,14 +1142,53 @@ class TypedDatabaseTaskSource:
             else None
         )
         if not isinstance(route, Mapping):
-            raise TaskSourceIntegrityError(
-                "advanced task revision has no carried execution-route binding"
-            )
+            if (
+                task.status != "retrying"
+                or not isinstance(receipt, Mapping)
+                or receipt.get("operation")
+                not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+                or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(receipt)
+                or VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS.intersection(receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no carried execution-route binding"
+                )
+            lineage = self.post_merge_retry_predecessor_lineage(task)
+            route = lineage["execution_route_binding"]
         return self.validate_execution_route_binding(
             route,
             task=task,
             allow_claim_revision=True,
         )
+
+    def post_merge_retry_predecessor_lineage(
+        self,
+        task: TaskRecord,
+    ) -> Mapping[str, Any]:
+        """Resolve the one legacy route/transfer omission from exact history."""
+
+        history = self.task_revision_history_projection(task.task_cid)
+        revisions = history.get("revisions")
+        if not isinstance(revisions, list):
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no canonical predecessor history"
+            )
+        try:
+            lineage = validated_post_merge_retry_predecessor_lineage(
+                task,
+                revisions,
+            )
+        except TaskSourceIntegrityError as exc:
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no carried execution-route binding"
+            ) from exc
+        cooldown = self._retry_cooldown_row(task.task_cid)
+        if cooldown is None:
+            raise TaskSourceIntegrityError(
+                "route-less post-merge retry has no typed cooldown authority"
+            )
+        self._validate_retrying_cooldown_binding(task, cooldown)
+        return lineage
 
     def validate_execution_route_binding(
         self,
@@ -1217,9 +1259,22 @@ class TypedDatabaseTaskSource:
             or receipt.get("execution_route_origin_revision")
             != binding.task_revision
         ):
-            raise TaskSourceIntegrityError(
-                "advanced task revision has no exact carried execution-route lineage"
-            )
+            if (
+                task.status != "retrying"
+                or not isinstance(receipt, Mapping)
+                or receipt.get("operation")
+                not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
+                or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(receipt)
+                or VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS.intersection(receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no exact carried execution-route lineage"
+                )
+            lineage = self.post_merge_retry_predecessor_lineage(task)
+            if dict(lineage["execution_route_binding"]) != binding.to_dict():
+                raise TaskSourceIntegrityError(
+                    "advanced task revision has no exact carried execution-route lineage"
+                )
         return MappingProxyType(binding.to_dict())
 
     def get_task(self, task_cid_or_alias: Any) -> TaskRecord | None:

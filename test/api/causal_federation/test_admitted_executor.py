@@ -18,7 +18,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import MethodType, ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
@@ -64,6 +64,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     DATABASE_CLAIM_POLICY_SCHEMA,
     DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
     DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
+    IntentRepositoryTransitionError,
+    database_task_alias_home_shard_index,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientError,
@@ -97,10 +99,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _post_merge_retry_queue_receipt,
     _process_birth_content_id,
     _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
     typed_database_strict_resume_rejection_receipt_id,
+    validated_post_merge_retry_predecessor_lineage,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CLAIMED,
@@ -6779,6 +6783,17 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
     )
     ready = source.get(task_cid)
     assert ready is not None
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=(ready,),
+        execution_modes={task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE},
+    )
+    route = route_policy.binding_for_task(ready).to_dict()
+    route_lineage = {
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
     identity = {
         "attempt_id": "attempt:typed-post-merge-retry:1",
         "attempt_number": 1,
@@ -6792,7 +6807,7 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         ready,
         ready.revision,
         "in_progress",
-        {"operation": "database_claim", **identity},
+        {"operation": "database_claim", **identity, **route_lineage},
     )
     claimed = source.get(task_cid)
     assert claimed is not None
@@ -6812,6 +6827,7 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         },
         "control_expected_status": "in_progress",
         "control_expected_revision": claimed.revision,
+        **route_lineage,
     }
     source.compare_and_set_status(
         claimed,
@@ -6885,6 +6901,7 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         "repair_receipt_id": repair_receipt_id,
         "repair_evidence_id": repair_evidence_id,
         "post_merge_completion_recovery_seed": seed,
+        **route_lineage,
     }
     source.close()
 
@@ -6917,10 +6934,16 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         store_id=owner.store_id,
         process_birth_id=owner.process_birth_id,
     )
+    clock = {"now_ms": 2_000}
     adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
     try:
         client.attach(owner.listen_uri, server_id=owner.server_id)
-        adapter = TypedDatabaseTaskSource(client, clock_ms=lambda: 2_000)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            clock_ms=lambda: clock["now_ms"],
+            execution_route_policy=route_policy,
+        )
         first = adapter.recover_post_merge_retry(
             task_cid=task_cid,
             expected_revision=blocked.revision,
@@ -6937,6 +6960,7 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         )
         durable = adapter.get(task_cid)
         assert durable is not None and durable.status == "retrying"
+        assert dict(adapter.execution_route_binding_for_task(durable)) == route
         assert durable.body["completion_receipt"] == first["transition_receipt"]
         assert durable.body == {
             **blocked.body,
@@ -6993,7 +7017,48 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
                 reason=queue_reason,
             )
         assert client.load_generation().revision == generation.revision
+
+        clock["now_ms"] = 2_101
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=tmp_path / "post-merge-claim-coordination.duckdb",
+            execution_path=tmp_path / "post-merge-claim-execution.duckdb",
+            owner_session_id="session:typed-post-merge-retry",
+            process_instance_id=owner.process_birth_id,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=owner.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            state_owner_bootstrap_credentials=_typed_bootstrap_credentials(
+                server=server,
+                identity=owner,
+                client_id=client_id,
+                token=token,
+                route_policy=route_policy,
+            ),
+            lease_ms=5_000,
+            clock_ms=lambda: clock["now_ms"],
+            provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
+            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            validation_fn=lambda _attempt, _effect: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "f" * 64,
+            },
+            require_real_execution=True,
+        ).open()
+        claimed_again = daemon.claim_next()
+        assert claimed_again is not None
+        assert claimed_again.task_cid == task_cid
+        claimed_task = adapter.get(task_cid)
+        assert claimed_task is not None
+        assert claimed_task.status == "in_progress"
+        assert claimed_task.body["completion_receipt"][
+            "execution_route_binding"
+        ] == route
     finally:
+        if daemon is not None:
+            daemon.close()
         if adapter is not None:
             adapter.close()
         else:

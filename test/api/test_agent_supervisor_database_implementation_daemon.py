@@ -16475,6 +16475,57 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 return [mutable_history_value(item) for item in value]
             return value
 
+        lineage_drop_history = mutable_history_value(history)
+        assert isinstance(lineage_drop_history, dict)
+        lineage_drop_source = lineage_drop_history["revisions"][-6]["body"][
+            "completion_receipt"
+        ]
+        synthetic_route = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "task-execution-route-binding@1"
+            ),
+            "policy_id": "sha256:" + "1" * 64,
+            "plan_root_cid": "sha256:" + "2" * 64,
+            "repository_tree_id": "sha256:" + "3" * 64,
+            "source_revision": 1,
+            "task_cid": successor.task_cid,
+            "task_alias": blocked_record.task_alias,
+            "task_revision": 1,
+            "task_contract_cid": "sha256:" + "4" * 64,
+            "execution_mode": "deterministic-only",
+        }
+        lineage_drop_source.update(
+            {
+                "execution_route_binding": synthetic_route,
+                "execution_route_policy_id": synthetic_route["policy_id"],
+                "execution_route_origin_revision": 1,
+            }
+        )
+        lineage_drop_body = dict(lineage_drop_history)
+        lineage_drop_body.pop("projection_cid")
+        lineage_drop_history["projection_cid"] = content_identity(
+            lineage_drop_body
+        )
+        canonical_lineage_history_projection = (
+            consumer_daemon.task_source.task_revision_history_projection
+        )
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: lineage_drop_history,
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                blocked_record,
+                require_current_blocked=True,
+            )
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            canonical_lineage_history_projection,
+        )
+
         seeded_chain = mutable_history_value(exact_chain)
         assert isinstance(seeded_chain, list)
         for offset, entry in enumerate(seeded_chain):

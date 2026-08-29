@@ -1388,6 +1388,7 @@ def _resume_execution_route_policy(
     bootstrap: Mapping[str, Any],
     snapshot: Any,
     tasks: Sequence[Any],
+    histories_by_task: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
 ) -> Any:
     """Reuse the exact first-launch route when authoritative tasks carry it.
 
@@ -1415,6 +1416,9 @@ def _resume_execution_route_policy(
         TaskExecutionRoutePolicy,
         task_execution_contract_cid,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        validated_post_merge_retry_predecessor_lineage,
+    )
 
     execution_modes = {
         task.task_alias: GROK_CODEX_EXECUTION_MODE for task in tasks
@@ -1437,7 +1441,20 @@ def _resume_execution_route_policy(
             continue
         present_route_fields = route_receipt_fields.intersection(receipt)
         if not present_route_fields:
-            continue
+            history = (histories_by_task or {}).get(task.task_cid)
+            if history is None:
+                continue
+            try:
+                recovered = validated_post_merge_retry_predecessor_lineage(
+                    task,
+                    history,
+                )
+            except TaskSourceIntegrityError as exc:
+                raise OperatorError(
+                    "advanced ordinary task lacks exact post-merge route history"
+                ) from exc
+            receipt = recovered
+            present_route_fields = route_receipt_fields
         if present_route_fields != route_receipt_fields or any(
             receipt.get(field) is None for field in route_receipt_fields
         ):
@@ -1571,6 +1588,11 @@ def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        EXECUTION_ROUTE_RECEIPT_FIELDS,
+        POST_MERGE_RETRY_RECOVERY_OPERATIONS,
+        VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS,
+    )
     bootstrap = _json_object(paths["bootstrap_receipt"])
     with DatabaseTaskSource(
         paths["database"],
@@ -1580,6 +1602,7 @@ def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
     ) as source:
         snapshot = source.snapshot()
         tasks: list[Any] = []
+        histories_by_task: dict[str, Sequence[Mapping[str, Any]]] = {}
         cursor = ""
         while True:
             page = source.list_tasks(cursor=cursor, limit=500)
@@ -1587,12 +1610,32 @@ def _execution_route_policy(paths: Mapping[str, Path]) -> Any:
             cursor = page.next_cursor
             if not cursor:
                 break
+        for task in tasks:
+            body = task.body if isinstance(task.body, Mapping) else {}
+            receipt = body.get("completion_receipt")
+            if (
+                task.task_alias != "SPAR-000"
+                and int(task.revision) > 1
+                and task.status == "retrying"
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation")
+                in POST_MERGE_RETRY_RECOVERY_OPERATIONS
+                and not set(receipt).intersection(
+                    EXECUTION_ROUTE_RECEIPT_FIELDS
+                    | VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS
+                )
+            ):
+                history = source.task_revision_history_projection(task.task_cid)
+                revisions = history.get("revisions")
+                if isinstance(revisions, list):
+                    histories_by_task[task.task_cid] = revisions
     if len(tasks) != int(snapshot.task_count):
         raise OperatorError("execution-route task population is incomplete")
     return _resume_execution_route_policy(
         bootstrap=bootstrap,
         snapshot=snapshot,
         tasks=tasks,
+        histories_by_task=histories_by_task,
     )
 
 

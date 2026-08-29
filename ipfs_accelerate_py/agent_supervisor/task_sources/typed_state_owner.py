@@ -53,9 +53,14 @@ from .database_task_source import (
 from .intent_repository import (
     MAX_BODY_BYTES,
     IntentRepositoryError,
+    _database_virgin_transfer_binding,
+    _database_virgin_transfer_claim_cursor,
     _prepare_database_virgin_transfer_receipt_on,
 )
-from .task_execution_route_policy import TaskExecutionRouteBinding
+from .task_execution_route_policy import (
+    TaskExecutionRouteBinding,
+    resolve_post_merge_retry_predecessor_lineage,
+)
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -2144,15 +2149,27 @@ def _validated_post_merge_retry_transition(
     }
     selected_fields = operation_fields.get(operation)
     seed = receipt.get("post_merge_completion_recovery_seed")
+    route_fields = set(receipt) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+    )
+    transfer_fields = set(receipt) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
     expected_fields = (
         common_fields
         | (selected_fields or set())
+        | route_fields
+        | transfer_fields
         | ({"post_merge_completion_recovery_seed"} if seed is not None else set())
     )
     coordination = receipt.get("coordination")
     if (
         operation not in TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS
         or selected_fields is None
+        or route_fields
+        not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+        or transfer_fields
+        not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS))
         or set(receipt) != expected_fields
         or receipt.get("control_expected_status") != "blocked"
         or receipt.get("control_expected_revision") != expected_task_revision
@@ -2172,6 +2189,62 @@ def _validated_post_merge_retry_transition(
         raise TypedStateOwnerAuthorizationError(
             "post-merge retry transition differs from its closed authority"
         )
+    if route_fields:
+        try:
+            route = TaskExecutionRouteBinding.from_dict(
+                receipt.get("execution_route_binding")
+            ).to_dict()
+        except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry transition route is invalid"
+            ) from exc
+        if (
+            dict(receipt.get("execution_route_binding") or {}) != route
+            or route["task_cid"] != task_cid
+            or receipt.get("execution_route_policy_id") != route["policy_id"]
+            or receipt.get("execution_route_origin_revision")
+            != route["task_revision"]
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry transition route lineage differs"
+            )
+    if transfer_fields:
+        transfer = receipt.get("virgin_task_transfer")
+        cursor = receipt.get("virgin_task_transfer_claim_cursor")
+        shard_count = (
+            transfer.get("task_shard_count")
+            if isinstance(transfer, Mapping)
+            else None
+        )
+        if (
+            isinstance(shard_count, bool)
+            or not isinstance(shard_count, int)
+            or shard_count <= 1
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry transition transfer is invalid"
+            )
+        try:
+            binding = _database_virgin_transfer_binding(
+                task_cid=task_cid,
+                task_alias=str(transfer.get("task_alias") or ""),
+                receipt=receipt,
+                shard_count=shard_count,
+            )
+            validated_cursor = _database_virgin_transfer_claim_cursor(
+                receipt=receipt,
+                binding=binding,
+            )
+        except IntentRepositoryError as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry transition transfer lineage differs"
+            ) from exc
+        if dict(transfer) != dict(binding) or dict(cursor or {}) != dict(
+            validated_cursor
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge retry transition transfer is noncanonical"
+            )
     for name in (
         "request_id",
         "source_binding_id",
@@ -2570,6 +2643,122 @@ def _validated_post_merge_terminal_control_receipt(
     return receipt
 
 
+def validated_post_merge_retry_predecessor_lineage(
+    task: Any,
+    revisions: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    """Validate the exact legacy post-merge lineage omission, without I/O."""
+
+    lineage = dict(
+        resolve_post_merge_retry_predecessor_lineage(task, revisions)
+    )
+    body = task.body if isinstance(task.body, Mapping) else {}
+    current_receipt = body.get("completion_receipt")
+    predecessor_body = revisions[-2].get("body")
+    predecessor_receipt = (
+        predecessor_body.get("completion_receipt")
+        if isinstance(predecessor_body, Mapping)
+        else None
+    )
+    if not isinstance(current_receipt, Mapping) or not isinstance(
+        predecessor_receipt, Mapping
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge lineage history has no exact receipt pair"
+        )
+    forbidden_current = (
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    if forbidden_current.intersection(current_receipt):
+        raise TaskSourceIntegrityError(
+            "post-merge lineage compatibility head is partial or already carried"
+        )
+    prequeue_transition = dict(current_receipt)
+    prequeue_transition["queue_receipt"] = {}
+    attempt_identity = {
+        name: current_receipt.get(name)
+        for name in (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+    }
+    seed = current_receipt.get("post_merge_completion_recovery_seed")
+    try:
+        transition = _validated_post_merge_retry_transition(
+            prequeue_transition,
+            task_cid=task.task_cid,
+            expected_task_revision=task.revision - 1,
+            queue_reason=str(current_receipt.get("queue_reason") or ""),
+            attempt_identity=attempt_identity,
+            recovery_seed_json=(
+                canonical_json_bytes(dict(seed)).decode("utf-8")
+                if isinstance(seed, Mapping)
+                else ""
+            ),
+        )
+        _validated_post_merge_terminal_control_receipt(
+            predecessor_receipt,
+            expected_task_revision=task.revision - 1,
+            transition=transition,
+        )
+        route = TaskExecutionRouteBinding.from_dict(
+            lineage["execution_route_binding"]
+        ).to_dict()
+    except (TypedStateOwnerError, TaskSourceIntegrityError) as exc:
+        raise TaskSourceIntegrityError(
+            "post-merge lineage compatibility proof is invalid"
+        ) from exc
+    if dict(lineage["execution_route_binding"]) != route:
+        raise TaskSourceIntegrityError(
+            "post-merge lineage route is noncanonical"
+        )
+    if "virgin_task_transfer" in lineage:
+        raw_binding = lineage["virgin_task_transfer"]
+        shard_count = (
+            raw_binding.get("task_shard_count")
+            if isinstance(raw_binding, Mapping)
+            else None
+        )
+        if (
+            isinstance(shard_count, bool)
+            or not isinstance(shard_count, int)
+            or shard_count <= 1
+        ):
+            raise TaskSourceIntegrityError(
+                "post-merge lineage transfer shard count is invalid"
+            )
+        try:
+            binding = _database_virgin_transfer_binding(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                receipt=predecessor_receipt,
+                shard_count=shard_count,
+            )
+            cursor = _database_virgin_transfer_claim_cursor(
+                receipt=predecessor_receipt,
+                binding=binding,
+            )
+        except IntentRepositoryError as exc:
+            raise TaskSourceIntegrityError(
+                "post-merge lineage transfer proof is invalid"
+            ) from exc
+        if (
+            dict(raw_binding) != dict(binding)
+            or dict(lineage["virgin_task_transfer_claim_cursor"])
+            != dict(cursor)
+        ):
+            raise TaskSourceIntegrityError(
+                "post-merge lineage transfer bytes are noncanonical"
+            )
+    return MappingProxyType(lineage)
+
+
 def _post_merge_retry_queue_receipt(
     cooldown_parameters: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2708,6 +2897,17 @@ def _validated_post_merge_retry_recovery_parameters(
         ),
         transition=transition,
     )
+    carried_fields = (
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    if any(
+        transition.get(name) != expected_control_receipt.get(name)
+        for name in carried_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge retry did not preserve predecessor lineage"
+        )
     cooldown_parameters = {
         name: member
         for name, member in parameters.items()
@@ -6729,6 +6929,17 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "post-merge retry seed task alias is stale"
+                )
+            recovery_transfer = recovery["final_transition_receipt"].get(
+                "virgin_task_transfer"
+            )
+            if isinstance(recovery_transfer, Mapping) and (
+                recovery_transfer.get("task_cid") != values["task_cid"]
+                or recovery_transfer.get("task_alias")
+                != str(task_row[0] or "")
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge retry transfer task identity is stale"
                 )
             expected_body = dict(prior_body)
             expected_body["completion_receipt"] = dict(

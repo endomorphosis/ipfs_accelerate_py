@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import socket
@@ -704,6 +705,161 @@ def test_restart_reuses_exact_owner_written_execution_route_policy() -> None:
     )
 
     assert resumed == original_policy
+
+
+def test_restart_recovers_only_exact_post_merge_predecessor_route() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        canonical_json_bytes,
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_RETRY_COOLDOWN_SCHEMA,
+        _post_merge_retry_queue_receipt,
+    )
+
+    materializer = _materializer()
+    (
+        bootstrap,
+        snapshot,
+        operator_task,
+        implementation_task,
+        _retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    route = original_policy.binding_for_task(implementation_task).to_dict()
+    identity = {
+        "attempt_id": "attempt:post-merge-route",
+        "attempt_number": 1,
+        "claim_id": "claim:post-merge-route",
+        "lease_id": "lease:post-merge-route",
+        "owner_session_id": "session:post-merge-route",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    terminal_reason = "Portal completion lacks one exact implementation commit"
+    predecessor_receipt = {
+        "operation": "database_portal_terminal_failure",
+        **identity,
+        "execution_phase": "failed",
+        "execution_revision": 7,
+        "execution_finished_at_ms": 1_000,
+        "reason": terminal_reason,
+        "retryable": False,
+        "coordination": {
+            "attempt_id": identity["attempt_id"],
+            "claim_id": identity["claim_id"],
+            "attempt_number": identity["attempt_number"],
+        },
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 2,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    seed = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1"
+        ),
+        "task_cid": implementation_task.task_cid,
+        "task_alias": implementation_task.task_alias,
+        **identity,
+        "source_task_revision": 3,
+        "request_id": "request:post-merge-route",
+        "candidate_commit": "a" * 40,
+        "qualified_target_commit": "b" * 40,
+        "qualification_kind": "repair",
+        "qualification_receipt_id": "receipt:post-merge-route",
+        "queue_source_attempt_id": identity["attempt_id"],
+        "queue_source_claim_id": identity["claim_id"],
+        "queue_source_lease_id": identity["lease_id"],
+        "queue_source_fencing_token": identity["fencing_token"],
+        "queue_source_fence_epoch": identity["fence_epoch"],
+        "queue_source_binding_id": "sha256:" + "c" * 64,
+        "queue_source_projection_immutable_digest": "sha256:" + "d" * 64,
+        "recovery_evidence_id": "sha256:" + "e" * 64,
+        "terminal_reason": terminal_reason,
+    }
+    seed["seed_id"] = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(seed)
+    ).hexdigest()
+    queue_reason = (
+        "database_post_merge_declared_outputs_repair:"
+        "request:post-merge-route:receipt:post-merge-route"
+    )
+    cooldown = {
+        "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+        "task_cid": implementation_task.task_cid,
+        "expected_task_revision": 3,
+        **identity,
+        "delay_ms": 100,
+        "started_at_ms": 1_000,
+        "retry_not_before_ms": 1_100,
+        "selection_penalty": 100,
+        "consecutive_failures": 1,
+        "reason": queue_reason,
+        "expected_queue_revision": -1,
+        "expected_queue_attempt": 0,
+    }
+    cooldown["resolution_cid"] = content_identity(
+        {
+            "typed_retry_cooldown": cooldown,
+            "started_at_ms": cooldown["started_at_ms"],
+        }
+    )
+    current_receipt = {
+        "operation": "database_post_merge_declared_outputs_repair_recovery",
+        **identity,
+        "execution_phase": "failed",
+        "execution_revision": 7,
+        "execution_finished_at_ms": 1_000,
+        "request_id": "request:post-merge-route",
+        "candidate_commit": "a" * 40,
+        "source_binding_id": "sha256:" + "c" * 64,
+        "source_projection_immutable_digest": "sha256:" + "d" * 64,
+        "queue_reason": queue_reason,
+        "queue_receipt": _post_merge_retry_queue_receipt(cooldown),
+        "coordination": dict(predecessor_receipt["coordination"]),
+        "control_expected_status": "blocked",
+        "control_expected_revision": 3,
+        "repair_commit": "b" * 40,
+        "repair_receipt_id": "receipt:post-merge-route",
+        "repair_evidence_id": "sha256:" + "e" * 64,
+        "post_merge_completion_recovery_seed": seed,
+    }
+    base_body = dict(implementation_task.body)
+    predecessor_body = {**base_body, "completion_receipt": predecessor_receipt}
+    current_body = {**base_body, "completion_receipt": current_receipt}
+    current = replace(
+        implementation_task,
+        status="retrying",
+        revision=4,
+        body=current_body,
+    )
+    history = [
+        {"revision": 1, "status": "todo", "body": base_body},
+        {"revision": 2, "status": "in_progress", "body": base_body},
+        {"revision": 3, "status": "blocked", "body": predecessor_body},
+        {"revision": 4, "status": "retrying", "body": current_body},
+    ]
+
+    resumed = materializer._resume_execution_route_policy(
+        bootstrap=bootstrap,
+        snapshot=snapshot,
+        tasks=(operator_task, current),
+        histories_by_task={current.task_cid: history},
+    )
+    assert resumed == original_policy
+
+    corrupted = list(history)
+    corrupted[-2] = {**corrupted[-2], "body": base_body}
+    with pytest.raises(materializer.OperatorError, match="exact post-merge"):
+        materializer._resume_execution_route_policy(
+            bootstrap=bootstrap,
+            snapshot=snapshot,
+            tasks=(operator_task, current),
+            histories_by_task={current.task_cid: corrupted},
+        )
 
 
 def test_fresh_board_seals_current_execution_route_policy() -> None:

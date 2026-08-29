@@ -90121,6 +90121,29 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
+        carried_route_fields = set(receipt or {}) & set(
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        )
+        carried_transfer_fields = set(receipt or {}) & {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        if (
+            carried_route_fields
+            not in (set(), set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS))
+            or carried_transfer_fields
+            not in (
+                set(),
+                {
+                    "virgin_task_transfer",
+                    "virgin_task_transfer_claim_cursor",
+                },
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery lineage is partial"
+            )
+        common_fields |= carried_route_fields | carried_transfer_fields
         operation = str(
             receipt.get("operation") if isinstance(receipt, Mapping) else ""
         )
@@ -90200,6 +90223,34 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge declared-output recovery receipt is malformed"
+            )
+        if carried_route_fields:
+            expected_route = self._execution_route_binding_for_claim(
+                task,
+                fenced_retry=True,
+            )
+            if any(
+                receipt.get(name)
+                != {
+                    "execution_route_binding": expected_route,
+                    "execution_route_policy_id": expected_route["policy_id"],
+                    "execution_route_origin_revision": expected_route[
+                        "task_revision"
+                    ],
+                }[name]
+                for name in carried_route_fields
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge declared-output recovery route changed"
+                )
+        if carried_transfer_fields and any(
+            receipt.get(name) != value
+            for name, value in self._database_virgin_transfer_lineage_for_transition(
+                task
+            ).items()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge declared-output recovery transfer changed"
             )
         request_id = str(receipt.get("request_id") or "")
         queue_reason = (
@@ -92653,11 +92704,62 @@ class DatabaseImplementationDaemon:
         ):
             return MappingProxyType({})
         return database_virgin_transfer_routes(
-            tasks,
+            tuple(self._database_effective_transfer_task(task) for task in tasks),
             ready_cids,
             shard_count=self.task_shard_count,
             task_prefix=self.task_prefix,
         )
+
+    def _database_effective_transfer_task(self, task: Any) -> Any:
+        """Project the one exact legacy post-merge transfer omission."""
+
+        receipt = self._database_task_status_receipt(task)
+        transfer_fields = set(receipt).intersection(
+            {"virgin_task_transfer", "virgin_task_transfer_claim_cursor"}
+        )
+        if transfer_fields:
+            if transfer_fields != {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }:
+                raise DatabaseImplementationAuthorityError(
+                    "database ready projection found partial virgin-transfer lineage"
+                )
+            return task
+        if (
+            str(getattr(task, "status", "") or "") != "retrying"
+            or str(receipt.get("operation") or "")
+            not in {
+                "database_post_merge_declared_outputs_repair_recovery",
+                "database_post_merge_declared_outputs_requalification_recovery",
+                "database_post_merge_declared_outputs_callback_integration_recovery",
+            }
+            or set(receipt).intersection(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+        ):
+            return task
+        recover = getattr(
+            self.task_source,
+            "post_merge_retry_predecessor_lineage",
+            None,
+        )
+        if not callable(recover):
+            return task
+        lineage = recover(task)
+        transfer = {
+            name: lineage[name]
+            for name in (
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            )
+            if name in lineage
+        }
+        if not transfer:
+            return task
+        body = dict(getattr(task, "body", {}) or {})
+        body["completion_receipt"] = {**dict(receipt), **transfer}
+        return replace(task, body=body)
 
     def _task_belongs_to_strict_shard(self, task: Any) -> bool:
         """Return whether ``task`` is admitted to this strict database lane.
@@ -92672,6 +92774,7 @@ class DatabaseImplementationDaemon:
         task_alias = str(getattr(task, "task_alias", "") or "").strip()
         if not task_alias:
             return False
+        task = self._database_effective_transfer_task(task)
         binding = database_virgin_transfer_binding_for_task(
             task,
             shard_count=self.task_shard_count,
@@ -95679,7 +95782,39 @@ class DatabaseImplementationDaemon:
         }
         carried = set(receipt) & transfer_fields
         if not carried:
-            return {}
+            recover = getattr(
+                self.task_source,
+                "post_merge_retry_predecessor_lineage",
+                None,
+            )
+            operation = str(receipt.get("operation") or "")
+            if (
+                callable(recover)
+                and str(getattr(task, "status", "") or "") == "retrying"
+                and operation
+                in {
+                    "database_post_merge_declared_outputs_repair_recovery",
+                    "database_post_merge_declared_outputs_requalification_recovery",
+                    "database_post_merge_declared_outputs_callback_integration_recovery",
+                }
+                and not set(receipt).intersection(
+                    _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+                )
+            ):
+                recovered = recover(task)
+                recovered_transfer = {
+                    name: recovered[name]
+                    for name in (
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    )
+                    if name in recovered
+                }
+                if recovered_transfer:
+                    receipt = {**dict(receipt), **recovered_transfer}
+                    carried = set(recovered_transfer)
+            if not carried:
+                return {}
         expected_fields = {
             "virgin_task_transfer",
             "virgin_task_transfer_claim_cursor",
@@ -95696,8 +95831,13 @@ class DatabaseImplementationDaemon:
                 "lineage"
             )
         try:
+            binding_task = {
+                "task_cid": str(getattr(task, "task_cid", "") or ""),
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "body": {"completion_receipt": dict(receipt)},
+            }
             binding = database_virgin_transfer_binding_for_task(
-                task,
+                binding_task,
                 shard_count=self.task_shard_count,
             )
         except Exception as exc:
@@ -98060,6 +98200,126 @@ class DatabaseImplementationDaemon:
                 "stale canonical history"
             )
 
+        route_lineage_fields = set(
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        )
+        transfer_lineage_fields = {
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+
+        def carried_lineage_matches_predecessor(
+            receipt: Mapping[str, Any],
+            predecessor_receipt: Mapping[str, Any],
+            *,
+            claim_rotates_transfer_cursor: bool,
+        ) -> tuple[set[str], set[str], bool]:
+            """Verify optional owner-carried lineage on one exact history hop."""
+
+            carried_route = set(receipt) & route_lineage_fields
+            carried_transfer = set(receipt) & transfer_lineage_fields
+            predecessor_route = (
+                set(predecessor_receipt) & route_lineage_fields
+            )
+            predecessor_transfer = (
+                set(predecessor_receipt) & transfer_lineage_fields
+            )
+            if (
+                carried_route not in (set(), route_lineage_fields)
+                or carried_transfer not in (set(), transfer_lineage_fields)
+                or predecessor_route not in (set(), route_lineage_fields)
+                or predecessor_transfer
+                not in (set(), transfer_lineage_fields)
+                or carried_route != predecessor_route
+                or carried_transfer != predecessor_transfer
+            ):
+                return carried_route, carried_transfer, False
+            if carried_route and (
+                predecessor_route != route_lineage_fields
+                or any(
+                    receipt.get(name) != predecessor_receipt.get(name)
+                    for name in route_lineage_fields
+                )
+            ):
+                return carried_route, carried_transfer, False
+            if not carried_transfer:
+                return carried_route, carried_transfer, True
+            if predecessor_transfer != transfer_lineage_fields:
+                return carried_route, carried_transfer, False
+            binding = receipt.get("virgin_task_transfer")
+            predecessor_binding = predecessor_receipt.get(
+                "virgin_task_transfer"
+            )
+            cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            predecessor_cursor = predecessor_receipt.get(
+                "virgin_task_transfer_claim_cursor"
+            )
+            if (
+                not isinstance(binding, Mapping)
+                or not isinstance(predecessor_binding, Mapping)
+                or dict(binding) != dict(predecessor_binding)
+                or not isinstance(cursor, Mapping)
+                or not isinstance(predecessor_cursor, Mapping)
+            ):
+                return carried_route, carried_transfer, False
+            if not claim_rotates_transfer_cursor:
+                return (
+                    carried_route,
+                    carried_transfer,
+                    dict(cursor) == dict(predecessor_cursor),
+                )
+            try:
+                verified_binding = database_virgin_transfer_binding_for_task(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": task_alias,
+                        "body": {"completion_receipt": dict(receipt)},
+                    },
+                    shard_count=int(binding["task_shard_count"]),
+                )
+            except Exception:
+                return carried_route, carried_transfer, False
+            expected_cursor_body = {
+                "schema": cursor.get("schema"),
+                "binding_id": binding.get("binding_id"),
+                "claim_id": receipt.get("claim_id"),
+                "attempt_id": receipt.get("attempt_id"),
+                "owner_session_id": receipt.get("owner_session_id"),
+                "lease_id": receipt.get("lease_id"),
+                "fencing_token": receipt.get("fencing_token"),
+                "fence_epoch": receipt.get("fence_epoch"),
+                "claimed_from_revision": receipt.get(
+                    "claimed_from_revision"
+                ),
+            }
+            expected_cursor = {
+                **expected_cursor_body,
+                "cursor_id": content_identity(expected_cursor_body),
+            }
+            try:
+                cursor_advanced = bool(
+                    cursor.get("claimed_from_revision")
+                    > predecessor_cursor.get("claimed_from_revision")
+                    and all(
+                        cursor.get(name) != predecessor_cursor.get(name)
+                        for name in ("claim_id", "attempt_id", "lease_id")
+                    )
+                    and cursor.get("fencing_token")
+                    > predecessor_cursor.get("fencing_token")
+                    and cursor.get("fence_epoch")
+                    >= predecessor_cursor.get("fence_epoch")
+                )
+            except TypeError:
+                cursor_advanced = False
+            return (
+                carried_route,
+                carried_transfer,
+                verified_binding is not None
+                and dict(verified_binding) == dict(binding)
+                and dict(cursor) == expected_cursor
+                and cursor_advanced,
+            )
+
         windows: list[dict[str, Any]] = []
         for index in range(0, len(revisions) - 5):
             chain = revisions[index : index + 6]
@@ -98218,6 +98478,25 @@ class DatabaseImplementationDaemon:
                     else frozenset()
                 )
             )
+            recovery_route_fields = set(recovery_receipt) & set(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+            recovery_transfer_fields = set(recovery_receipt) & {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            source_route_fields = set(source_receipt) & set(
+                _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            )
+            source_transfer_fields = set(source_receipt) & {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            expected_recovery_fields = (
+                expected_recovery_fields
+                | recovery_route_fields
+                | recovery_transfer_fields
+            )
             recovery_coordination = recovery_receipt.get("coordination")
             expected_queue_reason = (
                 "database_post_merge_declared_outputs_"
@@ -98286,11 +98565,66 @@ class DatabaseImplementationDaemon:
                     is not None
                 )
             )
+            (
+                seeded_claim_route_fields,
+                seeded_claim_transfer_fields,
+                seeded_claim_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                seeded_claim,
+                recovery_receipt,
+                claim_rotates_transfer_cursor=True,
+            )
+            (
+                generic_retry_route_fields,
+                generic_retry_transfer_fields,
+                generic_retry_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                generic_retry,
+                seeded_claim,
+                claim_rotates_transfer_cursor=False,
+            )
+            (
+                ordinary_claim_route_fields,
+                ordinary_claim_transfer_fields,
+                ordinary_claim_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                ordinary_claim,
+                generic_retry,
+                claim_rotates_transfer_cursor=True,
+            )
+            (
+                exhausted_route_fields,
+                exhausted_transfer_fields,
+                exhausted_lineage_matches,
+            ) = carried_lineage_matches_predecessor(
+                exhausted_receipt,
+                ordinary_claim,
+                claim_rotates_transfer_cursor=False,
+            )
             if (
                 seed.get("task_cid") != task_cid
                 or seed.get("task_alias") != task_alias
                 or recovery_control_revision != control_revision
                 or not source_receipt_admitted
+                or recovery_route_fields
+                not in (
+                    set(),
+                    set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS),
+                )
+                or recovery_transfer_fields
+                not in (
+                    set(),
+                    {
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    },
+                )
+                or recovery_route_fields != source_route_fields
+                or recovery_transfer_fields != source_transfer_fields
+                or any(
+                    recovery_receipt.get(name) != source_receipt.get(name)
+                    for name in recovery_route_fields | recovery_transfer_fields
+                )
                 or seed.get("terminal_reason")
                 not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
                 or set(recovery_receipt) != expected_recovery_fields
@@ -98335,8 +98669,13 @@ class DatabaseImplementationDaemon:
                 or recovery_coordination.get("attempt_number")
                 != seed["attempt_number"]
                 or not qualification_fields_match
+                or not seeded_claim_lineage_matches
                 or set(seeded_claim)
-                != _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
+                != (
+                    _DATABASE_POST_MERGE_COMPLETION_SEEDED_CLAIM_FIELDS
+                    | seeded_claim_route_fields
+                    | seeded_claim_transfer_fields
+                )
                 or seeded_claim.get("operation") != "database_claim"
                 or type(seeded_claim.get("claimed_from_revision")) is not int
                 or int(seeded_claim["claimed_from_revision"]) < 1
@@ -98346,7 +98685,13 @@ class DatabaseImplementationDaemon:
                 != seed["attempt_id"]
                 or seeded_claim.get("post_merge_completion_recovery_seed")
                 != seed
-                or set(generic_retry) != _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
+                or not generic_retry_lineage_matches
+                or set(generic_retry)
+                != (
+                    _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
+                    | generic_retry_route_fields
+                    | generic_retry_transfer_fields
+                )
                 or generic_retry.get("operation") != "database_portal_retry"
                 or any(
                     generic_retry.get(field) != seeded_claim.get(field)
@@ -98386,7 +98731,13 @@ class DatabaseImplementationDaemon:
                 != generic_retry.get("claim_id")
                 or generic_retry.get("coordination", {}).get("attempt_number")
                 != generic_retry.get("attempt_number")
-                or set(ordinary_claim) != _DATABASE_ORDINARY_CLAIM_FIELDS
+                or not ordinary_claim_lineage_matches
+                or set(ordinary_claim)
+                != (
+                    _DATABASE_ORDINARY_CLAIM_FIELDS
+                    | ordinary_claim_route_fields
+                    | ordinary_claim_transfer_fields
+                )
                 or ordinary_claim.get("operation") != "database_claim"
                 or type(ordinary_claim.get("claimed_from_revision")) is not int
                 or int(ordinary_claim["claimed_from_revision"]) < 1
@@ -98411,8 +98762,13 @@ class DatabaseImplementationDaemon:
                 )
                 or exhausted_receipt.get("control_expected_revision")
                 != int(chain[4]["revision"])
+                or not exhausted_lineage_matches
                 or set(exhausted_receipt)
-                != _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+                != (
+                    _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+                    | exhausted_route_fields
+                    | exhausted_transfer_fields
+                )
             ):
                 raise DatabaseImplementationAuthorityError(
                     "post-merge completion crash fence rejected a malformed "
@@ -98501,6 +98857,18 @@ class DatabaseImplementationDaemon:
                             else frozenset()
                         )
                     )
+                    later_route_fields = set(tail_receipt) & set(
+                        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+                    )
+                    later_transfer_fields = set(tail_receipt) & {
+                        "virgin_task_transfer",
+                        "virgin_task_transfer_claim_cursor",
+                    }
+                    later_expected_fields = (
+                        later_expected_fields
+                        | later_route_fields
+                        | later_transfer_fields
+                    )
                     later_coordination = tail_receipt.get("coordination")
                     later_queue_reason = (
                         "database_post_merge_declared_outputs_"
@@ -98587,8 +98955,48 @@ class DatabaseImplementationDaemon:
                             later_seed["source_task_revision"],
                         )
                     )
+                    lineage_source = (
+                        self._post_merge_completion_history_receipt(
+                            revisions[later_control_revision - 1]
+                        )
+                        if 0 < later_control_revision <= len(revisions)
+                        else None
+                    )
+                    lineage_source_route_fields = (
+                        set(lineage_source) & route_lineage_fields
+                        if isinstance(lineage_source, Mapping)
+                        else set()
+                    )
+                    lineage_source_transfer_fields = (
+                        set(lineage_source) & transfer_lineage_fields
+                        if isinstance(lineage_source, Mapping)
+                        else set()
+                    )
                     if (
                         later_control_revision == exhausted_revision
+                        and later_route_fields
+                        in (
+                            set(),
+                            set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS),
+                        )
+                        and later_transfer_fields
+                        in (
+                            set(),
+                            {
+                                "virgin_task_transfer",
+                                "virgin_task_transfer_claim_cursor",
+                            },
+                        )
+                        and isinstance(lineage_source, Mapping)
+                        and later_route_fields
+                        == lineage_source_route_fields
+                        and later_transfer_fields
+                        == lineage_source_transfer_fields
+                        and all(
+                            tail_receipt.get(name) == lineage_source.get(name)
+                            for name in later_route_fields
+                            | later_transfer_fields
+                        )
                         and set(tail_receipt) == later_expected_fields
                         and operation == later_expected_operation
                         and tail_receipt.get(
@@ -111261,6 +111669,26 @@ class DatabaseImplementationDaemon:
                 operations=("database_portal_terminal_failure",),
             )
         )
+        execution_route_binding = self._execution_route_binding_for_claim(
+            task,
+            fenced_retry=False,
+        )
+        execution_route_lineage = (
+            {
+                "execution_route_binding": dict(execution_route_binding),
+                "execution_route_policy_id": execution_route_binding[
+                    "policy_id"
+                ],
+                "execution_route_origin_revision": execution_route_binding[
+                    "task_revision"
+                ],
+            }
+            if execution_route_binding
+            else {}
+        )
+        transfer_lineage = self._database_virgin_transfer_lineage_for_transition(
+            task
+        )
         completion_terminal_reason = (
             str(crash_context["source_seed"]["terminal_reason"])
             if crash_source_admitted and crash_context is not None
@@ -111417,6 +111845,8 @@ class DatabaseImplementationDaemon:
             "coordination": transition_source_coordination,
             "control_expected_status": status,
             "control_expected_revision": int(task.revision),
+            **execution_route_lineage,
+            **transfer_lineage,
             **qualification_control_fields,
             **(
                 {

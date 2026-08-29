@@ -1063,6 +1063,181 @@ def _prepare_database_virgin_transfer_receipt_on(
     prior_raw = prior_receipt.get("virgin_task_transfer")
     supplied = prepared.get("virgin_task_transfer")
     supplied_cursor = prepared.get("virgin_task_transfer_claim_cursor")
+    legacy_lineage_fields = {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+    legacy_post_merge_head = bool(
+        previous_status == "retrying"
+        and prior_receipt.get("operation")
+        in {
+            "database_post_merge_declared_outputs_repair_recovery",
+            "database_post_merge_declared_outputs_requalification_recovery",
+            "database_post_merge_declared_outputs_callback_integration_recovery",
+        }
+        and not set(prior_receipt).intersection(legacy_lineage_fields)
+    )
+    if prior_raw is None and legacy_post_merge_head:
+        # One historical post-merge retry writer omitted both owner-stamped
+        # lineages.  Recover only its immediate blocked predecessor under the
+        # same transaction lock; arbitrary callers still cannot introduce a
+        # virgin-transfer assignment.
+        try:
+            from .database_task_source import (
+                TaskSourceIntegrityError,
+                _as_task_record,
+            )
+            from .typed_state_owner import (
+                validated_post_merge_retry_predecessor_lineage,
+            )
+
+            task_row = connection.execute(
+                """
+                SELECT task_cid, task_alias, goal_cid, plan_cid,
+                       objective_id, ordinal, status, revision, priority,
+                       body_json FROM tasks WHERE task_cid = ? LIMIT 2
+                """,
+                [task_cid],
+            ).fetchall()
+            if len(task_row) != 1:
+                raise IntentRepositoryTransitionError(
+                    "legacy post-merge transfer task authority is ambiguous"
+                )
+            row = task_row[0]
+            dependencies = [
+                str(item[0])
+                for item in connection.execute(
+                    "SELECT dependency_task_cid FROM task_dependencies "
+                    "WHERE task_cid = ? ORDER BY dependency_task_cid, kind",
+                    [task_cid],
+                ).fetchall()
+            ]
+            outputs = [
+                {
+                    "ordinal": int(item[0]),
+                    "path": str(item[1]),
+                    "effect": _decode_json(item[2], noun="output effect"),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, path, effect_json FROM task_outputs "
+                    "WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            acceptance = [
+                {
+                    "ordinal": int(item[0]),
+                    "criterion": str(item[1]),
+                    "evidence_policy": _decode_json(
+                        item[2], noun="acceptance policy"
+                    ),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, criterion, evidence_policy_json "
+                    "FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            validations = [
+                {
+                    "ordinal": int(item[0]),
+                    "argv": _decode_json(item[1], noun="validation argv"),
+                    "policy": _decode_json(item[2], noun="validation policy"),
+                }
+                for item in connection.execute(
+                    "SELECT ordinal, argv_json, policy_json FROM task_validations "
+                    "WHERE task_cid = ? ORDER BY ordinal",
+                    [task_cid],
+                ).fetchall()
+            ]
+            current_task = _as_task_record(
+                {
+                    "task_cid": str(row[0]),
+                    "task_alias": str(row[1]),
+                    "goal_cid": str(row[2]),
+                    "plan_cid": str(row[3] or ""),
+                    "objective_id": str(row[4] or ""),
+                    "ordinal": int(row[5]),
+                    "status": str(row[6]),
+                    "revision": int(row[7]),
+                    "priority": str(row[8] or ""),
+                    "body": _decode_json(row[9], noun="task body"),
+                    "dependencies": dependencies,
+                    "outputs": outputs,
+                    "acceptance": acceptance,
+                    "validations": validations,
+                }
+            )
+            history_rows = connection.execute(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision",
+                [task_cid],
+            ).fetchall()
+            history_values = [
+                {
+                    "revision": int(item[0]),
+                    "status": str(item[1]),
+                    "body": _decode_json(
+                        item[2], noun="task revision body"
+                    ),
+                }
+                for item in history_rows
+            ]
+            predecessor_body = (
+                history_values[-2].get("body")
+                if len(history_values) >= 2
+                else None
+            )
+            predecessor_receipt = (
+                predecessor_body.get("completion_receipt")
+                if isinstance(predecessor_body, Mapping)
+                else None
+            )
+            predecessor_declares_lineage = bool(
+                isinstance(predecessor_receipt, Mapping)
+                and set(predecessor_receipt).intersection(
+                    legacy_lineage_fields
+                )
+            )
+            lineage = (
+                dict(
+                    validated_post_merge_retry_predecessor_lineage(
+                        current_task,
+                        history_values,
+                    )
+                )
+                if predecessor_declares_lineage
+                else {}
+            )
+        except (
+            TypeError,
+            ValueError,
+            IntentRepositoryError,
+            TaskSourceIntegrityError,
+        ) as exc:
+            raise IntentRepositoryTransitionError(
+                "legacy post-merge transfer proof is invalid"
+            ) from exc
+        if lineage and any(
+            prepared.get(name) != lineage.get(name)
+            for name in (
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            )
+        ):
+            raise IntentRepositoryTransitionError(
+                "legacy post-merge transfer lineage is not exact"
+            )
+        if "virgin_task_transfer" in lineage:
+            assert isinstance(predecessor_receipt, Mapping)
+            prior_receipt = dict(predecessor_receipt)
+            prior_raw = lineage["virgin_task_transfer"]
     if supplied is not None and prior_raw is None:
         raise IntentRepositoryTransitionError(
             "virgin_task_transfer is owner-reserved"
@@ -1228,13 +1403,17 @@ def _prepare_database_virgin_transfer_receipt_on(
             raise IntentRepositoryConflictError(
                 "virgin-transfer target left the authoritative ready frontier"
             )
-        routes = database_virgin_transfer_routes(
-            tasks,
-            ready_cids,
-            shard_count=shard_count,
-            task_prefix=task_prefix,
+        expected_lane = (
+            int(prior_binding["recipient_shard_index"])
+            if prior_binding is not None
+            else database_virgin_transfer_routes(
+                tasks,
+                ready_cids,
+                shard_count=shard_count,
+                task_prefix=task_prefix,
+            ).get(task_cid)
         )
-        if routes.get(task_cid) != lane_index:
+        if expected_lane != lane_index:
             raise IntentRepositoryConflictError(
                 "virgin-transfer request disagrees with the authoritative route"
             )

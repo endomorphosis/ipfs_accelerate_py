@@ -9,6 +9,7 @@ provider configuration, or ambient process setting.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -36,6 +37,23 @@ DETERMINISTIC_ONLY_EXECUTION_MODE: Final = "deterministic-only"
 GROK_CODEX_EXECUTION_MODE: Final = "grok-codex"
 TASK_EXECUTION_ROUTE_MODES: Final = frozenset(
     {DETERMINISTIC_ONLY_EXECUTION_MODE, GROK_CODEX_EXECUTION_MODE}
+)
+POST_MERGE_RETRY_RECOVERY_OPERATIONS: Final = frozenset(
+    {
+        "database_post_merge_declared_outputs_repair_recovery",
+        "database_post_merge_declared_outputs_requalification_recovery",
+        "database_post_merge_declared_outputs_callback_integration_recovery",
+    }
+)
+EXECUTION_ROUTE_RECEIPT_FIELDS: Final = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+)
+VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS: Final = frozenset(
+    {"virgin_task_transfer", "virgin_task_transfer_claim_cursor"}
 )
 MAX_TASK_EXECUTION_ROUTE_ENTRIES: Final = 1_000
 MAX_TASK_EXECUTION_ROUTE_POLICY_BYTES: Final = 49_152
@@ -76,6 +94,217 @@ def task_execution_contract_cid(task: TaskRecord) -> str:
             "validations": [dict(item) for item in task.validations],
         }
     )
+
+
+def resolve_post_merge_retry_predecessor_lineage(
+    task: TaskRecord,
+    revisions: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    """Recover only the exact lineage dropped by the legacy retry writer.
+
+    This is a compatibility verifier, not a generic history search.  It
+    accepts one retrying post-merge recovery head whose immediate blocked
+    predecessor carries a complete execution route (and, optionally, the
+    complete virgin-transfer pair).  The current head, predecessor, recovery
+    seed, immutable task body, and route contract all have to agree exactly.
+    """
+
+    if not isinstance(task, TaskRecord) or task.status != "retrying":
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery requires one retrying task"
+        )
+    body = task.body if isinstance(task.body, Mapping) else {}
+    receipt = body.get("completion_receipt")
+    if (
+        not isinstance(receipt, Mapping)
+        or receipt.get("operation") not in POST_MERGE_RETRY_RECOVERY_OPERATIONS
+        or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(receipt)
+    ):
+        raise TaskSourceIntegrityError(
+            "task is not one route-less post-merge recovery head"
+        )
+    seed = receipt.get("post_merge_completion_recovery_seed")
+    if not isinstance(seed, Mapping):
+        raise TaskSourceIntegrityError(
+            "route-less post-merge recovery has no exact recovery seed"
+        )
+    seed_value = dict(seed)
+    seed_body = dict(seed_value)
+    seed_id = seed_body.pop("seed_id", None)
+    seed_schema = seed_value.get("schema")
+    seed_fields = {
+        "schema",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "source_task_revision",
+        "request_id",
+        "candidate_commit",
+        "qualified_target_commit",
+        "qualification_kind",
+        "qualification_receipt_id",
+        "queue_source_attempt_id",
+        "queue_source_claim_id",
+        "queue_source_lease_id",
+        "queue_source_fencing_token",
+        "queue_source_fence_epoch",
+        "queue_source_binding_id",
+        "queue_source_projection_immutable_digest",
+        "recovery_evidence_id",
+        "terminal_reason",
+        "seed_id",
+    }
+    if seed_schema == (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "database-post-merge-completion-recovery-seed@2"
+    ):
+        seed_fields.add("recovery_control_revision")
+        seed_revision = seed_value.get("recovery_control_revision")
+    else:
+        seed_revision = seed_value.get("source_task_revision")
+    if (
+        seed_schema
+        not in {
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1",
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@2",
+        }
+        or set(seed_value) != seed_fields
+        or seed_id
+        != "sha256:"
+        + hashlib.sha256(canonical_json_bytes(seed_body)).hexdigest()
+        or seed_value.get("task_cid") != task.task_cid
+        or seed_value.get("task_alias") != task.task_alias
+        or seed_revision != task.revision - 1
+        or receipt.get("control_expected_status") != "blocked"
+        or receipt.get("control_expected_revision") != task.revision - 1
+    ):
+        raise TaskSourceIntegrityError(
+            "route-less post-merge recovery seed is invalid or stale"
+        )
+    revision_rows = tuple(revisions)
+    if (
+        len(revision_rows) != task.revision
+        or any(
+            not isinstance(row, Mapping)
+            or row.get("revision") != index
+            for index, row in enumerate(revision_rows, 1)
+        )
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery history is incomplete or noncanonical"
+        )
+    predecessor = revision_rows[-2] if len(revision_rows) >= 2 else None
+    current = revision_rows[-1] if revision_rows else None
+    if (
+        not isinstance(predecessor, Mapping)
+        or predecessor.get("status") != "blocked"
+        or not isinstance(current, Mapping)
+        or current.get("status") != "retrying"
+        or current.get("body") != dict(body)
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery lacks its exact predecessor/head"
+        )
+    predecessor_body = predecessor.get("body")
+    predecessor_receipt = (
+        predecessor_body.get("completion_receipt")
+        if isinstance(predecessor_body, Mapping)
+        else None
+    )
+    if (
+        not isinstance(predecessor_receipt, Mapping)
+        or predecessor_receipt.get("operation")
+        != "database_portal_terminal_failure"
+        or predecessor_receipt.get("control_expected_status")
+        != "in_progress"
+        or predecessor_receipt.get("control_expected_revision")
+        != task.revision - 2
+        or {
+            key: value
+            for key, value in predecessor_body.items()
+            if key != "completion_receipt"
+        }
+        != {key: value for key, value in body.items() if key != "completion_receipt"}
+        or EXECUTION_ROUTE_RECEIPT_FIELDS.intersection(predecessor_receipt)
+        != EXECUTION_ROUTE_RECEIPT_FIELDS
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery predecessor authority is incomplete"
+        )
+    identity_fields = (
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_revision",
+        "execution_finished_at_ms",
+    )
+    if any(
+        type(receipt.get(name)) is not type(predecessor_receipt.get(name))
+        or receipt.get(name) != predecessor_receipt.get(name)
+        for name in identity_fields
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery differs from its failed attempt"
+        )
+    binding = TaskExecutionRouteBinding.from_dict(
+        predecessor_receipt["execution_route_binding"]
+    )
+    if (
+        predecessor_receipt.get("execution_route_policy_id")
+        != binding.policy_id
+        or predecessor_receipt.get("execution_route_origin_revision")
+        != binding.task_revision
+        or binding.task_cid != task.task_cid
+        or binding.task_alias != task.task_alias
+        or binding.task_revision >= task.revision
+        or binding.task_contract_cid != task_execution_contract_cid(task)
+    ):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery predecessor binding is invalid"
+        )
+    transfer_fields = VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS.intersection(
+        predecessor_receipt
+    )
+    if transfer_fields not in (set(), VIRGIN_TASK_TRANSFER_RECEIPT_FIELDS):
+        raise TaskSourceIntegrityError(
+            "post-merge route recovery predecessor transfer is partial"
+        )
+    lineage = {
+        "execution_route_binding": binding.to_dict(),
+        "execution_route_policy_id": binding.policy_id,
+        "execution_route_origin_revision": binding.task_revision,
+    }
+    if transfer_fields:
+        transfer = predecessor_receipt.get("virgin_task_transfer")
+        cursor = predecessor_receipt.get("virgin_task_transfer_claim_cursor")
+        if (
+            not isinstance(transfer, Mapping)
+            or not isinstance(cursor, Mapping)
+            or not str(transfer.get("binding_id") or "")
+            or cursor.get("binding_id") != transfer.get("binding_id")
+        ):
+            raise TaskSourceIntegrityError(
+                "post-merge route recovery predecessor transfer is invalid"
+            )
+        lineage.update(
+            {
+                "virgin_task_transfer": dict(transfer),
+                "virgin_task_transfer_claim_cursor": dict(cursor),
+            }
+        )
+    return MappingProxyType(lineage)
 
 
 @dataclass(frozen=True)
