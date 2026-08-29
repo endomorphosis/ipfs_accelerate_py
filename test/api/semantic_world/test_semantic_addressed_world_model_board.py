@@ -3742,6 +3742,167 @@ def test_m17_source_binding_authority_is_presence_first_and_exact() -> None:
         materializer._m17_successor_configured(malformed)
 
 
+def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m19_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "live_catalog_inventory_successor_materialization"
+    authority = materializer._expected_m19_live_catalog_inventory_authority()
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert materializer._m19_successor_configured(config) is True
+    assert materializer._m18_successor_configured(config) is True
+
+    present = dict(config)
+    assert materializer._m19_successor_configured(present) is True
+    assert authority["schema"] == (
+        "sawm/live-quack-catalog-inventory-repair-authorization@1"
+    )
+    assert authority["migration_revision"] == "SAWM-R2-M19"
+    assert authority["prior_control_store_sha256"] == (
+        "2050e7a0869590c7744b42e08fa2333326690f5176f9414a429ac9ec44b272bc"
+    )
+    assert authority["prior_frozen_base_authority_digest"] == (
+        "sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b"
+    )
+    assert authority["target_generation"] == 20
+    assert authority["target_quack_port"] == 24_062
+    assert authority["target_plan_revision"] == 20
+    assert authority["target_event_watermark"] == 227
+    assert authority["task_revision_changes"] == 0
+    assert authority["task_status_changes"] == 0
+    assert authority["coordination_semantic_changes"] == 0
+    assert "target_projection_cid" not in authority
+    assert authority["accepted_source_repair"]["blob_oids"] == {
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "d00dc3bbdf813db1fcaabd57be7abf0436c5d995"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "6d0c0abae674ffd48b927d66b9e528cb3b8082f6"
+        ),
+    }
+    malformed = dict(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M19 live-catalog-inventory authority is invalid",
+    ):
+        materializer._m19_successor_configured(malformed)
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m19_presence_test",
+    )
+    assert dict(operator._active_source_repair_materialization(config)) == authority
+    assert dict(operator._active_source_repair_materialization(present)) == authority
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M19 live-catalog-inventory successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_validator_m19_presence_test",
+    )
+    dependency_errors = (
+        dependency_validator._m19_live_catalog_inventory_successor_errors(
+            malformed,
+            seal,
+            inventory,
+            root=REPO_ROOT,
+            require_active_runtime=False,
+        )
+    )
+    assert "M19 source-binding authority differs across controls" in (
+        dependency_errors
+    )
+
+
+def test_m19_operator_and_validators_are_presence_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m19_board_presence_test",
+    )
+    key = "live_catalog_inventory_successor_materialization"
+    present = dict(config)
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_validator_m19_presence_test",
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m19_migration_errors",
+        lambda *_args, **_kwargs: ["M19 malformed"],
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m18_migration_errors",
+        lambda *_args, **_kwargs: ["M18 history checked"],
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m17_migration_errors",
+        lambda *_args, **_kwargs: ["M17 history checked"],
+    )
+    monkeypatch.setattr(
+        board_validator,
+        "_m16_migration_errors",
+        lambda *_args, **_kwargs: ["M16 history checked"],
+    )
+    assert board_validator._active_successor_migration_errors(
+        present,
+        seal,
+        inventory,
+    ) == [
+        "M19 malformed",
+        "M18 history checked",
+        "M17 history checked",
+        "M16 history checked",
+    ]
+
+
 def test_m17_source_seal_binds_repair_and_nine_control_delta() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -3841,22 +4002,23 @@ def test_m18_portal_completion_authority_is_presence_first_and_exact() -> None:
         materializer._m18_successor_configured(malformed)
 
 
-def test_m18_scheduler_uses_fresh_generation_19_runtime_namespace() -> None:
+def test_m19_scheduler_uses_fresh_generation_20_runtime_namespace() -> None:
     config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m18"
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
     assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
-    assert config["database_program"]["store_generation"] == "19"
+    assert config["database_program"]["store_generation"] == "20"
     assert config["database_program"]["quack_endpoint"] == (
-        "quack:127.0.0.1:24061"
+        "quack:127.0.0.1:24062"
     )
     assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
+    assert config["quack_owner"]["store_id"] == f"{root}/control.duckdb"
     assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
-    assert config["quack_owner"]["port"] == 24_061
+    assert config["quack_owner"]["port"] == 24_062
     assert config["runtime_paths"] == {
         "root": root,
         "state": f"{root}/state",
@@ -3894,8 +4056,10 @@ def test_m18_operator_and_validators_are_presence_first(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m18_presence_test",
     )
-    assert dict(operator._active_source_repair_materialization(config)) == config[key]
-    malformed = copy.deepcopy(config)
+    historical = dict(config)
+    historical.pop("live_catalog_inventory_successor_materialization")
+    assert dict(operator._active_source_repair_materialization(historical)) == config[key]
+    malformed = copy.deepcopy(historical)
     malformed[key] = None
     with pytest.raises(
         operator.OperatorError,
@@ -5124,8 +5288,8 @@ def test_m17_namespace_is_preserved_as_historical_under_m18() -> None:
     assert authority["target_store_id"] == f"{root}/control.duckdb"
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
-    assert config["runtime_paths"]["root"].endswith("run-r2-m18")
-    assert config["database_program"]["store_generation"] == "19"
+    assert config["runtime_paths"]["root"].endswith("run-r2-m19")
+    assert config["database_program"]["store_generation"] == "20"
 
 
 def test_m18_validators_keep_m17_and_m16_historical_authority() -> None:
@@ -6241,11 +6405,11 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m16() -> None:
     }
     assert historical_runtime["root"] == authority["target_runtime_root"]
     assert config["runtime_paths"]["root"] == (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m18"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
     )
     assert config["runtime_paths"] != historical_runtime
-    assert config["database_program"]["store_generation"] == "19"
-    assert config["quack_owner"]["port"] == 24_061
+    assert config["database_program"]["store_generation"] == "20"
+    assert config["quack_owner"]["port"] == 24_062
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 

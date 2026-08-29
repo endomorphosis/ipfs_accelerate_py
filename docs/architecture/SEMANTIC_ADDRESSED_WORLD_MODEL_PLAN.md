@@ -1073,7 +1073,67 @@ operator controls; validate dependencies and board; materialize once;
 preflight; dry-run implementation launch; then relaunch generation 19.  This
 control commit performs none of the last four runtime operations.
 
-## 27. Current limitations at seal time
+## 27. M19 live Quack catalog-inventory successor
+
+Generation 19 started Quack on `127.0.0.1:24061` and then failed closed on
+`M18 live frozen table inventory differs` before any worker or provider
+ran.  Attached Quack omits `information_schema.tables` `BASE TABLE` entries
+while still exposing columns and rows.  Generation 19 was stopped cleanly
+and is retained as failed-preflight historical authority.  No execution
+sidecar exists because launch never began.
+
+The bounded repair is `50a31732d17c4738f9fab30be484f592391e392e`.  It
+reconstructs the frozen inventory from `duckdb_tables()` or columns minus
+views and does not open the canonical store.  M19 copies the stopped M18
+pair into `run-r2-m19`, appends one plan revision and one operator evidence
+record, and changes no task revision, task status, accepted definition,
+accepted completion, provider invocation, effect, implementation commit, or
+merge attempt.
+
+The stopped M18 predecessor is sealed at control SHA-256
+`2050e7a0869590c7744b42e08fa2333326690f5176f9414a429ac9ec44b272bc`
+(43,528,192 bytes), coordination SHA-256
+`4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41`
+(14,168,064 bytes), event cursor 225, coordination event count 1,125,
+projection
+`baguqeeraqsmnfs6rzwc6bvjjdszmryjtdrtg5aosnk2wdsppaxymsrrpqyxa`,
+and historical M18 migration receipt CID
+`sha256:47fd0b5bee77c27d8f523c2cfe8ed8aec49377e8033b0f62c579d844b4efc225`.
+The stopped frozen digest includes generation-19 lifecycle rows
+(`sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b`)
+and therefore differs from the pre-runtime M18 receipt frozen digest.
+
+M19's fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m19/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m19/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m19
+Quack port    24062
+generation    20
+plan revision 20
+event cursor  227
+coord events  1125
+coord root    sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1
+semantic      sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f
+frozen base   sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b
+```
+
+Key presence selects
+`live_catalog_inventory_successor_materialization` before M18 and all
+historical successors.  A null, partial, or malformed M19 declaration fails
+closed.  The tracked M19 authority deliberately does not contain the
+eventual current source binding, target control-file hash, migration digest,
+event IDs, receipt CID, or target projection CID.  Those values depend on
+the final committed control tree and are sealed after that commit in the
+authoritative plan/evidence append and the ignored receipt-last runtime
+marker.  The safe operational sequence is: confirm M18 stopped; commit the
+bounded catalog repair; commit these nine operator controls; validate
+dependencies and board; materialize once; preflight; dry-run implementation
+launch; then launch generation 20.  This control commit performs none of
+the last four runtime operations.
+
+## 28. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

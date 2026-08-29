@@ -2989,6 +2989,7 @@ def _m18_portal_completion_persistence_errors(
     migration: Mapping[str, Any],
     *,
     root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
 ) -> list[str]:
     """Check M18's stopped-M17, portal repair, and one-task rearm controls."""
 
@@ -3103,6 +3104,12 @@ def _m18_portal_completion_persistence_errors(
             errors.append("M18 exact SAWM-007 rearm authority differs")
         try:
             current_head = _git(root, "rev-parse", "HEAD")
+            if "live_catalog_inventory_successor_materialization" in scheduler:
+                current_head = str(
+                    materializer._expected_m19_live_catalog_inventory_authority()[
+                        "prior_source_head"
+                    ]
+                )
             materializer._assert_m18_source_delta(
                 root,
                 {
@@ -3130,7 +3137,7 @@ def _m18_portal_completion_persistence_errors(
         program = scheduler.get("database_program", {})
         owner = scheduler.get("quack_owner", {})
         runtime = scheduler.get("runtime_paths")
-        if (
+        if require_active_runtime and (
             (
                 program.get("store_id"),
                 program.get("store_generation"),
@@ -3173,6 +3180,240 @@ def _m18_portal_completion_persistence_errors(
             f"{type(exc).__name__}: {exc}"
         ]
 
+
+def _m19_live_catalog_inventory_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M19's exact stopped-M18, source-only successor controls."""
+
+    key = "live_catalog_inventory_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m19_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M19 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m19_live_catalog_inventory_authority()
+        errors: list[str] = []
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M19 source-binding authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M19 source-binding authority CID is not exact")
+
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
+        )
+        target_store = f"{target_root}/control.duckdb"
+        required = {
+            "schema": (
+                "sawm/live-quack-catalog-inventory-repair-authorization@1"
+            ),
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M19",
+            "migration_kind": "live_quack_catalog_inventory_repair",
+            "supersession_mode": "source_only_live_quack_catalog_inventory_repair",
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m18/control.duckdb"
+            ),
+            "prior_control_store_sha256": (
+                "2050e7a0869590c7744b42e08fa2333326690f5176f9414a429ac9ec44b272bc"
+            ),
+            "prior_control_store_size": 43_528_192,
+            "prior_coordination_store_sha256": (
+                "4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41"
+            ),
+            "prior_coordination_store_size": 14_168_064,
+            "prior_event_watermark": 225,
+            "prior_event_prefix_sha256": (
+                "6d392f1b9e3fee27ba2a8472f0c82fcf4d306a79acc65275051263675db1cd50"
+            ),
+            "prior_projection_cid": (
+                "baguqeeraqsmnfs6rzwc6bvjjdszmryjtdrtg5aosnk2wdsppaxymsrrpqyxa"
+            ),
+            "prior_semantic_authority_digest": (
+                "sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f"
+            ),
+            "prior_frozen_base_authority_digest": (
+                "sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b"
+            ),
+            "prior_append_surface_digest": (
+                "sha256:d3eef2cbdce0cdb31a100ea8c6f6bac7929e7430fae26b49ded0b671cec2265d"
+            ),
+            "prior_catalog_digest": (
+                "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7"
+            ),
+            "prior_coordination_projection_digest": (
+                "sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1"
+            ),
+            "prior_coordination_event_count": 1_125,
+            "prior_generation": 19,
+            "prior_plan_revision": 19,
+            "prior_server_id": "server:012fddc4-b201-4fad-a1c8-a8e930bb1a6b",
+            "prior_process_birth_id": "birth:4197a4736b74b84f0e7713dbdcfd7c7e",
+            "prior_startup_epoch": 1_788_025_991,
+            "prior_started_at": "2026-08-29T17:53:11Z",
+            "prior_stopped_at": "2026-08-29T18:00:30Z",
+            "prior_stopped_status_projection_sha256": (
+                "404184bae88f332675f24e6956b8c2ac79b326e87ce4e8e6591d03ea8d70419e"
+            ),
+            "prior_stopped_status_projection_size": 2_410,
+            "prior_migration_receipt_sha256": (
+                "a01d0341c0806ad591a151f0a6a47481347968b094d23083aa80d9a0b4ffeb4d"
+            ),
+            "prior_migration_receipt_size": 8_208,
+            "prior_migration_receipt_cid": (
+                "sha256:47fd0b5bee77c27d8f523c2cfe8ed8aec49377e8033b0f62c579d844b4efc225"
+            ),
+            "prior_source_head": "68ee411a072e8abe673fcc3df36c71698830a5aa",
+            "prior_source_tree": "31c0325b7fe8b9c6497a232ee86a057102dbf1b5",
+            "target_store_id": target_store,
+            "target_coordination_store_id": (
+                f"{target_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": target_root,
+            "target_generation": 20,
+            "target_quack_port": 24_062,
+            "target_plan_revision": 20,
+            "target_event_watermark": 227,
+            "target_coordination_projection_digest": (
+                "sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1"
+            ),
+            "target_coordination_event_count": 1_125,
+            "target_semantic_authority_digest": (
+                "sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f"
+            ),
+            "target_frozen_base_authority_digest": (
+                "sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b"
+            ),
+            "event_suffix_length": 2,
+            "coordination_semantic_changes": 0,
+            "plan_revision_changes": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append("M19 live-catalog-inventory authority is not exact")
+        repair = expected.get("accepted_source_repair")
+        if (
+            not isinstance(repair, Mapping)
+            or set(repair.get("changed_paths", ()))
+            != {
+                "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+                "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+            }
+            or repair.get("source_only") is not True
+        ):
+            errors.append("M19 catalog-inventory repair paths are not exact")
+        blob_oids = repair.get("blob_oids") if isinstance(repair, Mapping) else None
+        if not isinstance(blob_oids, Mapping) or set(blob_oids) != set(
+            repair.get("changed_paths", ())
+        ):
+            errors.append("M19 catalog-inventory repair blobs are not exact")
+        elif any(
+            blob != "UNSEALED_REPAIR_BLOB" and len(str(blob)) != 40
+            for blob in blob_oids.values()
+        ):
+            errors.append("M19 catalog-inventory repair blobs are not exact")
+        expected_paths = {
+            "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+            "config/semantic_addressed_world_model_dependencies.seal.json",
+            "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+            (
+                "docs/architecture/semantic_addressed_world_model_inventory/"
+                "prior_materialization_migration.json"
+            ),
+            "scripts/materialize_semantic_addressed_world_model_program.py",
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+            "scripts/validate_semantic_addressed_world_model_board.py",
+            "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        }
+        if set(expected.get("bounded_control_plane_repair_paths", ())) != expected_paths:
+            errors.append("M19 bounded source repair paths are not exact")
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m19_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M19 exact repair/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "20",
+                "quack:127.0.0.1:24062",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                f"{target_root}/quack-owner",
+                24_062,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M19 target/runtime binding is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M19 source-binding authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
 
 def _m17_source_binding_successor_errors(
     scheduler: Mapping[str, Any],
@@ -6418,7 +6659,43 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if "portal_completion_persistence_successor_materialization" in scheduler:
+        if "live_catalog_inventory_successor_materialization" in scheduler:
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif "portal_completion_persistence_successor_materialization" in scheduler:
             protocol_errors.extend(
                 _m18_portal_completion_persistence_errors(
                     scheduler, seal, migration, root=root
