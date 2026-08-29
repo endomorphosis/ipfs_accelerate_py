@@ -353,6 +353,8 @@ def _m16_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
 ) -> list[str]:
     """Reuse the exact M16 accepted-source repair contract across gates."""
 
@@ -364,6 +366,7 @@ def _m16_migration_errors(
                 seal,
                 migration,
                 root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
             )
         )
     except Exception as exc:
@@ -421,7 +424,14 @@ def _active_successor_migration_errors(
         # M16 remains immutable historical authority.  A malformed M17 never
         # falls back to it, but its exact accepted-source repair is still
         # checked independently.
-        errors.extend(_m16_migration_errors(scheduler, seal, migration))
+        errors.extend(
+            _m16_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
         return errors
 
     m16_key = "accepted_source_retry_successor_materialization"

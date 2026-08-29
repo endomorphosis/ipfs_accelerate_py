@@ -935,9 +935,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation. M16 through M9 keys
+    # Exercise the historical M8 selector in isolation. M17 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("source_binding_successor_materialization")
     malformed_successor.pop("accepted_source_retry_successor_materialization")
     malformed_successor.pop("runtime_root_rebind_successor_materialization")
     malformed_successor.pop("stale_owner_restart_successor_materialization")
@@ -2019,6 +2020,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
@@ -2026,6 +2028,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
@@ -2033,6 +2036,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("source_binding_successor_materialization_cid")
     historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
@@ -2829,18 +2833,21 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("source_binding_successor_materialization_cid")
     historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
@@ -3805,6 +3812,64 @@ def test_m17_scheduler_uses_fresh_generation_18_runtime_namespace() -> None:
     }
 
 
+def test_m17_validators_keep_m16_authority_but_not_its_active_runtime() -> None:
+    dependency_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_validator_m17_historical_m16_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert dependency_validator._m17_source_binding_successor_errors(
+        config,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+    ) == []
+    assert dependency_validator._m16_accepted_source_retry_errors(
+        config,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+        require_active_runtime=False,
+    ) == []
+    assert dependency_validator._m16_accepted_source_retry_errors(
+        config,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+    ) == ["scheduler M16 target/runtime binding is not exact"]
+
+    corrupted_history = copy.deepcopy(config)
+    corrupted_history["accepted_source_retry_successor_materialization"][
+        "worker_self_approval"
+    ] = True
+    assert dependency_validator._m16_accepted_source_retry_errors(
+        corrupted_history,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+        require_active_runtime=False,
+    ) == ["M16 accepted-source retry authority differs across controls"]
+
+
 def test_m16_disposable_stage_preserves_failures_and_rearms_exactly(
     tmp_path: Path,
 ) -> None:
@@ -4039,6 +4104,16 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
     )
     population = materializer.build_population(REPO_ROOT)
     authority = materializer._expected_m16_accepted_source_retry_authority()
+    historical_config = copy.deepcopy(config)
+    historical_config.pop("source_binding_successor_materialization")
+    historical_config["runtime_paths"] = {
+        "root": authority["target_runtime_root"],
+        "state": f"{authority['target_runtime_root']}/state",
+        "worktrees": f"{authority['target_runtime_root']}/worktrees",
+        "merge_queue": f"{authority['target_runtime_root']}/merge-queue",
+        "logs": f"{authority['target_runtime_root']}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
     dependency_report = {"schema": "sawm/test-dependency@1", "valid": True}
     board_report = {"schema": "sawm/test-board@1", "valid": True}
     validation_digest = materializer._identity(
@@ -4056,7 +4131,7 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
         REPO_ROOT / authority["prior_store_id"],
         REPO_ROOT / authority["prior_coordination_store_id"],
         population,
-        config,
+        historical_config,
         validation_digest,
     )
     target = tmp_path / authority["target_runtime_root"]
@@ -4105,7 +4180,7 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
         control,
         coordination,
         population,
-        config,
+        historical_config,
         verified,
         validation_digest,
     )
@@ -4137,7 +4212,7 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
     monkeypatch.setattr(materializer, "_validator_report", validator_report)
     assert dict(
         operator._require_m16_final_pair_marker(
-            config, authority, materializer, checked=None
+            historical_config, authority, materializer, checked=None
         )
     ) == receipt
     with coordination.open("ab") as handle:
@@ -4149,7 +4224,7 @@ def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination
         match="M16 materialized final pair marker differs",
     ):
         operator._require_m16_final_pair_marker(
-            config, authority, materializer, checked=None
+            historical_config, authority, materializer, checked=None
         )
 
 

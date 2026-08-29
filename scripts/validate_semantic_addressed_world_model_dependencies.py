@@ -3020,7 +3020,7 @@ def _m17_source_binding_successor_errors(
             "authorized": True,
             "authority": "operator_control_plane",
             "migration_revision": "SAWM-R2-M17",
-            "migration_kind": "post_commit_source_binding_rebind",
+            "migration_kind": "post_commit_source_binding_repair",
             "supersession_mode": "post_commit_exact_source_binding_repair",
             "prior_store_id": (
                 "data/agent_supervisor/semantic_addressed_world_model/"
@@ -3210,8 +3210,15 @@ def _m16_accepted_source_retry_errors(
     migration: Mapping[str, Any],
     *,
     root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
 ) -> list[str]:
-    """Check M16's exact accepted-source repair and two-task rearm controls."""
+    """Check M16's exact accepted-source repair and two-task rearm controls.
+
+    ``require_active_runtime`` is false only while a sealed successor is the
+    active scheduler.  All immutable M16 authority, source, failure, and rearm
+    checks remain mandatory; only the superseded M16 scheduler path/port tuple
+    is then historical rather than active.
+    """
 
     key = "accepted_source_retry_successor_materialization"
     try:
@@ -3512,7 +3519,7 @@ def _m16_accepted_source_retry_errors(
         program = scheduler.get("database_program", {})
         owner = scheduler.get("quack_owner", {})
         runtime = scheduler.get("runtime_paths")
-        if (
+        if require_active_runtime and (
             (
                 program.get("store_id"),
                 program.get("store_generation"),
@@ -6095,7 +6102,11 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             )
             protocol_errors.extend(
                 _m16_accepted_source_retry_errors(
-                    scheduler, seal, migration, root=root
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
                 )
             )
             protocol_errors.extend(
