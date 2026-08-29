@@ -19529,6 +19529,13 @@ def test_ephemeral_provider_without_residual_authority_defers_without_attempt(
 def _install_receipt_backed_residual_authority(daemon, task):
     """Install a hermetic exact-receipt fixture; production has no default."""
 
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        canonical_json_bytes,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.launch_source_amendment import (
+        LAUNCH_SOURCE_FOREST_RECEIPT_SCHEMA,
+        LaunchSourceAmendment,
+    )
     from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
         TaskExecutionRouteBinding,
     )
@@ -19542,33 +19549,103 @@ def _install_receipt_backed_residual_authority(daemon, task):
         "rev-parse",
         "HEAD^{tree}",
     )
+    repository_head = _git(Path(daemon.repo_root), "rev-parse", "HEAD")
     policy_id = implementation_daemon_module.content_identity(
         {"fixture": "residual-route-policy"}
     )
-    daemon.bind_launch_task_execution_route(
-        TaskExecutionRouteBinding(
-            policy_id=policy_id,
-            plan_root_cid=implementation_daemon_module.content_identity(
-                {"fixture": "residual-plan-root"}
-            ),
-            repository_tree_id=repository_tree_id,
-            source_revision=1,
-            task_cid=task_cid,
-            task_alias=task.task_id,
-            task_revision=1,
-            task_contract_cid=implementation_daemon_module.content_identity(
-                {"fixture": "residual-task-contract"}
-            ),
-            execution_mode="grok-codex",
-        ).to_dict()
+    plan_root_cid = implementation_daemon_module.content_identity(
+        {"fixture": "residual-plan-root"}
     )
+    route_binding = TaskExecutionRouteBinding(
+        policy_id=policy_id,
+        plan_root_cid=plan_root_cid,
+        repository_tree_id=repository_tree_id,
+        source_revision=1,
+        task_cid=task_cid,
+        task_alias=task.task_id,
+        task_revision=1,
+        task_contract_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-task-contract"}
+        ),
+        execution_mode="grok-codex",
+    )
+    daemon.bind_launch_task_execution_route(
+        route_binding.to_dict()
+    )
+    source_forest_body = {
+        "source_head": repository_head,
+        "nested_repositories": [],
+        "cross_repository_writes": False,
+    }
+    source_forest_root = (
+        "sha256:"
+        + hashlib.sha256(canonical_json_bytes(source_forest_body)).hexdigest()
+    )
+    source_forest = {
+        **source_forest_body,
+        "source_forest_root": source_forest_root,
+    }
+    forest_receipt_body = {
+        "schema": LAUNCH_SOURCE_FOREST_RECEIPT_SCHEMA,
+        "source_head": repository_head,
+        "repository_tree": repository_tree_id,
+        "source_forest_root": source_forest_root,
+        "source_forest": source_forest,
+    }
+    forest_receipt_id = (
+        "sha256:"
+        + hashlib.sha256(canonical_json_bytes(forest_receipt_body)).hexdigest()
+    )
+    amendment = LaunchSourceAmendment(
+        board_namespace="test-residual-authority",
+        plan_alias="residual-plan-r1",
+        bootstrap_receipt_id=implementation_daemon_module.content_identity(
+            {"fixture": "residual-bootstrap-receipt"}
+        ),
+        bootstrap_plan_root_cid=plan_root_cid,
+        bootstrap_source_head=repository_head,
+        bootstrap_repository_tree_id=repository_tree_id,
+        launch_source_forest_receipt_id=forest_receipt_id,
+        launch_source_forest_root=source_forest_root,
+        launch_source_forest_receipt={
+            **forest_receipt_body,
+            "receipt_id": forest_receipt_id,
+        },
+        launch_source_head=repository_head,
+        launch_repository_tree_id=repository_tree_id,
+        immutable_objectives_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-objectives"}
+        ),
+        immutable_plan_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-plan"}
+        ),
+        immutable_taskboard_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-taskboard"}
+        ),
+        immutable_validator_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-validator"}
+        ),
+        bootstrap_config_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-bootstrap-config"}
+        ),
+        launch_config_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-launch-config"}
+        ),
+        dependency_seal_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-dependency-seal"}
+        ),
+        task_contract_set_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-task-contract-set"}
+        ),
+        parent_plan_revision=1,
+        amended_plan_revision=2,
+    )
+    daemon.bind_launch_source_amendment(amendment.to_dict())
     forest_roots = ImplementationForestRoots(
         repository_id="repository:test-residual-authority",
-        repository_forest_cid=implementation_daemon_module.content_identity(
-            {"fixture": "residual-forest", "tree": repository_tree_id}
-        ),
-        git_tree_id=repository_tree_id,
-        policy_root=policy_id,
+        repository_forest_cid=amendment.launch_source_forest_root,
+        git_tree_id=amendment.launch_repository_tree_id,
+        policy_root=amendment.attempt_policy_root(route_binding.to_dict()),
     )
 
     def authority_materials(
@@ -19577,11 +19654,21 @@ def _install_receipt_backed_residual_authority(daemon, task):
         task_cid,
         current_git_tree_id,
         execution_route_binding,
+        launch_source_amendment,
+        attempt_source_policy_root,
         attempt,
     ):
         del attempt
         assert current_git_tree_id == repository_tree_id
         assert execution_route_binding is not None
+        resolved_amendment = LaunchSourceAmendment.from_dict(
+            launch_source_amendment
+        )
+        assert resolved_amendment.amendment_id == amendment.amendment_id
+        assert attempt_source_policy_root == resolved_amendment.attempt_policy_root(
+            execution_route_binding
+        )
+        assert attempt_source_policy_root == forest_roots.policy_root
         from ipfs_accelerate_py.agent_supervisor.planning.residual_llm_packet import (
             seal_residual_llm_packet,
         )
