@@ -2304,6 +2304,68 @@ def _require_m11_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+_LIVE_APPEND_TABLES = frozenset(
+    {"domain_events", "evidence_nodes", "plan_revisions", "plans"}
+)
+
+
+def _sql_table_names(rows: Sequence[Any]) -> tuple[str, ...]:
+    return tuple(str(row[0]) for row in rows)
+
+
+def _live_remote_frozen_table_names(connection: Any) -> tuple[str, ...]:
+    """List frozen base tables from the remote-visible schema surface.
+
+    Attached Quack can omit ``information_schema.tables`` ``BASE TABLE``
+    entries while still exposing columns and rows. Prefer ``duckdb_tables()``,
+    then reconstruct from columns minus views. Never open a filesystem store.
+    """
+
+    duck_names = _sql_table_names(
+        connection.execute(
+            "SELECT table_name FROM duckdb_tables() "
+            "WHERE database_name = current_database() AND schema_name = 'main' "
+            "ORDER BY table_name"
+        ).fetchall()
+    )
+    info_names = _sql_table_names(
+        connection.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='main' AND table_type='BASE TABLE' "
+            "ORDER BY table_name"
+        ).fetchall()
+    )
+    if duck_names:
+        if info_names and info_names != duck_names:
+            raise OperatorError("M18 live frozen table inventory differs")
+        names = duck_names
+    elif info_names:
+        names = info_names
+    else:
+        column_names = _sql_table_names(
+            connection.execute(
+                "SELECT DISTINCT table_name FROM information_schema.columns "
+                "WHERE table_schema='main' ORDER BY table_name"
+            ).fetchall()
+        )
+        view_names = set(
+            _sql_table_names(
+                connection.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema='main' AND table_type='VIEW' "
+                    "ORDER BY table_name"
+                ).fetchall()
+            )
+        )
+        names = tuple(name for name in column_names if name not in view_names)
+    if any(not re.fullmatch(r"[a-z][a-z0-9_]*", name) for name in names):
+        raise OperatorError("M18 live frozen table inventory differs")
+    tables = tuple(name for name in names if name not in _LIVE_APPEND_TABLES)
+    if not tables or _LIVE_APPEND_TABLES.intersection(tables):
+        raise OperatorError("M18 live frozen table inventory differs")
+    return tables
+
+
 def _m18_live_frozen_authority_digest(
     connection: Any,
     identity: Mapping[str, Any],
@@ -2467,17 +2529,7 @@ def _m18_live_frozen_authority_digest(
             return {"iso8601": value.isoformat()}
         return value
 
-    append_tables = {"domain_events", "evidence_nodes", "plan_revisions", "plans"}
-    table_rows = connection.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema='main' AND table_type='BASE TABLE' "
-        "ORDER BY table_name"
-    ).fetchall()
-    tables = tuple(
-        str(row[0]) for row in table_rows if str(row[0]) not in append_tables
-    )
-    if not tables or append_tables.intersection(tables):
-        raise OperatorError("M18 live frozen table inventory differs")
+    tables = _live_remote_frozen_table_names(connection)
     projection: dict[str, list[list[Any]]] = {}
     for table in tables:
         columns = connection.execute(

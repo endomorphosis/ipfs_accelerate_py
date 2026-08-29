@@ -4294,6 +4294,83 @@ def test_m18_receipt_writer_handles_short_write_or_fails_closed(
     assert publish() == expected
 
 
+class _RemoteCatalogResult:
+    def __init__(self, rows: tuple[tuple[str, ...], ...]) -> None:
+        self._rows = rows
+
+    def fetchall(self) -> tuple[tuple[str, ...], ...]:
+        return self._rows
+
+
+class _RemoteCatalogConnection:
+    """Quack-shaped catalog: rows/columns exist, BASE TABLE entries do not."""
+
+    def __init__(
+        self,
+        *,
+        duck_tables: tuple[str, ...],
+        columns: tuple[str, ...],
+        views: tuple[str, ...] = (),
+        base_tables: tuple[str, ...] = (),
+    ) -> None:
+        self.duck_tables = duck_tables
+        self.columns = columns
+        self.views = views
+        self.base_tables = base_tables
+
+    def execute(self, sql: str, parameters: object = None) -> _RemoteCatalogResult:
+        del parameters
+        normalized = " ".join(str(sql).split())
+        if "FROM duckdb_tables()" in normalized:
+            return _RemoteCatalogResult(tuple((name,) for name in self.duck_tables))
+        if "table_type='BASE TABLE'" in normalized or 'table_type = \'BASE TABLE\'' in normalized:
+            return _RemoteCatalogResult(tuple((name,) for name in self.base_tables))
+        if "AND table_type='VIEW'" in normalized or "AND table_type = 'VIEW'" in normalized:
+            return _RemoteCatalogResult(tuple((name,) for name in self.views))
+        if "FROM information_schema.columns" in normalized and "DISTINCT table_name" in normalized:
+            return _RemoteCatalogResult(tuple((name,) for name in self.columns))
+        raise AssertionError(f"unexpected catalog SQL: {normalized}")
+
+
+def test_live_remote_frozen_table_names_accepts_quack_omitted_base_table_entries() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_live_remote_catalog_test",
+    )
+    append = ("domain_events", "evidence_nodes", "plan_revisions", "plans")
+    frozen = ("artifacts", "credentials", "goals", "state_servers", "tasks")
+    views = ("task_board",)
+    columns = frozen + append + views
+    remote = _RemoteCatalogConnection(
+        duck_tables=frozen + append,
+        columns=columns,
+        views=views,
+        base_tables=(),
+    )
+    assert operator._live_remote_frozen_table_names(remote) == frozen
+
+    empty = _RemoteCatalogConnection(
+        duck_tables=(),
+        columns=columns,
+        views=views,
+        base_tables=(),
+    )
+    assert operator._live_remote_frozen_table_names(empty) == frozen
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="M18 live frozen table inventory differs",
+    ):
+        operator._live_remote_frozen_table_names(
+            _RemoteCatalogConnection(
+                duck_tables=(),
+                columns=append + views,
+                views=views,
+                base_tables=(),
+            )
+        )
+
+
 def test_m18_live_marker_rejects_rehashed_fields_and_tail_tamper(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
