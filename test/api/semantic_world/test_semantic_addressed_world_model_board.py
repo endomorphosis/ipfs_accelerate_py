@@ -935,9 +935,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation. M15 through M9 keys
+    # Exercise the historical M8 selector in isolation. M16 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("accepted_source_retry_successor_materialization")
     malformed_successor.pop("runtime_root_rebind_successor_materialization")
     malformed_successor.pop("stale_owner_restart_successor_materialization")
     malformed_successor.pop("quack_refresh_successor_materialization")
@@ -2018,18 +2019,21 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
@@ -2825,16 +2829,19 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("accepted_source_retry_successor_materialization")
     historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("accepted_source_retry_successor_materialization")
     historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("accepted_source_retry_successor_materialization_cid")
     historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
