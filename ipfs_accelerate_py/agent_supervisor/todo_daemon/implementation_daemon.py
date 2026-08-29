@@ -71526,6 +71526,14 @@ class DatabaseImplementationDaemon:
                         and provider_outcome in {"started", "returned", "committed"}
                         and callable(provider_recovery)
                     )
+                    effectful_provider_failure = bool(
+                        provider_dispatch is not None
+                        and not current.phase_committed(ATTEMPT_PHASE_PROVIDER)
+                        and callable(provider_recovery)
+                        and isinstance(
+                            exc, DatabaseImplementationProviderDispatchError
+                        )
+                    )
                     if provider_unknown and not isinstance(
                         exc, DatabaseImplementationProviderDispatchError
                     ):
@@ -71554,6 +71562,7 @@ class DatabaseImplementationDaemon:
                     )
                     force_block = bool(
                         provider_unknown
+                        or effectful_provider_failure
                         or isinstance(exc, DatabaseImplementationEffectDispatchError)
                         or (
                             effect_dispatch is not None
@@ -71565,7 +71574,7 @@ class DatabaseImplementationDaemon:
                         reason=(
                             (
                                 "provider_dispatch_outcome_unknown"
-                                if provider_unknown
+                                if provider_unknown or effectful_provider_failure
                                 else "effect_dispatch_outcome_unknown"
                             )
                             if force_block

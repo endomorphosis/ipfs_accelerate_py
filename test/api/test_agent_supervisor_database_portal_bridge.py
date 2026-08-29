@@ -696,6 +696,77 @@ def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
         daemon.close()
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_effectful_portal_exception_blocks_without_fresh_attempt(
+    tmp_path: Path,
+) -> None:
+    side_effect = tmp_path / "portal-side-effect"
+    portal_calls: list[str] = []
+
+    class ExplodingPortal:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        def run_once(self) -> dict[str, object]:
+            portal_calls.append("run")
+            side_effect.write_text("landed\n", encoding="utf-8")
+            raise RuntimeError("Portal return lost after external side effect")
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    args = parse_args(
+        [
+            "--task-source-kind", "duckdb",
+            "--authority-mode", "embedded_exclusive",
+            "--database-path", str(tmp_path / "control.duckdb"),
+            "--state-dir", str(tmp_path / "state"),
+            "--state-prefix", "pctdd",
+            "--implement",
+            "--max-task-attempts", "3",
+            "--once",
+        ]
+    )
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:portal-effectful-exception",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        max_task_attempts=3,
+        require_real_execution=True,
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon, args, repo_root=tmp_path, portal_daemon_class=ExplodingPortal
+        )
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:portal-effectful-exception",
+                "tasks": [{
+                    "task_cid": "task:cid:pctdd-001",
+                    "task_id": "PCTDD-001",
+                    "goal_cid": "goal:pctdd",
+                    "status": "ready",
+                    "validation_commands": ["python -m pytest focused.py"],
+                }],
+            }
+        )
+        failed = daemon.run_once()["implementation_result"]
+        assert failed["status"] == "retry_exhausted"
+        assert failed["retry_exhausted"] is True
+        assert portal_calls == ["run"]
+        assert side_effect.read_text(encoding="utf-8") == "landed\n"
+        task = daemon.task_source.get_task("task:cid:pctdd-001")
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["forced_block"] is True
+        assert daemon.run_once()["implementation_result"] is None
+        assert portal_calls == ["run"]
+    finally:
+        daemon.close()
+
+
 def test_quack_mode_refuses_direct_duckdb_execution(tmp_path: Path) -> None:
     with pytest.raises(
         DatabaseImplementationAuthorityError,
