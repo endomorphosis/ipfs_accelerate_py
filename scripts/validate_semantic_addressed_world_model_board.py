@@ -328,6 +328,26 @@ def _m12_migration_errors(
         return [f"M12 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m13_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M13 initial-refresh repair contract across static gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m13_quack_refresh_errors(
+                scheduler,
+                seal,
+                migration,
+            )
+        )
+    except Exception as exc:
+        return [f"M13 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -335,11 +355,29 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M12 before M11, M10, M9, and M8.  Consequently an empty, null,
+    Key presence selects M13 before M12, M11, M10, M9, and M8.  Consequently an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m13_key = "quack_refresh_successor_materialization"
+    m13_seal_key = "quack_refresh_successor_materialization_cid"
+    m13_presence = (
+        m13_key in scheduler,
+        m13_key in migration,
+        m13_seal_key in seal,
+    )
+    if any(m13_presence):
+        errors = _m13_migration_errors(scheduler, seal, migration)
+        if not all(m13_presence):
+            errors.append("M13 Quack-refresh authority is only partially declared")
+        errors.extend(_m12_migration_errors(scheduler, seal, migration))
+        errors.extend(_m11_migration_errors(scheduler, seal, migration))
+        errors.extend(_m10_migration_errors(scheduler, seal, migration))
+        errors.extend(_m9_migration_errors(scheduler, seal, migration))
+        errors.extend(_m8_migration_errors(scheduler, seal, migration))
+        return errors
 
     m12_key = "declared_output_retry_successor_materialization"
     m12_seal_key = "declared_output_retry_successor_materialization_cid"
@@ -419,7 +457,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9/M10/M11/M12 successor authority is absent"]
+    return ["active M8/M9/M10/M11/M12/M13 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1865,8 +1903,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m13_key = "quack_refresh_successor_materialization"
+    m13_selected = any(
+        (
+            m13_key in config,
+            m13_key in migration,
+            "quack_refresh_successor_materialization_cid" in seal,
+        )
+    )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = any(
+    m12_selected = not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -1874,7 +1920,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = not m12_selected and any(
+    m11_selected = not m13_selected and not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -1882,7 +1928,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m12_selected and not m11_selected and any(
+    m10_selected = not m13_selected and not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -1890,7 +1936,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m12_selected and not m11_selected and not m10_selected and any(
+    m9_selected = not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -1898,7 +1944,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m12"
+        "run-r2-m13"
+        if m13_selected
+        else "run-r2-m12"
         if m12_selected
         else "run-r2-m11"
         if m11_selected
@@ -1910,6 +1958,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "14"
+        if m13_selected
+        else "14"
         if m12_selected
         else "13"
         if m11_selected
@@ -1920,7 +1970,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        45256
+        24056
+        if m13_selected
+        else 45256
         if m12_selected
         else 45255
         if m11_selected
@@ -1945,7 +1997,59 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m12_selected:
+    if m13_selected:
+        refresh_successor = config.get(m13_key)
+        expected_m13_fields = {
+            "schema": "sawm/quack-initial-refresh-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M13",
+            "migration_kind": "quack_initial_refresh_rebind_repair",
+            "supersession_mode": "source_only_quack_initial_refresh_lifecycle_repair",
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m13/control.coordination.duckdb"
+            ),
+            "target_generation": 14,
+            "target_quack_port": 24056,
+            "target_plan_revision": 14,
+            "target_event_watermark": 191,
+            "target_projection_cid": (
+                "baguqeeraqpkofyd3pnjnaqiwwefz7pkubim7kaklbp65puqu47ckb2vdmtxa"
+            ),
+            "coordination_semantic_changes": 0,
+            "plan_revision_changes": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        }
+        expected_m13_cid = (
+            "sha256:2a6be82b1d160f07ee192b6093eb8fae3518ab2df713155bce98f7fb280e9920"
+        )
+        if type(refresh_successor) is not dict or any(
+            refresh_successor.get(field) != expected
+            for field, expected in expected_m13_fields.items()
+        ):
+            config_errors.append("M13 active Quack-refresh authority is not exact")
+        elif (
+            refresh_successor != migration.get(m13_key)
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    refresh_successor,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            != expected_m13_cid
+            or seal.get("quack_refresh_successor_materialization_cid")
+            != expected_m13_cid
+        ):
+            config_errors.append("M13 Quack-refresh authority/CID differs")
+    elif m12_selected:
         declared_output_retry = config.get(m12_key)
         expected_m12_fields = {
             "schema": "sawm/portal-declared-output-repair-authorization@1",

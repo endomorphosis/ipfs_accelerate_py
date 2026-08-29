@@ -530,6 +530,7 @@
   "live_projection_successor_materialization_cid": "sha256:f27878def0ee9b406d0dbaac669728278e4f375cb267ee7f76330faaf9b14f10",
   "live_provider_retry_successor_materialization_cid": "sha256:7f8404735adae0fb7ed890cda97dc674b78ae915efa193207e98abd95eb5193e",
   "declared_output_retry_successor_materialization_cid": "sha256:786dde1f1728b907c3e28e5a09c746842c0a4a5ac0333f3ccb25f5290e8227a8",
+  "quack_refresh_successor_materialization_cid": "sha256:2a6be82b1d160f07ee192b6093eb8fae3518ab2df713155bce98f7fb280e9920",
   "optional_capability_policy": {
     "external_provers": "probe_then_typed_unavailable",
     "ann_backend": "probe_then_typed_unavailable_with_exact_fallback",

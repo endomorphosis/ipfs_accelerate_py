@@ -724,7 +724,104 @@ the final pair marker last. Offline start and every live preflight must verify
 the materialized pair and final marker before generation 14 can launch. This
 control update does not itself publish or launch M12.
 
-## 21. Current limitations at seal time
+## 21. M13 Quack initial-refresh lifecycle repair
+
+M12 materialized its exact pair and receipt-last publication marker, but the
+first Quack start did not reach a live scheduler.  The owner start path copied
+the canonical database to its read-only replica and the initial
+`quack_serve` bind on port 45256 failed while the endpoint was still observed
+in transient prior-socket state.  The control database's maximum generation
+remained 13, proving that this failure preceded generation-14 identity
+publication.  A later start attempt correctly failed closed because the first
+attempt had left a read-replica sidecar beside the otherwise stopped M12
+authority.  Neither failure dispatched a task, invoked a provider, changed a
+task or coordination projection, created an implementation commit, attempted
+a merge, or granted completion.
+
+Static inspection also identified a latent adjacent lifecycle hazard: after a
+successful initial bind, the initial transport probe would open a client
+connection before identity publication required an immediate stop/rebind on
+the same endpoint.  M13 addresses both facts.  `_SawmQuackTransport.refresh`
+accepts an explicit probe decision.  The transport's initial refresh is
+unprobed; the post-identity refresh and every later mutation refresh remain
+probed.  An unprobed refresh is never considered live.  Port `24056` is used
+for the successor so the failed M12 endpoint and its transient socket state
+are not silently reused.
+
+The exact M13 source/control capsule is:
+
+```text
+config/agent_supervisor_semantic_addressed_world_model_scheduler.json
+config/semantic_addressed_world_model_dependencies.seal.json
+docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md
+docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json
+scripts/materialize_semantic_addressed_world_model_program.py
+scripts/ops/agent_supervisor/semantic_addressed_world_model.py
+scripts/validate_semantic_addressed_world_model_board.py
+scripts/validate_semantic_addressed_world_model_dependencies.py
+test/api/semantic_world/test_semantic_addressed_world_model_board.py
+```
+
+The stopped post-failure M12 control database is SHA-256
+`9b09d7dcb2079963a20c6e22fa0a5ff1e0e6833a2a8ae027ac36a973adc037f2`
+at 45,101,056 bytes.  Its distinct-inode read replica has the same bytes and
+size; it is recorded as failed-attempt evidence and is forbidden as a
+materialization source or copied sidecar.  The M12 coordination database is
+SHA-256
+`113f5b629317effeada5b8b81a0f8b8aaf4322ab36b6c111d830c5d9095eea55`
+at 12,857,344 bytes.  Both WALs are absent, the owner-status file is absent,
+and the owner directory is empty.  The immutable M12 publication receipt is
+SHA-256
+`fd736f7cf349efee968133fd970e33dfc1ff7f8ac8dbf22c98618ce2a0ac0185`
+with receipt CID
+`sha256:d17b7cea163f6834ccd7b42b30b1e19109550802d83eb9806ebab11e9d55e196`.
+Its publication control digest remains distinct from the stopped post-start
+control digest above.
+
+M13 stages copies of only the exact stopped canonical control and coordination
+databases outside the board-scoped pair lock.  After staging, it revalidates
+the committed source, source delta, and predecessor bytes before and inside a
+bounded publication lock; only then are the pair hardlinks admitted and the
+directory synchronized.  It copies neither the read replica nor any execution
+sidecar, verifies the absent WAL and owner artifacts, and appends exactly one
+plan event and one repair-evidence event.  It performs no task CAS and no
+coordination mutation: `SAWM-001` remains `retrying@16`,
+the coordination database remains at 224 events with projection digest
+`sha256:358cd0667be10fb125476ac090db3cda9aec9b8d0876a2654de1ce5aa531c59f`,
+and all accepted definition/completion evidence remains unchanged.
+
+M13 targets the following runtime binding:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m13/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m13/control.coordination.duckdb
+Quack port    24056
+generation    14
+plan revision 14
+event cursor  191
+projection    baguqeeraqpkofyd3pnjnaqiwwefz7pkubim7kaklbp65puqu47ckb2vdmtxa
+SAWM-001      retrying revision 16
+coord events  224
+coord root    sha256:358cd0667be10fb125476ac090db3cda9aec9b8d0876a2654de1ce5aa531c59f
+semantic      sha256:239db939a5e7af260f334b325c4ec075a2faf18f01b683448625647e0962d36c
+frozen base   sha256:12b25f50a7c5d3b1020b7c1f86412fa863a6c00027ee780ecd1f78c88dfa7a95
+prior append surface sha256:c5eebae5486bf281ebfaa03f369eb114ceef707d446afe45a929a27d250363aa
+```
+
+Generation 14 is retained because the stopped M12 database has maximum owner
+generation 13 and the M13 source-only append creates no owner-generation row;
+the existing state-server algorithm therefore selects 14 on the next start.
+The target projection above was computed by a deterministic isolated rehearsal
+of the two-event append and is prebound by the M13 authority; publication must
+recompute it before the receipt can seal the pair.  The listed append digest is
+explicitly the prior digest.  The target append digest depends on the sealed
+source binding, is recomputed from the staged bytes, and appears only in the
+final pair receipt.  Key presence selects
+`quack_refresh_successor_materialization` before M12 and every predecessor.
+A null, partial, malformed, sidecar-sourced, task-mutating, coordination-
+mutating, or unprobed-live successor fails closed.
+
+## 22. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

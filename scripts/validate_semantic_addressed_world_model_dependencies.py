@@ -2871,6 +2871,35 @@ def _m12_declared_output_retry_errors(
     ):
         errors.append("M12 bounded repair paths are not exact protected controls")
 
+    bridge_source = (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+    ).read_text(encoding="utf-8")
+    for required_source in (
+        "_canonical_declared_output_path",
+        "_nested_declared_output_path",
+        'effect.get("effect") != "declared_output"',
+        "value.splitlines() != [value]",
+        '{"none", "n/a"}',
+    ):
+        if required_source not in bridge_source:
+            errors.append(
+                f"M12 Portal adapter source omits {required_source}"
+            )
+
+    # M12 remains immutable historical authority once M13 is declared.  The
+    # M13 gate validates the adjacent active runtime binding; malformed M13
+    # controls cannot reactivate this predecessor.
+    m13_key = "quack_refresh_successor_materialization"
+    if any(
+        (
+            m13_key in scheduler,
+            m13_key in migration,
+            "quack_refresh_successor_materialization_cid" in seal,
+        )
+    ):
+        return errors
+
     expected_program = {
         "authority_mode": "quack",
         "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
@@ -2949,21 +2978,338 @@ def _m12_declared_output_retry_errors(
     if scheduler.get("provider") != expected_provider:
         errors.append("scheduler M12 provider route is not exact")
 
-    bridge_source = (
-        REPO_ROOT
-        / "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+    return errors
+
+
+def _m13_quack_refresh_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Verify M13's source-only initial-refresh lifecycle repair."""
+
+    errors: list[str] = []
+    authority_key = "quack_refresh_successor_materialization"
+    cid_key = "quack_refresh_successor_materialization_cid"
+    if authority_key not in scheduler:
+        errors.append("M13 Quack-refresh authority key is absent from scheduler")
+    if authority_key not in migration:
+        errors.append("M13 Quack-refresh authority key is absent from inventory")
+    if cid_key not in seal:
+        errors.append("M13 Quack-refresh authority CID key is absent from seal")
+    configured = scheduler[authority_key] if authority_key in scheduler else None
+    inventoried = migration[authority_key] if authority_key in migration else None
+    if type(configured) is not dict or configured != inventoried:
+        errors.append("M13 Quack-refresh authority differs across controls")
+        configured = {}
+    expected_cid = (
+        "sha256:2a6be82b1d160f07ee192b6093eb8fae3518ab2df713155bce98f7fb280e9920"
+    )
+    observed_cid = "sha256:" + hashlib.sha256(
+        _canonical_json(configured)
+    ).hexdigest()
+    if seal.get(cid_key) != expected_cid or observed_cid != expected_cid:
+        errors.append("M13 Quack-refresh authority CID is not exact")
+
+    prior_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m12"
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
+    expected_subset = {
+        "schema": "sawm/quack-initial-refresh-repair-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": "SAWM-R2-M13",
+        "migration_kind": "quack_initial_refresh_rebind_repair",
+        "supersession_mode": "source_only_quack_initial_refresh_lifecycle_repair",
+        "prior_store_id": f"{prior_root}/control.duckdb",
+        "prior_publication_control_store_sha256": (
+            "41874cc79b6e7056f32401f5a6cbf372a34f7b19f7626e8ef031d401c3a57c5e"
+        ),
+        "prior_control_store_sha256": (
+            "9b09d7dcb2079963a20c6e22fa0a5ff1e0e6833a2a8ae027ac36a973adc037f2"
+        ),
+        "prior_control_store_size": 45_101_056,
+        "prior_control_wal_id": f"{prior_root}/control.duckdb.wal",
+        "prior_control_wal_present": False,
+        "prior_coordination_store_id": f"{prior_root}/control.coordination.duckdb",
+        "prior_coordination_store_sha256": (
+            "113f5b629317effeada5b8b81a0f8b8aaf4322ab36b6c111d830c5d9095eea55"
+        ),
+        "prior_coordination_store_size": 12_857_344,
+        "prior_coordination_wal_id": f"{prior_root}/control.coordination.duckdb.wal",
+        "prior_coordination_wal_present": False,
+        "prior_coordination_event_count": 224,
+        "prior_coordination_projection_digest": (
+            "sha256:358cd0667be10fb125476ac090db3cda9aec9b8d0876a2654de1ce5aa531c59f"
+        ),
+        "prior_event_watermark": 189,
+        "prior_event_prefix_sha256": (
+            "c9f83218a7a6bfdf145c1733c4d51e96fb0ba97c421604602e541f4ab04c84e0"
+        ),
+        "prior_projection_cid": (
+            "baguqeeragb5uufggmw6glss2ttbubyb2aixhfio6cmmit6w4njiuozj3csmq"
+        ),
+        "prior_source_head": "609ce9ad4d2934d4d2b5400cb8c8bad56a277a6e",
+        "prior_source_tree": "19522ae2517b2427959e44a396c311d285d319cb",
+        "prior_source_binding_cid": (
+            "sha256:1fa02a9d8044fa9a5acd0738d43574b32e0da5295eeae422e1b1c86a7f603379"
+        ),
+        "prior_database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "prior_generation": 13,
+        "prior_plan_revision": 13,
+        "prior_materialization_receipt_path": f"{prior_root}/migration-receipt.json",
+        "prior_materialization_receipt_cid": (
+            "sha256:d17b7cea163f6834ccd7b42b30b1e19109550802d83eb9806ebab11e9d55e196"
+        ),
+        "prior_materialization_receipt_file_sha256": (
+            "fd736f7cf349efee968133fd970e33dfc1ff7f8ac8dbf22c98618ce2a0ac0185"
+        ),
+        "prior_materialization_receipt_precedes_failed_start_checkpoint": True,
+        "prior_owner_status_path": (
+            f"{prior_root}/quack-owner/quack-state-server.status.json"
+        ),
+        "prior_owner_status_present": False,
+        "prior_owner_directory_empty": True,
+        "prior_read_replica_store_id": f"{prior_root}/control.read-replica.duckdb",
+        "prior_read_replica_store_sha256": (
+            "9b09d7dcb2079963a20c6e22fa0a5ff1e0e6833a2a8ae027ac36a973adc037f2"
+        ),
+        "prior_read_replica_store_size": 45_101_056,
+        "prior_read_replica_is_distinct_file": True,
+        "prior_read_replica_is_authority": False,
+        "prior_semantic_authority_digest": (
+            "sha256:239db939a5e7af260f334b325c4ec075a2faf18f01b683448625647e0962d36c"
+        ),
+        "prior_frozen_base_authority_digest": (
+            "sha256:12b25f50a7c5d3b1020b7c1f86412fa863a6c00027ee780ecd1f78c88dfa7a95"
+        ),
+        "prior_append_surface_digest": (
+            "sha256:c5eebae5486bf281ebfaa03f369eb114ceef707d446afe45a929a27d250363aa"
+        ),
+        "prior_catalog_digest": (
+            "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7"
+        ),
+        "target_store_id": f"{root}/control.duckdb",
+        "target_coordination_store_id": f"{root}/control.coordination.duckdb",
+        "target_generation": 14,
+        "target_quack_port": 24_056,
+        "target_plan_revision": 14,
+        "target_event_watermark": 191,
+        "target_coordination_event_count": 224,
+        "target_coordination_projection_digest": (
+            "sha256:358cd0667be10fb125476ac090db3cda9aec9b8d0876a2654de1ce5aa531c59f"
+        ),
+        "target_semantic_authority_digest": (
+            "sha256:239db939a5e7af260f334b325c4ec075a2faf18f01b683448625647e0962d36c"
+        ),
+        "target_frozen_base_authority_digest": (
+            "sha256:12b25f50a7c5d3b1020b7c1f86412fa863a6c00027ee780ecd1f78c88dfa7a95"
+        ),
+        "event_suffix_length": 2,
+        "control_recorded_at": "2026-08-29T00:00:00Z",
+        "control_base_copied": True,
+        "coordination_base_copied": True,
+        "prior_control_wal_copied": False,
+        "prior_coordination_wal_copied": False,
+        "prior_read_replica_copied": False,
+        "prior_owner_status_copied": False,
+        "prior_failed_start_artifacts_preserved": True,
+        "prior_control_store_mutated": False,
+        "prior_coordination_store_mutated": False,
+        "coordination_semantic_changes": 0,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    for field, expected in expected_subset.items():
+        if configured.get(field) != expected:
+            errors.append(f"M13 Quack-refresh {field} is not exact")
+    if configured.get("target_projection_cid") != (
+        "baguqeeraqpkofyd3pnjnaqiwwefz7pkubim7kaklbp65puqu47ckb2vdmtxa"
+    ):
+        errors.append("M13 target projection CID is not exact")
+
+    repair = configured.get("quack_refresh_repair")
+    expected_repair = {
+        "operator_path": "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "refresh_probe_parameter": True,
+        "initial_refresh_probe": False,
+        "post_identity_refresh_probe": True,
+        "mutation_refresh_probe": True,
+        "unprobed_refresh_live": False,
+        "target_port": 24_056,
+        "generation_changed": False,
+        "transport_protocol_changed": False,
+    }
+    if repair != expected_repair:
+        errors.append("M13 Quack refresh lifecycle repair is not exact")
+
+    failure = configured.get("failed_quack_start")
+    if not isinstance(failure, Mapping):
+        failure = {}
+        errors.append("M13 frozen Quack-start failure is absent")
+    if (
+        configured.get("failed_quack_start_cid")
+        != "sha256:" + hashlib.sha256(_canonical_json(failure)).hexdigest()
+        or failure.get("schema") != "sawm/quack-initial-refresh-failure@1"
+        or failure.get("attempt") != "SAWM-R2-M12-QUACK-START-A1"
+        or failure.get("phase") != "pre_identity_initial_replica_bind"
+        or failure.get("failure_kind")
+        != "initial_quack_replica_bind_conflict"
+        or failure.get("owner_status_created") is not False
+        or failure.get("control_wal_created") is not False
+        or failure.get("coordination_wal_created") is not False
+        or failure.get("task_revision_changes") != 0
+        or failure.get("task_status_changes") != 0
+        or failure.get("provider_invocations") != 0
+        or failure.get("worker_self_approval") is not False
+    ):
+        errors.append("M13 frozen Quack-start failure is not exact")
+
+    live = configured.get("live_task_projection")
+    expected_live = {
+        "schema": "sawm/live-task-projection-expectation@1",
+        "task_count": 45,
+        "task_revision_count": 1,
+        "operator_task_alias": "SAWM-000",
+        "operator_status": "completed",
+        "operator_revision": 2,
+        "candidate_task_alias": "SAWM-001",
+        "candidate_task_cid": (
+            "sha256:76bcefe7428550da2bcf3e582b87b2106e0e393a0f1a84515518ebe3f6f16e76"
+        ),
+        "prior_candidate_status": "retrying",
+        "prior_candidate_revision": 16,
+        "target_candidate_status": "retrying",
+        "target_candidate_revision": 16,
+        "target_candidate_completion_receipt": {
+            "operation": "operator_control_plane_repair",
+            "settlement_id": (
+                "baguqeerafg6ci2g5mrq7ilfpa2qvinghhjqq2hdzmfprut4sbdiqosoxi5pq"
+            ),
+        },
+        "remaining_task_status": "todo",
+        "remaining_task_revision": 2,
+    }
+    if live != expected_live:
+        errors.append("M13 unchanged live task projection is not exact")
+    if configured.get("provider_strategy") != {
+        "route_changed": False,
+        "capability_probe_required": True,
+        "provider_result_is_completion_authority": False,
+    }:
+        errors.append("M13 provider strategy is not exact")
+
+    required_repair_paths = {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+    protected = set(scheduler.get("protected_paths") or ())
+    capsule = scheduler.get("configured_board_live_capsule")
+    capsule_controls = set(
+        capsule.get("control_paths") or () if isinstance(capsule, Mapping) else ()
+    )
+    if (
+        set(configured.get("bounded_control_plane_repair_paths") or ())
+        != required_repair_paths
+        or len(configured.get("bounded_control_plane_repair_paths") or ()) != 9
+        or not required_repair_paths.issubset(CONTROL_PATHS)
+        or not required_repair_paths.issubset(protected)
+        or not required_repair_paths.issubset(capsule_controls)
+    ):
+        errors.append("M13 bounded repair paths are not exact protected controls")
+
+    expected_program = {
+        "authority_mode": "quack",
+        "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
+        "event_store_path": f"{root}/events",
+        "explicit_legacy": False,
+        "export_profile": "semantic-addressed-world-model-r2",
+        "failover_policy": "fail_closed",
+        "quack_endpoint": "quack:127.0.0.1:24056",
+        "runtime_registry_path": f"{root}/registry",
+        "schema_revision": "datasets-authoritative-operational-v1",
+        "store_generation": "14",
+        "store_id": f"{root}/control.duckdb",
+        "task_source_kind": "duckdb",
+        "worktree_root": f"{root}/worktrees",
+    }
+    if scheduler.get("database_program") != expected_program:
+        errors.append("scheduler M13 execution authority is not exact")
+    owner = scheduler.get("quack_owner")
+    expected_owner_fields = {
+        "automatic_direct_file_fallback": False,
+        "database_path": f"{root}/control.duckdb",
+        "host": "127.0.0.1",
+        "live_transport_query_required": True,
+        "migration_profile": "datasets-authoritative-operational-v1",
+        "port": 24_056,
+        "repository_id": "ipfs_accelerate_py:semantic-addressed-world-model-v1",
+        "secret_handle": "env://SAWM_QUACK_TOKEN",
+        "start_once_before_scheduler": True,
+        "state_dir": f"{root}/quack-owner",
+        "status_file_alone_is_ready": False,
+        "store_id": f"{root}/control.duckdb",
+    }
+    if not isinstance(owner, Mapping) or any(
+        owner.get(field) != expected
+        for field, expected in expected_owner_fields.items()
+    ):
+        errors.append("scheduler M13 Quack owner authority is not exact")
+    expected_history = {
+        "authority": False,
+        "catalog_path": f"{root}/ducklake/history.ducklake",
+        "completion_prerequisite": False,
+        "data_path": f"{root}/ducklake/data",
+        "enabled_when_locally_available": True,
+        "install_or_network_forbidden": True,
+        "load_local_only": True,
+        "receipt_path": f"{root}/ducklake-history-receipt.json",
+        "scheduling_prerequisite": False,
+        "typed_unavailability_is_permitted": True,
+    }
+    if scheduler.get("ducklake_history_projection") != expected_history:
+        errors.append("scheduler M13 DuckLake projection is not exact")
+    expected_runtime = {
+        "root": root,
+        "state": f"{root}/state",
+        "worktrees": f"{root}/worktrees",
+        "merge_queue": f"{root}/merge-queue",
+        "logs": f"{root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if scheduler.get("runtime_paths") != expected_runtime:
+        errors.append("scheduler M13 runtime paths are not exact")
+
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
     ).read_text(encoding="utf-8")
     for required_source in (
-        "_canonical_declared_output_path",
-        "_nested_declared_output_path",
-        'effect.get("effect") != "declared_output"',
-        "value.splitlines() != [value]",
-        '{"none", "n/a"}',
+        "def refresh(",
+        "probe: bool = True",
+        "return self.refresh(connection, probe=False)",
+        "server.transport.refresh(server._connection, probe=True)",
+        "refresh_replica=lambda: transport.refresh(connection)",
     ):
-        if required_source not in bridge_source:
-            errors.append(
-                f"M12 Portal adapter source omits {required_source}"
-            )
+        if required_source not in operator_source:
+            errors.append(f"M13 operator source omits {required_source}")
     return errors
 
 
@@ -4888,6 +5234,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        protocol_errors.extend(
+            _m13_quack_refresh_errors(scheduler, seal, migration)
+        )
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"
@@ -4934,6 +5283,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         ):
             protocol_errors.append(
                 "operator does not select the M12 authority by fail-closed key presence"
+            )
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "quack_refresh_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M13 authority by fail-closed key presence"
             )
         for name in (
             "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
