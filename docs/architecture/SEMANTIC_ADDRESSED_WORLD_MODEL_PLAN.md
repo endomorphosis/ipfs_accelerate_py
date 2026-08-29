@@ -821,7 +821,36 @@ final pair receipt.  Key presence selects
 A null, partial, malformed, sidecar-sourced, task-mutating, coordination-
 mutating, or unprobed-live successor fails closed.
 
-## 22. Current limitations at seal time
+## 22. M14 stale-owner restart successor (controlled, not materialized)
+
+M14 is the presence-first successor to the stopped M13 owner recovery.  It
+binds the stopped canonical M13 control pair, recovery receipt, status
+projection, absent owner marker/WAL/listener/PID artifacts, and the exact
+protected c31-to-successor source delta.  The successor must also descend from
+the exact post-stop source `e21ff3a799138f3da4e492abdb34c7a4496c3da5`
+with tree `8389435cf9a79c9561477ab7f11e5491a6659164`; ancestry from the
+older c31 launch source alone is insufficient.  It targets `run-r2-m14`,
+generation 15, Quack port 24057, plan revision 15, and only events 198/199.
+Generation 15 follows from the stopped M13 database's exact maximum owner
+generation 14; the M14 source-only append creates no owner-generation row.
+
+The sealed `sha256:6a1450549a555f556ac08f6e152bca0ebfdea54d42babb6db3f93c062eac2e72`
+append-surface digest is explicitly the stopped M13 *prior* digest.  M14's
+target append digest includes the exact revision-15 plan, evidence node, and
+event envelopes, depends on the sealed successor source binding, and therefore
+is reconstructed from the verified published database and recorded only in
+the final pair receipt.  A projection CID is not evidence for those bodies.
+
+The control and coordination pair must be copied privately on the target
+filesystem, revalidated on disposable copies, admitted as inode-bound
+hardlinks under one bounded pair lock, and receive its non-authoritative
+receipt only after every target sidecar and staging alias is absent.  A valid
+pair left before its receipt is recovered by exact re-verification and the
+pending-receipt hardlink protocol; partial pairs, ambiguous pending receipts,
+and forged receipts fail closed.  No M14 target artifact is created by this
+source-control change.
+
+## 23. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

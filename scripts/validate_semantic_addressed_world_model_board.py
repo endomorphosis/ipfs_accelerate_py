@@ -3,6 +3,7 @@
 
 The Markdown documents are immutable operator inputs, never task-completion
 authority.  This validator checks their closed structure and the scheduler
+binding, including the source-only M14 stale-owner successor control.
 binding only; accepted task state remains in the datasets-authoritative
 DuckDB store reached through the current Quack owner.
 """
@@ -360,6 +361,19 @@ def _active_successor_migration_errors(
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m14_key = "stale_owner_restart_successor_materialization"
+    m14_seal_key = "stale_owner_restart_successor_materialization_cid"
+    m14_presence = (m14_key in scheduler, m14_key in migration, m14_seal_key in seal)
+    if any(m14_presence):
+        try:
+            module = _dependency_validator_module(REPO_ROOT)
+            errors = list(module._m14_stale_owner_restart_errors(scheduler, seal, migration))
+        except Exception as exc:
+            errors = [f"M14 migration validator unavailable: {type(exc).__name__}: {exc}"]
+        if not all(m14_presence):
+            errors.append("M14 stale-owner authority is only partially declared")
+        return errors
 
     m13_key = "quack_refresh_successor_materialization"
     m13_seal_key = "quack_refresh_successor_materialization_cid"
@@ -1903,6 +1917,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m14_key = "stale_owner_restart_successor_materialization"
+    m14_selected = any(
+        (
+            m14_key in config,
+            m14_key in migration,
+            "stale_owner_restart_successor_materialization_cid" in seal,
+        )
+    )
     m13_key = "quack_refresh_successor_materialization"
     m13_selected = any(
         (
@@ -1912,7 +1934,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = not m13_selected and any(
+    m12_selected = not m14_selected and not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -1920,7 +1942,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = not m13_selected and not m12_selected and any(
+    m11_selected = not m14_selected and not m13_selected and not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -1928,7 +1950,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m13_selected and not m12_selected and not m11_selected and any(
+    m10_selected = not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -1936,7 +1958,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
+    m9_selected = not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -1944,7 +1966,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m13"
+        "run-r2-m14"
+        if m14_selected
+        else "run-r2-m13"
         if m13_selected
         else "run-r2-m12"
         if m12_selected
@@ -1957,7 +1981,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "14"
+        "15"
+        if m14_selected
+        else "14"
         if m13_selected
         else "14"
         if m12_selected
@@ -1970,7 +1996,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24056
+        24057
+        if m14_selected
+        else 24056
         if m13_selected
         else 45256
         if m12_selected
@@ -1997,7 +2025,20 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m13_selected:
+    if m14_selected:
+        restart = config.get(m14_key)
+        required_m14 = {
+            "schema": "sawm/stale-owner-restart-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M14", "target_store_id": active_store,
+            "target_generation": 15, "target_quack_port": 24057,
+            "target_plan_revision": 15, "target_event_watermark": 199,
+            "target_projection_cid": "baguqeerae7evi25zx65b6ezizdp7s6mjdd252yz4cjj2tcd5u4dfgikrxula",
+        }
+        if type(restart) is not dict or any(restart.get(key) != value for key, value in required_m14.items()):
+            config_errors.append("M14 stale-owner restart authority is not exact")
+        elif restart != migration.get(m14_key) or seal.get("stale_owner_restart_successor_materialization_cid") != "sha256:" + hashlib.sha256(json.dumps(restart, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest():
+            config_errors.append("M14 stale-owner restart authority/CID differs")
+    elif m13_selected:
         refresh_successor = config.get(m13_key)
         expected_m13_fields = {
             "schema": "sawm/quack-initial-refresh-repair-authorization@1",

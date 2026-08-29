@@ -938,6 +938,7 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     # Exercise the historical M8 selector in isolation. M13 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("stale_owner_restart_successor_materialization")
     malformed_successor.pop("quack_refresh_successor_materialization")
     malformed_successor.pop("declared_output_retry_successor_materialization")
     malformed_successor.pop("live_provider_retry_successor_materialization")
@@ -2016,14 +2017,17 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
     historical_seal.pop("declared_output_retry_successor_materialization_cid")
     historical_seal.pop("live_provider_retry_successor_materialization_cid")
@@ -2817,12 +2821,15 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
     historical_seal.pop("declared_output_retry_successor_materialization_cid")
     assert operator._active_source_repair_materialization(historical_config) == authority
@@ -3632,6 +3639,555 @@ def test_m13_quack_refresh_authority_is_closed_and_selected() -> None:
         materializer._m13_successor_configured(malformed)
 
 
+def test_m14_stale_owner_restart_authority_is_presence_first_and_bound() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    authority = materializer._expected_m14_stale_owner_restart_authority()
+    key = "stale_owner_restart_successor_materialization"
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert authority["schema"] == (
+        "sawm/stale-owner-restart-repair-authorization@1"
+    )
+    assert authority["target_generation"] == 15
+    assert authority["target_quack_port"] == 24_057
+    assert authority["target_plan_revision"] == 15
+    assert authority["target_event_watermark"] == 199
+    assert authority["prior_database_uuid"] == (
+        "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+    )
+    assert authority["prior_generation"] == 14
+    assert authority["prior_plan_revision"] == 14
+    assert authority["prior_server_id"] == (
+        "server:93f03ce5-e269-46ce-ab00-4d1f4ab269c9"
+    )
+    assert authority["prior_process_birth_id"] == (
+        "birth:88dc7661014afc8d0d55a98d1d2debab"
+    )
+    assert authority["prior_startup_epoch"] == 1_787_964_894
+    assert authority["prior_state_server_revision"] == 2
+    assert authority["prior_stopped_at"] == "2026-08-29T07:57:24Z"
+    assert authority["prior_owner_marker_present"] is False
+    assert authority["prior_stopped_status_projection_present"] is True
+    assert authority["prior_stopped_status_projection_sha256"] == (
+        "03cced524345a6c66544d0f132fabd082f89ab1aa854a929e73a28052713cdc8"
+    )
+    assert authority["prior_stopped_status_projection_size"] == 2_491
+    assert authority["prior_stale_owner_recovery_receipt_present"] is True
+    assert authority["prior_stale_owner_recovery_receipt_sha256"] == (
+        "1e5b080270abf275136e90c2c7beb268dd8d96f204c1fa7a56196b65be03d308"
+    )
+    assert authority["prior_stale_owner_recovery_receipt_size"] == 727
+    assert authority["prior_stale_owner_recovery_cid"] == (
+        "baguqeeranrymaea55inpt7sfio7rfibhqekv53jowpqkkhze4lzyt2kehcka"
+    )
+    assert authority["prior_migration_receipt_sha256"] == (
+        "84cda5460119c2031c93ad3834a218bbd2598b5408a720f30fe44ce888aa7739"
+    )
+    assert authority["prior_migration_receipt_size"] == 4_407
+    assert authority["prior_migration_receipt_cid"] == (
+        "sha256:88054ecca35daf3e68f4beb82109025ed62c40c8350e744c866ad4914bb4aaad"
+    )
+    assert authority["prior_datasets_gitlink"] == (
+        "58e5455a600d9b88e311842541d6612649d5b8cb"
+    )
+    assert authority["prior_datasets_tree"] == (
+        "964b3e949b80191fe1b8e59af62df08f38857102"
+    )
+    assert authority["post_stop_datasets_gitlink"] == (
+        "556a5978ec94a5e6706bfa5126332a838f7b7797"
+    )
+    assert authority["post_stop_datasets_tree"] == (
+        "9b43261123240f2cb725e5d4903f36529e8fc180"
+    )
+    malformed = dict(config)
+    malformed[key] = []
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M14 stale-owner restart authority is invalid",
+    ):
+        materializer._m14_successor_configured(malformed)
+
+
+def test_m14_prior_anchor_is_exact_read_only_and_preserves_m13_receipts() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_prior_anchor_test",
+    )
+    authority = materializer._expected_m14_stale_owner_restart_authority()
+    paths = tuple(
+        REPO_ROOT / authority[field]
+        for field in (
+            "prior_store_id",
+            "prior_coordination_store_id",
+            "prior_stopped_status_projection_path",
+            "prior_stale_owner_recovery_receipt_path",
+            "prior_migration_receipt_path",
+        )
+    )
+    before = {
+        path: (materializer._store_sha256(path), path.stat().st_size)
+        for path in paths
+    }
+
+    control, coordination = materializer._assert_m14_prior_anchor(
+        REPO_ROOT, authority
+    )
+
+    assert control == paths[0]
+    assert coordination == paths[1]
+    assert before == {
+        path: (materializer._store_sha256(path), path.stat().st_size)
+        for path in paths
+    }
+    assert not os.path.lexists(control.with_name(control.name + ".wal"))
+    assert not os.path.lexists(
+        coordination.with_name(coordination.name + ".wal")
+    )
+    assert not os.path.lexists(
+        control.with_name(f".{control.name}.state-owner.json")
+    )
+
+
+def test_m14_disposable_stage_is_deeply_verified_and_forgery_closed(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_deep_pair_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m14_stale_owner_restart_authority()
+    prior_dir = tmp_path / "prior"
+    prior_dir.mkdir()
+    prior_control = prior_dir / "control.duckdb"
+    prior_coordination = prior_dir / "control.coordination.duckdb"
+    shutil.copyfile(REPO_ROOT / authority["prior_store_id"], prior_control)
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        prior_coordination,
+    )
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    validation_digest = "sha256:m14-disposable-deep-verification"
+    staged = materializer._stage_m14_store_pair(
+        REPO_ROOT,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    verified = materializer._verify_m14_store_pair_copy(
+        staged["stage_control"],
+        staged["stage_coordination"],
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    assert verified == staged["verified"]
+    assert verified["event_watermark"] == 199
+    assert verified["projection_cid"] == authority["target_projection_cid"]
+    assert verified["plan_revision_changes"] == 1
+    assert verified["evidence_node_changes"] == 1
+    assert verified["task_revision_changes"] == 0
+    assert verified["task_status_changes"] == 0
+    assert verified["accepted_definition_changes"] == 0
+    assert verified["accepted_completion_changes"] == 0
+    assert verified["coordination_semantic_changes"] == 0
+
+    import duckdb
+
+    for case, statement, message in (
+        (
+            "immutable",
+            "UPDATE tasks SET status='retrying' WHERE task_alias='SAWM-001'",
+            "changed frozen control authority",
+        ),
+        (
+            "plan",
+            "UPDATE plans SET body_json='{}' WHERE revision=15",
+            "plan/evidence append differs",
+        ),
+        (
+            "evidence",
+            "UPDATE evidence_nodes SET digest='sha256:forged' "
+            "WHERE created_at='2026-08-29T08:00:00Z'",
+            "plan/evidence append differs",
+        ),
+        (
+            "event",
+            "UPDATE domain_events SET task_cid='forged' "
+            "WHERE global_sequence=199",
+            "event (identity or envelope differs|stream bindings differ)",
+        ),
+    ):
+        case_dir = tmp_path / case
+        case_dir.mkdir()
+        forged_control = case_dir / "control.duckdb"
+        forged_coordination = case_dir / "control.coordination.duckdb"
+        shutil.copyfile(staged["stage_control"], forged_control)
+        shutil.copyfile(staged["stage_coordination"], forged_coordination)
+        connection = duckdb.connect(str(forged_control))
+        try:
+            connection.execute(statement)
+            connection.execute("CHECKPOINT")
+        finally:
+            connection.close()
+        with pytest.raises(materializer.MigrationRequired, match=message):
+            materializer._verify_m14_store_pair_copy(
+                forged_control,
+                forged_coordination,
+                prior_control,
+                prior_coordination,
+                population,
+                config,
+                validation_digest,
+            )
+
+
+@pytest.mark.parametrize(
+    ("relative", "directory"),
+    (
+        ("control.duckdb.wal", False),
+        ("control.coordination.duckdb.wal", False),
+        ("control.execution.duckdb", False),
+        ("control.execution.duckdb.wal", False),
+        ("control.read-replica.duckdb", False),
+        ("control.read-replica.duckdb.wal", False),
+        (".control.duckdb.state-owner.json", False),
+        ("state", True),
+        ("events", True),
+        ("registry", True),
+        ("worktrees", True),
+        ("merge-queue", True),
+        ("quack-owner", True),
+    ),
+)
+def test_m14_target_rejects_every_mutable_sidecar_and_runtime_directory(
+    tmp_path: Path,
+    relative: str,
+    directory: bool,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m14_target_clean_{relative.replace('.', '_')}",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control.write_bytes(b"control")
+    coordination.write_bytes(b"coordination")
+    materializer._assert_m14_target_clean(control, coordination)
+    forbidden = tmp_path / relative
+    if directory:
+        forbidden.mkdir()
+    else:
+        forbidden.write_bytes(b"forbidden")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="forbidden mutable sidecar",
+    ):
+        materializer._assert_m14_target_clean(control, coordination)
+
+
+def test_m14_receipt_recovers_one_exact_pending_hardlink_and_rejects_forgery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_receipt_recovery_test",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control.write_bytes(b"control")
+    coordination.write_bytes(b"coordination")
+    verified = {"valid": True}
+    unhashed = {
+        "schema": "sawm/non-authoritative-migration-receipt@12",
+        "control_store_sha256": materializer._store_sha256(control),
+        "control_store_size": control.stat().st_size,
+        "coordination_store_sha256": materializer._store_sha256(coordination),
+        "coordination_store_size": coordination.stat().st_size,
+        "receipt_is_final_pair_commit_marker": True,
+        "worker_self_approval": False,
+    }
+    expected = {**unhashed, "receipt_cid": materializer._identity(unhashed)}
+    authority = materializer._expected_m14_stale_owner_restart_authority()
+    monkeypatch.setattr(
+        materializer,
+        "_m14_stale_owner_restart_authority",
+        lambda *_args, **_kwargs: authority,
+    )
+    monkeypatch.setattr(
+        materializer, "_assert_committed_clean_source", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        materializer, "_assert_m14_source_delta", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m14_prior_anchor",
+        lambda *_args: (tmp_path / "prior", tmp_path / "prior-coordination"),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m14_store_pair",
+        lambda *_args, **_kwargs: dict(verified),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m14_migration_receipt",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    receipt_path = tmp_path / "migration-receipt.json"
+    pending = tmp_path / ".migration-receipt.json.101.tmp"
+    pending.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="pending M14 receipt differs",
+    ):
+        materializer._ensure_m14_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            {},
+            {},
+            verified,
+            "sha256:m14-receipt-test",
+        )
+    assert not receipt_path.exists()
+    pending.write_bytes(materializer._canonical(expected) + b"\n")
+
+    receipt = materializer._ensure_m14_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        {},
+        {},
+        verified,
+        "sha256:m14-receipt-test",
+    )
+    assert receipt == expected
+    assert receipt_path.stat().st_nlink == 1
+    assert not pending.exists()
+    assert materializer._verify_existing_m14_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        {},
+        {},
+        verified,
+        "sha256:m14-receipt-test",
+    ) == expected
+    crash_alias = tmp_path / ".migration-receipt.json.202.tmp"
+    os.link(receipt_path, crash_alias)
+    assert receipt_path.stat().st_nlink == 2
+    assert materializer._ensure_m14_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        {},
+        {},
+        verified,
+        "sha256:m14-receipt-test",
+    ) == expected
+    assert receipt_path.stat().st_nlink == 1
+    assert not crash_alias.exists()
+
+    forged = dict(expected)
+    forged["worker_self_approval"] = True
+    forged_unhashed = dict(forged)
+    forged_unhashed.pop("receipt_cid")
+    forged["receipt_cid"] = materializer._identity(forged_unhashed)
+    receipt_path.write_bytes(materializer._canonical(forged) + b"\n")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="final pair marker differs",
+    ):
+        materializer._verify_existing_m14_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            {},
+            {},
+            verified,
+            "sha256:m14-receipt-test",
+        )
+
+
+def test_m14_recovers_only_inode_bound_private_staging_aliases(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_staging_alias_recovery_test",
+    )
+    stage = tmp_path / ".m14-installing.101.deadbeef"
+    stage.mkdir()
+    stage_control = stage / "control.duckdb"
+    stage_coordination = stage / "control.coordination.duckdb"
+    stage_control.write_bytes(b"control")
+    stage_coordination.write_bytes(b"coordination")
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    os.link(stage_control, control)
+    os.link(stage_coordination, coordination)
+    assert materializer._recover_m14_staging_aliases(control, coordination) is True
+    assert not stage.exists()
+    assert control.stat().st_nlink == 1
+    assert coordination.stat().st_nlink == 1
+
+    forged_stage = tmp_path / ".m14-installing.102.deadbeef"
+    forged_stage.mkdir()
+    (forged_stage / "control.duckdb").write_bytes(b"forged-control")
+    (forged_stage / "control.coordination.duckdb").write_bytes(
+        b"forged-coordination"
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="not an inode alias",
+    ):
+        materializer._recover_m14_staging_aliases(control, coordination)
+    assert control.read_bytes() == b"control"
+    assert coordination.read_bytes() == b"coordination"
+
+
+def test_m14_partial_publication_revalidates_source_and_rolls_back_its_inodes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m14_partial_publication_race_test",
+    )
+    authority = materializer._expected_m14_stale_owner_restart_authority()
+    config = {
+        "database_program": {
+            "store_id": authority["target_store_id"],
+            "store_generation": 15,
+            "quack_endpoint": "quack:127.0.0.1:24057",
+        },
+        "quack_owner": {
+            "database_path": authority["target_store_id"],
+            "store_id": authority["target_store_id"],
+            "port": 24_057,
+        },
+    }
+    population = {"source_binding": {"head": "f" * 40}}
+    prior_control = tmp_path / "prior-control.duckdb"
+    prior_coordination = tmp_path / "prior-control.coordination.duckdb"
+    prior_control.write_bytes(b"prior-control")
+    prior_coordination.write_bytes(b"prior-coordination")
+    checks: list[int] = []
+
+    def assert_clean(_root: Path, _population: object) -> None:
+        checks.append(len(checks) + 1)
+        if len(checks) == 4:
+            raise materializer.MaterializationError(
+                "source binding changed after partial publication"
+            )
+
+    def stage_pair(
+        _root: Path,
+        stage_dir: Path,
+        _prior_control: Path,
+        _prior_coordination: Path,
+        _population: object,
+        _config: object,
+        _validation_digest: str,
+    ) -> dict[str, object]:
+        stage_control = stage_dir / "control.duckdb"
+        stage_coordination = stage_dir / "control.coordination.duckdb"
+        stage_control.write_bytes(b"staged-control")
+        stage_coordination.write_bytes(b"staged-coordination")
+        return {
+            "stage_control": stage_control,
+            "stage_coordination": stage_coordination,
+            "plan_receipt": SimpleNamespace(event_id="event:plan"),
+            "evidence": SimpleNamespace(event_id="event:evidence"),
+            "migration_digest": "sha256:" + "1" * 64,
+            "verified": {"valid": True},
+        }
+
+    monkeypatch.setattr(materializer, "build_population", lambda _root: population)
+    monkeypatch.setattr(
+        materializer,
+        "_m14_stale_owner_restart_authority",
+        lambda *_args, **_kwargs: authority,
+    )
+    monkeypatch.setattr(materializer, "_assert_committed_clean_source", assert_clean)
+    monkeypatch.setattr(
+        materializer, "_assert_m14_source_delta", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m7_validation_digest",
+        lambda *_args: "sha256:" + "2" * 64,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m14_prior_anchor",
+        lambda *_args: (prior_control, prior_coordination),
+    )
+    monkeypatch.setattr(materializer, "_stage_m14_store_pair", stage_pair)
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="source binding changed after partial publication",
+    ):
+        materializer._materialize_m14(
+            tmp_path,
+            tmp_path
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+            config,
+        )
+    target = (
+        tmp_path
+        / "data/agent_supervisor/semantic_addressed_world_model/run-r2-m14"
+    )
+    assert checks == [1, 2, 3, 4]
+    assert not (target / "control.duckdb").exists()
+    assert not (target / "control.coordination.duckdb").exists()
+    assert not (target / "migration-receipt.json").exists()
+    stages = list(target.glob(".m14-installing.*"))
+    assert len(stages) == 1
+    assert (stages[0] / "control.duckdb").read_bytes() == b"staged-control"
+    assert (
+        stages[0] / "control.coordination.duckdb"
+    ).read_bytes() == b"staged-coordination"
+
+
 def test_m13_source_delta_and_target_binding_are_exact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3695,6 +4251,16 @@ def test_m13_materializer_rechecks_source_after_private_staging(
         ).read_text(encoding="utf-8")
     )
     authority = materializer._expected_m13_quack_refresh_authority()
+    config["database_program"].update({
+        "store_id": authority["target_store_id"],
+        "store_generation": "14",
+        "quack_endpoint": "quack:127.0.0.1:24056",
+    })
+    config["quack_owner"].update({
+        "database_path": authority["target_store_id"],
+        "store_id": authority["target_store_id"],
+        "port": 24056,
+    })
     population = {"source_binding": {"head": "f" * 40}}
     prior_control = tmp_path / "prior-control.duckdb"
     prior_coordination = tmp_path / "prior-control.coordination.duckdb"
@@ -3966,6 +4532,13 @@ def test_m13_operator_requires_the_exact_receipt_in_live_and_checked_modes(
         ).read_text(encoding="utf-8")
     )
     authority = materializer._expected_m13_quack_refresh_authority()
+    config["database_program"].update({
+        "store_id": authority["target_store_id"], "store_generation": "14",
+        "quack_endpoint": "quack:127.0.0.1:24056",
+    })
+    config["quack_owner"].update({
+        "database_path": authority["target_store_id"], "store_id": authority["target_store_id"], "port": 24056,
+    })
     population = materializer.build_population(REPO_ROOT)
     target = (
         tmp_path

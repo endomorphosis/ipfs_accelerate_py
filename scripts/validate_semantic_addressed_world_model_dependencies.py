@@ -3,6 +3,7 @@
 
 This gate is deliberately read-only.  It does not import optional providers in
 the validator process.  A separate, hermetic child recomputes the reviewed
+M14 control dependency binding without starting an owner.
 native DuckDB pin, consumes those bytes through a sealed anonymous descriptor,
 loads the exact local HTTPFS and Quack projections, and opens only an in-memory
 database for ``SELECT 42``.  Network and extension installation remain denied.
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -2981,6 +2983,34 @@ def _m12_declared_output_retry_errors(
     return errors
 
 
+def _m14_stale_owner_restart_errors(
+    scheduler: Mapping[str, Any], seal: Mapping[str, Any], migration: Mapping[str, Any]
+) -> list[str]:
+    """Check the newest M14 control without opening a runtime store."""
+    key = "stale_owner_restart_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m14_dependency_materializer",
+            REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M14 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m14_stale_owner_restart_authority()
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            return ["M14 stale-owner authority differs across controls"]
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            return ["M14 stale-owner authority CID is not exact"]
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        if (program.get("store_id"), program.get("store_generation"), program.get("quack_endpoint"), owner.get("database_path"), owner.get("port")) != (expected["target_store_id"], "15", "quack:127.0.0.1:24057", expected["target_store_id"], 24057):
+            return ["scheduler M14 target binding is not exact"]
+        return []
+    except Exception as exc:
+        return [f"M14 stale-owner authority is unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m13_quack_refresh_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -4907,9 +4937,34 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         branch = _git(root, "branch", "--show-current")
         ancestor_ok = subprocess.run(["git", "merge-base", "--is-ancestor", str(accel.get("head")), "HEAD"], cwd=root, check=False).returncode == 0
         origin = _git(root, "remote", "get-url", "origin")
-        changed = set(_git(root, "diff", "--name-only", str(accel.get("head")), "--").splitlines())
-        changed.update(_status_paths(root))
-        unexpected = sorted(path for path in changed if path and path not in CONTROL_PATHS)
+        scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m14_key = "stale_owner_restart_successor_materialization"
+        m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
+        if any(m14_presence):
+            if not all(m14_presence) or not isinstance(scheduler_probe.get(m14_key), Mapping) or scheduler_probe.get(m14_key) != migration_probe.get(m14_key):
+                unexpected = ["M14 authority is partial or differs across source controls"]
+            else:
+                authority = scheduler_probe[m14_key]
+                expected = {
+                    str(path): ("A" if str(path) in {
+                        "docs/architecture/semantic_addressed_world_model_evidence/SAWM-001-authority-overlap-receipt.json",
+                        "test/api/semantic_world/test_authority_overlap_runtime.py",
+                    } else "M")
+                    for path in authority.get("bounded_control_plane_repair_paths", ())
+                }
+                observed: dict[str, str] = {}
+                for line in _git(root, "diff", "--name-status", "--no-renames", str(authority.get("prior_source_head")), "HEAD", "--").splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = [] if observed == expected and working.issubset(set(expected)) else [
+                    "M14 status-qualified bounded source delta differs",
+                ]
+        else:
+            changed = set(_git(root, "diff", "--name-only", str(accel.get("head")), "--").splitlines())
+            changed.update(_status_paths(root))
+            unexpected = sorted(path for path in changed if path and path not in CONTROL_PATHS)
         check("accelerator_source", branch == accel.get("branch") and origin == accel.get("origin") and ancestor_ok and not unexpected,
               {"head": head, "branch": branch, "origin": origin, "unexpected_changes": unexpected})
     except Exception as exc:
@@ -5234,9 +5289,10 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        protocol_errors.extend(
-            _m13_quack_refresh_errors(scheduler, seal, migration)
-        )
+        if "stale_owner_restart_successor_materialization" in scheduler:
+            protocol_errors.extend(_m14_stale_owner_restart_errors(scheduler, seal, migration))
+        else:
+            protocol_errors.extend(_m13_quack_refresh_errors(scheduler, seal, migration))
 
         protocol_source = (
             root / "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py"
@@ -5283,6 +5339,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         ):
             protocol_errors.append(
                 "operator does not select the M12 authority by fail-closed key presence"
+            )
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "stale_owner_restart_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M14 authority by fail-closed key presence"
             )
         if not _has_presence_based_key_selection(
             operator_source,

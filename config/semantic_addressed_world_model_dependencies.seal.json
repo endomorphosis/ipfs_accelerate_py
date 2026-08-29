@@ -32,10 +32,10 @@
       "declared_gitlink_origin": "https://github.com/endomorphosis/ipfs_datasets_py.git",
       "checkout_state": "detached_exact_gitlink",
       "branch": null,
-      "head": "58e5455a600d9b88e311842541d6612649d5b8cb",
-      "tree": "964b3e949b80191fe1b8e59af62df08f38857102",
+      "head": "556a5978ec94a5e6706bfa5126332a838f7b7797",
+      "tree": "9b43261123240f2cb725e5d4903f36529e8fc180",
       "gitlink_path": "ipfs_datasets_py",
-      "gitlink_commit": "58e5455a600d9b88e311842541d6612649d5b8cb",
+      "gitlink_commit": "556a5978ec94a5e6706bfa5126332a838f7b7797",
       "package": "ipfs_datasets_py",
       "package_version": "0.2.0",
       "public_package_path": "ipfs_datasets_py/ipfs_datasets_py",
@@ -552,5 +552,6 @@
     "The seal binds source and declared dependency identity; it is not proof that optional packages, services, provers, models or hardware are available.",
     "Protected SAWM control files are expected working-tree additions above the sealed base until the operator-owned bootstrap commit is created.",
     "Dirty origin checkouts remain preserved and are not clean evidence."
-  ]
+  ],
+  "stale_owner_restart_successor_materialization_cid": "sha256:31c1c2d5ab7eec94a2acfd137b7f468c56f82cd325adb9f1a447492c32483cb8"
 }
