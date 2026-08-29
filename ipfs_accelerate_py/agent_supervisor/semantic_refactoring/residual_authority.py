@@ -114,8 +114,8 @@ def mint_spar_residual_authority_materials(
         if isinstance(launch_source_amendment, LaunchSourceAmendment)
         else LaunchSourceAmendment.from_dict(launch_source_amendment)
     )
-    if amendment.board_namespace != SPAR_BOARD_NAMESPACE:
-        raise SparResidualAuthorityError("residual authority is SPAR-board-only")
+    if not str(amendment.board_namespace or "").strip():
+        raise SparResidualAuthorityError("residual authority requires a board namespace")
     if str(current_git_tree_id or "").strip() != amendment.launch_repository_tree_id:
         raise SparResidualAuthorityError("residual authority tree is not the launch tree")
     policy_root = amendment.attempt_policy_root(dict(execution_route_binding))
@@ -256,11 +256,19 @@ def bind_spar_residual_authority(
     """Install SPAR residual-admission materials on one Portal daemon."""
 
     board_namespace = str(getattr(daemon, "board_namespace", "") or "")
-    if board_namespace and board_namespace != SPAR_BOARD_NAMESPACE:
-        return
     resolved_store = store_dir
     if resolved_store is None:
-        resolved_store = Path(repo_root) / DEFAULT_STORE_RELATIVE
+        if board_namespace:
+            resolved_store = (
+                Path(repo_root)
+                / "data"
+                / "agent_supervisor"
+                / board_namespace.replace("-", "_")
+                / "evidence"
+                / "residual-authority"
+            )
+        else:
+            resolved_store = Path(repo_root) / DEFAULT_STORE_RELATIVE
     daemon.pre_implementation_authority_materials_resolver = (
         build_spar_residual_authority_resolver(resolved_store)
     )

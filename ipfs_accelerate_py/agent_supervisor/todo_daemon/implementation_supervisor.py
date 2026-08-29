@@ -24833,7 +24833,110 @@ class PortalImplementationSupervisor:
             }
 
 
+    def _git_rev_parse(self, revision: str, *, cwd: Path | None = None) -> str:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", revision],
+                cwd=cwd or self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return ""
+            return str(result.stdout or "").strip()
+
+    def _git_is_ancestor(self, ancestor: str, head: str) -> bool:
+            if not ancestor or not head:
+                return False
+            result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", ancestor, head],
+                cwd=self.config.repo_root,
+                capture_output=True,
+                check=False,
+            )
+            return result.returncode == 0
+
+    def _current_nested_launch_repositories(
+            self,
+            amendment: Any,
+        ) -> list[dict[str, Any]]:
+            forest = dict(amendment.launch_source_forest_receipt.get("source_forest") or {})
+            nested = forest.get("nested_repositories") or []
+            refreshed: list[dict[str, Any]] = []
+            for item in nested:
+                record = dict(item)
+                path = self.config.repo_root / str(record.get("path") or "")
+                head = self._git_rev_parse("HEAD", cwd=path)
+                tree = self._git_rev_parse("HEAD^{tree}", cwd=path)
+                planning = str(record.get("planning_revision") or "")
+                if head and tree:
+                    record["head"] = head
+                    record["tree"] = tree
+                    if planning:
+                        record["planning_revision_is_ancestor"] = self._git_is_ancestor(
+                            planning,
+                            head,
+                        )
+                refreshed.append(record)
+            return refreshed
+
+    def _refresh_launch_source_amendment_after_accepted_source(self) -> bool:
+            """Advance a frozen launch amendment after accepted merges move HEAD.
+
+            Recycled daemons otherwise fail closed with ``launch Git generation
+            differs from its source amendment`` even though the new HEAD is a
+            descendant of the original launch generation.
+            """
+
+            raw = str(self.config.launch_source_amendment_json or "")
+            if not raw:
+                return False
+            from ..task_sources.launch_source_amendment import (
+                LaunchSourceAmendment,
+                LaunchSourceAmendmentError,
+            )
+
+            try:
+                amendment = LaunchSourceAmendment.from_json(raw)
+            except LaunchSourceAmendmentError:
+                return False
+            head = self._git_rev_parse("HEAD^{commit}")
+            tree = self._git_rev_parse("HEAD^{tree}")
+            if not head or not tree:
+                return False
+            try:
+                amendment.validate_launch_git(
+                    source_head=head,
+                    repository_tree_id=tree,
+                )
+            except LaunchSourceAmendmentError:
+                pass
+            else:
+                return False
+            if not self._git_is_ancestor(amendment.launch_source_head, head):
+                return False
+            successor = amendment.successor_for_current_generation(
+                source_head=head,
+                repository_tree_id=tree,
+                nested_repositories=self._current_nested_launch_repositories(
+                    amendment
+                ),
+            )
+            self.config.launch_source_amendment_json = successor.to_json()
+            self._record_event(
+                "launch_source_amendment_refreshed_after_accepted_source",
+                {
+                    "predecessor_amendment_id": amendment.amendment_id,
+                    "amendment_id": successor.amendment_id,
+                    "launch_source_head": successor.launch_source_head,
+                    "launch_repository_tree_id": successor.launch_repository_tree_id,
+                    "amended_plan_revision": successor.amended_plan_revision,
+                },
+            )
+            return True
+
     def _build_daemon_command(self) -> list[str]:
+            self._refresh_launch_source_amendment_after_accepted_source()
             self._validated_plan_bound_slice()
             live_context = self.config.configured_board_live_context
             if live_context is not None:

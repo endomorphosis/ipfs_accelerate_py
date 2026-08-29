@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final
@@ -388,6 +388,84 @@ class LaunchSourceAmendment:
             raise LaunchSourceAmendmentError(
                 "launch Git generation differs from its source amendment"
             )
+
+    def successor_for_current_generation(
+        self,
+        *,
+        source_head: str,
+        repository_tree_id: str,
+        nested_repositories: Sequence[Mapping[str, Any]] | None = None,
+    ) -> LaunchSourceAmendment:
+        """Mint the next amendment for an accepted descendant Git generation.
+
+        Used when merged work advances HEAD after launch.  Callers must prove
+        ``source_head`` descends from ``launch_source_head`` before invoking.
+        Immutable bootstrap/plan/taskboard identities are preserved.
+        """
+
+        _required_text(source_head, field="launch source head", pattern=_GIT_OID)
+        _required_text(
+            repository_tree_id,
+            field="launch repository tree id",
+            pattern=_GIT_OID,
+        )
+        if (
+            source_head == self.launch_source_head
+            and repository_tree_id == self.launch_repository_tree_id
+        ):
+            return self
+        current_forest = _plain_json(self.launch_source_forest_receipt)
+        current_source_forest = current_forest.get("source_forest")
+        if not isinstance(current_source_forest, Mapping):
+            raise LaunchSourceAmendmentError(
+                "launch source forest is missing from its successor preimage"
+            )
+        if nested_repositories is None:
+            nested = _plain_json(current_source_forest.get("nested_repositories") or [])
+        else:
+            nested = _plain_json(list(nested_repositories))
+        source_forest_body = {
+            "source_head": source_head,
+            "nested_repositories": nested,
+            "cross_repository_writes": False,
+        }
+        source_forest_root = _sha256_identity(source_forest_body)
+        source_forest = {
+            **source_forest_body,
+            "source_forest_root": source_forest_root,
+        }
+        receipt_body = {
+            "schema": LAUNCH_SOURCE_FOREST_RECEIPT_SCHEMA,
+            "source_head": source_head,
+            "repository_tree": repository_tree_id,
+            "source_forest_root": source_forest_root,
+            "source_forest": source_forest,
+        }
+        receipt_id = _sha256_identity(receipt_body)
+        return LaunchSourceAmendment(
+            board_namespace=self.board_namespace,
+            plan_alias=self.plan_alias,
+            bootstrap_receipt_id=self.bootstrap_receipt_id,
+            bootstrap_plan_root_cid=self.bootstrap_plan_root_cid,
+            bootstrap_source_head=self.bootstrap_source_head,
+            bootstrap_repository_tree_id=self.bootstrap_repository_tree_id,
+            launch_source_forest_receipt_id=receipt_id,
+            launch_source_forest_root=source_forest_root,
+            launch_source_forest_receipt={**receipt_body, "receipt_id": receipt_id},
+            launch_source_head=source_head,
+            launch_repository_tree_id=repository_tree_id,
+            immutable_objectives_cid=self.immutable_objectives_cid,
+            immutable_plan_cid=self.immutable_plan_cid,
+            immutable_taskboard_cid=self.immutable_taskboard_cid,
+            immutable_validator_cid=self.immutable_validator_cid,
+            bootstrap_config_cid=self.bootstrap_config_cid,
+            launch_config_cid=self.launch_config_cid,
+            dependency_seal_cid=self.dependency_seal_cid,
+            task_contract_set_cid=self.task_contract_set_cid,
+            parent_plan_revision=self.amended_plan_revision,
+            amended_plan_revision=self.amended_plan_revision + 1,
+            predecessor_amendment_id=self.amendment_id,
+        )
 
     def same_launch_generation(self, other: LaunchSourceAmendment) -> bool:
         """Compare launch material while deliberately ignoring chain position."""

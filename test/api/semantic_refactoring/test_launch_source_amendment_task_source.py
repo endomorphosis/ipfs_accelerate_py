@@ -400,6 +400,35 @@ def test_attempt_policy_composes_launch_and_historical_route() -> None:
     assert advanced.attempt_policy_root(binding) != first
 
 
+def test_successor_for_current_generation_preserves_bootstrap_and_advances_git() -> None:
+    _task, _policy, amendment, _task_row, _plan_row = _fixture()
+    next_head = "5" * 40
+    next_tree = "6" * 40
+
+    successor = amendment.successor_for_current_generation(
+        source_head=next_head,
+        repository_tree_id=next_tree,
+    )
+
+    assert successor.launch_source_head == next_head
+    assert successor.launch_repository_tree_id == next_tree
+    assert successor.predecessor_amendment_id == amendment.amendment_id
+    assert successor.parent_plan_revision == amendment.amended_plan_revision
+    assert successor.amended_plan_revision == amendment.amended_plan_revision + 1
+    assert successor.bootstrap_plan_root_cid == amendment.bootstrap_plan_root_cid
+    assert successor.task_contract_set_cid == amendment.task_contract_set_cid
+    assert successor.amendment_id != amendment.amendment_id
+    successor.validate_launch_git(
+        source_head=next_head,
+        repository_tree_id=next_tree,
+    )
+    unchanged = amendment.successor_for_current_generation(
+        source_head=amendment.launch_source_head,
+        repository_tree_id=amendment.launch_repository_tree_id,
+    )
+    assert unchanged is amendment
+
+
 def test_unasserted_predecessor_board_does_not_acquire_amendment() -> None:
     _task, policy, _amendment, task_row, plan_row = _fixture()
     client = _Client(task_row=task_row, plan_row=plan_row)

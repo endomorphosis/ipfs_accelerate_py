@@ -79388,6 +79388,12 @@ class PortalImplementationDaemon:
         if current is not None and current.amendment_id != amendment.amendment_id:
             raise RuntimeError("launch source amendment is immutable")
         self._launch_source_amendment = amendment
+        if getattr(self, "pre_implementation_authority_materials_resolver", None) is None:
+            from ..semantic_refactoring.residual_authority import (
+                bind_spar_residual_authority,
+            )
+
+            bind_spar_residual_authority(self, repo_root=self.repo_root)
 
     def _launch_execution_mode_for_task(
         self,
