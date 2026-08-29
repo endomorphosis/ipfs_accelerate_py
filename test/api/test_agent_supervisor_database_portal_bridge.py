@@ -8,9 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-    database_portal_bridge as bridge_module,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
@@ -20,10 +17,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_task_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as bridge_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
+    DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA,
     DatabasePortalAttemptPaths,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -410,6 +411,294 @@ def test_finished_event_projection_emits_nested_merge_repository_binding() -> No
     assert projected["merge_result"] == payload["merge_result"]
 
 
+def test_source_transition_admits_exact_queued_reconciliation_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+        repo_root=repository,
+        board_namespace="test-board-v1",
+        configured_board_admission_cid="baguqeera" + "b" * 48,
+        merge_target_branch="main",
+        task_header_prefix="## LGSWF-",
+    )
+    paths = bridge._paths(_attempt())
+    paths.root.mkdir(parents=True)
+    projection_seed = bridge._render_projection(_attempt(), _record())
+    binding = bridge._binding(_attempt(), _record(), projection_seed)
+    paths.task_projection.write_text(
+        projection_seed.replace("- Status: ready", "- Status: completed"),
+        encoding="utf-8",
+    )
+    parsed_task = parse_task_text(
+        projection_seed,
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-",
+    )[0]
+    identity = canonical_task_identity(
+        {
+            "task_id": parsed_task.task_id,
+            "title": parsed_task.title,
+            "outputs": task_declared_output_paths(parsed_task),
+            "acceptance": parsed_task.acceptance,
+            "metadata": dict(parsed_task.metadata),
+        },
+        board_namespace="test-board-v1",
+        source_path=paths.task_projection,
+    )
+    baseline = "a" * 40
+    implementation = "b" * 40
+    merge_commit = "c" * 40
+    repository_id = "repository:exact"
+    request_id = "request:queued:1"
+    runtime_binding = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "ignored_runtime_taskboard_binding@1"
+        ),
+        "passed": True,
+        "authoritative": True,
+        "ignored": True,
+        "runtime_projection": True,
+        "reason": "ignored_runtime_taskboard_bound",
+        "path": str(paths.task_projection),
+        "repo": str(repository),
+        "relative_path": paths.task_projection.name,
+    }
+    snapshot = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "fsynced_taskboard_completion_snapshot@1"
+        ),
+        "passed": True,
+        "reason": "fsynced_taskboard_completion_proven",
+        "path": str(paths.task_projection),
+        "expected_task_ids": ["LGSWF-004"],
+        "runtime_projection": True,
+        "runtime_binding": runtime_binding,
+        "observed_statuses": {"LGSWF-004": "completed"},
+        "observed_task_cids": {
+            "LGSWF-004": identity.canonical_task_cid,
+        },
+        "missing_task_ids": [],
+        "ambiguous_task_ids": [],
+        "status_mismatches": {},
+        "task_cid_mismatches": {},
+    }
+    queued_event = {
+        "type": "implementation_finished",
+        "event_id": "sha256:" + "1" * 64,
+        "returncode": 0,
+        "task_id": "LGSWF-004",
+        "attempt": 1,
+        "board_namespace": "test-board-v1",
+        "board_completion": {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+        "baseline_ref": baseline,
+        "branch": "implementation/test",
+        "implementation_commit": implementation,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "canonical_task_key": identity.canonical_task_key,
+        "target_repository_id": repository_id,
+        "merge_result": {
+            "attempted": False,
+            "merged": False,
+            "queued": True,
+            "reason": "merge_queued",
+            "request_id": request_id,
+            "target_branch": "main",
+            "target_repository_id": repository_id,
+        },
+    }
+    proof = {
+        "passed": True,
+        "implementation_commit": implementation,
+        "integration_commit": merge_commit,
+        "integration_ref": merge_commit,
+        "target_branch": "main",
+    }
+    reconciliation = {
+        "type": "merge_reconciled",
+        "event_id": "sha256:" + "2" * 64,
+        "task_id": "LGSWF-004",
+        "attempt": 1,
+        "board_namespace": "test-board-v1",
+        "canonical_task_cid": identity.canonical_task_cid,
+        "canonical_task_key": identity.canonical_task_key,
+        "implementation_commit": implementation,
+        "completion_task_cids": {
+            "LGSWF-004": identity.canonical_task_cid,
+        },
+        "resolved": True,
+        "reason": "merge_retried",
+        "merge_result": {
+            "attempted": True,
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": merge_commit,
+            "target_branch": "main",
+        },
+        "integration_commit_proof": proof,
+        "post_merge_declared_output_invariant": {
+            "passed": True,
+            "repository_ref": merge_commit,
+        },
+        "completion_persistence": {
+            "passed": True,
+            "reason": "completion_persisted",
+            "expected_task_ids": ["LGSWF-004"],
+            "completed_task_ids": ["LGSWF-004"],
+            "missing_task_ids": [],
+            "receipt_mismatches": {},
+            "durable_update": True,
+            "status_persisted": True,
+            "runtime_taskboard_binding": runtime_binding,
+            "fsynced_taskboard_snapshot": snapshot,
+        },
+    }
+    paths.events.write_text(
+        "".join(
+            json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
+            for event in (queued_event, reconciliation)
+        ),
+        encoding="utf-8",
+    )
+    request = {
+        "request_id": request_id,
+        "branch_name": "implementation/test",
+        "task_id": "LGSWF-004",
+        "attempt": 3,
+        "metadata": {
+            "baseline_ref": baseline,
+            "implementation_commit": implementation,
+            "target_binding_schema": (
+                "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            ),
+            "target_repository_id": repository_id,
+            "target_branch": "main",
+            "repo_root": str(repository),
+            "completion_task_cids": {
+                "LGSWF-004": identity.canonical_task_cid,
+            },
+            "task": {
+                "task_id": "LGSWF-004",
+                "board_namespace": "test-board-v1",
+                "canonical_task_cid": identity.canonical_task_cid,
+                "canonical_task_key": identity.canonical_task_key,
+                "metadata": {
+                    "database attempt id": _attempt().attempt_id,
+                    "database claim id": _attempt().claim_id,
+                    "database task cid": _attempt().task_cid,
+                },
+            },
+            "cancellation": {
+                "at": 4.0,
+                "reason": "stale_quarantined_merge",
+            },
+        },
+        "commit_sha": implementation,
+        "canonical_task_id": identity.canonical_task_cid,
+        "canonical_task_key": identity.canonical_task_key,
+        "status": "cancelled",
+        "dedupe_key": "d" * 64,
+    }
+
+    def fake_git(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        arguments = command[2:]
+        if arguments[:4] == ["rev-list", "--parents", "-n", "1"]:
+            stdout = f"{merge_commit} {baseline} {implementation}\n".encode()
+        elif arguments == ["rev-parse", f"{implementation}^{{tree}}"]:
+            stdout = ("d" * 40 + "\n").encode()
+        elif arguments == ["rev-parse", f"{merge_commit}^{{tree}}"]:
+            stdout = ("e" * 40 + "\n").encode()
+        elif arguments[:3] == [
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+        ]:
+            stdout = b"A\0accepted.py\0"
+        else:
+            raise AssertionError(arguments)
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(
+        bridge_module,
+        "checkout_repository_id",
+        lambda _path: repository_id,
+    )
+    monkeypatch.setattr(bridge_module.subprocess, "run", fake_git)
+
+    transition = bridge._accepted_source_transition(
+        attempt=_attempt(),
+        paths=paths,
+        binding=binding,
+        task_alias="LGSWF-004",
+        task_cid="task:cid:004",
+        merge_request_loader=lambda candidate: (
+            request if candidate == request_id else None
+        ),
+    )
+
+    assert transition is not None
+    assert (
+        transition["schema"]
+        == DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA
+    )
+    assert transition["source_event_mode"] == "queued_merge_reconciliation"
+    assert transition["merge_queue_terminal_status"] == "cancelled"
+    assert transition["merge_queue_attempt"] == 3
+    assert transition["merge_commit"] == merge_commit
+    assert transition["worker_self_approval"] is False
+    evidence = {"accepted_source_transition": transition}
+    provider_receipt = {
+        "schema": DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+        "interface": bridge.INTERFACE,
+        "status": "succeeded",
+        "provider": "PortalImplementationDaemon",
+        "accepted": True,
+        "task_cid": _attempt().task_cid,
+        "attempt_id": _attempt().attempt_id,
+        "evidence_digest": bridge_module._sha256_bytes(
+            bridge_module._canonical_json(evidence)
+        ),
+        "portal_evidence": evidence,
+        "accepted_source_transition": transition,
+    }
+    provider_receipt["receipt_id"] = bridge_module._sha256_bytes(
+        bridge_module._canonical_json(provider_receipt)
+    )
+    assert bridge.apply_effect(_attempt(), provider_receipt)["status"] == "applied"
+
+    reconciliation["completion_persistence"]["durable_update"] = False
+    paths.events.write_text(
+        "".join(
+            json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
+            for event in (queued_event, reconciliation)
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="reconciled-source completion is inconsistent",
+    ):
+        bridge._accepted_source_transition(
+            attempt=_attempt(),
+            paths=paths,
+            binding=binding,
+            task_alias="LGSWF-004",
+            task_cid="task:cid:004",
+            merge_request_loader=lambda _candidate: request,
+        )
+
+
 def test_projection_prefers_exact_nested_declared_output_path(
     tmp_path: Path,
 ) -> None:
@@ -733,8 +1022,14 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     assert validation["evidence_digest"] == provider["evidence_digest"]
     assert canonical_board.read_bytes() == original
     assert portals and portals[0].closed is True
-    attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
+    attempt_boards = list(
+        (tmp_path / "attempts").glob(
+            "*/task-projection.runtime.todo.md"
+        )
+    )
     assert len(attempt_boards) == 1
+    assert attempt_boards[0].parent == portals[0].paths.state.parent
+    assert attempt_boards[0].name.endswith("runtime.todo.md")
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
     forged_v2 = dict(provider)
@@ -748,6 +1043,82 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
         match="source-transition receipt without its transition",
     ):
         bridge.apply_effect(_attempt(), forged_v2)
+
+
+def test_bridge_projection_satisfies_real_ignored_runtime_durability(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    git("branch", "-M", "main")
+    (repository / ".gitignore").write_text(
+        "attempts/\n",
+        encoding="utf-8",
+    )
+    (repository / "README.md").write_text("seed\n", encoding="utf-8")
+    git("add", ".gitignore", "README.md")
+    git(
+        "-c",
+        "user.name=Portal Test",
+        "-c",
+        "user.email=portal@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "seed",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=repository / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+        repo_root=repository,
+        board_namespace="test-board-v1",
+        task_header_prefix="## LGSWF-",
+    )
+    paths = bridge._paths(_attempt())
+    paths.root.mkdir(parents=True)
+    paths.task_projection.write_text(
+        bridge._render_projection(_attempt(), _record()),
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection,
+        state_path=paths.state,
+        strategy_path=paths.strategy,
+        events_path=paths.events,
+        repo_root=repository,
+        task_header_prefix="## LGSWF-",
+    )
+    [task] = daemon._load_tasks()
+    task_cids = {
+        task.task_id: daemon._identity_for_task(task).canonical_task_cid,
+    }
+
+    update = daemon._mark_reconciled_completion_in_todo(
+        task,
+        [task],
+        task_cids,
+    )
+    persistence = daemon._reconciled_completion_persisted(
+        update,
+        task_cids,
+    )
+
+    assert update["commit_result"]["reason"] == "no_changes"
+    assert persistence["passed"] is True
+    assert persistence["durable_update"] is True
+    assert persistence["runtime_taskboard_binding"]["ignored"] is True
+    assert persistence["fsynced_taskboard_snapshot"]["passed"] is True
 
 
 def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
@@ -815,7 +1186,11 @@ def test_bridge_honors_explicit_deferral_without_reason_keyword(
         bridge.run_provider(_attempt())
 
     assert portals and portals[0].closed is True
-    attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
+    attempt_boards = list(
+        (tmp_path / "attempts").glob(
+            "*/task-projection.runtime.todo.md"
+        )
+    )
     assert len(attempt_boards) == 1
     projection = attempt_boards[0].read_text(encoding="utf-8")
     assert "- Status: ready" in projection

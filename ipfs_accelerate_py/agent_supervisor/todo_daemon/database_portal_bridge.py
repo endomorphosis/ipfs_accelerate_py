@@ -42,6 +42,9 @@ DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
 DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
 )
+DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@2"
+)
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
 )
@@ -575,7 +578,7 @@ class DatabasePortalExecutionBridge:
         root = self.attempt_root / attempt_key
         return DatabasePortalAttemptPaths(
             root=root,
-            task_projection=root / "task-projection.md",
+            task_projection=root / "task-projection.runtime.todo.md",
             binding=root / "database-attempt-binding.json",
             state=root / "portal-task-state.json",
             strategy=root / "portal-strategy.json",
@@ -787,9 +790,9 @@ class DatabasePortalExecutionBridge:
         if not paths.events.is_file():
             return None
         event_records, event_log_sha256 = _accepted_source_events(paths.events)
-        candidates = [
-            event
-            for event in event_records
+        direct_candidates = [
+            (index, event)
+            for index, event in enumerate(event_records)
             if (
                 event.get("type") == "implementation_finished"
                 and str(event.get("task_id") or "") == task_alias
@@ -802,9 +805,69 @@ class DatabasePortalExecutionBridge:
                 }
             )
         ]
-        if not candidates:
+        queued_candidates = [
+            (index, event)
+            for index, event in enumerate(event_records)
+            if (
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "") == task_alias
+                and event.get("returncode") == 0
+                and event.get("board_completion")
+                == {
+                    "complete": False,
+                    "pending_merge": True,
+                    "reason": "merge_queued_awaiting_integration",
+                }
+                and isinstance(event.get("merge_result"), Mapping)
+                and event["merge_result"].get("queued") is True
+            )
+        ]
+        reconciled_pairs: list[
+            tuple[Mapping[str, Any], Mapping[str, Any]]
+        ] = []
+        for queued_index, queued_event in queued_candidates:
+            implementation_commit = str(
+                queued_event.get("implementation_commit") or ""
+            )
+            portal_attempt_number = queued_event.get("attempt")
+            canonical_task_cid = str(
+                queued_event.get("canonical_task_cid") or ""
+            )
+            canonical_task_key = str(
+                queued_event.get("canonical_task_key") or ""
+            )
+            for reconciliation_index, reconciliation in enumerate(
+                event_records
+            ):
+                if reconciliation_index <= queued_index:
+                    continue
+                if (
+                    reconciliation.get("type") == "merge_reconciled"
+                    and reconciliation.get("resolved") is True
+                    and str(reconciliation.get("task_id") or "")
+                    == task_alias
+                    and reconciliation.get("attempt")
+                    == portal_attempt_number
+                    and str(
+                        reconciliation.get("implementation_commit") or ""
+                    )
+                    == implementation_commit
+                    and str(
+                        reconciliation.get("canonical_task_cid") or ""
+                    )
+                    == canonical_task_cid
+                    and str(
+                        reconciliation.get("canonical_task_key") or ""
+                    )
+                    == canonical_task_key
+                ):
+                    reconciled_pairs.append(
+                        (queued_event, reconciliation)
+                    )
+        candidate_count = len(direct_candidates) + len(reconciled_pairs)
+        if candidate_count == 0:
             return None
-        if len(candidates) != 1:
+        if candidate_count != 1:
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition is not unique"
             )
@@ -900,27 +963,81 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition has no repository authority"
             )
-        event = candidates[0]
-        merge = event.get("merge_result")
+        reconciliation: Mapping[str, Any] | None = None
+        if direct_candidates:
+            event = direct_candidates[0][1]
+            transition_schema = (
+                DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
+            )
+        else:
+            event, reconciliation = reconciled_pairs[0]
+            transition_schema = (
+                DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA
+            )
+        merge = (
+            reconciliation.get("merge_result")
+            if reconciliation is not None
+            else event.get("merge_result")
+        )
         if not isinstance(merge, Mapping):
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition has no merge result"
             )
+        queued_merge = event.get("merge_result")
+        if not isinstance(queued_merge, Mapping):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition has no queue binding"
+            )
         baseline = str(event.get("baseline_ref") or "")
         implementation = str(event.get("implementation_commit") or "")
-        merge_commit = str(merge.get("merge_commit") or "")
-        target_branch = str(merge.get("target_branch") or "")
-        proof = merge.get("integration_commit_proof")
-        invariant = merge.get("post_merge_declared_output_invariant")
-        canonical_task_cid = str(merge.get("canonical_task_cid") or "")
-        canonical_task_key = str(merge.get("canonical_task_key") or "")
-        request_id = str(merge.get("request_id") or "")
+        proof = (
+            reconciliation.get("integration_commit_proof")
+            if reconciliation is not None
+            else merge.get("integration_commit_proof")
+        )
+        invariant = (
+            reconciliation.get("post_merge_declared_output_invariant")
+            if reconciliation is not None
+            else merge.get("post_merge_declared_output_invariant")
+        )
+        merge_commit = str(
+            merge.get("merge_commit")
+            or (
+                proof.get("integration_commit")
+                if isinstance(proof, Mapping)
+                else ""
+            )
+            or (
+                reconciliation.get("merge_commit")
+                if reconciliation is not None
+                else ""
+            )
+            or ""
+        )
+        target_branch = str(
+            merge.get("target_branch")
+            or (
+                proof.get("target_branch")
+                if isinstance(proof, Mapping)
+                else ""
+            )
+            or ""
+        )
+        canonical_task_cid = str(
+            event.get("canonical_task_cid") or ""
+        )
+        canonical_task_key = str(
+            event.get("canonical_task_key") or ""
+        )
+        request_id = str(queued_merge.get("request_id") or "")
         portal_attempt_number = event.get("attempt")
         event_target_repository_id = str(
             event.get("target_repository_id") or ""
         )
         merge_target_repository_id = str(
-            merge.get("target_repository_id") or ""
+            queued_merge.get("target_repository_id")
+            or merge.get("target_repository_id")
+            or ""
         )
         target_repository_id = (
             event_target_repository_id or merge_target_repository_id
@@ -946,8 +1063,15 @@ class DatabasePortalExecutionBridge:
             )
             or target_repository_id != expected_repository_id
             or merge.get("merged") is not True
-            or merge.get("returncode") != 0
-            or str(merge.get("implementation_commit") or "") != implementation
+            or (
+                reconciliation is None
+                and merge.get("returncode") != 0
+            )
+            or (
+                reconciliation is None
+                and str(merge.get("implementation_commit") or "")
+                != implementation
+            )
             or not isinstance(proof, Mapping)
             or proof.get("passed") is not True
             or proof.get("implementation_commit") != implementation
@@ -959,12 +1083,95 @@ class DatabasePortalExecutionBridge:
             or invariant.get("repository_ref") != merge_commit
             or canonical_task_cid != canonical_identity.canonical_task_cid
             or canonical_task_key != canonical_identity.canonical_task_key
-            or event.get("canonical_task_cid") != canonical_task_cid
-            or event.get("canonical_task_key") != canonical_task_key
         ):
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition is inconsistent"
             )
+        if reconciliation is not None:
+            completion_persistence = reconciliation.get(
+                "completion_persistence"
+            )
+            runtime_binding = (
+                completion_persistence.get("runtime_taskboard_binding")
+                if isinstance(completion_persistence, Mapping)
+                else None
+            )
+            taskboard_snapshot = (
+                completion_persistence.get("fsynced_taskboard_snapshot")
+                if isinstance(completion_persistence, Mapping)
+                else None
+            )
+            expected_completion = {task_alias: canonical_task_cid}
+            try:
+                runtime_projection_path = Path(
+                    str(runtime_binding.get("path") or "")
+                ).resolve()
+                snapshot_projection_path = Path(
+                    str(taskboard_snapshot.get("path") or "")
+                ).resolve()
+                expected_projection_path = paths.task_projection.resolve()
+            except (AttributeError, OSError, TypeError, ValueError) as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal reconciled-source completion is inconsistent"
+                ) from exc
+            if (
+                reconciliation.get("reason")
+                not in {
+                    "merge_retried",
+                    "completion_persistence_recovered_from_landed_rewrite",
+                }
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(event.get("event_id") or ""),
+                )
+                is None
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(reconciliation.get("event_id") or ""),
+                )
+                is None
+                or reconciliation.get("completion_task_cids")
+                != expected_completion
+                or not isinstance(completion_persistence, Mapping)
+                or completion_persistence.get("passed") is not True
+                or completion_persistence.get("reason")
+                != "completion_persisted"
+                or completion_persistence.get("durable_update") is not True
+                or completion_persistence.get("status_persisted") is not True
+                or completion_persistence.get("expected_task_ids")
+                != [task_alias]
+                or completion_persistence.get("completed_task_ids")
+                != [task_alias]
+                or completion_persistence.get("missing_task_ids") != []
+                or completion_persistence.get("receipt_mismatches") != {}
+                or not isinstance(runtime_binding, Mapping)
+                or runtime_binding.get("passed") is not True
+                or runtime_binding.get("authoritative") is not True
+                or runtime_binding.get("ignored") is not True
+                or runtime_binding.get("runtime_projection") is not True
+                or runtime_projection_path != expected_projection_path
+                or not isinstance(taskboard_snapshot, Mapping)
+                or taskboard_snapshot.get("passed") is not True
+                or taskboard_snapshot.get("reason")
+                != "fsynced_taskboard_completion_proven"
+                or taskboard_snapshot.get("runtime_projection") is not True
+                or taskboard_snapshot.get("runtime_binding")
+                != runtime_binding
+                or taskboard_snapshot.get("expected_task_ids")
+                != [task_alias]
+                or taskboard_snapshot.get("observed_statuses")
+                != {task_alias: "completed"}
+                or taskboard_snapshot.get("observed_task_cids")
+                != expected_completion
+                or taskboard_snapshot.get("missing_task_ids") != []
+                or taskboard_snapshot.get("ambiguous_task_ids") != []
+                or taskboard_snapshot.get("status_mismatches") != {}
+                or taskboard_snapshot.get("task_cid_mismatches") != {}
+                or snapshot_projection_path != expected_projection_path
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal reconciled-source completion is inconsistent"
+                )
         if not callable(merge_request_loader):
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition has no merge-queue authority"
@@ -1004,11 +1211,37 @@ class DatabasePortalExecutionBridge:
             else None
         )
         request_dedupe_key = str(request_record.get("dedupe_key") or "")
+        request_status = str(request_record.get("status") or "")
+        request_attempt = request_record.get("attempt")
+        cancellation = (
+            request_metadata.get("cancellation")
+            if isinstance(request_metadata, Mapping)
+            else None
+        )
+        direct_queue_terminal = bool(
+            reconciliation is None
+            and request_status == "completed"
+            and request_attempt == portal_attempt_number
+        )
+        reconciled_queue_terminal = bool(
+            reconciliation is not None
+            and request_status == "cancelled"
+            and isinstance(request_attempt, int)
+            and not isinstance(request_attempt, bool)
+            and request_attempt >= portal_attempt_number
+            and isinstance(cancellation, Mapping)
+            and set(cancellation) == {"at", "reason"}
+            and isinstance(cancellation.get("at"), (int, float))
+            and not isinstance(cancellation.get("at"), bool)
+            and float(cancellation["at"]) >= 0.0
+            and cancellation.get("reason") == "stale_quarantined_merge"
+            and request_record.get("branch_name")
+            == str(event.get("branch") or "")
+        )
         if (
             request_record.get("request_id") != request_id
-            or request_record.get("status") != "completed"
+            or not (direct_queue_terminal or reconciled_queue_terminal)
             or request_record.get("task_id") != task_alias
-            or request_record.get("attempt") != portal_attempt_number
             or request_record.get("commit_sha") != implementation
             or request_record.get("canonical_task_id") != canonical_task_cid
             or request_record.get("canonical_task_key") != canonical_task_key
@@ -1096,7 +1329,7 @@ class DatabasePortalExecutionBridge:
             )
         )
         transition: dict[str, Any] = {
-            "schema": DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
+            "schema": transition_schema,
             "board_namespace": self.board_namespace,
             "configured_board_admission_cid": self.configured_board_admission_cid,
             "task_alias": task_alias,
@@ -1127,6 +1360,26 @@ class DatabasePortalExecutionBridge:
             "task_completion_authority": False,
             "worker_self_approval": False,
         }
+        if reconciliation is not None:
+            transition.update(
+                {
+                    "source_event_mode": "queued_merge_reconciliation",
+                    "queued_implementation_event_id": str(
+                        event.get("event_id") or ""
+                    ),
+                    "reconciliation_event_id": str(
+                        reconciliation.get("event_id") or ""
+                    ),
+                    "merge_queue_terminal_status": request_status,
+                    "merge_queue_attempt": request_attempt,
+                    "merge_queue_cancellation_reason": str(
+                        cancellation.get("reason") or ""
+                    ),
+                    "completion_persistence": dict(
+                        reconciliation["completion_persistence"]
+                    ),
+                }
+            )
         transition["transition_cid"] = _sha256_bytes(
             _canonical_transition_json(transition)
         )
@@ -1375,9 +1628,18 @@ class DatabasePortalExecutionBridge:
             transition_cid = str(normalized.pop("transition_cid", "") or "")
             if (
                 transition.get("schema")
-                != DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
+                not in {
+                    DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
+                    DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA,
+                }
                 or transition.get("database_task_cid") != str(attempt.task_cid)
                 or transition.get("worker_self_approval") is not False
+                or (
+                    transition.get("schema")
+                    == DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA
+                    and transition.get("source_event_mode")
+                    != "queued_merge_reconciliation"
+                )
                 or transition_cid
                 != _sha256_bytes(_canonical_transition_json(normalized))
             ):
@@ -1441,6 +1703,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1",
     "DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA",
+    "DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
