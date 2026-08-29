@@ -19,7 +19,7 @@ import os
 import re
 import stat
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
@@ -34,6 +34,7 @@ from ...llm_router import (
     verify_agent_implementation_sealed_control_plane,
 )
 from ..core.multiformats_identity import cid_for_dag_json, validate_cid
+from ..merge.checkout_lock import checkout_repository_id
 from .configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
     CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
@@ -53,6 +54,10 @@ CONFIGURED_BOARD_LIVE_CAPSULE_POLICY_SCHEMA: Final = (
 CONFIGURED_BOARD_LIVE_CAPSULE_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "configured-board-live-control-capsule-admission@1"
+)
+CONFIGURED_BOARD_ACCEPTED_SOURCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "configured-board-accepted-source@1"
 )
 
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
@@ -152,6 +157,11 @@ _HTTPFS_PIN_FIELDS: Final = frozenset(
 
 class ConfiguredBoardLiveCapsuleError(ValueError):
     """The live configured-board capsule is incomplete or has drifted."""
+
+
+CanonicalSourceTransitionLoader = Callable[
+    [str, Mapping[str, object]], Mapping[str, object]
+]
 
 
 def _reject_duplicate_json_keys(
@@ -919,17 +929,24 @@ def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes
         "PATH": "/usr/bin:/bin",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_TERMINAL_PROMPT": "0",
     }
-    completed = subprocess.run(
-        ["git", *arguments],
-        cwd=root,
-        env=environment,
-        input=input_bytes,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["/usr/bin/git", "--no-replace-objects", *arguments],
+            cwd=root,
+            env=environment,
+            input=input_bytes,
+            capture_output=True,
+            check=False,
+            timeout=10.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board Git proof is unavailable"
+        ) from exc
     if completed.returncode != 0:
         raise ConfiguredBoardLiveCapsuleError(
             f"configured-board Git proof failed: {' '.join(arguments)}"
@@ -970,6 +987,515 @@ def _artifact_records(
             }
         )
     return tuple(records)
+
+
+def _pinned_scheduler_payload(
+    root: Path,
+    admission: ConfiguredBoardLiveCapsuleAdmission,
+) -> dict[str, object]:
+    """Return the exact scheduler payload admitted by the source capsule."""
+
+    raw = _git(root, "show", f"{admission.source_head}:{admission.config_path}")
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board pinned scheduler is not canonical JSON"
+        ) from exc
+    if type(payload) is not dict:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board pinned scheduler is not an object"
+        )
+    if (
+        payload.get("board_namespace") != admission.board_namespace
+        or payload.get("plan_revision") != admission.plan_revision
+        or payload.get("task_prefix") != admission.task_prefix
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board pinned scheduler identity drifted"
+        )
+    return payload
+
+
+def _default_canonical_source_transition(
+    merge_commit: str,
+    scheduler: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Resolve one source transition from canonical Quack completion state."""
+
+    program = scheduler.get("database_program")
+    if type(program) is not dict:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source has no database program"
+        )
+    endpoint = str(program.get("quack_endpoint") or "").strip()
+    handle = str(program.get("endpoint_secret_handle") or "").strip()
+    generation = program.get("store_generation")
+    if (
+        not endpoint.startswith("quack:127.0.0.1:")
+        or not handle.startswith("env://")
+        or isinstance(generation, bool)
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source has invalid Quack authority"
+        )
+    try:
+        expected_generation = int(generation)
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source has invalid store generation"
+        ) from exc
+    token_name = handle.removeprefix("env://").strip()
+    token = str(
+        os.environ.get(token_name, "")
+        or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "")
+        or ""
+    ).strip()
+    if not token:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source cannot resolve Quack authority"
+        )
+    try:
+        from ..task_sources.duckdb_state import open_quack_transport_connection
+
+        connection = open_quack_transport_connection(endpoint, token=token)
+        try:
+            generations = connection.execute(
+                "SELECT generation, database_uuid FROM store_generations "
+                "ORDER BY generation DESC LIMIT 1"
+            ).fetchall()
+            tasks = connection.execute(
+                "SELECT task_cid, task_alias, status, revision, body_json "
+                "FROM tasks WHERE status IN ('completed', 'complete', 'done') "
+                "ORDER BY ordinal, task_cid LIMIT 4096"
+            ).fetchall()
+        finally:
+            connection.close()
+    except Exception as exc:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source Quack lookup failed"
+        ) from exc
+    if (
+        len(generations) != 1
+        or int(generations[0][0]) != expected_generation
+        or not str(generations[0][1] or "").strip()
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source Quack identity drifted"
+        )
+    matches: list[dict[str, object]] = []
+    for row in tasks:
+        try:
+            body = json.loads(
+                str(row[4]), object_pairs_hook=_reject_duplicate_json_keys
+            )
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted task body is invalid"
+            ) from exc
+        if type(body) is not dict:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted task body is not an object"
+            )
+        completion = body.get("completion_receipt")
+        if not isinstance(completion, Mapping):
+            continue
+        validation = completion.get("validation")
+        transition = (
+            validation.get("accepted_source_transition")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if isinstance(transition, Mapping) and transition.get("merge_commit") == merge_commit:
+            matches.append(
+                {
+                    "task_cid": str(row[0]),
+                    "task_alias": str(row[1]),
+                    "status": str(row[2]),
+                    "revision": int(row[3]),
+                    "completion_receipt": dict(completion),
+                    "transition": dict(transition),
+                    "store_generation": expected_generation,
+                    "database_uuid": str(generations[0][1]),
+                }
+            )
+    if len(matches) != 1:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board accepted source has no unique canonical transition"
+        )
+    return matches[0]
+
+
+def _verify_canonical_source_transition(
+    *,
+    repo_root: Path,
+    board_namespace: str,
+    admission_cid: str,
+    target_repository_id: str,
+    prior_head: str,
+    merge_head: str,
+    implementation_head: str,
+    target_branch: str,
+    authority: Mapping[str, object],
+) -> Mapping[str, str]:
+    completion = authority.get("completion_receipt")
+    transition = authority.get("transition")
+    validation = completion.get("validation") if isinstance(completion, Mapping) else None
+    if not isinstance(transition, Mapping):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board canonical source transition is absent"
+        )
+    normalized = dict(transition)
+    transition_cid = str(normalized.pop("transition_cid", "") or "")
+    proof = transition.get("integration_commit_proof")
+    invariant = transition.get("declared_output_invariant")
+    alias = str(authority.get("task_alias") or "")
+    expected_fields = {
+        "schema",
+        "board_namespace",
+        "configured_board_admission_cid",
+        "task_alias",
+        "database_task_cid",
+        "attempt_id",
+        "attempt_number",
+        "portal_attempt_number",
+        "claim_id",
+        "fencing_token",
+        "database_attempt_binding",
+        "canonical_task_cid",
+        "canonical_task_key",
+        "request_id",
+        "merge_request_digest",
+        "merge_request_dedupe_key",
+        "target_repository_id",
+        "baseline_ref",
+        "implementation_commit",
+        "implementation_tree",
+        "merge_commit",
+        "merge_tree",
+        "target_branch",
+        "changed_path_diff_sha256",
+        "integration_commit_proof",
+        "declared_output_invariant",
+        "portal_event_log_sha256",
+        "authority",
+        "task_completion_authority",
+        "worker_self_approval",
+    }
+    implementation_tree = _git(
+        repo_root, "rev-parse", f"{implementation_head}^{{tree}}"
+    ).decode("ascii").strip()
+    merge_tree = _git(
+        repo_root, "rev-parse", f"{merge_head}^{{tree}}"
+    ).decode("ascii").strip()
+    changed_path_diff_sha256 = "sha256:" + hashlib.sha256(
+        _git(
+            repo_root,
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "-z",
+            prior_head,
+            merge_head,
+        )
+    ).hexdigest()
+    database_binding = transition.get("database_attempt_binding")
+    normalized_database_binding = (
+        dict(database_binding) if isinstance(database_binding, Mapping) else {}
+    )
+    database_binding_id = str(
+        normalized_database_binding.pop("binding_id", "") or ""
+    )
+    expected_database_binding_fields = {
+        "schema",
+        "interface",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "goal_cid",
+        "plan_cid",
+        "task_revision",
+        "fencing_token",
+        "fence_epoch",
+        "lease_id",
+        "task_body_digest",
+        "projection_seed_digest",
+        "projection_immutable_digest",
+        "authoritative_task_store",
+        "projection_authority",
+    }
+    if (
+        set(normalized) != expected_fields
+        or str(authority.get("status") or "").lower()
+        not in {"completed", "complete", "done"}
+        or not str(authority.get("task_cid") or "").startswith("sha256:")
+        or not isinstance(completion, Mapping)
+        or completion.get("operation") != "database_complete"
+        or not isinstance(validation, Mapping)
+        or validation.get("outcome") != "passed"
+        or validation.get("task_cid") != authority.get("task_cid")
+        or validation.get("attempt_id") != transition.get("attempt_id")
+        or validation.get("accepted_source_transition") != transition
+        or transition.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+        or transition.get("database_task_cid") != authority.get("task_cid")
+        or transition.get("task_alias") != alias
+        or transition.get("board_namespace") != board_namespace
+        or transition.get("configured_board_admission_cid") != admission_cid
+        or transition.get("target_repository_id") != target_repository_id
+        or transition.get("baseline_ref") != prior_head
+        or transition.get("implementation_commit") != implementation_head
+        or transition.get("implementation_tree") != implementation_tree
+        or transition.get("merge_commit") != merge_head
+        or transition.get("merge_tree") != merge_tree
+        or transition.get("target_branch") != target_branch
+        or transition.get("changed_path_diff_sha256")
+        != changed_path_diff_sha256
+        or not str(transition.get("request_id") or "")
+        or not str(transition.get("canonical_task_key") or "").startswith(
+            "task/v1/"
+        )
+        or not str(transition.get("canonical_task_cid") or "").startswith(
+            "baguq"
+        )
+        or not str(transition.get("attempt_id") or "")
+        or not str(transition.get("claim_id") or "")
+        or isinstance(transition.get("attempt_number"), bool)
+        or not isinstance(transition.get("attempt_number"), int)
+        or int(transition.get("attempt_number") or 0) < 1
+        or isinstance(transition.get("portal_attempt_number"), bool)
+        or not isinstance(transition.get("portal_attempt_number"), int)
+        or int(transition.get("portal_attempt_number") or 0) < 1
+        or isinstance(transition.get("fencing_token"), bool)
+        or not isinstance(transition.get("fencing_token"), int)
+        or int(transition.get("fencing_token") or 0) < 1
+        or set(normalized_database_binding) != expected_database_binding_fields
+        or database_binding.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-attempt-binding@1"
+        )
+        or database_binding.get("interface")
+        != "DatabasePortalExecutionBridge@1"
+        or database_binding.get("attempt_id") != transition.get("attempt_id")
+        or database_binding.get("claim_id") != transition.get("claim_id")
+        or database_binding.get("task_cid")
+        != transition.get("database_task_cid")
+        or database_binding.get("task_alias") != transition.get("task_alias")
+        or database_binding.get("fencing_token")
+        != transition.get("fencing_token")
+        or database_binding.get("authoritative_task_store") != "duckdb"
+        or database_binding.get("projection_authority") is not False
+        or database_binding_id
+        != "sha256:"
+        + hashlib.sha256(_canonical_json(normalized_database_binding)).hexdigest()
+        or _SHA256.fullmatch(
+            str(transition.get("merge_request_digest") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(transition.get("merge_request_dedupe_key") or ""),
+        )
+        is None
+        or transition.get("authority")
+        != "database_completion_cas_after_portal_and_git_verification"
+        or transition.get("task_completion_authority") is not False
+        or transition.get("worker_self_approval") is not False
+        or transition_cid
+        != "sha256:" + hashlib.sha256(_canonical_json(normalized)).hexdigest()
+        or not isinstance(proof, Mapping)
+        or proof.get("passed") is not True
+        or proof.get("implementation_commit") != implementation_head
+        or proof.get("integration_commit") != merge_head
+        or proof.get("integration_ref") != merge_head
+        or proof.get("target_branch") != target_branch
+        or not isinstance(invariant, Mapping)
+        or invariant.get("passed") is not True
+        or invariant.get("repository_ref") != merge_head
+    ):
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board canonical source transition is inconsistent"
+        )
+    return {
+        "task_alias": alias,
+        "database_task_cid": str(authority.get("task_cid") or ""),
+        "transition_cid": transition_cid,
+        "request_id": str(transition.get("request_id") or ""),
+        "implementation_commit": implementation_head,
+    }
+
+
+def verify_configured_board_accepted_source(
+    admission: ConfiguredBoardLiveCapsuleAdmission | str | Mapping[str, object],
+    *,
+    repo_root: Path,
+    transition_loader: CanonicalSourceTransitionLoader | None = None,
+) -> Mapping[str, object]:
+    """Admit exact source, or a receipt-backed chain of supervisor merges.
+
+    This is deliberately narrower than descendant admission.  Every first-parent
+    successor must be a two-parent merge, must retain every protected control,
+    and must bind the implementation parent to a source-transition packet that
+    was admitted inside the canonical Quack task-completion transaction.
+    """
+
+    parsed = parse_configured_board_live_capsule_admission(
+        admission.as_dict()
+        if isinstance(admission, ConfiguredBoardLiveCapsuleAdmission)
+        else admission
+    )
+    root = Path(repo_root).resolve(strict=True)
+    current_head, current_tree = _source_generation(root)
+    expected_artifacts = _artifact_records(
+        root,
+        source_head=parsed.source_head,
+        control_paths=tuple(str(item["path"]) for item in parsed.control_artifacts),
+    )
+    if expected_artifacts != parsed.control_artifacts:
+        raise ConfiguredBoardLiveCapsuleError(
+            "configured-board protected controls drifted"
+        )
+    kind = "exact"
+    merge_commits: list[str] = []
+    implementation_commits: list[str] = []
+    task_aliases: list[str] = []
+    database_task_cids: list[str] = []
+    transition_cids: list[str] = []
+    request_ids: list[str] = []
+    database_uuid = ""
+    store_generation = 0
+    target_repository_id = checkout_repository_id(root)
+    if (current_head, current_tree) != (parsed.source_head, parsed.source_tree):
+        kind = "accepted_supervisor_merge_successor"
+        try:
+            chain = tuple(
+                line
+                for line in _git(
+                    root,
+                    "rev-list",
+                    "--first-parent",
+                    "--reverse",
+                    f"{parsed.source_head}..{current_head}",
+                ).decode("ascii").splitlines()
+                if line
+            )
+        except (UnicodeError, ConfiguredBoardLiveCapsuleError) as exc:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source is not a Git descendant"
+            ) from exc
+        if not chain:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source generation drifted"
+            )
+        if len(chain) > 4_096:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source chain is unbounded"
+            )
+        scheduler = _pinned_scheduler_payload(root, parsed)
+        target_branch = _text(
+            scheduler.get("merge_target_branch"), "merge target branch"
+        )
+        current_branch = _git(root, "symbolic-ref", "--short", "HEAD").decode(
+            "utf-8"
+        ).strip()
+        if current_branch != target_branch:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source target branch drifted"
+            )
+        loader = transition_loader or _default_canonical_source_transition
+        prior = parsed.source_head
+        for merge_head in chain:
+            parents = _git(root, "rev-list", "--parents", "-n", "1", merge_head)
+            parent_fields = parents.decode("ascii").strip().split()
+            if (
+                len(parent_fields) != 3
+                or parent_fields[0] != merge_head
+                or parent_fields[1] != prior
+            ):
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source contains a non-supervisor merge"
+                )
+            implementation_head = parent_fields[2]
+            authority = loader(merge_head, scheduler)
+            verified = _verify_canonical_source_transition(
+                repo_root=root,
+                board_namespace=parsed.board_namespace,
+                admission_cid=parsed.admission_cid,
+                target_repository_id=target_repository_id,
+                prior_head=prior,
+                merge_head=merge_head,
+                implementation_head=implementation_head,
+                target_branch=target_branch,
+                authority=authority,
+            )
+            observed_uuid = str(authority.get("database_uuid") or "")
+            observed_generation = authority.get("store_generation")
+            if (
+                not observed_uuid
+                or isinstance(observed_generation, bool)
+                or not isinstance(observed_generation, int)
+                or observed_generation < 1
+                or (database_uuid and observed_uuid != database_uuid)
+                or (store_generation and observed_generation != store_generation)
+                or verified["task_alias"] in task_aliases
+                or verified["database_task_cid"] in database_task_cids
+                or verified["transition_cid"] in transition_cids
+                or verified["request_id"] in request_ids
+            ):
+                raise ConfiguredBoardLiveCapsuleError(
+                    "configured-board accepted source authority is ambiguous"
+                )
+            database_uuid = observed_uuid
+            store_generation = observed_generation
+            task_aliases.append(verified["task_alias"])
+            database_task_cids.append(verified["database_task_cid"])
+            transition_cids.append(verified["transition_cid"])
+            request_ids.append(verified["request_id"])
+            implementation_commits.append(verified["implementation_commit"])
+            merge_commits.append(merge_head)
+            prior = merge_head
+        if prior != current_head:
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source chain is incomplete"
+            )
+        if _source_generation(root) != (current_head, current_tree):
+            raise ConfiguredBoardLiveCapsuleError(
+                "configured-board accepted source changed during verification"
+            )
+    body: dict[str, object] = {
+        "schema": CONFIGURED_BOARD_ACCEPTED_SOURCE_SCHEMA,
+        "kind": kind,
+        "board_namespace": parsed.board_namespace,
+        "admission_cid": parsed.admission_cid,
+        "source_head": parsed.source_head,
+        "source_tree": parsed.source_tree,
+        "current_head": current_head,
+        "current_tree": current_tree,
+        "merge_commits": merge_commits,
+        "implementation_commits": implementation_commits,
+        "task_aliases": task_aliases,
+        "database_task_cids": database_task_cids,
+        "transition_cids": transition_cids,
+        "request_ids": request_ids,
+        "target_repository_id": target_repository_id,
+        "database_uuid": database_uuid,
+        "store_generation": store_generation,
+        "protected_control_count": len(parsed.control_artifacts),
+        "authority": (
+            "exact_capsule_source"
+            if kind == "exact"
+            else "git_merge_plus_quack_admitted_source_transition"
+        ),
+        "task_completion_authority": False,
+    }
+    body["receipt_cid"] = _cid(body)
+    return body
 
 
 def build_configured_board_live_capsule_admission(
@@ -1132,19 +1658,7 @@ def verify_configured_board_live_capsule(
             "configured-board admission names a different config"
         )
     root = Path(repo_root).resolve(strict=True)
-    if _source_generation(root) != (parsed.source_head, parsed.source_tree):
-        raise ConfiguredBoardLiveCapsuleError(
-            "configured-board accepted source generation drifted"
-        )
-    expected_artifacts = _artifact_records(
-        root,
-        source_head=parsed.source_head,
-        control_paths=tuple(str(item["path"]) for item in parsed.control_artifacts),
-    )
-    if expected_artifacts != parsed.control_artifacts:
-        raise ConfiguredBoardLiveCapsuleError(
-            "configured-board protected controls drifted"
-        )
+    verify_configured_board_accepted_source(parsed, repo_root=root)
     _verify_protected_native_and_quack_authority(
         parsed,
         native_dependency_launch=native_dependency_launch,
@@ -1155,11 +1669,13 @@ def verify_configured_board_live_capsule(
 
 __all__ = (
     "CONFIGURED_BOARD_LIVE_CAPSULE_ADMISSION_SCHEMA",
+    "CONFIGURED_BOARD_ACCEPTED_SOURCE_SCHEMA",
     "CONFIGURED_BOARD_LIVE_CAPSULE_POLICY_SCHEMA",
     "ConfiguredBoardLiveCapsuleAdmission",
     "ConfiguredBoardLiveCapsuleError",
     "build_configured_board_live_capsule_admission",
     "parse_configured_board_live_capsule_admission",
     "parse_configured_board_live_capsule_policy",
+    "verify_configured_board_accepted_source",
     "verify_configured_board_live_capsule",
 )

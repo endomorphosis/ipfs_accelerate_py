@@ -73,6 +73,7 @@ from ..control.lifecycle_orchestrator import (
     ProcessIdentity,
     ProcessIdentityMismatch,
 )
+from ..core.multiformats_identity import cid_for_dag_json
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     apply_env_defaults,
@@ -89,6 +90,7 @@ from .configured_board_live_capsule import (
     ConfiguredBoardLiveCapsuleAdmission,
     ConfiguredBoardLiveCapsuleError,
     parse_configured_board_live_capsule_admission,
+    verify_configured_board_accepted_source,
     verify_configured_board_live_capsule,
 )
 
@@ -4589,6 +4591,7 @@ def start_track(
             "configured-board operational track requires a live admission "
             "and native dependency launch"
         )
+    accepted_source_receipt: Mapping[str, object] | None = None
     if configured_board_live_admission is not None:
         if not live_seal_required or accepted_control_plane_pin is None:
             raise ValueError(
@@ -4599,6 +4602,10 @@ def start_track(
             control_plane_pin=accepted_control_plane_pin,
             control_plane_descriptor=accepted_control_plane_descriptor,
             native_dependency_launch=native_dependency_launch,
+            repo_root=repo_root,
+        )
+        accepted_source_receipt = verify_configured_board_accepted_source(
+            configured_board_live_admission,
             repo_root=repo_root,
         )
 
@@ -4627,10 +4634,21 @@ def start_track(
             accepted_control_plane_pin.source_head,
             accepted_control_plane_pin.source_tree,
         ) != (repository_head, repository_tree):
-            raise ValueError(
-                "configured-board control-plane generation differs from the "
-                "accepted repository"
-            )
+            if (
+                accepted_source_receipt is None
+                or accepted_source_receipt.get("source_head")
+                != accepted_control_plane_pin.source_head
+                or accepted_source_receipt.get("source_tree")
+                != accepted_control_plane_pin.source_tree
+                or accepted_source_receipt.get("current_head") != repository_head
+                or accepted_source_receipt.get("current_tree") != repository_tree
+                or accepted_source_receipt.get("kind")
+                != "accepted_supervisor_merge_successor"
+            ):
+                raise ValueError(
+                    "configured-board control-plane generation differs from the "
+                    "accepted repository"
+                )
         if (
             resolved.module_name
             or resolved.script_path
@@ -4643,9 +4661,10 @@ def start_track(
             )
         _validate_plan_bound_accepted_tree(
             accepted_tree_root=accepted_tree_root,
-            source_head=repository_head,
-            source_tree=repository_tree,
+            source_head=accepted_control_plane_pin.source_head,
+            source_tree=accepted_control_plane_pin.source_tree,
             control_plane_pin=accepted_control_plane_pin,
+            configured_board_source_receipt=accepted_source_receipt,
         )
         supervisor_argv = [
             *common_args,
@@ -5962,6 +5981,7 @@ def _validate_plan_bound_accepted_tree(
     recovery_runtime_roots: tuple[Path, ...] = (),
     recovery_owner_bound_artifacts: tuple[Path, ...] = (),
     recovery_artifacts: tuple[Mapping[str, Any], ...] = (),
+    configured_board_source_receipt: Mapping[str, object] | None = None,
 ) -> None:
     """Bind initial launches to HEAD and recovery to the sealed source object."""
 
@@ -6003,6 +6023,50 @@ def _validate_plan_bound_accepted_tree(
         or any(not isinstance(item, Mapping) for item in recovery_artifacts)
     ):
         raise ValueError("plan-bound recovery runtime authority is malformed")
+    if configured_board_source_receipt is not None and not isinstance(
+        configured_board_source_receipt, Mapping
+    ):
+        raise ValueError("configured-board source receipt is malformed")
+    if configured_board_source_receipt is not None:
+        normalized_source_receipt = dict(configured_board_source_receipt)
+        source_receipt_cid = str(
+            normalized_source_receipt.pop("receipt_cid", "") or ""
+        )
+        allowed_source_receipt_fields = {
+            "schema",
+            "kind",
+            "board_namespace",
+            "admission_cid",
+            "source_head",
+            "source_tree",
+            "current_head",
+            "current_tree",
+            "merge_commits",
+            "implementation_commits",
+            "task_aliases",
+            "database_task_cids",
+            "transition_cids",
+            "request_ids",
+            "target_repository_id",
+            "database_uuid",
+            "store_generation",
+            "protected_control_count",
+            "authority",
+            "task_completion_authority",
+        }
+        if (
+            set(normalized_source_receipt) != allowed_source_receipt_fields
+            or normalized_source_receipt.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "configured-board-accepted-source@1"
+            )
+            or source_receipt_cid
+            != cid_for_dag_json(normalized_source_receipt, for_identity=True)
+            or normalized_source_receipt.get("task_completion_authority")
+            is not False
+        ):
+            raise ValueError("configured-board source receipt identity is invalid")
     source_object = _plan_bound_git(root, "rev-parse", f"{source_head}^{{tree}}")
     if (
         source_object.returncode != 0
@@ -6181,8 +6245,26 @@ def _validate_plan_bound_accepted_tree(
     if (
         head.returncode != 0
         or tree.returncode != 0
-        or current_head != source_head
-        or current_tree != source_tree
+    ):
+        raise ValueError("plan-bound accepted tree identity is unavailable")
+    if (current_head, current_tree) != (source_head, source_tree):
+        receipt = configured_board_source_receipt
+        if (
+            receipt is None
+            or receipt.get("kind") != "accepted_supervisor_merge_successor"
+            or receipt.get("source_head") != source_head
+            or receipt.get("source_tree") != source_tree
+            or receipt.get("current_head") != current_head
+            or receipt.get("current_tree") != current_tree
+            or not str(receipt.get("receipt_cid") or "").startswith("baguq")
+        ):
+            raise ValueError("plan-bound accepted tree changed from the pinned source")
+    elif configured_board_source_receipt is not None and (
+        configured_board_source_receipt.get("kind") != "exact"
+        or configured_board_source_receipt.get("source_head") != source_head
+        or configured_board_source_receipt.get("source_tree") != source_tree
+        or configured_board_source_receipt.get("current_head") != current_head
+        or configured_board_source_receipt.get("current_tree") != current_tree
     ):
         raise ValueError("plan-bound accepted tree changed from the pinned source")
     for relative in (PLAN_BOUND_GATE_ENTRY_PATH, PLAN_BOUND_ACCEPTED_ENTRY_PATH):

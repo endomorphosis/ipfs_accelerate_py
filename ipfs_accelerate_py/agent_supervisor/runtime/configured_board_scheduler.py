@@ -107,6 +107,7 @@ from .configured_board_live_capsule import (
     ConfiguredBoardLiveCapsuleError,
     build_configured_board_live_capsule_admission,
     parse_configured_board_live_capsule_policy,
+    verify_configured_board_accepted_source,
     verify_configured_board_live_capsule,
 )
 from .multi_supervisor_runner import (
@@ -622,6 +623,14 @@ def _configured_board_task_records(
         records.append(
             {
                 "task_id": task_id,
+                # DatabaseTaskSource consumes ``task_cid`` as the immutable
+                # control-store key.  Keep it distinct from the canonical
+                # DAG-JSON CID while deriving both from the same semantic
+                # digest; otherwise generic configured-board materialization
+                # falls back to ordinal ``task:cid:N`` identities.
+                "task_cid": f"sha256:{task_identity.semantic_fingerprint}",
+                "task_key": task_identity.canonical_task_key,
+                "canonical_task_key": task_identity.canonical_task_key,
                 "canonical_task_cid": task_identity.canonical_task_cid,
                 "status": (
                     str(fields.get("status") or "todo").strip().lower()
@@ -2828,6 +2837,7 @@ def configured_board_launch_plan(
     program = board.resolved_database_program()
     plan_bound = _plan_bound_profile(board)
     live_admission = configured_board_live_admission
+    accepted_source_receipt: Mapping[str, object] | None = None
     if live_admission is not None:
         if not board.live_capsule_control_paths:
             raise ConfiguredBoardError(
@@ -2852,6 +2862,10 @@ def configured_board_launch_plan(
                 expected_config_path=(
                     board.config_path.relative_to(board.repo_root).as_posix()
                 ),
+            )
+            accepted_source_receipt = verify_configured_board_accepted_source(
+                live_admission,
+                repo_root=board.repo_root,
             )
         except (OSError, ConfiguredBoardLiveCapsuleError, ValueError) as exc:
             raise ConfiguredBoardError(
@@ -3003,9 +3017,23 @@ def configured_board_launch_plan(
             accepted_control_plane_pin.source_head,
             accepted_control_plane_pin.source_tree,
         ) != expected_generation:
-            raise ConfiguredBoardError(
-                "accepted control-plane generation differs from the launch"
-            )
+            if (
+                accepted_source_receipt is None
+                or accepted_source_receipt.get("kind")
+                != "accepted_supervisor_merge_successor"
+                or accepted_source_receipt.get("source_head")
+                != accepted_control_plane_pin.source_head
+                or accepted_source_receipt.get("source_tree")
+                != accepted_control_plane_pin.source_tree
+                or (
+                    accepted_source_receipt.get("current_head"),
+                    accepted_source_receipt.get("current_tree"),
+                )
+                != expected_generation
+            ):
+                raise ConfiguredBoardError(
+                    "accepted control-plane generation differs from the launch"
+                )
         runner_args.extend(
             [
                 "--accepted-control-plane-pin-json",

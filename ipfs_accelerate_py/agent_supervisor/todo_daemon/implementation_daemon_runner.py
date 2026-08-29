@@ -1206,6 +1206,20 @@ def bind_database_portal_execution_from_args(
         or default_implementation_protected_paths
         or None
     )
+    configured_board_admission_cid = ""
+    raw_live_admission = str(
+        getattr(parsed, "configured_board_live_admission_json", "") or ""
+    ).strip()
+    if raw_live_admission:
+        from ..runtime.configured_board_live_capsule import (
+            parse_configured_board_live_capsule_admission,
+        )
+
+        configured_board_admission_cid = (
+            parse_configured_board_live_capsule_admission(
+                raw_live_admission
+            ).admission_cid
+        )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
         return portal_daemon_class(
@@ -1274,6 +1288,12 @@ def bind_database_portal_execution_from_args(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
+        repo_root=repo_root,
+        board_namespace=str(getattr(parsed, "board_namespace", "") or ""),
+        configured_board_admission_cid=configured_board_admission_cid,
+        merge_target_branch=str(
+            getattr(parsed, "merge_target_branch", "") or ""
+        ),
         task_header_prefix=parsed.task_prefix,
     )
     binder(

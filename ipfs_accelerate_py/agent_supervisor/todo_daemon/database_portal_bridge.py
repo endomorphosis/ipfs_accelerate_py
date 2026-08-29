@@ -20,6 +20,8 @@ import json
 import os
 import re
 import shlex
+import stat
+import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
@@ -27,9 +29,18 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from ..merge.checkout_lock import checkout_repository_id
+from ..task_sources.task_identity import canonical_task_identity
+
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
-DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@1"
+)
+DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@2"
+)
+DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
 )
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
@@ -48,6 +59,8 @@ _OUTPUT_PATH_FIELDS: Final[tuple[str, ...]] = (
 _DECLARED_OUTPUT_EFFECT_FIELDS: Final[frozenset[str]] = frozenset(
     {"effect_id", "declared_path", "effect"}
 )
+_MAX_ACCEPTED_SOURCE_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
+_MAX_ACCEPTED_SOURCE_EVENT_LINES: Final[int] = 65_536
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -84,6 +97,34 @@ def _canonical_json(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def _canonical_transition_json(value: Mapping[str, Any]) -> bytes:
+    try:
+        return json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source transition is not canonical JSON"
+        ) from exc
+
+
+def _reject_duplicate_event_keys(
+    pairs: Sequence[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source event repeats a JSON key"
+            )
+        result[key] = value
+    return result
+
+
 def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
 
@@ -95,6 +136,101 @@ def _sha256_file(path: Path) -> str:
         raise DatabasePortalBridgeError(
             f"could not read Portal attempt artifact {path.name!r}"
         ) from exc
+
+
+def _accepted_source_events(
+    path: Path,
+) -> tuple[tuple[Mapping[str, Any], ...], str]:
+    """Read a bounded regular event log without following a link."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source events are unreadable"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > _MAX_ACCEPTED_SOURCE_EVENT_BYTES
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source event log is not a bounded regular file"
+            )
+        payload = bytearray()
+        while len(payload) <= _MAX_ACCEPTED_SOURCE_EVENT_BYTES:
+            block = os.read(
+                descriptor,
+                min(
+                    65_536,
+                    _MAX_ACCEPTED_SOURCE_EVENT_BYTES + 1 - len(payload),
+                ),
+            )
+            if not block:
+                break
+            payload.extend(block)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source events are unreadable"
+        ) from exc
+    finally:
+        os.close(descriptor)
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+        or len(payload) != before.st_size
+        or len(payload) > _MAX_ACCEPTED_SOURCE_EVENT_BYTES
+    ):
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source event log changed while read"
+        )
+    try:
+        text = bytes(payload).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source events are not UTF-8"
+        ) from exc
+    lines = text.splitlines()
+    if len(lines) > _MAX_ACCEPTED_SOURCE_EVENT_LINES:
+        raise DatabasePortalBridgeError(
+            "Portal accepted-source event log exceeds its line bound"
+        )
+    records: list[Mapping[str, Any]] = []
+    for line in lines:
+        if not line:
+            continue
+        try:
+            record = json.loads(
+                line,
+                object_pairs_hook=_reject_duplicate_event_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"nonfinite JSON constant: {value}")
+                ),
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source event log contains invalid JSON"
+            ) from exc
+        if not isinstance(record, Mapping):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source event is not an object"
+            )
+        records.append(record)
+    return tuple(records), _sha256_bytes(bytes(payload))
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
@@ -411,6 +547,10 @@ class DatabasePortalExecutionBridge:
         task_source: Any,
         attempt_root: Path | str,
         portal_factory: PortalDaemonFactory,
+        repo_root: Path | str | None = None,
+        board_namespace: str = "",
+        configured_board_admission_cid: str = "",
+        merge_target_branch: str = "",
         task_header_prefix: str = "## ",
         max_passes: int = 4,
     ) -> None:
@@ -420,6 +560,12 @@ class DatabasePortalExecutionBridge:
             raise ValueError("max_passes must be a positive integer")
         self.task_source = task_source
         self.attempt_root = Path(attempt_root).absolute()
+        self.repo_root = Path(repo_root).resolve() if repo_root is not None else None
+        self.board_namespace = str(board_namespace or "").strip()
+        self.configured_board_admission_cid = str(
+            configured_board_admission_cid or ""
+        ).strip()
+        self.merge_target_branch = str(merge_target_branch or "").strip()
         self.portal_factory = portal_factory
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
@@ -620,6 +766,359 @@ class DatabasePortalExecutionBridge:
                 return True
         return False
 
+    def _accepted_source_transition(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        task_alias: str,
+        task_cid: str,
+        merge_request_loader: Callable[[str], Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Reconstruct one exact landed transition before Quack completion.
+
+        The Portal event file is only an observation.  This method resolves its
+        bounded commit claims against Git and emits a content-addressed packet;
+        the database completion CAS later makes that packet authoritative for
+        the exact task revision.
+        """
+
+        if not paths.events.is_file():
+            return None
+        event_records, event_log_sha256 = _accepted_source_events(paths.events)
+        candidates = [
+            event
+            for event in event_records
+            if (
+                event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "") == task_alias
+                and event.get("returncode") == 0
+                and event.get("board_completion")
+                == {
+                    "complete": True,
+                    "pending_merge": False,
+                    "reason": "merged_into_target",
+                }
+            )
+        ]
+        if not candidates:
+            return None
+        if len(candidates) != 1:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition is not unique"
+            )
+        normalized_binding = dict(binding)
+        binding_id = str(normalized_binding.pop("binding_id", "") or "")
+        expected_binding_fields = {
+            "schema",
+            "interface",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "task_alias",
+            "goal_cid",
+            "plan_cid",
+            "task_revision",
+            "fencing_token",
+            "fence_epoch",
+            "lease_id",
+            "task_body_digest",
+            "projection_seed_digest",
+            "projection_immutable_digest",
+            "authoritative_task_store",
+            "projection_authority",
+        }
+        if (
+            set(normalized_binding) != expected_binding_fields
+            or binding.get("schema") != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+            or binding.get("interface") != self.INTERFACE
+            or binding.get("attempt_id") != str(attempt.attempt_id)
+            or binding.get("claim_id") != str(attempt.claim_id)
+            or binding.get("task_cid") != task_cid
+            or binding.get("task_alias") != task_alias
+            or binding.get("fencing_token") != int(attempt.fencing_token)
+            or binding.get("fence_epoch") != int(attempt.fence_epoch)
+            or binding.get("authoritative_task_store") != "duckdb"
+            or binding.get("projection_authority") is not False
+            or binding_id != _sha256_bytes(_canonical_json(normalized_binding))
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source database binding is inconsistent"
+            )
+        projection_text = self._verify_projection(paths, binding)
+        try:
+            # Imported lazily because implementation_daemon owns the parser and
+            # imports this bridge.  Invocation happens only after both modules
+            # are fully initialized.
+            from .implementation_daemon import (
+                parse_task_text,
+                task_declared_output_paths,
+            )
+
+            parsed_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                task_header_prefix=self.task_header_prefix,
+            )
+            if len(parsed_tasks) != 1 or parsed_tasks[0].task_id != task_alias:
+                raise DatabasePortalBridgeError(
+                    "Portal accepted-source projection identity is ambiguous"
+                )
+            parsed_task = parsed_tasks[0]
+            identity_metadata = dict(parsed_task.metadata)
+            if parsed_task.canonical_task_key:
+                identity_metadata["canonical task key"] = (
+                    parsed_task.canonical_task_key
+                )
+            if parsed_task.canonical_task_cid:
+                identity_metadata["canonical task cid"] = (
+                    parsed_task.canonical_task_cid
+                )
+            canonical_identity = canonical_task_identity(
+                {
+                    "task_id": parsed_task.task_id,
+                    "title": parsed_task.title,
+                    "outputs": task_declared_output_paths(parsed_task),
+                    "acceptance": parsed_task.acceptance,
+                    "metadata": identity_metadata,
+                },
+                board_namespace=(
+                    parsed_task.board_namespace
+                    or self.board_namespace
+                    or paths.task_projection.name
+                ),
+                source_path=paths.task_projection,
+            )
+        except DatabasePortalBridgeError:
+            raise
+        except Exception as exc:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source projection identity is invalid"
+            ) from exc
+        if self.repo_root is None:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition has no repository authority"
+            )
+        event = candidates[0]
+        merge = event.get("merge_result")
+        if not isinstance(merge, Mapping):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition has no merge result"
+            )
+        baseline = str(event.get("baseline_ref") or "")
+        implementation = str(event.get("implementation_commit") or "")
+        merge_commit = str(merge.get("merge_commit") or "")
+        target_branch = str(merge.get("target_branch") or "")
+        proof = merge.get("integration_commit_proof")
+        invariant = merge.get("post_merge_declared_output_invariant")
+        canonical_task_cid = str(merge.get("canonical_task_cid") or "")
+        canonical_task_key = str(merge.get("canonical_task_key") or "")
+        request_id = str(merge.get("request_id") or "")
+        portal_attempt_number = event.get("attempt")
+        target_repository_id = str(event.get("target_repository_id") or "")
+        expected_repository_id = checkout_repository_id(self.repo_root)
+        if (
+            any(re.fullmatch(r"[0-9a-f]{40}", item) is None for item in (
+                baseline,
+                implementation,
+                merge_commit,
+            ))
+            or not target_branch
+            or not request_id
+            or isinstance(portal_attempt_number, bool)
+            or not isinstance(portal_attempt_number, int)
+            or portal_attempt_number < 1
+            or str(event.get("board_namespace") or "") != self.board_namespace
+            or target_branch != self.merge_target_branch
+            or target_repository_id != expected_repository_id
+            or merge.get("merged") is not True
+            or merge.get("returncode") != 0
+            or str(merge.get("implementation_commit") or "") != implementation
+            or not isinstance(proof, Mapping)
+            or proof.get("passed") is not True
+            or proof.get("implementation_commit") != implementation
+            or proof.get("integration_commit") != merge_commit
+            or proof.get("integration_ref") != merge_commit
+            or proof.get("target_branch") != target_branch
+            or not isinstance(invariant, Mapping)
+            or invariant.get("passed") is not True
+            or invariant.get("repository_ref") != merge_commit
+            or canonical_task_cid != canonical_identity.canonical_task_cid
+            or canonical_task_key != canonical_identity.canonical_task_key
+            or event.get("canonical_task_cid") != canonical_task_cid
+            or event.get("canonical_task_key") != canonical_task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition is inconsistent"
+            )
+        if not callable(merge_request_loader):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition has no merge-queue authority"
+            )
+        try:
+            request = merge_request_loader(request_id)
+            converter = getattr(request, "to_dict", None)
+            request_record = (
+                dict(converter())
+                if callable(converter)
+                else dict(request)
+                if isinstance(request, Mapping)
+                else None
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source merge request is unavailable"
+            ) from exc
+        if not isinstance(request_record, dict):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source merge request is unavailable"
+            )
+        request_metadata = request_record.get("metadata")
+        request_task = (
+            request_metadata.get("task")
+            if isinstance(request_metadata, Mapping)
+            else None
+        )
+        request_task_metadata = (
+            request_task.get("metadata")
+            if isinstance(request_task, Mapping)
+            else None
+        )
+        completion_task_cids = (
+            request_metadata.get("completion_task_cids")
+            if isinstance(request_metadata, Mapping)
+            else None
+        )
+        request_dedupe_key = str(request_record.get("dedupe_key") or "")
+        if (
+            request_record.get("request_id") != request_id
+            or request_record.get("status") != "completed"
+            or request_record.get("task_id") != task_alias
+            or request_record.get("attempt") != portal_attempt_number
+            or request_record.get("commit_sha") != implementation
+            or request_record.get("canonical_task_id") != canonical_task_cid
+            or request_record.get("canonical_task_key") != canonical_task_key
+            or not re.fullmatch(r"[0-9a-f]{64}", request_dedupe_key)
+            or not isinstance(request_metadata, Mapping)
+            or request_metadata.get("baseline_ref") != baseline
+            or request_metadata.get("implementation_commit") != implementation
+            or request_metadata.get("target_binding_schema")
+            != "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            or request_metadata.get("target_repository_id")
+            != target_repository_id
+            or request_metadata.get("target_branch") != target_branch
+            or request_metadata.get("repo_root") != str(self.repo_root)
+            or not isinstance(completion_task_cids, Mapping)
+            or completion_task_cids.get(task_alias) != canonical_task_cid
+            or not isinstance(request_task, Mapping)
+            or request_task.get("task_id") != task_alias
+            or request_task.get("board_namespace") != self.board_namespace
+            or request_task.get("canonical_task_cid") != canonical_task_cid
+            or request_task.get("canonical_task_key") != canonical_task_key
+            or not isinstance(request_task_metadata, Mapping)
+            or request_task_metadata.get("database attempt id")
+            != str(attempt.attempt_id)
+            or request_task_metadata.get("database claim id")
+            != str(attempt.claim_id)
+            or request_task_metadata.get("database task cid") != task_cid
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source merge request is inconsistent"
+            )
+        merge_request_digest = _sha256_bytes(_canonical_json(request_record))
+        git_environment = {
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+
+        def git(*arguments: str) -> bytes:
+            try:
+                completed = subprocess.run(
+                    ["/usr/bin/git", "--no-replace-objects", *arguments],
+                    cwd=self.repo_root,
+                    env=git_environment,
+                    capture_output=True,
+                    check=False,
+                    timeout=10.0,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal accepted-source Git proof is unavailable"
+                ) from exc
+            if completed.returncode != 0:
+                raise DatabasePortalBridgeError(
+                    "Portal accepted-source Git proof failed"
+                )
+            return completed.stdout
+
+        parents = git("rev-list", "--parents", "-n", "1", merge_commit)
+        if parents.decode("ascii").strip().split() != [
+            merge_commit,
+            baseline,
+            implementation,
+        ]:
+            raise DatabasePortalBridgeError(
+                "Portal accepted-source transition is not the exact Git merge"
+            )
+        implementation_tree = git(
+            "rev-parse", f"{implementation}^{{tree}}"
+        ).decode("ascii").strip()
+        merge_tree = git("rev-parse", f"{merge_commit}^{{tree}}").decode(
+            "ascii"
+        ).strip()
+        changed_path_diff_sha256 = _sha256_bytes(
+            git(
+                "diff-tree",
+                "--no-commit-id",
+                "--name-status",
+                "-r",
+                "-z",
+                baseline,
+                merge_commit,
+            )
+        )
+        transition: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
+            "board_namespace": self.board_namespace,
+            "configured_board_admission_cid": self.configured_board_admission_cid,
+            "task_alias": task_alias,
+            "database_task_cid": task_cid,
+            "attempt_id": str(attempt.attempt_id),
+            "attempt_number": int(attempt.attempt_number),
+            "portal_attempt_number": portal_attempt_number,
+            "claim_id": str(attempt.claim_id),
+            "fencing_token": int(attempt.fencing_token),
+            "database_attempt_binding": dict(binding),
+            "canonical_task_cid": canonical_task_cid,
+            "canonical_task_key": canonical_task_key,
+            "request_id": request_id,
+            "merge_request_digest": merge_request_digest,
+            "merge_request_dedupe_key": request_dedupe_key,
+            "target_repository_id": target_repository_id,
+            "baseline_ref": baseline,
+            "implementation_commit": implementation,
+            "implementation_tree": implementation_tree,
+            "merge_commit": merge_commit,
+            "merge_tree": merge_tree,
+            "target_branch": target_branch,
+            "changed_path_diff_sha256": changed_path_diff_sha256,
+            "integration_commit_proof": dict(proof),
+            "declared_output_invariant": dict(invariant),
+            "portal_event_log_sha256": event_log_sha256,
+            "authority": "database_completion_cas_after_portal_and_git_verification",
+            "task_completion_authority": False,
+            "worker_self_approval": False,
+        }
+        transition["transition_cid"] = _sha256_bytes(
+            _canonical_transition_json(transition)
+        )
+        return transition
+
     @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
@@ -674,6 +1173,7 @@ class DatabasePortalExecutionBridge:
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         summaries: Sequence[Mapping[str, Any]],
+        merge_request_loader: Callable[[str], Any] | None = None,
     ) -> dict[str, Any]:
         alias = str(binding.get("task_alias") or "")
         projection_text = self._verify_projection(paths, binding)
@@ -694,9 +1194,23 @@ class DatabasePortalExecutionBridge:
             "events_digest": _sha256_file(paths.events),
             "portal_passes": [dict(item) for item in summaries],
         }
+        accepted_source_transition = self._accepted_source_transition(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+            task_alias=alias,
+            task_cid=str(attempt.task_cid),
+            merge_request_loader=merge_request_loader,
+        )
+        if accepted_source_transition is not None:
+            evidence["accepted_source_transition"] = accepted_source_transition
         evidence_digest = _sha256_bytes(_canonical_json(evidence))
         receipt = {
-            "schema": self.RECEIPT_SCHEMA,
+            "schema": (
+                self.RECEIPT_SCHEMA
+                if accepted_source_transition is not None
+                else DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1
+            ),
             "interface": self.INTERFACE,
             "status": "succeeded",
             "provider": "PortalImplementationDaemon",
@@ -710,6 +1224,8 @@ class DatabasePortalExecutionBridge:
             "evidence_digest": evidence_digest,
             "portal_evidence": evidence,
         }
+        if accepted_source_transition is not None:
+            receipt["accepted_source_transition"] = accepted_source_transition
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
@@ -727,6 +1243,8 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
+        merge_queue = getattr(daemon, "merge_queue", None)
+        merge_request_loader = getattr(merge_queue, "get", None)
         try:
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)
@@ -740,6 +1258,7 @@ class DatabasePortalExecutionBridge:
                         paths=paths,
                         binding=binding,
                         summaries=summaries,
+                        merge_request_loader=merge_request_loader,
                     )
                 raw_result = daemon.run_once()
                 if not isinstance(raw_result, Mapping):
@@ -783,6 +1302,7 @@ class DatabasePortalExecutionBridge:
                 paths=paths,
                 binding=binding,
                 summaries=summaries,
+                merge_request_loader=merge_request_loader,
             )
         finally:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
@@ -791,8 +1311,13 @@ class DatabasePortalExecutionBridge:
 
     @staticmethod
     def _require_accepted_provider(attempt: Any, provider_result: Mapping[str, Any]) -> str:
+        schema = provider_result.get("schema")
         if (
-            provider_result.get("schema") != DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+            schema
+            not in {
+                DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
+                DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+            }
             or provider_result.get("interface") != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
             or provider_result.get("accepted") is not True
             or provider_result.get("status") != "succeeded"
@@ -804,17 +1329,55 @@ class DatabasePortalExecutionBridge:
                 "database effect rejected unaccepted Portal provider evidence"
             )
         digest = str(provider_result.get("evidence_digest") or "")
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        evidence = provider_result.get("portal_evidence")
+        normalized_receipt = dict(provider_result)
+        receipt_id = str(normalized_receipt.pop("receipt_id", "") or "")
+        if (
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+            or not isinstance(evidence, Mapping)
+            or digest != _sha256_bytes(_canonical_json(evidence))
+            or receipt_id != _sha256_bytes(_canonical_json(normalized_receipt))
+        ):
             raise DatabasePortalBridgeError(
                 "database effect rejected malformed Portal evidence identity"
             )
+        transition = provider_result.get("accepted_source_transition")
+        if schema == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1 and transition is not None:
+            raise DatabasePortalBridgeError(
+                "database effect rejected a legacy receipt with a source transition"
+            )
+        if (
+            schema == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+            and not isinstance(transition, Mapping)
+        ):
+            raise DatabasePortalBridgeError(
+                "database effect rejected a source-transition receipt without its transition"
+            )
+        if transition is not None:
+            if not isinstance(transition, Mapping):
+                raise DatabasePortalBridgeError(
+                    "database effect rejected malformed source transition"
+                )
+            normalized = dict(transition)
+            transition_cid = str(normalized.pop("transition_cid", "") or "")
+            if (
+                transition.get("schema")
+                != DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
+                or transition.get("database_task_cid") != str(attempt.task_cid)
+                or transition.get("worker_self_approval") is not False
+                or transition_cid
+                != _sha256_bytes(_canonical_transition_json(normalized))
+            ):
+                raise DatabasePortalBridgeError(
+                    "database effect rejected unbound source transition"
+                )
         return digest
 
     def apply_effect(self, attempt: Any, provider_result: Mapping[str, Any]) -> Mapping[str, Any]:
         """Bind the already-applied Portal effect to the database phase."""
 
         digest = self._require_accepted_provider(attempt, provider_result)
-        return {
+        result = {
             "status": "applied",
             "effect": "portal-supervised-accepted-effect",
             "effect_key": f"portal:{attempt.task_cid}:{attempt.attempt_id}",
@@ -823,6 +1386,11 @@ class DatabasePortalExecutionBridge:
             "portal_receipt_id": str(provider_result.get("receipt_id") or ""),
             "evidence_digest": digest,
         }
+        if provider_result.get("accepted_source_transition") is not None:
+            result["accepted_source_transition"] = dict(
+                provider_result["accepted_source_transition"]
+            )
+        return result
 
     def validate_effect(self, attempt: Any, effect_result: Mapping[str, Any]) -> Mapping[str, Any]:
         """Admit only an exact effect derived from accepted Portal evidence."""
@@ -838,7 +1406,7 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database validation rejected unbound Portal effect evidence"
             )
-        return {
+        result = {
             "outcome": "passed",
             "evidence_digest": digest,
             "argv": ["portal-supervisor-gates"],
@@ -847,12 +1415,19 @@ class DatabasePortalExecutionBridge:
             "attempt_id": str(attempt.attempt_id),
             "portal_receipt_id": str(effect_result.get("portal_receipt_id") or ""),
         }
+        if effect_result.get("accepted_source_transition") is not None:
+            result["accepted_source_transition"] = dict(
+                effect_result["accepted_source_transition"]
+            )
+        return result
 
 
 __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1",
+    "DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",

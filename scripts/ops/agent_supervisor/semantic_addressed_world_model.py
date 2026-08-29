@@ -1951,6 +1951,48 @@ def _quack_args(config: Mapping[str, Any], command: str) -> list[str]:
     ]
 
 
+def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Settle one dead owner's canonical stop before successor sealing."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        recover_stale_state_server,
+    )
+
+    owner = config.get("quack_owner")
+    program = config.get("database_program")
+    if not isinstance(owner, Mapping) or not isinstance(program, Mapping):
+        raise OperatorError("stale Quack recovery lacks configured authority")
+    store_id = str(program.get("store_id") or "")
+    generation = int(program.get("store_generation") or 0)
+    if (
+        str(owner.get("database_path") or "") != store_id
+        or str(owner.get("store_id") or "") != store_id
+        or generation < 1
+    ):
+        raise OperatorError("stale Quack recovery store binding differs")
+    database_uuid = ""
+    for value in reversed(tuple(config.values())):
+        if (
+            isinstance(value, Mapping)
+            and str(value.get("target_store_id") or "") == store_id
+            and int(value.get("target_generation") or 0) == generation
+        ):
+            database_uuid = str(value.get("prior_database_uuid") or "")
+            if database_uuid:
+                break
+    if not database_uuid:
+        raise OperatorError(
+            "stale Quack recovery has no sealed database UUID authority"
+        )
+    return recover_stale_state_server(
+        database_path=REPO_ROOT / str(owner["database_path"]),
+        state_dir=REPO_ROOT / str(owner["state_dir"]),
+        expected_store_id=store_id,
+        expected_generation=generation,
+        expected_database_uuid=database_uuid,
+    )
+
+
 def _owner_connection(path: Path, owner: Mapping[str, Any]):
     """Open the sealed canonical writer without loading or serving Quack."""
 
@@ -3433,7 +3475,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for command in (
         "validate-dependencies", "validate-board", "materialize", "render", "check",
-        "quack-start", "quack-status", "quack-ready", "quack-stop", "preflight", "dry-run",
+        "quack-start", "quack-status", "quack-ready", "quack-stop",
+        "quack-recover-stale", "preflight", "dry-run",
     ):
         sub.add_parser(command)
     launch = sub.add_parser("launch")
@@ -3525,6 +3568,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "quack-start":
             _validate_offline_quack_start(config, config_path)
             return _start_quack(config)
+        if args.command == "quack-recover-stale":
+            return _emit(_recover_stale_quack(config))
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")
             return int(ops.main(_quack_args(config, args.command.removeprefix("quack-"))))

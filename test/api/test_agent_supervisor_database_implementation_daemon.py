@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
@@ -796,6 +797,31 @@ def test_claim_persists_exact_post_cas_control_revision_binding(
         assert binding["control_expected_revision"] == task.revision == 2
         assert str(binding["control_task_projection_cid"]).startswith("bagu")
         assert str(binding["binding_id"]).startswith("bagu")
+    finally:
+        daemon.close()
+
+
+def test_automatic_claim_exclusions_re_resolve_legacy_on_hold_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:on-hold-exclusion")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.ready_tasks(limit=1).tasks[0]
+        original_get = daemon.task_source.get
+
+        def get_with_operator_hold(task_cid: str) -> object:
+            if task_cid == task.task_cid:
+                return SimpleNamespace(
+                    task_cid=task.task_cid,
+                    status="on_hold",
+                )
+            return original_get(task_cid)
+
+        monkeypatch.setattr(daemon.task_source, "get", get_with_operator_hold)
+
+        assert daemon._automatic_claim_exclusions() == {task.task_cid}
     finally:
         daemon.close()
 
@@ -1652,6 +1678,8 @@ def test_runner_builds_database_daemon_without_json_projections(
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--task-prefix",
+            "DQP-",
             "--once",
         ]
     )
@@ -1688,6 +1716,8 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--task-prefix",
+            "DQP-",
             "--once",
         ]
     )

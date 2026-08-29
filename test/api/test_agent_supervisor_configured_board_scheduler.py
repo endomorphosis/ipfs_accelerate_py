@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import stat
@@ -1997,6 +1998,11 @@ def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
         source_head=_git(board.repo_root, "rev-parse", "HEAD").stdout.strip(),
         task_state_snapshots=({"implementation_attempts": {"TEST-E": 3}},),
     )
+    for record in population.all_records:
+        assert re.fullmatch(r"sha256:[0-9a-f]{64}", str(record["task_cid"]))
+        assert record["task_key"] == record["canonical_task_key"]
+        assert str(record["canonical_task_key"]).startswith("task/v1/")
+        assert str(record["canonical_task_cid"]).startswith("baguq")
     assert population.completed_task_ids == ("TEST-A",)
     assert population.attempt_limited_task_ids == ("TEST-E",)
     assert tuple(item["task_id"] for item in population.ready_records) == (

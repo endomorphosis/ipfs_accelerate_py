@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server as quack_state_server_module
 
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
@@ -46,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     listen_uri,
     provider_safe_environment,
     reclaim_stale_owner_marker,
+    recover_stale_state_server,
     sanitize_for_export,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
@@ -427,6 +429,185 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
     assert result["reclaimed"] is False
     assert result["reason"] == "owner_alive"
     assert marker_path.exists()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_dead_ready_owner_recovery_settles_database_and_receipt(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="recovery-test",
+    )
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_456, ticks=77),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+
+    # Rehearse process death: operating-system locks and the database handle
+    # disappear, while the ready marker/status and canonical rows remain.
+    assert server._connection is not None
+    server._connection.close()
+    server._connection = None
+    assert server._owner is not None and server._owner._handle is not None
+    server._owner._handle.close()
+    server._owner._handle = None
+
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=identity.store_id,
+        expected_generation=identity.generation,
+        expected_database_uuid=identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T07:00:00Z",
+    )
+
+    assert receipt["resulting_status"] == "stopped"
+    assert receipt["owner_liveness"] == "dead"
+    assert receipt["task_completion_authority"] is False
+    assert str(receipt["receipt_cid"]).startswith("baguqeera")
+    assert not server.owner_marker_path().exists()
+    status = json.loads(server.status_path().read_text(encoding="utf-8"))
+    assert status["lifecycle"] == "stopped"
+    assert status["identity"]["status"] == "stopped"
+    published = json.loads(
+        (state / "quack-stale-owner-recovery-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert published == receipt
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    connection = open_duckdb_connection(db, prefer_quack=False)
+    try:
+        rows = connection.execute(
+            "SELECT status, stopped_at FROM state_servers WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+        epochs = connection.execute(
+            "SELECT ended_at FROM server_epochs WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [tuple(row[index] for index in range(2)) for row in rows] == [
+        ("stopped", "2026-08-29T07:00:00Z")
+    ]
+    assert [tuple(row[index] for index in range(1)) for row in epochs] == [
+        ("2026-08-29T07:00:00Z",)
+    ]
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("failure_boundary", ("status", "receipt"))
+def test_dead_owner_recovery_replays_after_publication_crash_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_boundary: str,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="recovery-replay-test",
+    )
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:recovery-replay-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_457, ticks=78),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    assert server._connection is not None
+    initial_revision = server._connection.execute(
+        "SELECT revision FROM state_servers WHERE server_id = ?",
+        [identity.server_id],
+    ).fetchone()[0]
+    server._connection.close()
+    server._connection = None
+    assert server._owner is not None and server._owner._handle is not None
+    server._owner._handle.close()
+    server._owner._handle = None
+
+    status_path = server.status_path()
+    receipt_path = state / "quack-stale-owner-recovery-receipt.json"
+    original_atomic_write_json = quack_state_server_module._atomic_write_json
+    failed = {"value": False}
+
+    def fail_once(path: Path, value: object, *, mode: int = 0o600) -> None:
+        target = status_path if failure_boundary == "status" else receipt_path
+        if Path(path) == target and not failed["value"]:
+            failed["value"] = True
+            raise OSError(f"injected {failure_boundary} publication failure")
+        original_atomic_write_json(Path(path), value, mode=mode)
+
+    monkeypatch.setattr(
+        quack_state_server_module,
+        "_atomic_write_json",
+        fail_once,
+    )
+    with pytest.raises(OSError, match="injected"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=state,
+            expected_store_id=identity.store_id,
+            expected_generation=identity.generation,
+            expected_database_uuid=identity.database_uuid,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            stopped_at="2026-08-29T07:30:00Z",
+        )
+
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=identity.store_id,
+        expected_generation=identity.generation,
+        expected_database_uuid=identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T07:30:00Z",
+    )
+    assert failed["value"] is True
+    assert receipt["replay_safe"] is True
+    assert not server.owner_marker_path().exists()
+    assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    connection = open_duckdb_connection(db, prefer_quack=False)
+    try:
+        settled = connection.execute(
+            "SELECT status, stopped_at, revision FROM state_servers "
+            "WHERE server_id = ?",
+            [identity.server_id],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [tuple(row[index] for index in range(3)) for row in settled] == [
+        ("stopped", "2026-08-29T07:30:00Z", initial_revision + 1)
+    ]
 
 
 def test_exclusive_owner_lease_fence_mismatch_on_release(tmp_path: Path) -> None:

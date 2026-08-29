@@ -209,6 +209,7 @@ def _seed(
     root = tmp_path / "repository"
     root.mkdir()
     _git(root, "init", "-q")
+    _git(root, "branch", "-M", "main")
     native_pin = _native_pin()
     authorization = _native_authorization(native_pin)
     authorization_raw = json.dumps(
@@ -264,6 +265,7 @@ def _seed(
             "board_namespace": "test-board-v1",
             "plan_revision": "TEST-PLAN-R2",
             "task_prefix": "TEST-",
+            "merge_target_branch": "main",
             "max_lanes": 2,
             "strict_task_sharding": True,
             "database_program": {
@@ -274,6 +276,7 @@ def _seed(
                 "store_id": "data/control.duckdb",
                 "store_generation": "2",
                 "endpoint_secret_handle": "env://TEST_QUACK_TOKEN",
+                "quack_endpoint": "quack:127.0.0.1:29992",
             },
             "dependency_seal_path": dependency_seal_path,
             "quack_owner": owner_pins,
@@ -431,6 +434,175 @@ def _admission(
     )
 
 
+def _land_test_merge(root: Path) -> tuple[str, str, str]:
+    baseline = _git(root, "rev-parse", "HEAD")
+    _git(root, "checkout", "-q", "-b", "implementation/test-source")
+    output = root / "src/accepted.py"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("ACCEPTED = True\n", encoding="utf-8")
+    _git(root, "add", output.relative_to(root).as_posix())
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "implementation",
+    )
+    implementation = _git(root, "rev-parse", "HEAD")
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "merge",
+        "--no-ff",
+        "-q",
+        "-m",
+        "accepted implementation",
+        implementation,
+    )
+    return baseline, implementation, _git(root, "rev-parse", "HEAD")
+
+
+def _source_transition_authority(
+    root: Path,
+    admission: capsule.ConfiguredBoardLiveCapsuleAdmission,
+    *,
+    baseline: str,
+    implementation: str,
+    merge_commit: str,
+) -> dict[str, object]:
+    task_cid = "sha256:" + "7" * 64
+    attempt_id = "attempt:test-source:1"
+    implementation_tree = _git(root, "rev-parse", f"{implementation}^{{tree}}")
+    merge_tree = _git(root, "rev-parse", f"{merge_commit}^{{tree}}")
+    diff = subprocess.run(
+        [
+            "git",
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "-z",
+            baseline,
+            merge_commit,
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    ).stdout
+    proof = {
+        "passed": True,
+        "implementation_commit": implementation,
+        "integration_commit": merge_commit,
+        "integration_ref": merge_commit,
+        "target_branch": "main",
+    }
+    invariant = {"passed": True, "repository_ref": merge_commit}
+    database_attempt_binding: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-attempt-binding@1"
+        ),
+        "interface": "DatabasePortalExecutionBridge@1",
+        "attempt_id": attempt_id,
+        "claim_id": "claim:test-source:1",
+        "task_cid": task_cid,
+        "task_alias": "TEST-001",
+        "goal_cid": "goal:test-source",
+        "plan_cid": "plan:test-source",
+        "task_revision": 1,
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "lease_id": "lease:test-source:1",
+        "task_body_digest": "sha256:" + "3" * 64,
+        "projection_seed_digest": "sha256:" + "4" * 64,
+        "projection_immutable_digest": "sha256:" + "5" * 64,
+        "authoritative_task_store": "duckdb",
+        "projection_authority": False,
+    }
+    database_attempt_binding["binding_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            database_attempt_binding,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    transition: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+        ),
+        "board_namespace": "test-board-v1",
+        "configured_board_admission_cid": admission.admission_cid,
+        "task_alias": "TEST-001",
+        "database_task_cid": task_cid,
+        "attempt_id": attempt_id,
+        "attempt_number": 1,
+        "portal_attempt_number": 1,
+        "claim_id": "claim:test-source:1",
+        "fencing_token": 1,
+        "database_attempt_binding": database_attempt_binding,
+        "canonical_task_cid": "baguqeera" + "a" * 48,
+        "canonical_task_key": "task/v1/" + "1" * 64,
+        "request_id": "request:test-source:1",
+        "merge_request_digest": "sha256:" + "6" * 64,
+        "merge_request_dedupe_key": "9" * 64,
+        "target_repository_id": capsule.checkout_repository_id(root),
+        "baseline_ref": baseline,
+        "implementation_commit": implementation,
+        "implementation_tree": implementation_tree,
+        "merge_commit": merge_commit,
+        "merge_tree": merge_tree,
+        "target_branch": "main",
+        "changed_path_diff_sha256": (
+            "sha256:" + hashlib.sha256(diff).hexdigest()
+        ),
+        "integration_commit_proof": proof,
+        "declared_output_invariant": invariant,
+        "portal_event_log_sha256": "sha256:" + "8" * 64,
+        "authority": (
+            "database_completion_cas_after_portal_and_git_verification"
+        ),
+        "task_completion_authority": False,
+        "worker_self_approval": False,
+    }
+    transition["transition_cid"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            transition,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    completion = {
+        "operation": "database_complete",
+        "validation": {
+            "outcome": "passed",
+            "task_cid": task_cid,
+            "attempt_id": attempt_id,
+            "accepted_source_transition": transition,
+        },
+    }
+    return {
+        "task_cid": task_cid,
+        "task_alias": "TEST-001",
+        "status": "completed",
+        "revision": 2,
+        "completion_receipt": completion,
+        "transition": transition,
+        "store_generation": 2,
+        "database_uuid": "00000000-0000-4000-8000-000000000002",
+    }
+
+
 def _native_launch() -> SimpleNamespace:
     native_pin = _native_pin()
     authorization = _native_authorization(native_pin)
@@ -530,6 +702,110 @@ def test_admission_binds_board_source_controls_and_quack(
         capsule.parse_configured_board_live_capsule_admission(malformed)
 
     assert admission.admission_cid.startswith("baguqeera")
+
+
+def test_accepted_source_exact_pin_needs_no_transition_authority(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        transition_loader=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("exact source must not query transition authority")
+        ),
+    )
+
+    assert receipt["kind"] == "exact"
+    assert receipt["source_head"] == receipt["current_head"]
+    assert receipt["task_completion_authority"] is False
+    assert receipt["merge_commits"] == []
+
+
+def test_accepted_source_admits_only_exact_database_receipted_merge(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    baseline, implementation, merge_commit = _land_test_merge(root)
+    authority = _source_transition_authority(
+        root,
+        admission,
+        baseline=baseline,
+        implementation=implementation,
+        merge_commit=merge_commit,
+    )
+
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        transition_loader=lambda requested, _scheduler: (
+            authority
+            if requested == merge_commit
+            else (_ for _ in ()).throw(AssertionError("unexpected merge"))
+        ),
+    )
+
+    assert receipt["kind"] == "accepted_supervisor_merge_successor"
+    assert receipt["source_head"] == baseline
+    assert receipt["current_head"] == merge_commit
+    assert receipt["merge_commits"] == [merge_commit]
+    assert receipt["implementation_commits"] == [implementation]
+    assert receipt["task_aliases"] == ["TEST-001"]
+    assert receipt["database_task_cids"] == [authority["task_cid"]]
+    assert receipt["task_completion_authority"] is False
+
+    forged = json.loads(json.dumps(authority))
+    forged["transition"]["target_branch"] = "foreign"
+    forged["completion_receipt"]["validation"][
+        "accepted_source_transition"
+    ] = forged["transition"]
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="canonical source transition is inconsistent",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+            transition_loader=lambda *_args: forged,
+        )
+
+
+def test_accepted_source_rejects_unreceipted_direct_descendant(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    output = root / "src/unreceipted.py"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("UNRECEIPTED = True\n", encoding="utf-8")
+    _commit_controls(root, "unreceipted direct commit")
+
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="non-supervisor merge",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+            transition_loader=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("non-merge must fail before authority lookup")
+            ),
+        )
 
 
 def test_admission_rejects_dirty_or_head_divergent_controls(
@@ -977,6 +1253,10 @@ def test_scheduler_runner_and_daemon_preserve_one_live_capsule(
     inherited_admission = capsule.parse_configured_board_live_capsule_admission(
         parsed_runner.configured_board_live_admission_json
     )
+    accepted_source_receipt = capsule.verify_configured_board_accepted_source(
+        inherited_admission,
+        repo_root=root,
+    )
     monkeypatch.setattr(
         runner,
         "verify_configured_board_live_capsule",
@@ -985,6 +1265,11 @@ def test_scheduler_runner_and_daemon_preserve_one_live_capsule(
             if isinstance(value, capsule.ConfiguredBoardLiveCapsuleAdmission)
             else capsule.parse_configured_board_live_capsule_admission(value)
         ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "verify_configured_board_accepted_source",
+        lambda _value, **_kwargs: accepted_source_receipt,
     )
     monkeypatch.setattr(
         runner,
@@ -1067,6 +1352,7 @@ def test_scheduler_runner_and_daemon_preserve_one_live_capsule(
 
     supervisor = object.__new__(implementation.PortalImplementationSupervisor)
     supervisor.config = supervisor_config
+    supervisor.board_namespace = "test-board-v1"
     daemon_command = supervisor._build_daemon_command()
     assert daemon_command[1:5] == ["-I", "-S", "-B", "-c"]
     assert scheduled_admission_json in daemon_command

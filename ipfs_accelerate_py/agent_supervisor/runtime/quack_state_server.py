@@ -95,6 +95,9 @@ REMOTE_BIND_POLICY_SCHEMA: Final = (
 OWNER_MARKER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/state-owner-marker@1"
 )
+STALE_OWNER_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/quack-stale-owner-recovery@1"
+)
 QUACK_STATE_SERVER_VERSION: Final[int] = 1
 
 DEFAULT_LOOPBACK_HOST: Final = "127.0.0.1"
@@ -328,6 +331,86 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _read_stable_regular_json(
+    path: Path,
+    *,
+    noun: str,
+    maximum_bytes: int = 4 * 1024 * 1024,
+) -> dict[str, Any]:
+    """Read one privileged control JSON file through a stable no-follow fd."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise QuackStateServerControlError(
+            f"{noun} is unavailable"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > maximum_bytes
+        ):
+            raise QuackStateServerControlError(
+                f"{noun} is not a bounded regular file"
+            )
+        raw = bytearray()
+        while len(raw) <= maximum_bytes:
+            block = os.read(
+                descriptor,
+                min(65_536, maximum_bytes + 1 - len(raw)),
+            )
+            if not block:
+                break
+            raw.extend(block)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise QuackStateServerControlError(f"{noun} is unreadable") from exc
+    finally:
+        os.close(descriptor)
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+        or len(raw) != before.st_size
+        or len(raw) > maximum_bytes
+    ):
+        raise QuackStateServerControlError(f"{noun} changed while read")
+
+    def reject_duplicates(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate JSON key {key!r}")
+            value[key] = item
+        return value
+
+    try:
+        payload = json.loads(
+            bytes(raw).decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"nonfinite JSON constant: {value}")
+            ),
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackStateServerControlError(f"{noun} is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise QuackStateServerControlError(f"{noun} is not a JSON object")
+    return payload
 
 
 def _contains_token_material(value: Any, token: str | None) -> bool:
@@ -2271,6 +2354,378 @@ def reclaim_stale_owner_marker(
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             handle.close()
+
+
+def recover_stale_state_server(
+    *,
+    database_path: Path,
+    state_dir: Path,
+    expected_store_id: str,
+    expected_generation: int,
+    expected_database_uuid: str,
+    liveness: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    stopped_at: str | None = None,
+) -> dict[str, Any]:
+    """Settle a process-dead owner's canonical stop bookkeeping exactly once.
+
+    This is an operator recovery path, not ordinary shutdown.  It requires a
+    valid owner marker, a matching published status identity, a proved-dead
+    process birth, the exclusive owner lock, and exact canonical database
+    rows.  It updates only the rows written by normal ``stop()``, publishes a
+    stopped status projection, removes the stale marker, and writes its
+    content-addressed recovery receipt last.
+    """
+
+    database = Path(database_path).resolve(strict=True)
+    runtime = Path(state_dir).resolve(strict=True)
+    marker_path = database.with_name(f".{database.name}.state-owner.json")
+    lock_path = database.with_name(f".{database.name}.state-owner.lock")
+    status_path = runtime / "quack-state-server.status.json"
+    stop_path = runtime / "quack-state-server.stop"
+    receipt_path = runtime / "quack-stale-owner-recovery-receipt.json"
+    try:
+        database_stat = database.lstat()
+    except OSError as exc:
+        raise QuackStateServerControlError(
+            "stale-owner recovery database is unavailable"
+        ) from exc
+    if (
+        not stat_module.S_ISREG(database_stat.st_mode)
+        or database_stat.st_nlink != 1
+    ):
+        raise QuackStateServerControlError(
+            "stale-owner recovery database is not a single-link regular file"
+        )
+
+    try:
+        marker_path.lstat()
+    except FileNotFoundError:
+        marker_payload: dict[str, Any] | None = None
+        marker: OwnerMarker | None = None
+    except OSError as exc:
+        raise QuackStateServerControlError(
+            "stale-owner recovery marker is unavailable"
+        ) from exc
+    else:
+        marker_payload = _read_stable_regular_json(
+            marker_path,
+            noun="stale-owner recovery marker",
+        )
+        try:
+            marker = OwnerMarker.from_dict(marker_payload)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise QuackStateServerControlError(
+                "stale-owner recovery marker is invalid"
+            ) from exc
+
+    status_payload = _read_stable_regular_json(
+        status_path,
+        noun="stale-owner recovery status",
+    )
+    identity_payload = status_payload.get("identity")
+    if not isinstance(identity_payload, Mapping):
+        raise QuackStateServerControlError(
+            "stale-owner recovery status has no identity"
+        )
+    try:
+        identity = StateServerIdentity(
+            server_id=str(identity_payload.get("server_id") or ""),
+            store_id=str(identity_payload.get("store_id") or ""),
+            database_uuid=str(identity_payload.get("database_uuid") or ""),
+            schema_revision=int(identity_payload.get("schema_revision") or 0),
+            schema_fingerprint=str(
+                identity_payload.get("schema_fingerprint") or ""
+            ),
+            generation=int(identity_payload.get("generation") or 0),
+            fence_epoch=int(identity_payload.get("fence_epoch") or 0),
+            revision=int(identity_payload.get("revision") or 0),
+            process_birth=ProcessBirthIdentity.from_dict(
+                identity_payload.get("process_birth")
+            ),
+            listen_uri=str(identity_payload.get("listen_uri") or ""),
+            extension_fingerprint=str(
+                identity_payload.get("extension_fingerprint") or ""
+            ),
+            credential_generation=int(
+                identity_payload.get("credential_generation") or 0
+            ),
+            secret_handle=str(identity_payload.get("secret_handle") or ""),
+            repository_id=str(identity_payload.get("repository_id") or ""),
+            startup_epoch=int(identity_payload.get("startup_epoch") or 0),
+            started_at=str(identity_payload.get("started_at") or ""),
+            status=str(identity_payload.get("status") or ""),
+        )
+    except (TypeError, ValueError, KeyError) as exc:
+        raise QuackStateServerControlError(
+            "stale-owner recovery status identity is invalid"
+        ) from exc
+    lifecycle = str(status_payload.get("lifecycle") or "")
+    recovery_projection = status_payload.get("recovered_stale_owner") is True
+    if (
+        lifecycle not in {ServerLifecycle.READY.value, ServerLifecycle.STOPPED.value}
+        or identity.status != lifecycle
+        or str(status_payload.get("database_path") or "") != str(database)
+        or str(status_payload.get("state_dir") or "") != str(runtime)
+        or identity.store_id != str(expected_store_id)
+        or identity.generation != int(expected_generation)
+        or identity.database_uuid != str(expected_database_uuid)
+        or (lifecycle == ServerLifecycle.STOPPED.value and not recovery_projection)
+        or (marker is None and not recovery_projection)
+    ):
+        raise QuackStateServerControlError(
+            "stale-owner recovery identity binding differs"
+        )
+    if marker is not None and (
+        marker.server_id != identity.server_id
+        or marker.process_birth != identity.process_birth
+        or marker.generation != identity.generation
+        or Path(marker.database_path).resolve() != database
+    ):
+        raise QuackStateServerControlError(
+            "stale-owner recovery marker binding differs"
+        )
+    liveness_probe = liveness or owner_liveness
+    if liveness_probe(identity.process_birth) is not OwnerLiveness.DEAD:
+        raise QuackStateServerControlError(
+            "stale-owner recovery requires proved-dead process birth"
+        )
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_flags = (
+        os.O_RDWR
+        | os.O_CREAT
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        lock_descriptor = os.open(lock_path, lock_flags, 0o600)
+    except OSError as exc:
+        raise QuackStateServerControlError(
+            "stale-owner recovery lock is unavailable"
+        ) from exc
+    lock_handle = os.fdopen(lock_descriptor, "a+b", closefd=True)
+    try:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise QuackStateServerControlError(
+                "stale-owner recovery owner lock is held"
+            ) from exc
+        if liveness_probe(identity.process_birth) is not OwnerLiveness.DEAD:
+            raise QuackStateServerControlError(
+                "stale-owner process liveness changed under lock"
+            )
+        current_database_stat = database.lstat()
+        database_identity_fields = ("st_dev", "st_ino", "st_mode", "st_nlink")
+        if any(
+            getattr(database_stat, field) != getattr(current_database_stat, field)
+            for field in database_identity_fields
+        ):
+            raise QuackStateServerControlError(
+                "stale-owner recovery database changed under lock"
+            )
+        if (
+            _read_stable_regular_json(
+                status_path,
+                noun="stale-owner recovery status",
+            )
+            != status_payload
+        ):
+            raise QuackStateServerControlError(
+                "stale-owner status changed under lock"
+            )
+        if marker_payload is not None:
+            if (
+                _read_stable_regular_json(
+                    marker_path,
+                    noun="stale-owner recovery marker",
+                )
+                != marker_payload
+            ):
+                raise QuackStateServerControlError(
+                    "stale-owner marker changed under lock"
+                )
+        else:
+            try:
+                marker_path.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise QuackStateServerControlError(
+                    "stale-owner marker appeared under lock"
+                )
+
+        connection = open_duckdb_connection(
+            database,
+            prefer_quack=False,
+            timeout_seconds=5.0,
+            memory_limit="256MB",
+            threads=1,
+        )
+        stop_time = ""
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            rows = connection.execute(
+                "SELECT store_id, database_uuid, process_birth_id, generation, "
+                "status, stopped_at, revision FROM state_servers "
+                "WHERE server_id = ?",
+                [identity.server_id],
+            ).fetchall()
+            generation_rows = connection.execute(
+                "SELECT database_uuid, birth_id FROM store_generations "
+                "WHERE generation = ?",
+                [identity.generation],
+            ).fetchall()
+            epoch_rows = connection.execute(
+                "SELECT ended_at FROM server_epochs WHERE server_id = ? "
+                "AND epoch = ?",
+                [identity.server_id, identity.startup_epoch or identity.generation],
+            ).fetchall()
+            if (
+                len(rows) != 1
+                or tuple(rows[0][index] for index in range(4))
+                != (
+                    identity.store_id,
+                    identity.database_uuid,
+                    identity.process_birth_id,
+                    identity.generation,
+                )
+                or len(generation_rows) != 1
+                or tuple(generation_rows[0][index] for index in range(2))
+                != (identity.database_uuid, identity.process_birth_id)
+                or len(epoch_rows) != 1
+            ):
+                raise QuackStateServerControlError(
+                    "stale-owner recovery canonical rows differ"
+                )
+            row_status = str(rows[0][4] or "")
+            row_stopped_at = str(rows[0][5] or "")
+            prior_revision = int(rows[0][6])
+            if row_status == ServerLifecycle.READY.value:
+                if rows[0][5] is not None or epoch_rows[0][0] is not None:
+                    raise QuackStateServerControlError(
+                        "stale-owner ready bookkeeping is inconsistent"
+                    )
+                stop_time = str(stopped_at or _utc_iso())
+                connection.execute(
+                    "UPDATE state_servers SET status = 'stopped', stopped_at = ?, "
+                    "revision = revision + 1 WHERE server_id = ? AND generation = ? "
+                    "AND status = 'ready' AND stopped_at IS NULL AND revision = ?",
+                    [
+                        stop_time,
+                        identity.server_id,
+                        identity.generation,
+                        prior_revision,
+                    ],
+                )
+                connection.execute(
+                    "UPDATE server_epochs SET ended_at = ? WHERE server_id = ? "
+                    "AND epoch = ? AND ended_at IS NULL",
+                    [
+                        stop_time,
+                        identity.server_id,
+                        identity.startup_epoch or identity.generation,
+                    ],
+                )
+                expected_revision = prior_revision + 1
+            elif row_status == ServerLifecycle.STOPPED.value:
+                stop_time = row_stopped_at
+                if (
+                    not stop_time
+                    or str(epoch_rows[0][0] or "") != stop_time
+                    or (stopped_at is not None and str(stopped_at) != stop_time)
+                ):
+                    raise QuackStateServerControlError(
+                        "stale-owner settled bookkeeping is inconsistent"
+                    )
+                expected_revision = prior_revision
+            else:
+                raise QuackStateServerControlError(
+                    "stale-owner recovery canonical status differs"
+                )
+            settled = connection.execute(
+                "SELECT status, stopped_at, revision FROM state_servers "
+                "WHERE server_id = ? AND generation = ?",
+                [identity.server_id, identity.generation],
+            ).fetchall()
+            settled_epochs = connection.execute(
+                "SELECT ended_at FROM server_epochs WHERE server_id = ? "
+                "AND epoch = ?",
+                [identity.server_id, identity.startup_epoch or identity.generation],
+            ).fetchall()
+            if (
+                len(settled) != 1
+                or tuple(settled[0][index] for index in range(3))
+                != ("stopped", stop_time, expected_revision)
+                or len(settled_epochs) != 1
+                or settled_epochs[0][0] != stop_time
+            ):
+                raise QuackStateServerControlError(
+                    "stale-owner recovery stop CAS failed"
+                )
+            connection.execute("COMMIT")
+            connection.execute("CHECKPOINT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            connection.close()
+
+        stopped_identity = identity.with_status("stopped")
+        stopped_status = dict(status_payload)
+        stopped_status["lifecycle"] = ServerLifecycle.STOPPED.value
+        stopped_status["identity"] = stopped_identity.to_dict()
+        stopped_status["recovered_stale_owner"] = True
+        stopped_status["recovery_stopped_at"] = stop_time
+        _atomic_write_json(status_path, stopped_status, mode=0o600)
+        if marker_payload is not None:
+            try:
+                marker_path.unlink()
+            except FileNotFoundError as exc:
+                raise QuackStateServerControlError(
+                    "stale-owner marker disappeared before recovery publication"
+                ) from exc
+        try:
+            stop_path.unlink()
+        except FileNotFoundError:
+            pass
+        receipt: dict[str, Any] = {
+            "schema": STALE_OWNER_RECOVERY_SCHEMA,
+            "server_id": identity.server_id,
+            "store_id": identity.store_id,
+            "database_uuid": identity.database_uuid,
+            "generation": identity.generation,
+            "process_birth_id": identity.process_birth_id,
+            "owner_liveness": OwnerLiveness.DEAD.value,
+            "prior_status": ServerLifecycle.READY.value,
+            "resulting_status": ServerLifecycle.STOPPED.value,
+            "stopped_at": stop_time,
+            "database_bookkeeping_settled": True,
+            "owner_marker_removed": True,
+            "replay_safe": True,
+            "task_completion_authority": False,
+        }
+        receipt["receipt_cid"] = content_identity(receipt)
+        if receipt_path.exists():
+            published = _read_stable_regular_json(
+                receipt_path,
+                noun="stale-owner recovery receipt",
+            )
+            if published != receipt:
+                raise QuackStateServerControlError(
+                    "stale-owner recovery receipt conflicts"
+                )
+            return receipt
+        _atomic_write_json(receipt_path, receipt, mode=0o600)
+        return receipt
+    finally:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_handle.close()
 
 
 def build_server(

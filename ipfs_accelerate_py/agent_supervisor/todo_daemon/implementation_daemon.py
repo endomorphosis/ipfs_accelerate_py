@@ -68064,6 +68064,8 @@ class DatabaseImplementationDaemon:
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
 
+        return False
+
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
         try:
@@ -68784,17 +68786,30 @@ class DatabaseImplementationDaemon:
             "blocked",
             "complete",
             "done",
-            "rejected",
             "on_hold",
+            "rejected",
         }
+        # DuckDB stores the closed canonical spelling ``blocked`` for an
+        # operator hold, while legacy/non-DuckDB task sources may still expose
+        # ``on_hold``.  Keep the indexed query within the DuckDB closed status
+        # vocabulary and re-resolve only the already-bounded ready candidates
+        # so a stale coordination projection cannot resurrect the legacy form.
+        query_statuses = terminal_control_statuses - {"on_hold"}
         excluded.update(
             str(task.task_cid)
             for task in self.task_source.list_tasks(
+                status=tuple(sorted(query_statuses)),
                 limit=TASK_SOURCE_QUERY_LIMIT
             ).tasks
-            if str(task.status or "").strip().lower()
-            in terminal_control_statuses
         )
+        for projected in ready.tasks:
+            canonical = self.task_source.get(projected.task_cid)
+            if (
+                canonical is not None
+                and str(canonical.status or "").strip().lower()
+                in terminal_control_statuses
+            ):
+                excluded.add(str(projected.task_cid))
         # A quarantine is the fail-closed terminal for an attempt whose exact
         # cross-store settlement could not be constructed or admitted.  Its
         # coordination lease may later expire, but elapsed time is not new
