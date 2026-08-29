@@ -23637,8 +23637,10 @@ def _assert_m16_prior_anchor(
 
     with tempfile.TemporaryDirectory(prefix="sawm-r2-m16-prior-", dir="/tmp") as td:
         control_copy = Path(td) / "control.duckdb"
+        replay_copy = Path(td) / "control.replay.duckdb"
         coordination_copy = Path(td) / "control.coordination.duckdb"
         shutil.copyfile(control, control_copy)
+        shutil.copyfile(control, replay_copy)
         shutil.copyfile(coordination, coordination_copy)
         connection = duckdb.connect(str(control_copy), read_only=True)
         try:
@@ -23687,11 +23689,18 @@ def _assert_m16_prior_anchor(
                     != dict(_M16_FAILURE_RECEIPTS[alias])
                     for alias, task in tasks.items()
                 )
-                or not source.projection_matches_events()
             ):
                 raise MigrationRequired("stopped M15 logical authority differs")
         finally:
             source.close()
+        # ``projection_matches_events`` intentionally rebuilds projections.
+        # Run that recovery check on its own disposable copy so the pristine
+        # predecessor copy remains suitable for the exact digests below.
+        replay_source = DatabaseTaskSource(replay_copy, install_schema=False)
+        try:
+            projection_matches_events = replay_source.projection_matches_events()
+        finally:
+            replay_source.close()
         projection = read_coordination_registry_projection(coordination_copy)
         coordination_db = duckdb.connect(str(coordination_copy), read_only=True)
         try:
@@ -23729,6 +23738,7 @@ def _assert_m16_prior_anchor(
                 completions.get(str(value["task_cid"])) != dict(value)
                 for value in _M16_FAILURE_RECEIPTS.values()
             )
+            or not projection_matches_events
             or _semantic_authority_digest(control_copy)
             != authority["prior_semantic_authority_digest"]
             or _frozen_base_authority_digest(control_copy)

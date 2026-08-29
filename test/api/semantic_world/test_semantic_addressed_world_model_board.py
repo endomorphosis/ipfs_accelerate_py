@@ -3816,6 +3816,29 @@ def test_m16_disposable_stage_preserves_failures_and_rearms_exactly(
         )
 
 
+def test_m16_prior_anchor_is_verified_without_replay_mutation() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_prior_anchor_test",
+    )
+    authority = materializer._expected_m16_accepted_source_retry_authority()
+    prior_control = REPO_ROOT / authority["prior_store_id"]
+    prior_coordination = REPO_ROOT / authority["prior_coordination_store_id"]
+    before = (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+
+    assert materializer._assert_m16_prior_anchor(REPO_ROOT, authority) == (
+        prior_control,
+        prior_coordination,
+    )
+    assert (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    ) == before
+
+
 def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
