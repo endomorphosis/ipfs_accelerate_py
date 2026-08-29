@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,59 @@ def test_preview_is_effect_free() -> None:
     assert obs.state == "preview"
     assert obs.values.get("effect_applied") is False
     assert "Improve validation" not in json.dumps(obs.to_dict())
+
+
+def test_prompt_preview_rejects_scanner_program_root_mismatch_before_planning() -> None:
+    """Observed scan identity may not be rewritten to match a stale request."""
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+        PromptSupervisorService,
+        PromptWorkflowStaleRootError,
+    )
+    from test.api.test_agent_supervisor_prompt_goal_planner import _request, _scan
+
+    request = _request()
+    mismatched_scan = replace(
+        _scan(request),
+        program_root=_cid("different-observed-program-root"),
+    )
+
+    class _MismatchedScanner:
+        calls = 0
+
+        def scan(self, _request_value: object) -> object:
+            self.calls += 1
+            return mismatched_scan
+
+    class _ForbiddenPlanner:
+        calls = 0
+
+        def plan(self, *_args: object, **_kwargs: object) -> object:
+            self.calls += 1
+            raise AssertionError("planner must not see a stale program root")
+
+    class _ForbiddenAdmission:
+        calls = 0
+
+        def admit(self, *_args: object, **_kwargs: object) -> object:
+            self.calls += 1
+            raise AssertionError("admission must not see a stale program root")
+
+    scanner = _MismatchedScanner()
+    planner = _ForbiddenPlanner()
+    admission = _ForbiddenAdmission()
+    service = PromptSupervisorService(
+        scanner=scanner,
+        planner=planner,
+        admission=admission,
+    )
+
+    with pytest.raises(PromptWorkflowStaleRootError, match="program root"):
+        service.preview(request)
+
+    assert scanner.calls == 1
+    assert planner.calls == 0
+    assert admission.calls == 0
 
 
 def test_run_without_bound_runtime_is_typed_unavailable() -> None:
