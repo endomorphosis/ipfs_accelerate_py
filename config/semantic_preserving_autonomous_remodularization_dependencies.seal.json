@@ -2,7 +2,7 @@
   "bootstrap_runtime_file_sha256": {
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "e23fa4eb12a48bc40239b6ff32c33eecc165966c264caf351037ac2ecd9dbc21",
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "ef5722ff8d1e47765ada85e5058736bb3cd66bcf47e0ab049a118dfd0b10f84d",
-    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "4b064b4755596a11f8a8a61b99b8f91066de4326b080222ee800e8274ef5a570",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "e5a3a943c1d84c4c09e99cdb3978b58615f5f380faf1129be88198cc9d989412",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "d110e0303f02067aeee3e9f163b2077415fee82ddebb82a57c2f9d6a407cd9ea",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "c7cc427782b72e2b0dd4284a32b6d27eb433f4c74ac00199b6f606e733e71c1e",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "eae6b5833bd077f346c28ba4da9b1c4ce62cd9d5d917e821112a26a6ee38d54a",
@@ -485,7 +485,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:425ac9a387bbe03ecb75508421ed5ffbdaa179b5824cdf124d333b86f3e683cf",
+  "seal_cid": "sha256:8bac3f1689bed6334345f83cd3dd85b05990911586c3f91940c98eaad70b1532",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",
