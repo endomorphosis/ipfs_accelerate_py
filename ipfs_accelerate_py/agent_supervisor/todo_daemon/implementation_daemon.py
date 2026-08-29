@@ -70150,13 +70150,28 @@ class DatabaseImplementationDaemon:
         ):
             callback_owner = getattr(callback, "__self__", None)
             recovery = getattr(callback_owner, "recover_provider_result", None)
-            recovered = recovery(attempt) if callable(recovery) else None
-            if recovered is None:
+            try:
+                recovered = recovery(attempt) if callable(recovery) else None
+                if recovered is None:
+                    raise DatabaseImplementationProviderDispatchError(
+                        "provider dispatch outcome is unknown and has no exact "
+                        "durable terminal evidence"
+                    )
+                result = dict(recovered)
+                if self.require_real_execution and (
+                    str(result.get("status") or "").strip().lower()
+                    in {"", "noop"}
+                    or result.get("accepted") is not True
+                ):
+                    raise DatabaseImplementationProviderDispatchError(
+                        "provider recovery returned unaccepted terminal evidence"
+                    )
+            except DatabaseImplementationProviderDispatchError:
+                raise
+            except Exception as exc:
                 raise DatabaseImplementationProviderDispatchError(
-                    "provider dispatch outcome is unknown and has no exact "
-                    "durable terminal evidence"
-                )
-            result = dict(recovered)
+                    "provider recovery rejected corrupt or mismatched durable evidence"
+                ) from exc
             recovered_from_dispatch = True
         if callback is None:
             if self.require_real_execution:

@@ -593,8 +593,11 @@ def test_lost_portal_provider_return_recovers_without_reimplementation(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("recovery_case", ["absent", "corrupt", "unaccepted"])
 def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recovery_case: str,
 ) -> None:
     class PortalMustNotRun:
         def __init__(self, **_kwargs: object) -> None:
@@ -629,7 +632,7 @@ def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
         require_real_execution=True,
     )
     try:
-        bind_database_portal_execution_from_args(
+        bridge = bind_database_portal_execution_from_args(
             daemon,
             args,
             repo_root=tmp_path,
@@ -651,6 +654,23 @@ def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
         )
         attempt = daemon.claim_next()
         assert attempt is not None
+        assert isinstance(bridge, DatabasePortalExecutionBridge)
+        if recovery_case == "corrupt":
+            record = daemon.task_source.get_task(attempt.task_cid)
+            assert record is not None
+            paths, _binding = bridge._ensure_attempt_projection(attempt, record)
+            corrupt = json.loads(paths.binding.read_text(encoding="utf-8"))
+            corrupt["fencing_token"] = int(corrupt["fencing_token"]) + 1
+            paths.binding.write_text(
+                json.dumps(corrupt, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        elif recovery_case == "unaccepted":
+            monkeypatch.setattr(
+                bridge,
+                "recover_provider_result",
+                lambda _attempt: {"status": "succeeded", "accepted": False},
+            )
         daemon._begin_callback_dispatch(
             attempt,
             dispatch_kind="provider",
@@ -660,13 +680,18 @@ def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
         result = daemon.run_once()["implementation_result"]
         assert result["status"] == "retry_exhausted"
         assert result["retry_exhausted"] is True
-        assert "no exact durable terminal evidence" in result["reason"]
+        assert result["reason"] in {
+            "provider dispatch outcome is unknown and has no exact durable terminal evidence",
+            "provider recovery rejected corrupt or mismatched durable evidence",
+            "provider recovery returned unaccepted terminal evidence",
+        }
         task = daemon.task_source.get_task("task:cid:pctdd-001")
         assert task is not None and task.status == "blocked"
         assert task.body["completion_receipt"]["forced_block"] is True
         assert task.body["completion_receipt"]["reason"] == (
             "provider_dispatch_outcome_unknown"
         )
+        assert daemon.run_once()["implementation_result"] is None
     finally:
         daemon.close()
 
