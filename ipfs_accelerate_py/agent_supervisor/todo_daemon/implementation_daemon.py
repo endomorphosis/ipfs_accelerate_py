@@ -68965,6 +68965,8 @@ class DatabaseImplementationDaemon:
             "retry_exhausted": bool(
                 retry_cap > 0 and used >= retry_cap
             ),
+            "process_instance_id": self.process_instance_id,
+            "owner_session_id": self.owner_session_id,
         }
         if attempt is not None:
             receipt.update(
@@ -69271,7 +69273,8 @@ class DatabaseImplementationDaemon:
             if not receipt.get("forced_block"):
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
-            if blocking_session and blocking_session == self.owner_session_id:
+            blocking_process = str(receipt.get("process_instance_id") or "")
+            if blocking_process and blocking_process == self.process_instance_id:
                 continue
             if str(task.task_cid) in running_cids:
                 continue
