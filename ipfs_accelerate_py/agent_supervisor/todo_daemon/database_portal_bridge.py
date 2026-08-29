@@ -531,8 +531,65 @@ class DatabasePortalExecutionBridge:
             )
         return text
 
+    def _projection_task_identity(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        projection_text: str | None = None,
+    ) -> dict[str, str]:
+        """Return the current Portal authority's identity for the sealed task.
+
+        Importing the parser locally avoids a module-import cycle: the Portal
+        daemon imports this bridge only while constructing a database-backed
+        execution route.  Parsing the attempt-local projection is important;
+        reproducing the identity here would create a second task-identity
+        authority and could drift from the completion event producer.
+        """
+
+        from .implementation_daemon import parse_task_text
+
+        text = (
+            projection_text
+            if projection_text is not None
+            else self._verify_projection(paths, binding)
+        )
+        alias = str(binding.get("task_alias") or "")
+        try:
+            tasks = parse_task_text(
+                text,
+                path=paths.task_projection,
+                # The database claim already chose one exact alias.  Parsing
+                # by that alias is stricter than a board-wide family prefix
+                # and also works for direct bridge users whose outer parser
+                # prefix is unrelated to the claimed task family.
+                task_header_prefix=f"## {alias}",
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal task projection identity is malformed"
+            ) from exc
+        if len(tasks) != 1 or tasks[0].task_id != alias:
+            raise DatabasePortalBridgeError(
+                "Portal task projection identity does not match the claimed task"
+            )
+        task = tasks[0]
+        identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": str(task.canonical_task_key or ""),
+            "canonical_task_cid": str(task.canonical_task_cid or ""),
+            "board_namespace": str(task.board_namespace or ""),
+        }
+        if any(not value for value in identity.values()):
+            raise DatabasePortalBridgeError(
+                "Portal task projection lacks a complete canonical identity"
+            )
+        return identity
+
     @staticmethod
-    def _has_completion_event(paths: DatabasePortalAttemptPaths, alias: str) -> bool:
+    def _has_completion_event(
+        paths: DatabasePortalAttemptPaths,
+        identity: Mapping[str, str],
+    ) -> bool:
         if not paths.events.is_file():
             return False
         try:
@@ -547,7 +604,10 @@ class DatabasePortalExecutionBridge:
             if (
                 isinstance(event, Mapping)
                 and event.get("type") == "task_completed"
-                and str(event.get("task_id") or "") == alias
+                and all(
+                    str(event.get(field) or "") == expected
+                    for field, expected in identity.items()
+                )
             ):
                 return True
         return False
@@ -578,16 +638,24 @@ class DatabasePortalExecutionBridge:
     ) -> dict[str, Any]:
         alias = str(binding.get("task_alias") or "")
         projection_text = self._verify_projection(paths, binding)
+        identity = self._projection_task_identity(
+            paths,
+            binding,
+            projection_text,
+        )
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
             raise DatabasePortalBridgeDeferred("Portal task projection is not complete")
-        if not self._has_completion_event(paths, alias):
+        if not self._has_completion_event(paths, identity):
             raise DatabasePortalBridgeError(
-                "Portal completion lacks a matching durable task_completed event"
+                "Portal completion lacks an exact canonical task_completed event"
             )
         evidence = {
             "binding_id": str(binding.get("binding_id") or ""),
             "task_cid": str(attempt.task_cid),
             "task_alias": alias,
+            "canonical_task_key": identity["canonical_task_key"],
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": identity["board_namespace"],
             "attempt_id": str(attempt.attempt_id),
             "projection_digest": _sha256_bytes(projection_text.encode("utf-8")),
             "projection_immutable_digest": str(binding.get("projection_immutable_digest") or ""),
@@ -606,6 +674,9 @@ class DatabasePortalExecutionBridge:
             "completion_authority": "DatabaseImplementationDaemon",
             "task_cid": str(attempt.task_cid),
             "task_alias": alias,
+            "canonical_task_key": identity["canonical_task_key"],
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": identity["board_namespace"],
             "attempt_id": str(attempt.attempt_id),
             "binding_id": str(binding.get("binding_id") or ""),
             "evidence_digest": evidence_digest,
@@ -631,10 +702,15 @@ class DatabasePortalExecutionBridge:
         try:
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)
+                identity = self._projection_task_identity(
+                    paths,
+                    binding,
+                    projection,
+                )
                 if _projection_status(
                     projection
                 ) in _TERMINAL_STATUSES and self._has_completion_event(
-                    paths, str(binding.get("task_alias") or "")
+                    paths, identity
                 ):
                     return self._acceptance_receipt(
                         attempt=attempt,
@@ -697,10 +773,10 @@ class DatabasePortalExecutionBridge:
                 "database Portal attempt binding changed before recovery"
             )
         projection = self._verify_projection(paths, expected)
-        alias = str(expected.get("task_alias") or "")
+        identity = self._projection_task_identity(paths, expected, projection)
         if (
             _projection_status(projection) not in _TERMINAL_STATUSES
-            or not self._has_completion_event(paths, alias)
+            or not self._has_completion_event(paths, identity)
         ):
             return None
         return self._acceptance_receipt(

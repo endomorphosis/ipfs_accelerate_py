@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
     parse_args,
+    parse_task_file,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     bind_database_portal_execution_from_args,
@@ -145,11 +146,18 @@ class _CompletingPortal:
             ),
             encoding="utf-8",
         )
+        task = parse_task_file(
+            self.paths.task_projection,
+            task_header_prefix=f"## {self.task_alias}",
+        )[0]
         self.paths.events.write_text(
             json.dumps(
                 {
                     "type": "task_completed",
                     "task_id": self.task_alias,
+                    "canonical_task_key": task.canonical_task_key,
+                    "canonical_task_cid": task.canonical_task_cid,
+                    "board_namespace": task.board_namespace,
                     "event_id": "event:complete",
                 }
             )
@@ -221,6 +229,39 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
     assert len(attempt_boards) == 1
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("canonical_cid", [None, "cid:wrong-projection"])
+def test_recovery_rejects_alias_only_or_wrong_canonical_completion_event(
+    tmp_path: Path,
+    canonical_cid: str | None,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), _record())
+    text = paths.task_projection.read_text(encoding="utf-8")
+    paths.task_projection.write_text(
+        text.replace("- Status: ready", "- Status: completed"),
+        encoding="utf-8",
+    )
+    task = parse_task_file(
+        paths.task_projection,
+        task_header_prefix="## LGSWF-004",
+    )[0]
+    event = {
+        "type": "task_completed",
+        "task_id": task.task_id,
+        "canonical_task_key": task.canonical_task_key,
+        "board_namespace": task.board_namespace,
+    }
+    if canonical_cid is not None:
+        event["canonical_task_cid"] = canonical_cid
+    paths.events.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    assert bridge.recover_provider_result(_attempt()) is None
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
@@ -488,11 +529,18 @@ def test_lost_portal_provider_return_recovers_without_reimplementation(
                 encoding="utf-8",
             )
             self.state.write_text('{"accepted":true}\n', encoding="utf-8")
+            task = parse_task_file(
+                self.projection,
+                task_header_prefix="## PCTDD-001",
+            )[0]
             self.events.write_text(
                 json.dumps(
                     {
                         "type": "task_completed",
                         "task_id": "PCTDD-001",
+                        "canonical_task_key": task.canonical_task_key,
+                        "canonical_task_cid": task.canonical_task_cid,
+                        "board_namespace": task.board_namespace,
                         "event_id": "event:portal-complete",
                     }
                 )
