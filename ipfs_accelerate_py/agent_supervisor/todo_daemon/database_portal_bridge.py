@@ -18892,6 +18892,22 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
+        launch_source_amendment = getattr(
+            self.task_source,
+            "admitted_launch_source_amendment",
+            None,
+        )
+        if launch_source_amendment is not None:
+            bind_amendment = getattr(
+                daemon,
+                "bind_launch_source_amendment",
+                None,
+            )
+            if not callable(bind_amendment):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon cannot bind the admitted source amendment"
+                )
+            bind_amendment(launch_source_amendment.to_dict())
         if execution_route_binding:
             bind_route = getattr(
                 daemon,

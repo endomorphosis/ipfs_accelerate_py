@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib
+import importlib.util
 import json
 import os
 import socket
@@ -50,6 +51,13 @@ def _dependency_validator():
     sys.modules[definition.name] = module
     definition.loader.exec_module(module)
     return module
+
+
+def _configured_board_scheduler():
+    return importlib.import_module(
+        "ipfs_accelerate_py.agent_supervisor.runtime."
+        "configured_board_scheduler"
+    )
 
 
 def _nested_source_fixture(
@@ -425,9 +433,11 @@ def test_launch_source_forest_receipts_are_content_addressed_and_current(
 
 
 def test_scheduler_authority_and_rollout_are_fail_closed() -> None:
-    config = json.loads(
-        (ROOT / "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json").read_text()
+    config_path = (
+        ROOT
+        / "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json"
     )
+    config = json.loads(config_path.read_text())
     assert config["database_program"]["authority_mode"] == "quack"
     assert config["database_program"]["task_source_kind"] == "duckdb"
     assert config["database_program"]["failover_policy"] == "fail_closed"
@@ -438,6 +448,29 @@ def test_scheduler_authority_and_rollout_are_fail_closed() -> None:
     assert config["authority_policy"]["worker_self_approval"] is False
     assert config["initial_projection"]["completed_task_ids"] == ["SPAR-000"]
     assert config["initial_projection"]["ready_task_ids"] == ["SPAR-001"]
+    assert config["launch_source_amendment_policy"] == {
+        "append_mode": "exact_plan_revision_cas",
+        "attempt_source_policy": "exact_launch_forest_and_worktree_preimage",
+        "authoritative_store": "DuckDB/PlanRevisionRepository@1 over Quack",
+        "cli_json_is_authority": False,
+        "completion_policy": "current_tree_requalification_required",
+        "filesystem_projection_is_authority": False,
+        "required": True,
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "launch-source-amendment@1"
+        ),
+        "task_history_policy": "preserve_immutable_task_cids_and_receipts",
+    }
+
+    scheduler = _configured_board_scheduler()
+    board = scheduler.load_configured_board(config_path, repo_root=ROOT)
+    common_args = scheduler.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    assert common_args.count("--require-launch-source-amendment") == 1
+    assert "--launch-source-amendment-json" not in common_args
 
 
 def test_import_does_not_create_runtime_state() -> None:
@@ -495,6 +528,9 @@ def test_quack_lane_runtime_directories_are_private(
         "ducklake_data": runtime / "ducklake/data",
         "launch_source_forest_dir": (
             runtime / "evidence/launch/source-forest"
+        ),
+        "launch_source_amendment_dir": (
+            runtime / "evidence/launch/source-amendment"
         ),
     }
 

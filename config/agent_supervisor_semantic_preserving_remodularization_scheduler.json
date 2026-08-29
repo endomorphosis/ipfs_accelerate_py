@@ -84,7 +84,7 @@
     "worktree_root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
   },
   "dependency_guardrail_enabled": true,
-  "dependency_seal_cid": "sha256:626ffbddee6ae4f940dcdc9d313590a3caab20d92d7428bb83d112f9f8272485",
+  "dependency_seal_cid": "sha256:fdf0e17783e3680bca60da894c2e710fb67ce8522cbb2c0324c4f8ae388e3b58",
   "dependency_seal_path": "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
   "dependency_validator_path": "scripts/validate_semantic_preserving_remodularization_dependencies.py",
   "ducklake_projection_program": {
@@ -198,6 +198,17 @@
       "strict_shard_remainder": 2
     }
   ],
+  "launch_source_amendment_policy": {
+    "append_mode": "exact_plan_revision_cas",
+    "attempt_source_policy": "exact_launch_forest_and_worktree_preimage",
+    "authoritative_store": "DuckDB/PlanRevisionRepository@1 over Quack",
+    "cli_json_is_authority": false,
+    "completion_policy": "current_tree_requalification_required",
+    "filesystem_projection_is_authority": false,
+    "required": true,
+    "schema": "ipfs_accelerate_py/agent-supervisor/launch-source-amendment@1",
+    "task_history_policy": "preserve_immutable_task_cids_and_receipts"
+  },
   "materializer_path": "scripts/materialize_semantic_preserving_remodularization_program.py",
   "max_lanes": 3,
   "max_restarts": 4,

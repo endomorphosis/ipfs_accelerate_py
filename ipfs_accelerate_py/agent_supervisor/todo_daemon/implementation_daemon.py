@@ -8305,6 +8305,7 @@ class PortalImplementationDaemon:
         self.strategy_path = strategy_path
         self.events_path = events_path
         self._launch_task_execution_route_binding: Mapping[str, Any] | None = None
+        self._launch_source_amendment: Any = None
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self._scoped_recovery_attempts: dict[str, int] = {}
@@ -27368,16 +27369,26 @@ class PortalImplementationDaemon:
                 "pre implementation authority resolver invalid",
                 backoff_seconds=300,
             )
+        launch_amendment = self._launch_source_amendment
+        route_binding = self._launch_task_execution_route_binding
+        if launch_amendment is None or route_binding is None:
+            raise ImplementationRetryDeferred(
+                "pre implementation attempt source authority unavailable",
+                backoff_seconds=300,
+            )
         try:
+            attempt_source_policy_root = launch_amendment.attempt_policy_root(
+                route_binding
+            )
             raw = resolver(
                 task=task,
                 task_cid=task_cid,
                 current_git_tree_id=current_git_tree_id,
                 execution_route_binding=(
-                    None
-                    if self._launch_task_execution_route_binding is None
-                    else dict(self._launch_task_execution_route_binding)
+                    dict(route_binding)
                 ),
+                launch_source_amendment=launch_amendment.to_dict(),
+                attempt_source_policy_root=attempt_source_policy_root,
                 attempt=int(attempt),
             )
         except Exception as exc:
@@ -27411,12 +27422,6 @@ class PortalImplementationDaemon:
         )
         from .implementation_disposition import ImplementationForestRoots
 
-        route_binding = self._launch_task_execution_route_binding
-        if route_binding is None:
-            raise ImplementationRetryDeferred(
-                "pre implementation execution route binding unavailable",
-                backoff_seconds=300,
-            )
         forest_value = raw.get("forest_roots")
         try:
             forest_roots = (
@@ -27432,11 +27437,10 @@ class PortalImplementationDaemon:
         if (
             str(route_binding.get("task_alias") or "") != task.task_id
             or str(route_binding.get("task_cid") or "") != task_cid
-            or str(route_binding.get("repository_tree_id") or "")
-            != current_git_tree_id
             or forest_roots.git_tree_id != current_git_tree_id
-            or forest_roots.policy_root
-            != str(route_binding.get("policy_id") or "")
+            or forest_roots.repository_forest_cid
+            != launch_amendment.launch_source_forest_root
+            or forest_roots.policy_root != attempt_source_policy_root
         ):
             raise ImplementationRetryDeferred(
                 "pre implementation forest or route binding mismatch",
@@ -27587,6 +27591,23 @@ class PortalImplementationDaemon:
                 "pre implementation Git identity unavailable",
                 backoff_seconds=300,
             )
+        launch_amendment = self._launch_source_amendment
+        if launch_amendment is not None:
+            try:
+                launch_amendment.validate_launch_git(
+                    source_head=head,
+                    repository_tree_id=tree,
+                )
+            except Exception as exc:
+                raise ImplementationRetryDeferred(
+                    "pre implementation worktree differs from launch source",
+                    backoff_seconds=300,
+                ) from exc
+            if str(status_result.stdout or ""):
+                raise ImplementationRetryDeferred(
+                    "pre implementation launch worktree is not an exact preimage",
+                    backoff_seconds=300,
+                )
         kernel = getattr(self, "pre_implementation_kernel", None)
         materials = self._resolve_pre_implementation_authority_materials(
             task=task,
@@ -79322,6 +79343,22 @@ class PortalImplementationDaemon:
             raise RuntimeError("launch task execution route is immutable")
         self._launch_task_execution_route_binding = normalized
 
+    def bind_launch_source_amendment(
+        self,
+        value: Mapping[str, Any],
+    ) -> None:
+        """Bind the owner-verified current-source amendment to this Portal."""
+
+        from ..task_sources.launch_source_amendment import (
+            LaunchSourceAmendment,
+        )
+
+        amendment = LaunchSourceAmendment.from_dict(value)
+        current = self._launch_source_amendment
+        if current is not None and current.amendment_id != amendment.amendment_id:
+            raise RuntimeError("launch source amendment is immutable")
+        self._launch_source_amendment = amendment
+
     def _launch_execution_mode_for_task(
         self,
         task: PortalTask | None,
@@ -121378,6 +121415,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--require-launch-source-amendment",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--launch-source-amendment-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--expected-task-source-root",
         default="",
         help="Optional canonical plan root which the configured source must match.",
@@ -122040,6 +122087,54 @@ def _request_process_bound_state_owner_bootstrap(
     )
 
 
+def _launch_source_amendment_from_args(
+    args: argparse.Namespace,
+    *,
+    repo_root: Path,
+) -> Any:
+    """Validate the redundant CLI assertion against this exact Git launch."""
+
+    required = bool(getattr(args, "require_launch_source_amendment", False))
+    raw = str(getattr(args, "launch_source_amendment_json", "") or "")
+    if required and not raw:
+        raise RuntimeError("required launch-source amendment is unavailable")
+    if not raw:
+        return None
+    from ..task_sources.launch_source_amendment import (
+        LaunchSourceAmendment,
+        LaunchSourceAmendmentError,
+    )
+
+    try:
+        amendment = LaunchSourceAmendment.from_json(raw)
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        tree = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode != 0 or tree.returncode != 0:
+            raise LaunchSourceAmendmentError(
+                "launch Git generation is unavailable"
+            )
+        amendment.validate_launch_git(
+            source_head=head.stdout.strip(),
+            repository_tree_id=tree.stdout.strip(),
+        )
+    except (OSError, LaunchSourceAmendmentError) as exc:
+        raise RuntimeError("launch-source amendment is invalid") from exc
+    args.launch_source_amendment_json = amendment.to_json()
+    return amendment
+
+
 def main(argv: list[str] | None = None) -> None:
     # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
     # the in-memory attach credential, so re-establish the kernel boundary
@@ -122058,6 +122153,10 @@ def main(argv: list[str] | None = None) -> None:
         capture_state_authority_credentials,
     )
     args = _lgcvf_daemon_call("argument_parse", lambda: parse_args(argv))
+    launch_source_amendment = _lgcvf_daemon_call(
+        "launch_source_amendment",
+        lambda: _launch_source_amendment_from_args(args, repo_root=REPO_ROOT),
+    )
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -122113,6 +122212,11 @@ def main(argv: list[str] | None = None) -> None:
             task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
         )
     )
+
+    if launch_source_amendment is not None and not use_database_daemon:
+        raise RuntimeError(
+            "launch-source amendment requires DuckDB/Quack task authority"
+        )
 
     if use_database_daemon:
         authority_mode = (
@@ -122226,6 +122330,7 @@ def main(argv: list[str] | None = None) -> None:
                 typed_task_source = TypedDatabaseTaskSource(
                     client,
                     execution_route_policy=credentials.execution_route_policy,
+                    launch_source_amendment=launch_source_amendment,
                 )
             except BaseException as exc:
                 _emit_lgcvf_daemon_diagnostic("owner_attach", exc)

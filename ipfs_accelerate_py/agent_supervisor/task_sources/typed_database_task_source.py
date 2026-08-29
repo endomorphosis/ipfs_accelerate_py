@@ -50,6 +50,11 @@ from .intent_repository import (
     IntentReceipt,
     QueueEntry,
 )
+from .launch_source_amendment import (
+    LaunchSourceAmendment,
+    LaunchSourceAmendmentError,
+    task_contract_set_cid,
+)
 from .quack_state_client import (
     ClientSession,
     QuackClientError,
@@ -139,6 +144,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "load_store_generation",
         "executor_task_projection_page",
         "executor_control_snapshot",
+        "executor_active_plan_revision_by_identity",
         "executor_task_projection_by_identity",
         "executor_task_revision_history_page",
         "executor_retry_cooldown_by_task",
@@ -234,13 +240,13 @@ def _mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
     return parsed
 
 
-def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
-    """Decode one bounded history body while rejecting duplicate JSON keys."""
+def _closed_mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
+    """Decode one bounded object while rejecting duplicate JSON keys."""
 
     if not isinstance(value, str):
-        raise TaskSourceIntegrityError("task revision body is not encoded JSON")
+        raise TaskSourceIntegrityError(f"{noun} is not encoded JSON")
     if len(value.encode("utf-8")) > _MAX_JSON_BYTES:
-        raise TaskSourceBoundsError("task revision body exceeds its byte bound")
+        raise TaskSourceBoundsError(f"{noun} exceeds its byte bound")
 
     def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -253,12 +259,16 @@ def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
     try:
         parsed = json.loads(value, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise TaskSourceIntegrityError(
-            "task revision body is malformed or ambiguous"
-        ) from exc
+        raise TaskSourceIntegrityError(f"{noun} is malformed or ambiguous") from exc
     if not isinstance(parsed, dict):
-        raise TaskSourceIntegrityError("task revision body is not a JSON object")
+        raise TaskSourceIntegrityError(f"{noun} is not a JSON object")
     return parsed
+
+
+def _closed_history_mapping_json(value: Any) -> dict[str, Any]:
+    """Decode one bounded history body while rejecting duplicate JSON keys."""
+
+    return _closed_mapping_json(value, noun="task revision body")
 
 
 def _list_json(value: Any, *, noun: str) -> list[Any]:
@@ -399,6 +409,9 @@ class TypedDatabaseTaskSource:
         execution_route_policy: TaskExecutionRoutePolicy
         | Mapping[str, Any]
         | None = None,
+        launch_source_amendment: LaunchSourceAmendment
+        | Mapping[str, Any]
+        | None = None,
         owns_client: bool = True,
         clock_ms: Any | None = None,
     ) -> None:
@@ -427,8 +440,27 @@ class TypedDatabaseTaskSource:
             if execution_route_policy is not None
             else None
         )
+        try:
+            expected_launch_source_amendment = (
+                launch_source_amendment
+                if isinstance(launch_source_amendment, LaunchSourceAmendment)
+                else LaunchSourceAmendment.from_dict(launch_source_amendment)
+                if launch_source_amendment is not None
+                else None
+            )
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "asserted launch source amendment is invalid"
+            ) from exc
+        self._asserted_launch_source_amendment = expected_launch_source_amendment
         if self._execution_route_policy is not None:
             self._validate_execution_route_policy_population()
+        if expected_launch_source_amendment is not None:
+            authoritative = self.launch_source_amendment
+            if authoritative != expected_launch_source_amendment:
+                raise TaskSourceIntegrityError(
+                    "asserted launch source amendment differs from active plan authority"
+                )
 
     def close(self) -> None:
         if not self._closed:
@@ -648,6 +680,55 @@ class TypedDatabaseTaskSource:
                     )
                 return row, records, after.revision
         raise TaskSourceConflictError("typed control projection changed during bounded snapshot")
+
+    def _launch_source_amendment_material(
+        self,
+    ) -> tuple[
+        Mapping[str, Any],
+        tuple[tuple[TaskRecord, Mapping[str, Any]], ...],
+    ]:
+        """Read one active plan revision and its task population atomically by generation."""
+
+        self._require_open()
+        policy = self._execution_route_policy
+        if policy is None:
+            raise TaskSourceIntegrityError(
+                "typed executor has no launch execution route policy"
+            )
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            control_rows = self._client.execute("executor_control_snapshot")
+            if len(control_rows) != 1:
+                raise TaskSourceIntegrityError(
+                    "typed control snapshot is absent or ambiguous"
+                )
+            control_row = control_rows[0]
+            try:
+                task_count = int(control_row.get("task_count") or 0)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise TaskSourceIntegrityError(
+                    "typed control snapshot task count is invalid"
+                ) from exc
+            records = self._all_records(expected_count=task_count)
+            plan_rows = self._client.execute(
+                "executor_active_plan_revision_by_identity",
+                {"plan_cid": policy.plan_root_cid},
+            )
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+            if task_count != len(records):
+                raise TaskSourceBoundsError(
+                    "typed task population exceeds its admitted projection bound"
+                )
+            if len(plan_rows) != 1:
+                raise TaskSourceIntegrityError(
+                    "active plan revision is absent or ambiguous"
+                )
+            return plan_rows[0], records
+        raise TaskSourceConflictError(
+            "launch source amendment changed during bounded read"
+        )
 
     @staticmethod
     def _validated_retry_cooldown_row(
@@ -1057,6 +1138,147 @@ class TypedDatabaseTaskSource:
     def snapshot(self) -> TaskSourceSnapshot:
         row, records, revision = self._snapshot_material()
         return self._snapshot_from_material(row, records, revision)
+
+    @property
+    def launch_source_amendment(self) -> LaunchSourceAmendment:
+        """Return the exact current-source amendment from active plan authority.
+
+        The immutable execution-route policy identifies the historical task
+        contract.  This independently read plan amendment identifies the
+        current source forest for a new attempt.  Neither identity rewrites the
+        other, and a missing or inconsistent amendment fails closed.
+        """
+
+        policy = self._execution_route_policy
+        if policy is None:
+            raise TaskSourceIntegrityError(
+                "typed executor has no launch execution route policy"
+            )
+        row, records = self._launch_source_amendment_material()
+        required = {
+            "plan_cid",
+            "goal_cid",
+            "plan_alias",
+            "plan_status",
+            "plan_revision",
+            "plan_head_body_json",
+            "revision_plan_cid",
+            "revision_number",
+            "plan_revision_body_json",
+            "revision_recorded_at",
+        }
+        if set(row) != required:
+            raise TaskSourceIntegrityError(
+                "active plan revision differs from its closed projection"
+            )
+        plan_cid = str(row.get("plan_cid") or "").strip()
+        revision_plan_cid = str(row.get("revision_plan_cid") or "").strip()
+        plan_alias = str(row.get("plan_alias") or "").strip()
+        goal_cid = str(row.get("goal_cid") or "").strip()
+        recorded_at = str(row.get("revision_recorded_at") or "").strip()
+        plan_revision_raw = row.get("plan_revision")
+        revision_number_raw = row.get("revision_number")
+        if (
+            plan_cid != policy.plan_root_cid
+            or revision_plan_cid != plan_cid
+            or not plan_alias
+            or not goal_cid
+            or row.get("plan_status") != "active"
+            or not recorded_at
+            or isinstance(plan_revision_raw, bool)
+            or not isinstance(plan_revision_raw, int)
+            or isinstance(revision_number_raw, bool)
+            or not isinstance(revision_number_raw, int)
+            or plan_revision_raw < 2
+            or revision_number_raw != plan_revision_raw
+        ):
+            raise TaskSourceIntegrityError(
+                "active plan head differs from its exact revision authority"
+            )
+
+        head_body_raw = row.get("plan_head_body_json")
+        revision_body_raw = row.get("plan_revision_body_json")
+        head_body = _closed_mapping_json(head_body_raw, noun="active plan body")
+        revision_body = _closed_mapping_json(
+            revision_body_raw,
+            noun="active plan revision body",
+        )
+        if head_body_raw != revision_body_raw or head_body != revision_body:
+            raise TaskSourceIntegrityError(
+                "active plan head body differs from its exact revision body"
+            )
+        raw_amendment = head_body.get("launch_source_amendment")
+        amendment_id = head_body.get("launch_source_amendment_id")
+        if not isinstance(raw_amendment, Mapping):
+            raise TaskSourceIntegrityError(
+                "active plan has no launch source amendment"
+            )
+        try:
+            amendment = LaunchSourceAmendment.from_dict(raw_amendment)
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "active plan launch source amendment is invalid"
+            ) from exc
+
+        tasks = tuple(record for record, _identity in records)
+        entries = policy.entries_by_cid
+        if (
+            amendment_id != amendment.amendment_id
+            or amendment.bootstrap_plan_root_cid != plan_cid
+            or amendment.plan_alias != plan_alias
+            or amendment.parent_plan_revision != plan_revision_raw - 1
+            or amendment.amended_plan_revision != plan_revision_raw
+            or head_body.get("plan_cid") != plan_cid
+            or head_body.get("repository_tree_id")
+            != amendment.bootstrap_repository_tree_id
+            or head_body.get("source_head") != amendment.bootstrap_source_head
+            or policy.repository_tree_id
+            != amendment.bootstrap_repository_tree_id
+            or len(tasks) != len(entries)
+            or {task.task_cid for task in tasks} != set(entries)
+            or any(task.plan_cid != plan_cid for task in tasks)
+        ):
+            raise TaskSourceIntegrityError(
+                "launch source amendment differs from its plan or task authority"
+            )
+        for task in tasks:
+            entry = entries[task.task_cid]
+            if (
+                task.task_alias != entry.task_alias
+                or task_execution_contract_cid(task) != entry.task_contract_cid
+            ):
+                raise TaskSourceIntegrityError(
+                    "launch task contract differs from its execution route"
+                )
+        try:
+            current_contract_set_cid = task_contract_set_cid(tasks)
+        except LaunchSourceAmendmentError as exc:
+            raise TaskSourceIntegrityError(
+                "launch task contract set is invalid"
+            ) from exc
+        if current_contract_set_cid != amendment.task_contract_set_cid:
+            raise TaskSourceIntegrityError(
+                "launch task contract set differs from its source amendment"
+            )
+        return amendment
+
+    @property
+    def admitted_launch_source_amendment(self) -> LaunchSourceAmendment | None:
+        """Return an amendment only when this client explicitly asserted one.
+
+        This keeps predecessor boards source-compatible: merely gaining the
+        successor query does not opt them into SPAR launch authority.
+        """
+
+        asserted = self._asserted_launch_source_amendment
+        if asserted is None:
+            return None
+        authoritative = self.launch_source_amendment
+        if authoritative != asserted:
+            raise TaskSourceIntegrityError(
+                "active launch source amendment differs from its launch assertion"
+            )
+        return authoritative
 
     @property
     def execution_route_policy(self) -> TaskExecutionRoutePolicy | None:

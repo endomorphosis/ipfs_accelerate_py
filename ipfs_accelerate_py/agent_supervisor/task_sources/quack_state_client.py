@@ -93,16 +93,16 @@ from .typed_state_owner import (
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     _legacy_unstall_recovery_receipt,
-    _process_birth_content_id,
-    _process_runtime_facts,
     _post_merge_retry_queue_receipt,
     _post_merge_retry_recovery_command_digest,
+    _process_birth_content_id,
+    _process_runtime_facts,
     _protected_qualification_completion_command_digest,
     _protected_qualification_validation_identity_material,
-    _validated_legacy_unstall_claim_receipt,
-    _validated_post_merge_retry_recovery_parameters,
     _strict_scalar_equal,
     _validated_database_claim_process_attestation,
+    _validated_legacy_unstall_claim_receipt,
+    _validated_post_merge_retry_recovery_parameters,
     _validated_stored_retry_cooldown,
     completion_progress_request,
     open_typed_state_owner_connection,
@@ -543,6 +543,27 @@ def _default_templates() -> dict[str, StatementTemplate]:
             parameter_names=(),
             kind=StatementKind.QUERY,
             description="Bounded authoritative executor control-plane snapshot",
+        ),
+        "executor_active_plan_revision_by_identity": StatementTemplate(
+            name="executor_active_plan_revision_by_identity",
+            sql=(
+                "SELECT p.plan_cid, p.goal_cid, p.plan_alias, "
+                "p.status AS plan_status, p.revision AS plan_revision, "
+                "p.body_json AS plan_head_body_json, "
+                "r.plan_cid AS revision_plan_cid, "
+                "r.revision AS revision_number, "
+                "r.body_json AS plan_revision_body_json, "
+                "r.recorded_at AS revision_recorded_at FROM plans AS p "
+                "INNER JOIN plan_revisions AS r ON "
+                "r.plan_cid = p.plan_cid AND r.revision = p.revision "
+                "WHERE p.plan_cid = ? AND p.status = 'active' "
+                "ORDER BY p.plan_cid ASC LIMIT 2"
+            ),
+            parameter_names=("plan_cid",),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read one active plan head joined to its exact persisted revision"
+            ),
         ),
         "executor_retry_cooldown_by_task": StatementTemplate(
             name="executor_retry_cooldown_by_task",

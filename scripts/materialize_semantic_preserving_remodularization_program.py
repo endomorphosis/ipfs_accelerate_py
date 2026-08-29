@@ -47,6 +47,7 @@ BOOTSTRAP_RECEIPT_NAME: Final = "bootstrap-materialization.json"
 SPAR000_QUALIFICATION_NAME: Final = "spar-000-qualification.json"
 DUCKLAKE_RECEIPT_NAME: Final = "ducklake-history-projection.json"
 LAUNCH_SOURCE_FOREST_CURRENT_NAME: Final = "current.json"
+LAUNCH_SOURCE_AMENDMENT_CURRENT_NAME: Final = "current.json"
 OPERATOR_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "semantic-preserving-autonomous-remodularization-operator@1"
@@ -118,6 +119,14 @@ def _identity(value: Any) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def _plain_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_json(item) for item in value]
+    return value
+
+
 def _atomic_json(path: Path, payload: Mapping[str, Any], *, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}")
@@ -142,9 +151,24 @@ def _atomic_json(path: Path, payload: Mapping[str, Any], *, mode: int = 0o600) -
 
 
 def _json_object(path: Path) -> dict[str, Any]:
+    def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = item
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise ValueError(f"nonfinite JSON constant: {value}")
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=closed_object,
+            parse_constant=reject_constant,
+        )
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
         raise OperatorError(f"cannot read JSON object: {path}") from exc
     if not isinstance(value, dict):
         raise OperatorError(f"JSON root must be an object: {path}")
@@ -714,6 +738,13 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
             / "source-forest"
             / LAUNCH_SOURCE_FOREST_CURRENT_NAME
         ),
+        "launch_source_amendment_dir": evidence / "launch" / "source-amendment",
+        "launch_source_amendment_current": (
+            evidence
+            / "launch"
+            / "source-amendment"
+            / LAUNCH_SOURCE_AMENDMENT_CURRENT_NAME
+        ),
     }
 
 
@@ -735,6 +766,7 @@ def _harden_runtime_directories(
         paths["ducklake_catalog"].parent,
         paths["ducklake_data"],
         paths["launch_source_forest_dir"],
+        paths["launch_source_amendment_dir"],
     }
     for key, value in raw_runtime.items():
         candidates.add(_safe_path(ROOT, value, field=f"runtime_paths.{key}"))
@@ -789,15 +821,13 @@ def _harden_runtime_directories(
                 os.close(descriptor)
 
 
-def _record_launch_source_forest(
-    paths: Mapping[str, Path],
+def _launch_source_forest_receipt(
     *,
     source_head: str,
     repository_tree: str,
     source_forest: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Persist an immutable launch forest and an atomic current pointer."""
-
+    """Build one closed immutable launch-forest receipt."""
     receipt = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
@@ -809,6 +839,23 @@ def _record_launch_source_forest(
         "source_forest": dict(source_forest),
     }
     receipt["receipt_id"] = _identity(receipt)
+    return receipt
+
+
+def _record_launch_source_forest(
+    paths: Mapping[str, Path],
+    *,
+    source_head: str,
+    repository_tree: str,
+    source_forest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist an immutable launch forest and an atomic current pointer."""
+
+    receipt = _launch_source_forest_receipt(
+        source_head=source_head,
+        repository_tree=repository_tree,
+        source_forest=source_forest,
+    )
     receipt_path = paths["launch_source_forest_dir"] / (
         str(receipt["receipt_id"]).removeprefix("sha256:") + ".json"
     )
@@ -831,6 +878,567 @@ def _record_launch_source_forest(
     current["current_pointer_id"] = _identity(current)
     _atomic_json(paths["launch_source_forest_current"], current)
     return {**receipt, "current_pointer": current}
+
+
+def _database_tasks(source: Any) -> tuple[Any, ...]:
+    tasks: list[Any] = []
+    cursor = ""
+    while True:
+        page = source.list_tasks(cursor=cursor, limit=500)
+        tasks.extend(page.tasks)
+        cursor = page.next_cursor
+        if not cursor:
+            break
+    if len(tasks) != int(source.snapshot().task_count):
+        raise OperatorError("launch task population is incomplete")
+    return tuple(tasks)
+
+
+def _task_history_guard(source: Any, tasks: Sequence[Any]) -> str:
+    material = []
+    for task in sorted(tasks, key=lambda item: item.task_cid):
+        material.append(
+            {
+                "task": _plain_json(task.to_dict()),
+                "history": _plain_json(
+                    source.task_revision_history_projection(task.task_cid)
+                ),
+            }
+        )
+    return _identity(
+        {
+            "schema": "spar/launch-task-history-guard@1",
+            "tasks": material,
+        }
+    )
+
+
+def _launch_source_amendment(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    source_head: str,
+    repository_tree: str,
+    source_forest_receipt: Mapping[str, Any],
+    plan_alias: str,
+    parent_plan_revision: int,
+    predecessor_amendment_id: str | None,
+    task_contract_set_id: str,
+) -> Any:
+    """Build one route-independent current-source plan amendment."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.launch_source_amendment import (
+        LaunchSourceAmendment,
+        LaunchSourceAmendmentError,
+    )
+
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    bootstrap_id = str(bootstrap.get("bootstrap_receipt_id") or "")
+    bootstrap_body = dict(bootstrap)
+    bootstrap_body.pop("bootstrap_receipt_id", None)
+    if not bootstrap_id or _identity(bootstrap_body) != bootstrap_id:
+        raise OperatorError("bootstrap receipt identity does not rehash")
+    bootstrap_head = str(bootstrap.get("source_head") or "")
+    bootstrap_tree = str(bootstrap.get("repository_tree_id") or "")
+    bootstrap_plan = str(bootstrap.get("plan_root_cid") or "")
+    if (
+        not bootstrap_head
+        or not bootstrap_tree
+        or not bootstrap_plan
+    ):
+        raise OperatorError("launch bootstrap identity is incomplete")
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", bootstrap_head, source_head],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if ancestry.returncode != 0:
+        raise OperatorError("launch source does not descend from its bootstrap")
+
+    source_paths = {
+        "config": board.config_path,
+        "taskboard": board.path(board.taskboard_path),
+        "objectives": board.path(board.objectives_path),
+        "plan": board.path(board.plan_path),
+        "validator": board.path(board.validator_path),
+    }
+    current_source_ids = {
+        name: _identity(_tracked_bytes(path, head=source_head))
+        for name, path in sorted(source_paths.items())
+    }
+    bootstrap_source_ids = bootstrap.get("source_identities")
+    if (
+        not isinstance(bootstrap_source_ids, Mapping)
+        or set(bootstrap_source_ids) != set(source_paths)
+    ):
+        raise OperatorError("bootstrap source identity inventory is incomplete")
+    for name in ("taskboard", "objectives", "plan", "validator"):
+        if current_source_ids[name] != bootstrap_source_ids.get(name):
+            raise OperatorError(
+                f"immutable {name} changed outside the R1 task authority"
+            )
+
+    launch_receipt_fields = {
+        "schema",
+        "source_head",
+        "repository_tree",
+        "source_forest_root",
+        "source_forest",
+        "receipt_id",
+    }
+    if not isinstance(source_forest_receipt, Mapping) or set(
+        source_forest_receipt
+    ) != launch_receipt_fields:
+        raise OperatorError("launch source-forest receipt schema is invalid")
+    launch_receipt = dict(source_forest_receipt)
+    launch_receipt_id = str(source_forest_receipt.get("receipt_id") or "")
+    launch_receipt_body = dict(launch_receipt)
+    launch_receipt_body.pop("receipt_id", None)
+    launch_source_forest = launch_receipt.get("source_forest")
+    if (
+        not launch_receipt_id
+        or _identity(launch_receipt_body) != launch_receipt_id
+        or launch_receipt.get("source_head") != source_head
+        or launch_receipt.get("repository_tree") != repository_tree
+        or not isinstance(launch_source_forest, Mapping)
+        or launch_receipt.get("source_forest_root")
+        != launch_source_forest.get("source_forest_root")
+    ):
+        raise OperatorError("launch source-forest receipt does not rehash")
+
+    seal_path = _safe_path(
+        ROOT,
+        config.get("dependency_seal_path"),
+        field="dependency_seal_path",
+    )
+    dependency_seal = _json_object(seal_path)
+    dependency_seal_id = str(dependency_seal.get("seal_cid") or "")
+    dependency_seal_body = dict(dependency_seal)
+    dependency_seal_body.pop("seal_cid", None)
+    if (
+        not dependency_seal_id
+        or _identity(dependency_seal_body) != dependency_seal_id
+        or config.get("dependency_seal_cid") != dependency_seal_id
+    ):
+        raise OperatorError("launch dependency seal identity is invalid")
+
+    try:
+        amendment = LaunchSourceAmendment(
+            board_namespace=board.board_namespace,
+            plan_alias=plan_alias,
+            bootstrap_receipt_id=bootstrap_id,
+            bootstrap_plan_root_cid=bootstrap_plan,
+            bootstrap_source_head=bootstrap_head,
+            bootstrap_repository_tree_id=bootstrap_tree,
+            launch_source_forest_receipt_id=launch_receipt_id,
+            launch_source_forest_root=str(
+                launch_receipt.get("source_forest_root") or ""
+            ),
+            launch_source_forest_receipt=launch_receipt,
+            launch_source_head=source_head,
+            launch_repository_tree_id=repository_tree,
+            immutable_objectives_cid=str(bootstrap_source_ids["objectives"]),
+            immutable_plan_cid=str(bootstrap_source_ids["plan"]),
+            immutable_taskboard_cid=str(bootstrap_source_ids["taskboard"]),
+            immutable_validator_cid=str(bootstrap_source_ids["validator"]),
+            bootstrap_config_cid=str(bootstrap_source_ids["config"]),
+            launch_config_cid=current_source_ids["config"],
+            dependency_seal_cid=dependency_seal_id,
+            task_contract_set_cid=task_contract_set_id,
+            parent_plan_revision=parent_plan_revision,
+            amended_plan_revision=parent_plan_revision + 1,
+            predecessor_amendment_id=predecessor_amendment_id,
+        )
+        amendment.validate_launch_git(
+            source_head=source_head,
+            repository_tree_id=repository_tree,
+        )
+    except LaunchSourceAmendmentError as exc:
+        raise OperatorError("launch source amendment is invalid") from exc
+    return amendment
+
+
+def _launch_source_amendment_context(
+    *,
+    source: Any,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    source_head: str,
+    repository_tree: str,
+    source_forest_receipt: Mapping[str, Any],
+    execution_route_policy: Any,
+) -> tuple[Any, bool, Mapping[str, Any], tuple[Any, ...]]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.launch_source_amendment import (
+        LaunchSourceAmendment,
+        LaunchSourceAmendmentError,
+        task_contract_set_cid,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TaskExecutionRoutePolicy,
+        task_execution_contract_cid,
+    )
+
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    plan_cid = str(bootstrap.get("plan_root_cid") or "")
+    raw_plan = source.plans.get(plan_cid)
+    if raw_plan is None:
+        raise OperatorError("immutable bootstrap plan is absent from DuckDB")
+    plan = _plain_json(raw_plan)
+    expected_alias = str(config.get("accepted_plan_revision_alias") or "")
+    if (
+        plan.get("plan_cid") != plan_cid
+        or plan.get("plan_alias") != expected_alias
+        or plan.get("status") != "active"
+        or isinstance(plan.get("revision"), bool)
+        or not isinstance(plan.get("revision"), int)
+        or int(plan["revision"]) < 1
+    ):
+        raise OperatorError("DuckDB bootstrap plan head is not the active R1 plan")
+    plan_body = plan.get("body")
+    plan_revisions = tuple(
+        _plain_json(item) for item in source.plans.list_revisions(plan_cid)
+    )
+    if (
+        len(plan_revisions) != int(plan["revision"])
+        or any(
+            item.get("plan_cid") != plan_cid
+            or item.get("revision") != index
+            or not isinstance(item.get("body"), Mapping)
+            for index, item in enumerate(plan_revisions, start=1)
+        )
+        or plan_revisions[-1].get("body") != plan_body
+    ):
+        raise OperatorError("DuckDB plan revision lineage is incomplete or divergent")
+    if not isinstance(plan_body, Mapping) or any(
+        plan_body.get(name) != bootstrap.get(value)
+        for name, value in (
+            ("plan_cid", "plan_root_cid"),
+            ("repository_tree_id", "repository_tree_id"),
+            ("source_head", "source_head"),
+        )
+    ):
+        raise OperatorError("DuckDB plan body differs from the immutable bootstrap")
+
+    current: LaunchSourceAmendment | None = None
+    raw_current = plan_body.get("launch_source_amendment")
+    current_id = plan_body.get("launch_source_amendment_id")
+    if raw_current is not None or current_id is not None:
+        if not isinstance(raw_current, Mapping):
+            raise OperatorError("active launch source amendment is malformed")
+        try:
+            current = LaunchSourceAmendment.from_dict(raw_current)
+        except LaunchSourceAmendmentError as exc:
+            raise OperatorError("active launch source amendment is invalid") from exc
+        if current_id != current.amendment_id:
+            raise OperatorError("active launch source amendment identity differs")
+        predecessor_body = (
+            plan_revisions[-2]["body"] if len(plan_revisions) > 1 else {}
+        )
+        predecessor_raw = predecessor_body.get("launch_source_amendment")
+        predecessor_id = predecessor_body.get("launch_source_amendment_id")
+        if current.predecessor_amendment_id is None:
+            if predecessor_raw is not None or predecessor_id is not None:
+                raise OperatorError(
+                    "first launch source amendment has a predecessor revision"
+                )
+        else:
+            if not isinstance(predecessor_raw, Mapping):
+                raise OperatorError("launch source amendment predecessor is absent")
+            try:
+                predecessor = LaunchSourceAmendment.from_dict(predecessor_raw)
+            except LaunchSourceAmendmentError as exc:
+                raise OperatorError(
+                    "launch source amendment predecessor is invalid"
+                ) from exc
+            if (
+                predecessor_id != predecessor.amendment_id
+                or predecessor.amendment_id != current.predecessor_amendment_id
+                or predecessor.amended_plan_revision != int(plan["revision"]) - 1
+            ):
+                raise OperatorError(
+                    "launch source amendment predecessor lineage differs"
+                )
+
+    tasks = _database_tasks(source)
+    contract_set_id = task_contract_set_cid(tasks)
+    route_entries = (
+        execution_route_policy.entries_by_cid
+        if isinstance(execution_route_policy, TaskExecutionRoutePolicy)
+        else {}
+    )
+    if (
+        not route_entries
+        or execution_route_policy.plan_root_cid != plan_cid
+        or execution_route_policy.repository_tree_id
+        != str(bootstrap.get("repository_tree_id") or "")
+        or set(route_entries) != {task.task_cid for task in tasks}
+        or any(
+            task.task_alias != route_entries[task.task_cid].task_alias
+            or task_execution_contract_cid(task)
+            != route_entries[task.task_cid].task_contract_cid
+            for task in tasks
+        )
+    ):
+        raise OperatorError(
+            "launch task population differs from its immutable execution route"
+        )
+    if current is not None:
+        predecessor_ancestry = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                current.launch_source_head,
+                source_head,
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if predecessor_ancestry.returncode != 0:
+            raise OperatorError(
+                "launch source does not descend from its predecessor amendment"
+            )
+    if current is not None and (
+        current.board_namespace != board.board_namespace
+        or current.plan_alias != expected_alias
+        or current.bootstrap_receipt_id
+        != str(bootstrap.get("bootstrap_receipt_id") or "")
+        or current.bootstrap_plan_root_cid != plan_cid
+        or current.bootstrap_source_head != str(bootstrap.get("source_head") or "")
+        or current.bootstrap_repository_tree_id
+        != str(bootstrap.get("repository_tree_id") or "")
+        or current.parent_plan_revision != int(plan["revision"]) - 1
+        or current.amended_plan_revision != int(plan["revision"])
+        or current.task_contract_set_cid != contract_set_id
+    ):
+        raise OperatorError(
+            "active launch source amendment differs from its plan lineage"
+        )
+    candidate = _launch_source_amendment(
+        board=board,
+        config=config,
+        paths=paths,
+        source_head=source_head,
+        repository_tree=repository_tree,
+        source_forest_receipt=source_forest_receipt,
+        plan_alias=expected_alias,
+        parent_plan_revision=int(plan["revision"]),
+        predecessor_amendment_id=(
+            current.amendment_id if current is not None else None
+        ),
+        task_contract_set_id=contract_set_id,
+    )
+    if current is not None and current.same_launch_generation(candidate):
+        return current, True, plan, tasks
+    return candidate, False, plan, tasks
+
+
+def _prepare_launch_source_amendment(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    source_head: str,
+    repository_tree: str,
+    source_forest_receipt: Mapping[str, Any],
+    execution_route_policy: Any,
+) -> tuple[Any, bool]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    with DatabaseTaskSource(
+        paths["database"],
+        owner_id="spar-source-amendment:prepare",
+        install_schema=False,
+        repository_tree_id=str(bootstrap["repository_tree_id"]),
+        plan_root_cid=str(bootstrap["plan_root_cid"]),
+    ) as source:
+        amendment, replay, _plan, _tasks = _launch_source_amendment_context(
+            source=source,
+            board=board,
+            config=config,
+            paths=paths,
+            source_head=source_head,
+            repository_tree=repository_tree,
+            source_forest_receipt=source_forest_receipt,
+            execution_route_policy=execution_route_policy,
+        )
+    return amendment, replay
+
+
+def _admit_launch_source_amendment(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    source_head: str,
+    repository_tree: str,
+    source_forest_receipt: Mapping[str, Any],
+    execution_route_policy: Any,
+) -> tuple[Any, dict[str, Any]]:
+    """CAS-append and read back one amendment through current plan authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    bootstrap = _json_object(paths["bootstrap_receipt"])
+    with DatabaseTaskSource(
+        paths["database"],
+        owner_id="spar-source-amendment:single-writer",
+        install_schema=False,
+        repository_tree_id=str(bootstrap["repository_tree_id"]),
+        plan_root_cid=str(bootstrap["plan_root_cid"]),
+    ) as source:
+        amendment, replay, plan, tasks = _launch_source_amendment_context(
+            source=source,
+            board=board,
+            config=config,
+            paths=paths,
+            source_head=source_head,
+            repository_tree=repository_tree,
+            source_forest_receipt=source_forest_receipt,
+            execution_route_policy=execution_route_policy,
+        )
+        plan_cid = str(bootstrap["plan_root_cid"])
+        before_revisions = source.plans.list_revisions(plan_cid)
+        before_snapshot = source.snapshot()
+        before_task_guard = _task_history_guard(source, tasks)
+        if replay:
+            if (
+                not before_revisions
+                or int(before_revisions[-1]["revision"]) != int(plan["revision"])
+                or _plain_json(before_revisions[-1]["body"])
+                != _plain_json(plan["body"])
+            ):
+                raise OperatorError(
+                    "active launch amendment lacks exact plan-revision readback"
+                )
+            return amendment, {
+                "schema": "spar/launch-source-amendment-admission@1",
+                "authoritative_store": "DuckDB/PlanRevisionRepository@1",
+                "amendment_id": amendment.amendment_id,
+                "plan_cid": plan_cid,
+                "plan_revision": int(plan["revision"]),
+                "event_id": "",
+                "idempotent_replay": True,
+                "task_history_guard": before_task_guard,
+            }
+
+        delta = {
+            "schema": "spar/control-amendment-delta@1",
+            "operation": "launch_source_amendment",
+            "amendment_id": amendment.amendment_id,
+            "predecessor_amendment_id": amendment.predecessor_amendment_id,
+        }
+        receipt = source.plans.append_revision(
+            plan_cid=plan_cid,
+            expected_revision=int(plan["revision"]),
+            body={
+                "launch_source_amendment": amendment.to_dict(),
+                "launch_source_amendment_id": amendment.amendment_id,
+            },
+            delta=delta,
+        )
+        after_plan_raw = source.plans.get(plan_cid)
+        after_revisions = source.plans.list_revisions(plan_cid)
+        after_tasks = _database_tasks(source)
+        after_snapshot = source.snapshot()
+        after_task_guard = _task_history_guard(source, after_tasks)
+        if after_plan_raw is None:
+            raise OperatorError("launch amendment plan disappeared after CAS")
+        after_plan = _plain_json(after_plan_raw)
+        after_body = after_plan.get("body")
+        if (
+            after_plan.get("plan_alias") != plan.get("plan_alias")
+            or after_plan.get("goal_cid") != plan.get("goal_cid")
+            or after_plan.get("status") != plan.get("status")
+            or int(after_plan.get("revision") or 0)
+            != amendment.amended_plan_revision
+            or len(after_revisions) != len(before_revisions) + 1
+            or int(after_revisions[-1]["revision"])
+            != amendment.amended_plan_revision
+            or _plain_json(after_revisions[-1]["body"]) != after_body
+            or not isinstance(after_body, Mapping)
+            or after_body.get("launch_source_amendment") != amendment.to_dict()
+            or after_body.get("launch_source_amendment_id")
+            != amendment.amendment_id
+            or after_body.get("plan_cid") != plan_cid
+            or after_body.get("repository_tree_id")
+            != bootstrap["repository_tree_id"]
+            or after_body.get("source_head") != bootstrap["source_head"]
+            or before_task_guard != after_task_guard
+            or int(after_snapshot.event_cursor)
+            != int(before_snapshot.event_cursor) + 1
+            or int(receipt.details.get("revision") or 0)
+            != amendment.amended_plan_revision
+        ):
+            raise OperatorError("launch source amendment authoritative readback failed")
+        return amendment, {
+            "schema": "spar/launch-source-amendment-admission@1",
+            "authoritative_store": "DuckDB/PlanRevisionRepository@1",
+            "amendment_id": amendment.amendment_id,
+            "plan_cid": plan_cid,
+            "plan_revision": amendment.amended_plan_revision,
+            "event_id": receipt.event_id,
+            "event_sequence": int(receipt.global_sequence),
+            "idempotent_replay": False,
+            "task_history_guard": after_task_guard,
+        }
+
+
+def _record_launch_source_amendment(
+    paths: Mapping[str, Path],
+    amendment: Any,
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist a non-authoritative diagnostic projection after DB readback."""
+
+    receipt = {
+        "schema": "spar/launch-source-amendment-projection@1",
+        "authoritative": False,
+        "amendment": amendment.to_dict(),
+        "admission": dict(admission),
+    }
+    receipt["projection_id"] = _identity(receipt)
+    receipt_path = paths["launch_source_amendment_dir"] / (
+        str(amendment.amendment_id).replace(":", "_") + ".json"
+    )
+    if receipt_path.exists():
+        existing = _json_object(receipt_path)
+        existing_admission = existing.get("admission")
+        if (
+            existing.get("amendment") != amendment.to_dict()
+            or not isinstance(existing_admission, Mapping)
+            or existing_admission.get("amendment_id") != amendment.amendment_id
+            or existing_admission.get("plan_revision")
+            != admission.get("plan_revision")
+        ):
+            raise OperatorError("launch source amendment projection conflicts")
+        receipt = existing
+    else:
+        _atomic_json(receipt_path, receipt)
+    current = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "semantic-preserving-remodularization-current-source-amendment@1"
+        ),
+        "authoritative": False,
+        "amendment_id": amendment.amendment_id,
+        "authoritative_plan_revision": admission["plan_revision"],
+        "launch_source_head": amendment.launch_source_head,
+        "launch_repository_tree_id": amendment.launch_repository_tree_id,
+        "launch_source_forest_root": amendment.launch_source_forest_root,
+    }
+    current["current_pointer_id"] = _identity(current)
+    _atomic_json(paths["launch_source_amendment_current"], current)
+    return receipt
 
 
 def _ducklake_projection(
@@ -2241,17 +2849,21 @@ def _bind_bootstrap_launch_plan(
     *,
     listener: socket.socket,
     store_id: str,
+    launch_source_amendment: Any,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
         _generic_state_owner_bootstrap_binding,
     )
 
     argv = list(plan.get("argv") or ())
+    amendment_json = launch_source_amendment.to_json()
     for value in (
         "--state-owner-bootstrap-fd",
         str(listener.fileno()),
         "--state-owner-bootstrap-store-id",
         store_id,
+        "--launch-source-amendment-json",
+        amendment_json,
     ):
         argv.append(f"--common-arg={value}")
     common_args = tuple(
@@ -2261,6 +2873,8 @@ def _bind_bootstrap_launch_plan(
     )
     if _generic_state_owner_bootstrap_binding(common_args) != listener.fileno():
         raise OperatorError("SPAR bootstrap launch-plan descriptor changed")
+    if "--require-launch-source-amendment" not in common_args:
+        raise OperatorError("SPAR launch plan does not require its source amendment")
     if any("IPFS_ACCELERATE_AGENT_QUACK_TOKEN=" in item for item in argv):
         raise OperatorError("SPAR bootstrap launch plan contains a raw credential")
     plan["argv"] = argv
@@ -2269,6 +2883,22 @@ def _bind_bootstrap_launch_plan(
         "descriptor": listener.fileno(),
         "store_id": store_id,
         "credential_persisted": False,
+    }
+    plan["launch_source_amendment"] = {
+        "amendment_id": launch_source_amendment.amendment_id,
+        "bootstrap_plan_root_cid": (
+            launch_source_amendment.bootstrap_plan_root_cid
+        ),
+        "launch_source_head": launch_source_amendment.launch_source_head,
+        "launch_repository_tree_id": (
+            launch_source_amendment.launch_repository_tree_id
+        ),
+        "launch_source_forest_root": (
+            launch_source_amendment.launch_source_forest_root
+        ),
+        "task_contract_set_cid": launch_source_amendment.task_contract_set_cid,
+        "task_history_policy": launch_source_amendment.task_history_policy,
+        "completion_policy": launch_source_amendment.completion_policy,
     }
 
 
@@ -2305,27 +2935,63 @@ def supervise(
         "source_forest_root"
     ]
     program = board.resolved_database_program()
+    paths = _runtime_paths(board)
+    route_policy = _execution_route_policy(paths)
+    launch_source_forest_candidate = _launch_source_forest_receipt(
+        source_head=current_head,
+        repository_tree=current_tree,
+        source_forest=current_source_forest,
+    )
     if dry_run:
+        launch_source_amendment, idempotent_replay = (
+            _prepare_launch_source_amendment(
+                board=board,
+                config=config,
+                paths=paths,
+                source_head=current_head,
+                repository_tree=current_tree,
+                source_forest_receipt=launch_source_forest_candidate,
+                execution_route_policy=route_policy,
+            )
+        )
         listener = _new_bootstrap_listener(lane_count=board.max_lanes)
         try:
             _bind_bootstrap_launch_plan(
                 plan,
                 listener=listener,
                 store_id=program.store_id,
+                launch_source_amendment=launch_source_amendment,
+            )
+            plan["launch_source_amendment"]["idempotent_replay"] = (
+                idempotent_replay
             )
             print(json.dumps(plan, indent=2, sort_keys=True))
         finally:
             listener.close()
         return 0
-    paths = _runtime_paths(board)
     _harden_runtime_directories(board, paths)
+    launch_source_amendment, amendment_admission = (
+        _admit_launch_source_amendment(
+            board=board,
+            config=config,
+            paths=paths,
+            source_head=current_head,
+            repository_tree=current_tree,
+            source_forest_receipt=launch_source_forest_candidate,
+            execution_route_policy=route_policy,
+        )
+    )
     launch_source_forest = _record_launch_source_forest(
         paths,
         source_head=current_head,
         repository_tree=current_tree,
         source_forest=current_source_forest,
     )
-    route_policy = _execution_route_policy(paths)
+    recorded_launch_source_amendment = _record_launch_source_amendment(
+        paths,
+        launch_source_amendment,
+        amendment_admission,
+    )
     server, paths, program, identity, ready = _start_state_owner(config_path)
     listener: socket.socket | None = None
     broker: _SparStateOwnerBootstrapBroker | None = None
@@ -2351,6 +3017,7 @@ def supervise(
             plan,
             listener=listener,
             store_id=program.store_id,
+            launch_source_amendment=launch_source_amendment,
         )
         argv = list(plan["argv"])
         _apply_configured_board_environment(plan)
@@ -2381,6 +3048,15 @@ def supervise(
                     "execution_route_policy_id": route_policy.policy_id,
                     "launch_source_forest_receipt_id": (
                         launch_source_forest["receipt_id"]
+                    ),
+                    "launch_source_amendment_id": (
+                        launch_source_amendment.amendment_id
+                    ),
+                    "launch_source_amendment_plan_revision": (
+                        amendment_admission["plan_revision"]
+                    ),
+                    "launch_source_amendment_projection_id": (
+                        recorded_launch_source_amendment["projection_id"]
                     ),
                     "source_forest_root": current_source_forest[
                         "source_forest_root"

@@ -4691,6 +4691,47 @@ def _control_file_is_tracked(
     return False
 
 
+def _launch_source_amendment_policy(
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    policy = payload.get("launch_source_amendment_policy")
+    if policy is None:
+        return None
+    required_fields = {
+        "required",
+        "schema",
+        "authoritative_store",
+        "append_mode",
+        "task_history_policy",
+        "attempt_source_policy",
+        "completion_policy",
+        "cli_json_is_authority",
+        "filesystem_projection_is_authority",
+    }
+    if (
+        not isinstance(policy, Mapping)
+        or set(policy) != required_fields
+        or policy.get("required") is not True
+        or policy.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/launch-source-amendment@1"
+        or policy.get("authoritative_store")
+        != "DuckDB/PlanRevisionRepository@1 over Quack"
+        or policy.get("append_mode") != "exact_plan_revision_cas"
+        or policy.get("task_history_policy")
+        != "preserve_immutable_task_cids_and_receipts"
+        or policy.get("attempt_source_policy")
+        != "exact_launch_forest_and_worktree_preimage"
+        or policy.get("completion_policy")
+        != "current_tree_requalification_required"
+        or policy.get("cli_json_is_authority") is not False
+        or policy.get("filesystem_projection_is_authority") is not False
+    ):
+        raise ConfiguredBoardError(
+            "launch-source amendment policy is incomplete or unsafe"
+        )
+    return policy
+
+
 def preflight_configured_board(
     board: ConfiguredBoard,
     *,
@@ -4701,6 +4742,29 @@ def preflight_configured_board(
     checks: list[dict[str, Any]] = []
     errors: list[str] = []
     warnings: list[str] = []
+
+    try:
+        amendment_policy = _launch_source_amendment_policy(board.payload)
+    except ConfiguredBoardError as exc:
+        _append_check(
+            checks,
+            errors,
+            name="launch_source_amendment_policy",
+            passed=False,
+            detail=str(exc),
+        )
+    else:
+        _append_check(
+            checks,
+            errors,
+            name="launch_source_amendment_policy",
+            passed=True,
+            detail=(
+                "absent"
+                if amendment_policy is None
+                else "operator_materializer_required"
+            ),
+        )
 
     if _targets_fresh_recovery_generation(
         board.payload,
@@ -5165,6 +5229,9 @@ def configured_board_common_args(
         "--log-level",
         "INFO",
     ]
+    launch_source_policy = _launch_source_amendment_policy(payload)
+    if launch_source_policy is not None:
+        args.append("--require-launch-source-amendment")
     # Explicit database-program selections are supervisor inputs.  The
     # fallback legacy-Markdown program, however, is a daemon-only compatibility
     # projection: implementation_supervisor does not accept the database CLI
@@ -8043,6 +8110,30 @@ def _run_parsed_command(
         return 0 if preflight["valid"] else 2
     if not preflight["valid"]:
         print(json.dumps(preflight, indent=2, sort_keys=True))
+        return 2
+
+    launch_source_policy = _launch_source_amendment_policy(board.payload)
+    if args.command == "launch" and launch_source_policy is not None:
+        materializer_path = str(board.payload.get("materializer_path") or "")
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-operator-admission-required@1"
+                    ),
+                    "valid": False,
+                    "process_started": False,
+                    "reason_code": "launch_source_amendment_operator_required",
+                    "authoritative_store": launch_source_policy[
+                        "authoritative_store"
+                    ],
+                    "materializer_path": materializer_path,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return 2
 
     detach = not bool(args.foreground)

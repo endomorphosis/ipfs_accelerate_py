@@ -8890,6 +8890,8 @@ class PortalSupervisorConfig:
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
     state_owner_bootstrap_store_id: str = ""
+    require_launch_source_amendment: bool = False
+    launch_source_amendment_json: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -9071,6 +9073,51 @@ class PortalSupervisorConfig:
                 or self.database_owner_session_id
             )
         )
+        if self.require_launch_source_amendment and not self.launch_source_amendment_json:
+            raise SupervisorSchedulerConfigError(
+                "required launch-source amendment is unavailable"
+            )
+        if self.launch_source_amendment_json:
+            from ..task_sources.launch_source_amendment import (
+                LaunchSourceAmendment,
+                LaunchSourceAmendmentError,
+            )
+
+            try:
+                launch_amendment = LaunchSourceAmendment.from_json(
+                    self.launch_source_amendment_json
+                )
+                if launch_amendment.board_namespace != self.board_namespace:
+                    raise LaunchSourceAmendmentError(
+                        "launch source board namespace differs"
+                    )
+                head = subprocess.run(
+                    ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                tree = subprocess.run(
+                    ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if head.returncode != 0 or tree.returncode != 0:
+                    raise LaunchSourceAmendmentError(
+                        "launch Git generation is unavailable"
+                    )
+                launch_amendment.validate_launch_git(
+                    source_head=head.stdout.strip(),
+                    repository_tree_id=tree.stdout.strip(),
+                )
+            except (OSError, LaunchSourceAmendmentError) as exc:
+                raise SupervisorSchedulerConfigError(
+                    "launch-source amendment is invalid"
+                ) from exc
+            self.launch_source_amendment_json = launch_amendment.to_json()
         if generic_bootstrap_requested:
             program = self.database_program
             if (
@@ -24922,6 +24969,15 @@ class PortalImplementationSupervisor:
                             self.config.state_owner_bootstrap_store_id,
                         ]
                     )
+            if self.config.require_launch_source_amendment:
+                command.append("--require-launch-source-amendment")
+            if self.config.launch_source_amendment_json:
+                command.extend(
+                    [
+                        "--launch-source-amendment-json",
+                        self.config.launch_source_amendment_json,
+                    ]
+                )
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -26045,6 +26101,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--require-launch-source-amendment",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--launch-source-amendment-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--explicit-legacy-task-source",
         action="store_true",
         help="Acknowledge explicit legacy-Markdown authority.",
@@ -26864,6 +26930,12 @@ def supervisor_config_from_args(
         ),
         state_owner_bootstrap_store_id=str(
             getattr(args, "state_owner_bootstrap_store_id", "") or ""
+        ),
+        require_launch_source_amendment=bool(
+            getattr(args, "require_launch_source_amendment", False)
+        ),
+        launch_source_amendment_json=str(
+            getattr(args, "launch_source_amendment_json", "") or ""
         ),
         reconciliation_only=reconciliation_only,
         implement=implement,
