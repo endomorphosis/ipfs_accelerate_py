@@ -3,7 +3,7 @@
 
 The Markdown documents are immutable operator inputs, never task-completion
 authority.  This validator checks their closed structure and the scheduler
-binding, including the source-only M14 stale-owner successor control.
+binding, including the append-only M16 accepted-source retry control.
 binding only; accepted task state remains in the datasets-authoritative
 DuckDB store reached through the current Quack owner.
 """
@@ -349,6 +349,27 @@ def _m13_migration_errors(
         return [f"M13 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m16_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M16 accepted-source repair contract across gates."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m16_accepted_source_retry_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+            )
+        )
+    except Exception as exc:
+        return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -356,11 +377,43 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M13 before M12, M11, M10, M9, and M8.  Consequently an empty, null,
+    Key presence selects M16 before every historical successor.  Consequently
+    an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m16_key = "accepted_source_retry_successor_materialization"
+    m16_seal_key = "accepted_source_retry_successor_materialization_cid"
+    m16_presence = (
+        m16_key in scheduler,
+        m16_key in migration,
+        m16_seal_key in seal,
+    )
+    if any(m16_presence):
+        errors = _m16_migration_errors(scheduler, seal, migration)
+        if not all(m16_presence):
+            errors.append(
+                "M16 accepted-source retry authority is only partially declared"
+            )
+        # M15 remains immutable historical authority.  A malformed M16 must
+        # never reactivate it, but the exact predecessor control is still
+        # independently checked.
+        try:
+            module = _dependency_validator_module(REPO_ROOT)
+            errors.extend(
+                module._m15_historical_authority_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                )
+            )
+        except Exception as exc:
+            errors.append(
+                f"M15 historical validator unavailable: {type(exc).__name__}: {exc}"
+            )
+        return errors
 
     m15_key = "runtime_root_rebind_successor_materialization"
     m15_seal_key = "runtime_root_rebind_successor_materialization_cid"
@@ -488,7 +541,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9/M10/M11/M12/M13 successor authority is absent"]
+    return ["active M8/M9/M10/M11/M12/M13/M14/M15/M16 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1934,8 +1987,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m16_key = "accepted_source_retry_successor_materialization"
+    m16_selected = any(
+        (
+            m16_key in config,
+            m16_key in migration,
+            "accepted_source_retry_successor_materialization_cid" in seal,
+        )
+    )
     m15_key = "runtime_root_rebind_successor_materialization"
-    m15_selected = any(
+    m15_selected = not m16_selected and any(
         (
             m15_key in config,
             m15_key in migration,
@@ -1943,7 +2004,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m14_key = "stale_owner_restart_successor_materialization"
-    m14_selected = not m15_selected and any(
+    m14_selected = not m16_selected and not m15_selected and any(
         (
             m14_key in config,
             m14_key in migration,
@@ -1951,7 +2012,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m13_key = "quack_refresh_successor_materialization"
-    m13_selected = not m15_selected and not m14_selected and any(
+    m13_selected = not m16_selected and not m15_selected and not m14_selected and any(
         (
             m13_key in config,
             m13_key in migration,
@@ -1959,7 +2020,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = not m15_selected and not m14_selected and not m13_selected and any(
+    m12_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -1967,7 +2028,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = not m14_selected and not m13_selected and not m12_selected and any(
+    m11_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -1975,7 +2036,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
+    m10_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -1983,7 +2044,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
+    m9_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -1991,7 +2052,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m15"
+        "run-r2-m16"
+        if m16_selected
+        else "run-r2-m15"
         if m15_selected
         else "run-r2-m14"
         if m14_selected
@@ -2008,7 +2071,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "16"
+        "17"
+        if m16_selected
+        else "16"
         if m15_selected
         else "15"
         if m14_selected
@@ -2025,7 +2090,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24058
+        24059
+        if m16_selected
+        else 24058
         if m15_selected
         else 24057
         if m14_selected
@@ -2056,7 +2123,88 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m15_selected:
+    if m16_selected:
+        accepted_source_retry = config.get(m16_key)
+        required_m16 = {
+            "schema": "sawm/portal-accepted-source-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M16",
+            "supersession_mode": (
+                "append_only_accepted_source_repair_and_exact_rearm"
+            ),
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m16/control.coordination.duckdb"
+            ),
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+            ),
+            "target_generation": 17,
+            "target_quack_port": 24059,
+            "target_plan_revision": 17,
+            "target_event_watermark": 209,
+            "target_projection_cid": (
+                "baguqeerakzd5xe55z5l6nifvwumea7unzobnhokoigbfkkdzg2chmrl4xa6q"
+            ),
+            "target_coordination_projection_digest": (
+                "sha256:3a1871c7bd682348897fd10da9a5515f671e1986beedff889c26d7dfe5a91773"
+            ),
+            "target_coordination_event_count": 674,
+            "prior_event_watermark": 205,
+            "prior_generation": 16,
+            "prior_plan_revision": 16,
+            "coordination_semantic_changes": 2,
+            "task_revision_changes": 2,
+            "task_status_changes": 2,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "worker_self_approval": False,
+        }
+        if type(accepted_source_retry) is not dict or any(
+            accepted_source_retry.get(key) != value
+            for key, value in required_m16.items()
+        ):
+            config_errors.append(
+                "M16 accepted-source retry authority is not exact"
+            )
+        elif (
+            accepted_source_retry != migration.get(m16_key)
+            or seal.get("accepted_source_retry_successor_materialization_cid")
+            != "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    accepted_source_retry,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        ):
+            config_errors.append(
+                "M16 accepted-source retry authority/CID differs"
+            )
+        runtime_root = required_m16["target_runtime_root"]
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        } or any(
+            program.get(key) != value
+            for key, value in {
+                "event_store_path": f"{runtime_root}/events",
+                "runtime_registry_path": f"{runtime_root}/registry",
+                "worktree_root": f"{runtime_root}/worktrees",
+            }.items()
+        ):
+            config_errors.append("M16 active runtime paths are not exactly fresh")
+    elif m15_selected:
         rebind = config.get(m15_key)
         required_m15 = {
             "schema": "sawm/runtime-root-rebind-repair-authorization@1",

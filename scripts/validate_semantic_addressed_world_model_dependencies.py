@@ -3,7 +3,7 @@
 
 This gate is deliberately read-only.  It does not import optional providers in
 the validator process.  A separate, hermetic child recomputes the reviewed
-M14 control dependency binding without starting an owner.
+M16 control dependency binding without starting an owner.
 native DuckDB pin, consumes those bytes through a sealed anonymous descriptor,
 loads the exact local HTTPFS and Quack projections, and opens only an in-memory
 database for ``SELECT 42``.  Network and extension installation remain denied.
@@ -2983,6 +2983,356 @@ def _m12_declared_output_retry_errors(
     return errors
 
 
+def _m16_accepted_source_retry_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+) -> list[str]:
+    """Check M16's exact accepted-source repair and two-task rearm controls."""
+
+    key = "accepted_source_retry_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m16_dependency_materializer",
+            REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M16 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m16_accepted_source_retry_authority()
+        errors: list[str] = []
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M16 accepted-source retry authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M16 accepted-source retry authority CID is not exact")
+
+        target_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+        target_store = f"{target_root}/control.duckdb"
+        target_coordination = f"{target_root}/control.coordination.duckdb"
+        required_scalars = {
+            "schema": "sawm/portal-accepted-source-repair-authorization@1",
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M16",
+            "migration_kind": "accepted_source_transition_repair",
+            "supersession_mode": (
+                "append_only_accepted_source_repair_and_exact_rearm"
+            ),
+            "target_runtime_root": target_root,
+            "target_store_id": target_store,
+            "target_coordination_store_id": target_coordination,
+            "target_generation": 17,
+            "target_quack_port": 24059,
+            "target_plan_revision": 17,
+            "target_event_watermark": 209,
+            "target_projection_cid": (
+                "baguqeerakzd5xe55z5l6nifvwumea7unzobnhokoigbfkkdzg2chmrl4xa6q"
+            ),
+            "target_coordination_projection_digest": (
+                "sha256:3a1871c7bd682348897fd10da9a5515f671e1986beedff889c26d7dfe5a91773"
+            ),
+            "target_coordination_event_count": 674,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m15/control.duckdb"
+            ),
+            "prior_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m15/control.coordination.duckdb"
+            ),
+            "prior_control_store_sha256": (
+                "d0254ec3a6c19ec7d28b6ce60abbaf409b9a20256b75686fd4527e34a521fffe"
+            ),
+            "prior_control_store_size": 43_528_192,
+            "prior_coordination_store_sha256": (
+                "00312cd51a65a73ac67bfca3ee93250316d119c21f469e12482245013f7b8b09"
+            ),
+            "prior_coordination_store_size": 12_857_344,
+            "prior_event_watermark": 205,
+            "prior_event_prefix_sha256": (
+                "e8b1034cf3ae4f3ce409a66b500804436796460a605b9c11065ca5108544291c"
+            ),
+            "prior_projection_cid": (
+                "baguqeerah65cdwuzzjaxjhq6d6tzrifa3xdygb2pgqxbdq62x7uv2qnayuda"
+            ),
+            "prior_semantic_authority_digest": (
+                "sha256:6c74f6f168bb6c995081eaa6db8ad8b18591f27fd81b9a996eed7fb87c1499dc"
+            ),
+            "prior_frozen_base_authority_digest": (
+                "sha256:b2583e5132a439e66455ef38c87c3e82deba05781162ad9b90732444c60f2234"
+            ),
+            "prior_append_surface_digest": (
+                "sha256:623d5d3d5b9b0fb54d8c21552e5615e02639d697d42222028fe67b97c8505f89"
+            ),
+            "prior_catalog_digest": (
+                "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7"
+            ),
+            "prior_coordination_projection_digest": (
+                "sha256:353c1c2bf8279204e70cc7d973f1095475af805ac55f1aaa53f96269c9d1999c"
+            ),
+            "prior_coordination_event_count": 672,
+            "prior_generation": 16,
+            "prior_plan_revision": 16,
+            "prior_server_id": "server:8e8e84e9-9108-4c41-9a32-5019a71d0083",
+            "prior_process_birth_id": "birth:cf7b2f64ef112e42ab6782ce22dcba3c",
+            "prior_startup_epoch": 1_787_998_397,
+            "prior_started_at": "2026-08-29T10:13:17Z",
+            "prior_stopped_at": "2026-08-29T11:17:34Z",
+            "prior_stopped_status_projection_sha256": (
+                "4ea9e84bb571bbb3097e6c78a47444478455fb5ad5271549198548a01f3c6e5f"
+            ),
+            "prior_stopped_status_projection_size": 2_410,
+            "prior_stopped_status_projection_path": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m15/quack-owner/quack-state-server.status.json"
+            ),
+            "prior_migration_receipt_path": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m15/migration-receipt.json"
+            ),
+            "prior_migration_receipt_sha256": (
+                "77b688aa6ba7756f8050b21c8c77590ece6d3f3af19535f799976e00cdeee2c4"
+            ),
+            "prior_migration_receipt_size": 5_925,
+            "prior_migration_receipt_cid": (
+                "sha256:4d1fd0345a73ba84d9f471e139598190080998f99525f2bc9488a315a6b14f50"
+            ),
+            "prior_owner_marker_present": False,
+            "prior_wals_absent": True,
+            "prior_listener_present": False,
+            "prior_pid_present": False,
+            "prior_active_count": 0,
+            "prior_source_tree": "f0c81b0c797fbf21aed94607eca3992c0873e2d1",
+            "repair_source_commit": "5250fb379de06cf424dd06984e8d87154c107906",
+            "repair_source_tree": "db8aa933218edb9bb9f361e588338dd98cfbbc61",
+            "target_semantic_authority_digest": (
+                "sha256:c02c201a89884cfc990cae9e98f211bdfff7adbc18124281edac1d863aaba81b"
+            ),
+            "target_frozen_base_authority_digest": (
+                "sha256:09081077be61535c70e7d71d8921b16a7553b0c186822306015e1e12ce89acb7"
+            ),
+            "event_suffix_length": 4,
+            "control_base_copied": True,
+            "coordination_base_copied": True,
+            "coordination_semantic_changes": 2,
+            "plan_revision_changes": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 2,
+            "task_status_changes": 2,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required_scalars.items()):
+            errors.append("M16 accepted-source retry authority is not exact")
+
+        expected_failures = {
+            "SAWM-003": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "task-claim-failure-settlement@1"
+                ),
+                "operation": "database_task_claim_failure",
+                "failure_kind": "terminal_portal_bridge_error",
+                "failure_payload_digest": (
+                    "sha256:7123b86b2ce9030317660efa1bc0333d08013aac2b9217da96527bde6a9d8bd7"
+                ),
+                "task_cid": (
+                    "sha256:9014d7a4538b8fac7caaf6d36904636fa2277f1ce530d8def46c20d138a24917"
+                ),
+                "attempt_id": "attempt:07e99e5cff954eaebe417f8c8074f0f1",
+                "attempt_number": 1,
+                "claim_id": "claim:16b5a4c742944050a76dc2f0ac10a015",
+                "lease_id": "lease:df49803e97ca4565b9d04cd25cc69ae2",
+                "owner_session_id": (
+                    "embedded-store:ef0b99d66f5e7642811eb9bb9b60644b"
+                ),
+                "fencing_token": 1,
+                "fence_epoch": 1,
+                "provider_invocation_count": 0,
+                "effect_claim_count": 0,
+                "automatic_retry_admitted": False,
+                "control_expected_status": "in_progress",
+                "control_expected_revision": 3,
+                "settlement_id": (
+                    "baguqeeraafn4xwuix2i7ie3miynwpgtr45gvoxazzxyjvi2eyaxr456zbx7a"
+                ),
+            },
+            "SAWM-004": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "task-claim-failure-settlement@1"
+                ),
+                "operation": "database_task_claim_failure",
+                "failure_kind": "terminal_portal_bridge_error",
+                "failure_payload_digest": (
+                    "sha256:5009ad7be944356f9beb9ad6a5f2554cbeb3bbee823f5d3c80e890a2a57f5e22"
+                ),
+                "task_cid": (
+                    "sha256:7bac74f07d3755e90f51ce940ff591e69b8ac6dbe4c72a71f89dd22f76757463"
+                ),
+                "attempt_id": "attempt:8711f69f06204c6db7725ef1908d6d62",
+                "attempt_number": 1,
+                "claim_id": "claim:f64a9920c64b478db3a74b34fe8b46bd",
+                "lease_id": "lease:9adca4a38a694b08bac9cdb4a176e75d",
+                "owner_session_id": (
+                    "embedded-store:ef0b99d66f5e7642811eb9bb9b60644b"
+                ),
+                "fencing_token": 1,
+                "fence_epoch": 1,
+                "provider_invocation_count": 0,
+                "effect_claim_count": 0,
+                "automatic_retry_admitted": False,
+                "control_expected_status": "in_progress",
+                "control_expected_revision": 3,
+                "settlement_id": (
+                    "baguqeerajv2zeh2d23fhrfdh7s2cthjbo3gb6djv5fs5pt6tm7et45lelgyq"
+                ),
+            },
+        }
+        if expected.get("failure_receipts") != expected_failures:
+            errors.append("M16 frozen terminal failure receipts are not exact")
+        task_rearms = expected.get("task_rearms")
+        if (
+            not isinstance(task_rearms, Mapping)
+            or set(task_rearms) != set(expected_failures)
+            or any(
+                not isinstance(task_rearms.get(alias), Mapping)
+                or task_rearms[alias].get("task_cid")
+                != expected_failures[alias]["task_cid"]
+                or task_rearms[alias].get("settlement_id")
+                != expected_failures[alias]["settlement_id"]
+                or task_rearms[alias].get("from_status") != "blocked"
+                or task_rearms[alias].get("from_revision") != 4
+                or task_rearms[alias].get("to_status") != "retrying"
+                or task_rearms[alias].get("to_revision") != 5
+                or task_rearms[alias].get("automatic_retry_admitted") is not False
+                or task_rearms[alias].get("worker_self_approval") is not False
+                for alias in expected_failures
+            )
+        ):
+            errors.append("M16 exact two-task rearm authority is invalid")
+        if expected.get("accepted_source_repair") != {
+            "producer_path": (
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                "implementation_daemon.py"
+            ),
+            "consumer_path": (
+                "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                "database_portal_bridge.py"
+            ),
+            "focused_test_path": (
+                "test/api/test_agent_supervisor_database_portal_bridge.py"
+            ),
+            "repair_commit": "5250fb379de06cf424dd06984e8d87154c107906",
+            "forward_top_level_binding": True,
+            "nested_compatibility_fallback": True,
+            "dual_binding_mismatch_rejected": True,
+            "repository_authority_weakened": False,
+        }:
+            errors.append("M16 accepted-source adapter repair contract is not exact")
+
+        expected_paths = {
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "test/api/test_agent_supervisor_database_portal_bridge.py",
+            "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+            "config/semantic_addressed_world_model_dependencies.seal.json",
+            "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+            (
+                "docs/architecture/semantic_addressed_world_model_inventory/"
+                "prior_materialization_migration.json"
+            ),
+            "scripts/materialize_semantic_addressed_world_model_program.py",
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+            "scripts/validate_semantic_addressed_world_model_board.py",
+            "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        }
+        if (
+            expected.get("prior_source_head")
+            != "8aafdcdfcd5a903695910f7f464fd6654943ccf2"
+            or set(expected.get("bounded_control_plane_repair_paths", ()))
+            != expected_paths
+        ):
+            errors.append("M16 bounded accepted-source repair paths are not exact")
+
+        # Reuse the materializer's closed two-boundary source seal in this
+        # read-only gate.  It binds the three accepted repair leaves to their
+        # exact reviewed blobs, repair->successor to the nine operator files,
+        # and prior->successor to the aggregate twelve-file delta.
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            source_binding = {
+                "head": current_head,
+                "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                "datasets_gitlink": _git(
+                    root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                ),
+            }
+            materializer._assert_m16_source_delta(
+                root,
+                {"source_binding": source_binding},
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M16 exact repair/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "17",
+                "quack:127.0.0.1:24059",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                f"{target_root}/quack-owner",
+                24059,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M16 target/runtime binding is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            f"M16 accepted-source retry authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m15_runtime_root_rebind_errors(
     scheduler: Mapping[str, Any], seal: Mapping[str, Any], migration: Mapping[str, Any]
 ) -> list[str]:
@@ -3055,6 +3405,35 @@ def _m15_runtime_root_rebind_errors(
     except Exception as exc:
         return [
             f"M15 runtime-root authority is unavailable: {type(exc).__name__}: {exc}"
+        ]
+
+
+def _m15_historical_authority_errors(
+    scheduler: Mapping[str, Any], seal: Mapping[str, Any], migration: Mapping[str, Any]
+) -> list[str]:
+    """Verify immutable M15 controls without requiring its superseded runtime."""
+
+    key = "runtime_root_rebind_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m15_historical_dependency_materializer",
+            REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M15 historical materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m15_runtime_root_rebind_authority()
+        errors: list[str] = []
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("historical M15 runtime-root authority differs")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("historical M15 runtime-root authority CID is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            f"historical M15 runtime-root authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
         ]
 
 
@@ -5014,6 +5393,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m16_key = "accepted_source_retry_successor_materialization"
+        m16_presence = (
+            m16_key in scheduler_probe,
+            m16_key in migration_probe,
+            f"{m16_key}_cid" in seal,
+        )
         m15_key = "runtime_root_rebind_successor_materialization"
         m15_presence = (
             m15_key in scheduler_probe,
@@ -5022,7 +5407,43 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m15_presence):
+        if any(m16_presence):
+            if (
+                not all(m16_presence)
+                or not isinstance(scheduler_probe.get(m16_key), Mapping)
+                or scheduler_probe.get(m16_key) != migration_probe.get(m16_key)
+            ):
+                unexpected = [
+                    "M16 authority is partial or differs across source controls"
+                ]
+            else:
+                authority = scheduler_probe[m16_key]
+                expected_paths = set(
+                    str(path)
+                    for path in authority.get(
+                        "bounded_control_plane_repair_paths", ()
+                    )
+                )
+                expected = {path: "M" for path in expected_paths}
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(authority.get("prior_source_head")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = (
+                    []
+                    if observed == expected and working.issubset(expected_paths)
+                    else ["M16 status-qualified bounded source delta differs"]
+                )
+        elif any(m15_presence):
             if (
                 not all(m15_presence)
                 or not isinstance(scheduler_probe.get(m15_key), Mapping)
@@ -5403,7 +5824,16 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if "runtime_root_rebind_successor_materialization" in scheduler:
+        if "accepted_source_retry_successor_materialization" in scheduler:
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif "runtime_root_rebind_successor_materialization" in scheduler:
             protocol_errors.extend(
                 _m15_runtime_root_rebind_errors(scheduler, seal, migration)
             )
@@ -5457,6 +5887,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         ):
             protocol_errors.append(
                 "operator does not select the M12 authority by fail-closed key presence"
+            )
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "accepted_source_retry_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M16 authority by fail-closed key presence"
             )
         if not _has_presence_based_key_selection(
             operator_source,

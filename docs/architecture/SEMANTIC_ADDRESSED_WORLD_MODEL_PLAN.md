@@ -888,7 +888,68 @@ inode-bound pair, and writes its non-authoritative receipt last.  It performs
 no task CAS, provider dispatch, worker dispatch, coordination mutation, or
 completion acceptance.
 
-## 24. Current limitations at seal time
+## 24. M16 accepted-source transition repair and exact two-task rearm
+
+M15 was materialized, launched, and cleanly stopped. It successfully merged
+the implementation work for `SAWM-003` and `SAWM-004`, but both canonical
+completion settlements failed before acceptance because the portal producer
+did not forward the accepted-source event's top-level
+`target_repository_id` to the authoritative consumer. The immutable failed
+settlements remain `blocked@4`; neither failure invoked a provider, created a
+new implementation commit, attempted a new merge, or changed accepted
+completion evidence. The stopped M15 stores have no WAL and no active claim,
+lease, attempt, resource, or maintenance authority.
+
+The bounded repair is commit
+`5250fb379de06cf424dd06984e8d87154c107906` (tree
+`db8aa933218edb9bb9f361e588338dd98cfbbc61`). It forwards the top-level
+repository binding, retains a nested compatibility fallback, and rejects a
+dual-binding mismatch. M16 preserves that exact commit and all historical M15
+events, task revisions, failure receipts, stores, status projection, and
+migration receipt. Only the operator may append the migration plan/evidence
+and the two closed task rearms:
+
+```text
+SAWM-003  blocked revision 4 -> retrying revision 5
+SAWM-004  blocked revision 4 -> retrying revision 5
+```
+
+Each control CAS carries only `operation=operator_control_plane_repair` and
+its exact historical settlement ID. Each Quack coordination rearm must consume
+the same immutable failure receipt, remove only that failed logical completion,
+set only that task ready, and append one deterministic rearm event. Automatic
+retry remains false; a worker, provider, model, or Markdown status cannot
+authorize the transition.
+
+M16 binds the stopped M15 control SHA-256
+`d0254ec3a6c19ec7d28b6ce60abbaf409b9a20256b75686fd4527e34a521fffe`
+at 43,528,192 bytes and coordination SHA-256
+`00312cd51a65a73ac67bfca3ee93250316d119c21f469e12482245013f7b8b09`
+at 12,857,344 bytes. Its fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m16/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m16/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m16
+Quack port    24059
+generation    17
+plan revision 17
+event cursor  209
+projection    baguqeerakzd5xe55z5l6nifvwumea7unzobnhokoigbfkkdzg2chmrl4xa6q
+coord events  674
+coord root    sha256:3a1871c7bd682348897fd10da9a5515f671e1986beedff889c26d7dfe5a91773
+semantic      sha256:c02c201a89884cfc990cae9e98f211bdfff7adbc18124281edac1d863aaba81b
+frozen base   sha256:09081077be61535c70e7d71d8921b16a7553b0c186822306015e1e12ce89acb7
+```
+
+Key presence selects `accepted_source_retry_successor_materialization` before
+M15 and every predecessor. A null or malformed declaration fails closed. The
+pair is staged from exact stopped-store copies, verified on disposable copies,
+published under one inode-bound pair lock, and receives the
+`sawm/non-authoritative-migration-receipt@14` marker last. This control change
+does not materialize, start Quack, probe a provider, or launch the supervisor.
+
+## 25. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

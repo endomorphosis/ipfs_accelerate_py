@@ -3591,6 +3591,358 @@ def test_m11_pair_receipt_last_rehearsal_is_idempotent_and_tamper_closed(
     )
 
 
+def test_m16_accepted_source_retry_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "accepted_source_retry_successor_materialization"
+    authority = materializer._expected_m16_accepted_source_retry_authority()
+    assert config[key] == authority
+    assert inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert materializer._m16_successor_configured(config) is True
+    malformed = dict(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M16 accepted-source retry authority is invalid",
+    ):
+        materializer._m16_successor_configured(malformed)
+
+
+def test_m16_source_seal_binds_repair_blobs_and_both_exact_deltas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_source_seal_test",
+    )
+    authority = materializer._expected_m16_accepted_source_retry_authority()
+    prior = authority["prior_source_head"]
+    repair = authority["repair_source_commit"]
+    current = "c" * 40
+    repair_paths = tuple(materializer._M16_ACCEPTED_REPAIR_BLOBS)
+    operator_paths = tuple(sorted(materializer._M16_OPERATOR_CONTROL_PATHS))
+    diffs = {
+        (prior, repair): [f"M\t{path}" for path in repair_paths],
+        (repair, current): [f"M\t{path}" for path in operator_paths],
+        (prior, current): [
+            *(f"M\t{path}" for path in repair_paths),
+            *(f"M\t{path}" for path in operator_paths),
+        ],
+    }
+    refs = {
+        f"{prior}^{{tree}}": authority["prior_source_tree"],
+        f"{repair}^{{tree}}": authority["repair_source_tree"],
+        f"{current}^{{tree}}": "d" * 40,
+        f"{prior}:ipfs_datasets_py": authority["prior_datasets_gitlink"],
+        f"{current}:ipfs_datasets_py": authority["prior_datasets_gitlink"],
+        f"{prior}:ipfs_kit_py": authority["prior_kit_gitlink"],
+        f"{current}:ipfs_kit_py": authority["prior_kit_gitlink"],
+    }
+    for path, blob in materializer._M16_ACCEPTED_REPAIR_BLOBS.items():
+        refs[f"{repair}:{path}"] = blob
+        refs[f"{current}:{path}"] = blob
+
+    def exact_git(_root: Path, *args: str, **_kwargs: object) -> str:
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            return ""
+        if args and args[0] == "rev-parse":
+            return refs[args[1]]
+        if args and args[0] == "diff":
+            return "\n".join(diffs[(args[3], args[4])])
+        raise AssertionError(f"unexpected M16 source-seal git call: {args}")
+
+    monkeypatch.setattr(materializer, "_git", exact_git)
+    population = {
+        "source_binding": {
+            "head": current,
+            "tree": "d" * 40,
+            "datasets_gitlink": authority["prior_datasets_gitlink"],
+        }
+    }
+    materializer._assert_m16_source_delta(Path("/unused"), population, authority)
+
+    first_path = repair_paths[0]
+    refs[f"{current}:{first_path}"] = "0" * 40
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="accepted-source repair blob differs",
+    ):
+        materializer._assert_m16_source_delta(
+            Path("/unused"), population, authority
+        )
+    refs[f"{current}:{first_path}"] = materializer._M16_ACCEPTED_REPAIR_BLOBS[
+        first_path
+    ]
+
+    diffs[(repair, current)].append("M\tunexpected.py")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="repair successor delta differs from the nine controls",
+    ):
+        materializer._assert_m16_source_delta(
+            Path("/unused"), population, authority
+        )
+
+
+def test_m16_scheduler_uses_fresh_generation_17_runtime_namespace() -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+    assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
+    assert config["database_program"]["store_generation"] == "17"
+    assert config["database_program"]["quack_endpoint"] == "quack:127.0.0.1:24059"
+    assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
+    assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
+    assert config["quack_owner"]["port"] == 24059
+    assert config["runtime_paths"] == {
+        "root": root,
+        "state": f"{root}/state",
+        "worktrees": f"{root}/worktrees",
+        "merge_queue": f"{root}/merge-queue",
+        "logs": f"{root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+
+
+def test_m16_disposable_stage_preserves_failures_and_rearms_exactly(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_stage_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m16_accepted_source_retry_authority()
+    prior_control = REPO_ROOT / authority["prior_store_id"]
+    prior_coordination = REPO_ROOT / authority["prior_coordination_store_id"]
+    before = (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    result = materializer._stage_m16_store_pair(
+        REPO_ROOT,
+        stage,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        "sha256:m16-disposable-stage",
+    )
+    verified = result["verified"]
+    assert verified["event_watermark"] == 209
+    assert verified["projection_cid"] == authority["target_projection_cid"]
+    assert set(verified["task_rearm_event_ids"]) == {"SAWM-003", "SAWM-004"}
+    assert set(verified["coordination_rearm_event_ids"]) == {
+        "SAWM-003",
+        "SAWM-004",
+    }
+    assert verified["coordination_event_count"] == 674
+    assert verified["coordination_projection_digest"] == authority[
+        "target_coordination_projection_digest"
+    ]
+    assert (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    ) == before
+
+    # The coordination projection intentionally excludes lease_events.  Prove
+    # the deep verifier independently seals the exact task scope of the two
+    # rearm events rather than trusting that projection alone.
+    import duckdb
+
+    connection = duckdb.connect(str(result["stage_coordination"]))
+    try:
+        connection.execute(
+            "UPDATE lease_events SET scope_key='task:forged' "
+            "WHERE observed_at_ms=?",
+            [materializer._M16_COORDINATION_REARM_OBSERVED_AT_MS["SAWM-003"]],
+        )
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="SAWM-003 coordination rearm differs",
+    ):
+        materializer._verify_m16_store_pair_copy(
+            result["stage_control"],
+            result["stage_coordination"],
+            result["stage_prior_control"],
+            result["stage_prior_coordination"],
+            population,
+            config,
+            "sha256:m16-disposable-stage",
+        )
+
+
+def test_m16_receipt_recovers_exact_hardlink_and_live_marker_hashes_coordination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m16_receipt_recovery_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m16_coordination_hash_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m16_accepted_source_retry_authority()
+    dependency_report = {"schema": "sawm/test-dependency@1", "valid": True}
+    board_report = {"schema": "sawm/test-board@1", "valid": True}
+    validation_digest = materializer._identity(
+        {
+            "dependency": dependency_report,
+            "board": board_report,
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    staged = materializer._stage_m16_store_pair(
+        REPO_ROOT,
+        stage,
+        REPO_ROOT / authority["prior_store_id"],
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        population,
+        config,
+        validation_digest,
+    )
+    target = tmp_path / authority["target_runtime_root"]
+    target.mkdir(parents=True)
+    control = target / "control.duckdb"
+    coordination = target / "control.coordination.duckdb"
+    shutil.copyfile(staged["stage_control"], control)
+    shutil.copyfile(staged["stage_coordination"], coordination)
+    prior_control = tmp_path / authority["prior_store_id"]
+    prior_coordination = tmp_path / authority["prior_coordination_store_id"]
+    prior_control.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO_ROOT / authority["prior_store_id"], prior_control)
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        prior_coordination,
+    )
+    verified = dict(staged["verified"])
+
+    monkeypatch.setattr(
+        materializer,
+        "_m16_accepted_source_retry_authority",
+        lambda *_args, **_kwargs: authority,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_committed_clean_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m16_source_delta",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m16_prior_anchor",
+        lambda *_args, **_kwargs: (prior_control, prior_coordination),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m16_store_pair",
+        lambda *_args, **_kwargs: dict(verified),
+    )
+    receipt = materializer._ensure_m16_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    receipt_path = target / "migration-receipt.json"
+    crash_alias = target / ".migration-receipt.json.123.tmp"
+    os.link(receipt_path, crash_alias)
+    assert receipt_path.stat().st_nlink == 2
+    assert materializer._ensure_m16_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    ) == receipt
+    assert receipt_path.stat().st_nlink == 1
+    assert not crash_alias.exists()
+
+    def validator_report(_root: Path, relative: str) -> dict[str, object]:
+        if relative.endswith("dependencies.py"):
+            return dependency_report
+        if relative.endswith("board.py"):
+            return board_report
+        raise AssertionError(f"unexpected validator path: {relative}")
+
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(materializer, "build_population", lambda _root: population)
+    monkeypatch.setattr(materializer, "_validator_report", validator_report)
+    assert dict(
+        operator._require_m16_final_pair_marker(
+            config, authority, materializer, checked=None
+        )
+    ) == receipt
+    with coordination.open("ab") as handle:
+        handle.write(b"tampered")
+        handle.flush()
+        os.fsync(handle.fileno())
+    with pytest.raises(
+        operator.OperatorError,
+        match="M16 materialized final pair marker differs",
+    ):
+        operator._require_m16_final_pair_marker(
+            config, authority, materializer, checked=None
+        )
+
+
 def test_m13_quack_refresh_authority_is_closed_and_selected() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -4251,15 +4603,26 @@ def test_m15_runtime_root_authority_is_presence_first_and_exact() -> None:
         materializer._m15_successor_configured(malformed)
 
 
-def test_m15_scheduler_uses_one_fresh_runtime_namespace() -> None:
+def test_m15_historical_authority_preserves_fresh_namespace_under_m16() -> None:
     config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m15"
-    assert config["runtime_paths"] == {
+    key = "runtime_root_rebind_successor_materialization"
+    authority = config[key]
+    root = authority["target_runtime_root"]
+    assert root == "data/agent_supervisor/semantic_addressed_world_model/run-r2-m15"
+    assert authority["target_store_id"] == f"{root}/control.duckdb"
+    assert authority["target_coordination_store_id"] == (
+        f"{root}/control.coordination.duckdb"
+    )
+    assert authority["target_generation"] == 16
+    assert authority["target_quack_port"] == 24_058
+    assert authority["target_plan_revision"] == 16
+    assert authority["target_event_watermark"] == 201
+    historical_runtime = {
         "root": root,
         "state": f"{root}/state",
         "worktrees": f"{root}/worktrees",
@@ -4267,13 +4630,13 @@ def test_m15_scheduler_uses_one_fresh_runtime_namespace() -> None:
         "logs": f"{root}/logs",
         "generated_runtime_artifacts_are_completion_authority": False,
     }
-    assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
-    assert config["database_program"]["store_generation"] == "16"
-    assert config["database_program"]["event_store_path"] == f"{root}/events"
-    assert config["database_program"]["runtime_registry_path"] == f"{root}/registry"
-    assert config["database_program"]["worktree_root"] == f"{root}/worktrees"
-    assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
-    assert config["quack_owner"]["port"] == 24_058
+    assert historical_runtime["root"] == authority["target_runtime_root"]
+    assert config["runtime_paths"]["root"] == (
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+    )
+    assert config["runtime_paths"] != historical_runtime
+    assert config["database_program"]["store_generation"] == "17"
+    assert config["quack_owner"]["port"] == 24_059
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 
@@ -4491,7 +4854,7 @@ def test_m15_disposable_stage_appends_only_events_200_and_201(
     assert verified["task_status_changes"] == 0
 
 
-def test_m15_live_final_marker_path_never_deep_checks_active_store(
+def test_m15_historical_final_marker_helper_survives_m16_supersession(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4511,6 +4874,16 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
     )
     population = materializer.build_population(REPO_ROOT)
     authority = materializer._expected_m15_runtime_root_rebind_authority()
+    assert config["runtime_paths"]["root"] != authority["target_runtime_root"]
+    historical_config = copy.deepcopy(config)
+    historical_config["runtime_paths"] = {
+        "root": authority["target_runtime_root"],
+        "state": f"{authority['target_runtime_root']}/state",
+        "worktrees": f"{authority['target_runtime_root']}/worktrees",
+        "merge_queue": f"{authority['target_runtime_root']}/merge-queue",
+        "logs": f"{authority['target_runtime_root']}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
     dependency_report = {"schema": "sawm/test-dependency@1", "valid": True}
     board_report = {"schema": "sawm/test-board@1", "valid": True}
     validation_digest = materializer._identity(
@@ -4528,7 +4901,7 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
         REPO_ROOT / authority["prior_store_id"],
         REPO_ROOT / authority["prior_coordination_store_id"],
         population,
-        config,
+        historical_config,
         validation_digest,
     )
     control = staged["stage_control"]
@@ -4544,7 +4917,7 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
         control,
         coordination,
         population,
-        config,
+        historical_config,
         verified,
         validation_digest,
     )
@@ -4574,7 +4947,7 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
     }
     assert dict(
         operator._require_m15_final_pair_marker(
-            config, authority, materializer, checked=checked
+            historical_config, authority, materializer, checked=checked
         )
     ) == receipt
 
@@ -4594,7 +4967,7 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
         forbidden_deep_check,
     )
     accepted = operator._require_m15_final_pair_marker(
-        config, authority, materializer, checked=None
+        historical_config, authority, materializer, checked=None
     )
     assert dict(accepted) == receipt
     pending = target / ".migration-receipt.json.live-race.tmp"
@@ -4604,7 +4977,7 @@ def test_m15_live_final_marker_path_never_deep_checks_active_store(
         match="final pair marker",
     ):
         operator._require_m15_final_pair_marker(
-            config, authority, materializer, checked=None
+            historical_config, authority, materializer, checked=None
         )
 
 
