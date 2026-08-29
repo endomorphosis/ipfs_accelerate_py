@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTask,
     parse_task_file,
 )
 
@@ -86,5 +87,85 @@ def test_parsed_predicted_directory_reaches_general_task_edit_policy(
             "ipfs_accelerate_py/agent_supervisor/context/worker.py",
             "ipfs_accelerate_py/agent_supervisor/todo_daemon",
         )
+    finally:
+        daemon.close_event_runtime()
+
+
+def test_resource_claims_use_the_complete_proposal_scope(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## PCTDD-",
+        worktree_submodule_paths=("external/ipfs_accelerate",),
+    )
+
+    def task(
+        task_id: str,
+        *,
+        output: str,
+        predicted_directory: str,
+    ) -> PortalTask:
+        return PortalTask(
+            task_id=task_id,
+            title=f"Implement {task_id}",
+            status="ready",
+            completion="manual",
+            priority="P1",
+            track="runtime",
+            outputs=[output],
+            metadata={
+                "predicted files": predicted_directory,
+                "allowed paths": f"{predicted_directory}/generated",
+            },
+        )
+
+    shared = "external/ipfs_accelerate/ipfs_accelerate_py/shared_runtime"
+    first = task(
+        "PCTDD-001",
+        output="docs/task-one.md",
+        predicted_directory=shared,
+    )
+    second = task(
+        "PCTDD-002",
+        output="test/task-two.json",
+        predicted_directory=shared,
+    )
+    alpha = task(
+        "PCTDD-003",
+        output="docs/task-three.md",
+        predicted_directory=(
+            "external/ipfs_accelerate/ipfs_accelerate_py/runtime/alpha"
+        ),
+    )
+    beta = task(
+        "PCTDD-004",
+        output="docs/task-four.md",
+        predicted_directory=(
+            "external/ipfs_accelerate/ipfs_accelerate_py/runtime/beta"
+        ),
+    )
+
+    try:
+        # Distinct repository-root artifacts do not become shared claims, but
+        # the identical predicted production directory does.
+        assert daemon._task_implementation_resource_paths(first) == (shared,)
+        assert daemon._task_implementation_resource_paths(second) == (shared,)
+
+        # Child Allowed paths collapse beneath their predicted parent, while
+        # genuinely disjoint production directories retain distinct claims.
+        alpha_claims = daemon._task_implementation_resource_paths(alpha)
+        beta_claims = daemon._task_implementation_resource_paths(beta)
+        assert alpha_claims == (
+            "external/ipfs_accelerate/ipfs_accelerate_py/runtime/alpha",
+        )
+        assert beta_claims == (
+            "external/ipfs_accelerate/ipfs_accelerate_py/runtime/beta",
+        )
+        assert alpha_claims != beta_claims
     finally:
         daemon.close_event_runtime()

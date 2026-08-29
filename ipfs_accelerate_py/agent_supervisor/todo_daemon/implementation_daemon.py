@@ -54967,21 +54967,30 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
     ) -> tuple[str, ...]:
-        """Return shared resource paths claimed for one task's outputs.
+        """Return shared resource paths claimed for one task's edit scope.
 
-        Prefer **declared output paths** under configured submodule roots so
-        multi-lane boards (e.g. WPD) can run disjoint file claims in parallel.
+        Prefer task-owned paths under configured submodule roots so multi-lane
+        boards (e.g. WPD) can run disjoint path claims in parallel.  Resource
+        claims use the same closed Outputs + Predicted files + Allowed paths
+        scope as proposal validation; otherwise two tasks authorized to edit
+        the same predicted production path could be dispatched concurrently.
         Falling back to whole submodule roots would serialize every task that
         touches ``external/ipfs_accelerate`` and permanently under-utilize
         strict multi-lane supervisors.
 
-        When a task declares no outputs under configured submodules, return
-        empty (no shared resource claim). Whole-submodule fallback is retained
-        only when an output equals a configured submodule root exactly.
+        Repository-root artifacts remain outside shared submodule claims.
+        Whole-submodule fallback is retained only when a scoped path equals a
+        configured submodule root exactly.
         """
 
-        outputs = normalize_relative_path_list(task_declared_output_paths(task))
-        if not outputs:
+        scope_paths = normalize_relative_path_list(
+            self._proposal_scope_paths_for(
+                task,
+                repo_root=None,
+                include_ast_companions=False,
+            )
+        )
+        if not scope_paths:
             return ()
         submodule_roots = tuple(
             str(path).strip().rstrip("/")
@@ -54990,21 +54999,21 @@ class PortalImplementationDaemon:
         )
         precise: list[str] = []
         whole_roots: list[str] = []
-        for output in outputs:
+        for scoped_path in scope_paths:
             matched_root = next(
                 (
                     root
                     for root in submodule_roots
-                    if output == root or output.startswith(f"{root}/")
+                    if scoped_path == root or scoped_path.startswith(f"{root}/")
                 ),
                 "",
             )
             if not matched_root:
                 continue
-            if output == matched_root:
+            if scoped_path == matched_root:
                 whole_roots.append(matched_root)
             else:
-                precise.append(output)
+                precise.append(scoped_path)
         # Prefer precise file claims; only expand to whole roots when the
         # task literally targets the submodule root as an output.
         selected = precise if precise else whole_roots
