@@ -63508,7 +63508,11 @@ class PortalImplementationDaemon:
         base_allowed_edit_paths = tuple(
             completion_scope
             if completion_scope is not None
-            else declared_output_paths
+            else self._proposal_scope_paths_for(
+                task,
+                repo_root=None,
+                include_ast_companions=False,
+            )
         )
         allowed_edit_paths = tuple(
             dict.fromkeys(
