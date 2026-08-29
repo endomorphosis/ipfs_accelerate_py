@@ -949,7 +949,65 @@ published under one inode-bound pair lock, and receives the
 `sawm/non-authoritative-migration-receipt@14` marker last. This control change
 does not materialize, start Quack, probe a provider, or launch the supervisor.
 
-## 25. Current limitations at seal time
+## 25. M17 post-commit source-binding successor
+
+M16 was materialized and its generation-17 Quack owner reached `ready`, but
+the first live preflight exposed two bounded verifier defects.  The first used
+destructive event replay on the verifier's only predecessor copy; the second
+attempted the same replay through the live Quack authority.  Both repairs are
+operator-owned controls.  The live path is now inspection-only, while replay
+continues solely on a disposable exact copy.  No implementation task was
+dispatched during this diagnosis.
+
+Those repairs necessarily changed the exact committed source after M16's plan
+head and receipt had bound source CID
+`sha256:97fab1ba85374b2bfd6763ed321c1425249263059c3529576420ee9a26d84d15`.
+M16 therefore fails current-source preflight honestly and remains immutable
+history.  M17 is a source-only successor: it copies the cleanly stopped M16
+control and coordination authorities and appends exactly plan revision 18 and
+one operator evidence event.  It changes no task, goal, completion, provider,
+merge, effect, or coordination semantics.
+
+The stopped predecessor is distinct from M16's publication-time marker.  M17
+binds the stopped control SHA-256
+`11b837c173263c18f24e3d382ae1234771edc5e9ce03f56c8747be272fb8ad06`
+at 43,528,192 bytes, coordination SHA-256
+`ace915d5076a5d082a3377f669c9aef5f71216fe162d3e2e1c4f0aea7406fd83`
+at 12,857,344 bytes, stopped status SHA-256
+`0ea511b7ed3e57c87fb0df72c9400daf01ab6172994f14d4681db7c642aa8908`,
+and the unchanged M16 receipt file SHA-256
+`d72a8ff3cc2659a848b053915a6ca28aca57a2db9e8f885b63d691462af80031`.
+The stopped base digest is
+`sha256:24ace3d6006244240b71822a27a85a25ffe44dbb32d700d427479289d31127b2`;
+it intentionally differs from M16's publication-time frozen-base digest
+because the generation-17 owner durably recorded its runtime lifecycle before
+stopping.  Semantic task authority remains
+`sha256:c02c201a89884cfc990cae9e98f211bdfff7adbc18124281edac1d863aaba81b`.
+
+M17's fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m17/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m17/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m17
+Quack port    24060
+generation    18
+plan revision 18
+event cursor  211
+projection    baguqeerat5ph3demwcyfmvtxjsq4dxdei5lf6xva2jhylwvgh2s4ewttscza
+coord events  674
+coord root    sha256:3a1871c7bd682348897fd10da9a5515f671e1986beedff889c26d7dfe5a91773
+```
+
+The tracked M17 authority deliberately does not contain the eventual current
+source binding, target control-file hash, migration digest, event IDs, or
+receipt CID.  Those values depend on the final committed control tree and are
+sealed after that commit in the authoritative plan/evidence append and the
+ignored receipt-last runtime marker.  This removes a control/self-addressing
+cycle without weakening exact-source verification.  After M17 is materialized,
+any further tracked repair requires a stopped append-only M18 successor.
+
+## 26. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

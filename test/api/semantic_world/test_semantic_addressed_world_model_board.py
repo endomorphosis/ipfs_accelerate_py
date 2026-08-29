@@ -3598,6 +3598,74 @@ def test_m11_pair_receipt_last_rehearsal_is_idempotent_and_tamper_closed(
     )
 
 
+def test_m17_source_binding_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m17_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "source_binding_successor_materialization"
+    authority = materializer._expected_m17_source_binding_authority()
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert materializer._m17_successor_configured(config) is True
+    assert authority["prior_control_store_sha256"] == (
+        "11b837c173263c18f24e3d382ae1234771edc5e9ce03f56c8747be272fb8ad06"
+    )
+    assert authority["prior_frozen_base_authority_digest"] == (
+        "sha256:24ace3d6006244240b71822a27a85a25ffe44dbb32d700d427479289d31127b2"
+    )
+    assert authority["target_generation"] == 18
+    assert authority["target_quack_port"] == 24_060
+    assert authority["target_plan_revision"] == 18
+    assert authority["target_event_watermark"] == 211
+    assert authority["task_revision_changes"] == 0
+    assert authority["coordination_semantic_changes"] == 0
+    malformed = dict(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M17 source-binding authority is invalid",
+    ):
+        materializer._m17_successor_configured(malformed)
+
+
+def test_m17_source_seal_binds_repair_and_nine_control_delta() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m17_source_seal_test",
+    )
+    authority = materializer._expected_m17_source_binding_authority()
+    population = materializer.build_population(REPO_ROOT)
+    materializer._assert_m17_source_delta(REPO_ROOT, population, authority)
+    assert set(authority["accepted_source_repair"]["changed_paths"]) == {
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+    assert set(authority["operator_control_paths"]) == set(
+        authority["bounded_control_plane_repair_paths"]
+    )
+
+
 def test_m16_accepted_source_retry_authority_is_presence_first_and_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -3713,20 +3781,20 @@ def test_m16_source_seal_binds_repair_blobs_and_both_exact_deltas(
         )
 
 
-def test_m16_scheduler_uses_fresh_generation_17_runtime_namespace() -> None:
+def test_m17_scheduler_uses_fresh_generation_18_runtime_namespace() -> None:
     config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m17"
     assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
-    assert config["database_program"]["store_generation"] == "17"
-    assert config["database_program"]["quack_endpoint"] == "quack:127.0.0.1:24059"
+    assert config["database_program"]["store_generation"] == "18"
+    assert config["database_program"]["quack_endpoint"] == "quack:127.0.0.1:24060"
     assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
     assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
-    assert config["quack_owner"]["port"] == 24059
+    assert config["quack_owner"]["port"] == 24060
     assert config["runtime_paths"] == {
         "root": root,
         "state": f"{root}/state",
@@ -4774,11 +4842,11 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m16() -> None:
     }
     assert historical_runtime["root"] == authority["target_runtime_root"]
     assert config["runtime_paths"]["root"] == (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m16"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m17"
     )
     assert config["runtime_paths"] != historical_runtime
-    assert config["database_program"]["store_generation"] == "17"
-    assert config["quack_owner"]["port"] == 24_059
+    assert config["database_program"]["store_generation"] == "18"
+    assert config["quack_owner"]["port"] == 24_060
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 

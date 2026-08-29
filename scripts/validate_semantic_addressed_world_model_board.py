@@ -370,6 +370,27 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m17_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse the exact M17 post-commit source-binding contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m17_source_binding_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+            )
+        )
+    except Exception as exc:
+        return [f"M17 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -377,12 +398,31 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M16 before every historical successor.  Consequently
+    Key presence selects M17 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m17_key = "source_binding_successor_materialization"
+    m17_seal_key = "source_binding_successor_materialization_cid"
+    m17_presence = (
+        m17_key in scheduler,
+        m17_key in migration,
+        m17_seal_key in seal,
+    )
+    if any(m17_presence):
+        errors = _m17_migration_errors(scheduler, seal, migration)
+        if not all(m17_presence):
+            errors.append(
+                "M17 source-binding successor authority is only partially declared"
+            )
+        # M16 remains immutable historical authority.  A malformed M17 never
+        # falls back to it, but its exact accepted-source repair is still
+        # checked independently.
+        errors.extend(_m16_migration_errors(scheduler, seal, migration))
+        return errors
 
     m16_key = "accepted_source_retry_successor_materialization"
     m16_seal_key = "accepted_source_retry_successor_materialization_cid"
@@ -541,7 +581,7 @@ def _active_successor_migration_errors(
         if not all(m8_presence):
             errors.append("M8 source-repair authority is only partially declared")
         return errors
-    return ["active M8/M9/M10/M11/M12/M13/M14/M15/M16 successor authority is absent"]
+    return ["active M8/M9/M10/M11/M12/M13/M14/M15/M16/M17 successor authority is absent"]
 
 
 def _normalize_field(value: str) -> str:
@@ -1987,8 +2027,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m17_key = "source_binding_successor_materialization"
+    m17_selected = any(
+        (
+            m17_key in config,
+            m17_key in migration,
+            "source_binding_successor_materialization_cid" in seal,
+        )
+    )
     m16_key = "accepted_source_retry_successor_materialization"
-    m16_selected = any(
+    m16_selected = not m17_selected and any(
         (
             m16_key in config,
             m16_key in migration,
@@ -1996,7 +2044,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m15_key = "runtime_root_rebind_successor_materialization"
-    m15_selected = not m16_selected and any(
+    m15_selected = not m17_selected and not m16_selected and any(
         (
             m15_key in config,
             m15_key in migration,
@@ -2004,7 +2052,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m14_key = "stale_owner_restart_successor_materialization"
-    m14_selected = not m16_selected and not m15_selected and any(
+    m14_selected = not m17_selected and not m16_selected and not m15_selected and any(
         (
             m14_key in config,
             m14_key in migration,
@@ -2012,7 +2060,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m13_key = "quack_refresh_successor_materialization"
-    m13_selected = not m16_selected and not m15_selected and not m14_selected and any(
+    m13_selected = not m17_selected and not m16_selected and not m15_selected and not m14_selected and any(
         (
             m13_key in config,
             m13_key in migration,
@@ -2020,7 +2068,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and any(
+    m12_selected = not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -2028,7 +2076,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and any(
+    m11_selected = not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -2036,7 +2084,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
+    m10_selected = not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -2044,7 +2092,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
+    m9_selected = not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -2052,7 +2100,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m16"
+        "run-r2-m17"
+        if m17_selected
+        else "run-r2-m16"
         if m16_selected
         else "run-r2-m15"
         if m15_selected
@@ -2071,7 +2121,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "17"
+        "18"
+        if m17_selected
+        else "17"
         if m16_selected
         else "16"
         if m15_selected
@@ -2090,7 +2142,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24059
+        24060
+        if m17_selected
+        else 24059
         if m16_selected
         else 24058
         if m15_selected
@@ -2123,7 +2177,84 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m16_selected:
+    if m17_selected:
+        source_binding = config.get(m17_key)
+        required_m17 = {
+            "schema": (
+                "sawm/post-commit-source-binding-successor-authorization@1"
+            ),
+            "migration_revision": "SAWM-R2-M17",
+            "supersession_mode": "post_commit_exact_source_binding_repair",
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m17/control.coordination.duckdb"
+            ),
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m17"
+            ),
+            "target_generation": 18,
+            "target_quack_port": 24060,
+            "target_plan_revision": 18,
+            "target_event_watermark": 211,
+            "target_projection_cid": (
+                "baguqeerat5ph3demwcyfmvtxjsq4dxdei5lf6xva2jhylwvgh2s4ewttscza"
+            ),
+            "target_coordination_projection_digest": (
+                "sha256:3a1871c7bd682348897fd10da9a5515f671e1986beedff889c26d7dfe5a91773"
+            ),
+            "target_coordination_event_count": 674,
+            "prior_event_watermark": 209,
+            "prior_generation": 17,
+            "prior_plan_revision": 17,
+            "coordination_semantic_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "worker_self_approval": False,
+        }
+        if type(source_binding) is not dict or any(
+            source_binding.get(key) != value
+            for key, value in required_m17.items()
+        ):
+            config_errors.append("M17 source-binding authority is not exact")
+        elif (
+            source_binding != migration.get(m17_key)
+            or seal.get("source_binding_successor_materialization_cid")
+            != "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    source_binding,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        ):
+            config_errors.append("M17 source-binding authority/CID differs")
+        runtime_root = required_m17["target_runtime_root"]
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        } or any(
+            program.get(key) != value
+            for key, value in {
+                "event_store_path": f"{runtime_root}/events",
+                "runtime_registry_path": f"{runtime_root}/registry",
+                "worktree_root": f"{runtime_root}/worktrees",
+            }.items()
+        ):
+            config_errors.append("M17 active runtime paths are not exactly fresh")
+    elif m16_selected:
         accepted_source_retry = config.get(m16_key)
         required_m16 = {
             "schema": "sawm/portal-accepted-source-repair-authorization@1",
