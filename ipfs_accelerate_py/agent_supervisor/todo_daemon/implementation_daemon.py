@@ -8954,6 +8954,36 @@ class PortalImplementationDaemon:
                 selected = str(value).strip()
             if selected and selected not in outputs:
                 outputs.append(selected)
+        if not outputs:
+            # SPAR and other operator boards often store mutation paths as
+            # owned_paths / predicted_files rather than a dedicated outputs
+            # array. Residual packets still require exact write paths.
+            for key in ("owned_paths", "predicted_files"):
+                raw = body.get(key)
+                parts: Sequence[Any]
+                if isinstance(raw, str):
+                    parts = [item.strip() for item in raw.split(",") if item.strip()]
+                elif isinstance(raw, Sequence) and not isinstance(
+                    raw, (str, bytes, bytearray, memoryview)
+                ):
+                    parts = raw
+                else:
+                    continue
+                for item in parts:
+                    path = (
+                        str(item.get("path") or item.get("fluent_id") or "").strip()
+                        if isinstance(item, Mapping)
+                        else str(item).strip()
+                    ).replace("\\", "/")
+                    if (
+                        path
+                        and path not in outputs
+                        and "/" in path
+                        and not path.startswith("/")
+                        and ".." not in path.split("/")
+                        and not path.endswith("/")
+                    ):
+                        outputs.append(path)
 
         validation_values = (
             body.get("validations")

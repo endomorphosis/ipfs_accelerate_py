@@ -2020,7 +2020,7 @@ def bind_database_portal_execution_from_args(
         )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
-        return portal_daemon_class(
+        daemon = portal_daemon_class(
             todo_path=paths.task_projection,
             state_path=paths.state,
             strategy_path=paths.strategy,
@@ -2086,6 +2086,14 @@ def bind_database_portal_execution_from_args(
                 attempt_root / "dependency-preflight-artifacts"
             ),
         )
+        from ..semantic_refactoring.residual_authority import (
+            SPAR_BOARD_NAMESPACE,
+            bind_spar_residual_authority,
+        )
+
+        if str(getattr(parsed, "board_namespace", "") or "") == SPAR_BOARD_NAMESPACE:
+            bind_spar_residual_authority(daemon, repo_root=repo_root)
+        return daemon
 
     configured_worktree_root = getattr(parsed, "worktree_root", None)
     if configured_worktree_root is not None:
