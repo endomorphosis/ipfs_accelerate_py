@@ -6930,9 +6930,21 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         }
     )
     source.close()
+    # FakeQuackTransport intentionally never binds its advertised TCP port,
+    # while the configured supervisor proves that the Quack owner is live
+    # before handing the inherited bootstrap listener to a child. Reserve a
+    # race-free liveness surface without exposing a SQL endpoint; task access
+    # remains confined to the typed owner socket below.
+    quack_liveness_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    quack_liveness_listener.bind(("127.0.0.1", 0))
+    quack_liveness_listener.listen(16)
+    endpoint_host, endpoint_port = quack_liveness_listener.getsockname()
+    request.addfinalizer(quack_liveness_listener.close)
     server = build_server(
         database_path=database,
         state_dir=tmp_path / "managed-owner",
+        host=endpoint_host,
+        port=endpoint_port,
         repository_id="repository:ipfs_accelerate_py",
         store_id="casf-managed-no-change-v1",
         transport=FakeQuackTransport(),
@@ -6943,6 +6955,7 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
     )
     identity = server.start()
     request.addfinalizer(server.stop)
+    assert identity.listen_uri == f"quack:{endpoint_host}:{endpoint_port}"
     runtime_root = Path(
         tempfile.mkdtemp(prefix=".casf-managed-e2e-", dir=ROOT / "data")
     )
