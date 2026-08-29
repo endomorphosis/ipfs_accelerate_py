@@ -1083,6 +1083,10 @@ class DatabasePortalExecutionBridge:
             or invariant.get("repository_ref") != merge_commit
             or canonical_task_cid != canonical_identity.canonical_task_cid
             or canonical_task_key != canonical_identity.canonical_task_key
+            or event.get("canonical_task_cid") != canonical_task_cid
+            or event.get("canonical_task_key") != canonical_task_key
+            or queued_merge.get("canonical_task_cid") != canonical_task_cid
+            or queued_merge.get("canonical_task_key") != canonical_task_key
         ):
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition is inconsistent"

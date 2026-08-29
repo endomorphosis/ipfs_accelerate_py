@@ -339,6 +339,42 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     assert transition["worker_self_approval"] is False
     assert str(transition["transition_cid"]).startswith("sha256:")
 
+    for field, replacement in (
+        ("canonical_task_cid", None),
+        ("canonical_task_cid", "baguqeeraforeign"),
+        ("canonical_task_key", None),
+        ("canonical_task_key", "task:foreign"),
+    ):
+        inconsistent_event = json.loads(json.dumps(event))
+        if replacement is None:
+            inconsistent_event["merge_result"].pop(field)
+        else:
+            inconsistent_event["merge_result"][field] = replacement
+        events.write_text(
+            json.dumps(
+                inconsistent_event,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(DatabasePortalBridgeError, match="inconsistent"):
+            bridge._accepted_source_transition(
+                attempt=_attempt(),
+                paths=paths,
+                binding=binding,
+                task_alias="LGSWF-004",
+                task_cid="task:cid:004",
+                merge_request_loader=lambda request_id: (
+                    request if request_id == request["request_id"] else None
+                ),
+            )
+    events.write_text(
+        json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
     event["target_repository_id"] = "repository:foreign"
     events.write_text(
         json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
@@ -516,6 +552,8 @@ def test_source_transition_admits_exact_queued_reconciliation_only(
             "request_id": request_id,
             "target_branch": "main",
             "target_repository_id": repository_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "canonical_task_key": identity.canonical_task_key,
         },
     }
     proof = {
@@ -676,6 +714,35 @@ def test_source_transition_admits_exact_queued_reconciliation_only(
         bridge_module._canonical_json(provider_receipt)
     )
     assert bridge.apply_effect(_attempt(), provider_receipt)["status"] == "applied"
+
+    for field, replacement in (
+        ("canonical_task_cid", None),
+        ("canonical_task_cid", "baguqeeraforeign"),
+        ("canonical_task_key", None),
+        ("canonical_task_key", "task:foreign"),
+    ):
+        inconsistent_event = json.loads(json.dumps(queued_event))
+        if replacement is None:
+            inconsistent_event["merge_result"].pop(field)
+        else:
+            inconsistent_event["merge_result"][field] = replacement
+        paths.events.write_text(
+            "".join(
+                json.dumps(event, sort_keys=True, separators=(",", ":"))
+                + "\n"
+                for event in (inconsistent_event, reconciliation)
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(DatabasePortalBridgeError, match="inconsistent"):
+            bridge._accepted_source_transition(
+                attempt=_attempt(),
+                paths=paths,
+                binding=binding,
+                task_alias="LGSWF-004",
+                task_cid="task:cid:004",
+                merge_request_loader=lambda _candidate: request,
+            )
 
     reconciliation["completion_persistence"]["durable_update"] = False
     paths.events.write_text(
