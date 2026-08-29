@@ -743,6 +743,56 @@ def test_later_session_rearms_dead_unknown_outcome_block(tmp_path: Path) -> None
         successor.close()
 
 
+def test_later_process_rearms_exhausted_portal_provider_failure(
+    tmp_path: Path,
+) -> None:
+    seed = _open_daemon(
+        tmp_path,
+        session="session:portal-exhausted-seed",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(_population(1))
+        task = seed.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = seed._retry_budget_receipt(
+            task,
+            attempts_used=2,
+            operation="database_retry_exhausted",
+            reason="portal_provider_failed",
+        )
+        receipt["retry_exhausted"] = True
+        seed._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt=receipt,
+        )
+        assert seed.reconcile_blocked_unknown_outcome_tasks() == []
+        assert seed.task_source.get("task:cid:001").status == "blocked"
+    finally:
+        seed.close()
+
+    successor_calls: list[str] = []
+    successor = _open_daemon(
+        tmp_path,
+        session="session:portal-exhausted-rearm",
+        provider_calls=successor_calls,
+        max_task_attempts=2,
+    )
+    try:
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+        assert len(rearms) == 1
+        task = successor.task_source.get("task:cid:001")
+        assert task is not None and task.status == "retrying"
+        assert task.body["completion_receipt"]["attempts_used"] == 0
+        claimed = successor.run_once()
+        assert claimed["claimed_task_cid"] == "task:cid:001"
+        assert successor_calls == ["task:cid:001"]
+    finally:
+        successor.close()
+
+
 def test_post_effect_dispatch_journal_failure_blocks_without_reapplying(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

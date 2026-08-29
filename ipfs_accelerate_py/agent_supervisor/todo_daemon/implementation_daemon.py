@@ -69264,13 +69264,16 @@ class DatabaseImplementationDaemon:
                 continue
             reason = str(receipt.get("reason") or "")
             operation = str(receipt.get("operation") or "")
-            if (
-                operation != "database_unknown_outcome_blocked"
-                and reason not in DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS
-                and receipt.get("authority_outcome") != "unknown"
-            ):
-                continue
-            if not receipt.get("forced_block"):
+            unknown_block = bool(receipt.get("forced_block")) and (
+                operation == "database_unknown_outcome_blocked"
+                or reason in DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS
+                or receipt.get("authority_outcome") == "unknown"
+            )
+            provider_exhausted = (
+                operation == "database_retry_exhausted"
+                and reason == "portal_provider_failed"
+            )
+            if not unknown_block and not provider_exhausted:
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
             blocking_process = str(receipt.get("process_instance_id") or "")
