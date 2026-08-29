@@ -27371,6 +27371,37 @@ class PortalImplementationDaemon:
             ),
         )
 
+    def _attempt_launch_amendment_for_git(
+        self,
+        *,
+        source_head: str,
+        repository_tree_id: str,
+    ) -> Any:
+        """Return the admitted amendment or a descendant attempt generation."""
+
+        from ..task_sources.launch_source_amendment import LaunchSourceAmendmentError
+
+        amendment = self._launch_source_amendment
+        if amendment is None:
+            return None
+        try:
+            amendment.validate_launch_git(
+                source_head=source_head,
+                repository_tree_id=repository_tree_id,
+            )
+            return amendment
+        except LaunchSourceAmendmentError:
+            if not _git_commit_is_ancestor(
+                self.repo_root,
+                amendment.launch_source_head,
+                source_head,
+            ):
+                return None
+            return amendment.successor_for_current_generation(
+                source_head=source_head,
+                repository_tree_id=repository_tree_id,
+            )
+
     def _resolve_pre_implementation_authority_materials(
         self,
         *,
@@ -27378,6 +27409,7 @@ class PortalImplementationDaemon:
         task_cid: str,
         current_git_tree_id: str,
         attempt: int,
+        current_git_head: str = "",
     ) -> dict[str, Any]:
         """Resolve one exact residual bundle without minting authority.
 
@@ -27406,8 +27438,19 @@ class PortalImplementationDaemon:
                 "pre implementation attempt source authority unavailable",
                 backoff_seconds=300,
             )
+        attempt_amendment = launch_amendment
+        if current_git_head:
+            attempt_amendment = self._attempt_launch_amendment_for_git(
+                source_head=current_git_head,
+                repository_tree_id=current_git_tree_id,
+            )
+            if attempt_amendment is None:
+                raise ImplementationRetryDeferred(
+                    "pre implementation worktree differs from launch source",
+                    backoff_seconds=300,
+                )
         try:
-            attempt_source_policy_root = launch_amendment.attempt_policy_root(
+            attempt_source_policy_root = attempt_amendment.attempt_policy_root(
                 route_binding
             )
             raw = resolver(
@@ -27417,7 +27460,7 @@ class PortalImplementationDaemon:
                 execution_route_binding=(
                     dict(route_binding)
                 ),
-                launch_source_amendment=launch_amendment.to_dict(),
+                launch_source_amendment=attempt_amendment.to_dict(),
                 attempt_source_policy_root=attempt_source_policy_root,
                 attempt=int(attempt),
             )
@@ -27469,7 +27512,7 @@ class PortalImplementationDaemon:
             or str(route_binding.get("task_cid") or "") != task_cid
             or forest_roots.git_tree_id != current_git_tree_id
             or forest_roots.repository_forest_cid
-            != launch_amendment.launch_source_forest_root
+            != attempt_amendment.launch_source_forest_root
             or forest_roots.policy_root != attempt_source_policy_root
         ):
             raise ImplementationRetryDeferred(
@@ -27623,16 +27666,16 @@ class PortalImplementationDaemon:
             )
         launch_amendment = self._launch_source_amendment
         if launch_amendment is not None:
-            try:
-                launch_amendment.validate_launch_git(
-                    source_head=head,
-                    repository_tree_id=tree,
-                )
-            except Exception as exc:
+            if not _launch_amendment_covers_git(
+                launch_amendment,
+                source_head=head,
+                repository_tree_id=tree,
+                repo_root=self.repo_root,
+            ):
                 raise ImplementationRetryDeferred(
                     "pre implementation worktree differs from launch source",
                     backoff_seconds=300,
-                ) from exc
+                )
             if str(status_result.stdout or ""):
                 raise ImplementationRetryDeferred(
                     "pre implementation launch worktree is not an exact preimage",
@@ -27643,6 +27686,7 @@ class PortalImplementationDaemon:
             task=task,
             task_cid=task_cid,
             current_git_tree_id=tree,
+            current_git_head=head,
             attempt=attempt,
         )
         if materials and str(status_result.stdout or ""):
@@ -122123,6 +122167,56 @@ def _request_process_bound_state_owner_bootstrap(
     )
 
 
+def _git_rev_parse(repo_root: Path, revision: str) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", revision],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    return str(result.stdout or "").strip()
+
+
+def _git_commit_is_ancestor(repo_root: Path, ancestor: str, head: str) -> bool:
+    if not ancestor or not head:
+        return False
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, head],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _launch_amendment_covers_git(
+    amendment: Any,
+    *,
+    source_head: str,
+    repository_tree_id: str,
+    repo_root: Path,
+) -> bool:
+    """Exact launch Git, or an accepted descendant after merged work."""
+
+    from ..task_sources.launch_source_amendment import LaunchSourceAmendmentError
+
+    try:
+        amendment.validate_launch_git(
+            source_head=source_head,
+            repository_tree_id=repository_tree_id,
+        )
+        return True
+    except LaunchSourceAmendmentError:
+        return _git_commit_is_ancestor(
+            repo_root,
+            str(getattr(amendment, "launch_source_head", "") or ""),
+            source_head,
+        )
+
+
 def _launch_source_amendment_from_args(
     args: argparse.Namespace,
     *,
@@ -122143,28 +122237,21 @@ def _launch_source_amendment_from_args(
 
     try:
         amendment = LaunchSourceAmendment.from_json(raw)
-        head = subprocess.run(
-            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        tree = subprocess.run(
-            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if head.returncode != 0 or tree.returncode != 0:
+        head = _git_rev_parse(repo_root, "HEAD^{commit}")
+        tree = _git_rev_parse(repo_root, "HEAD^{tree}")
+        if not head or not tree:
             raise LaunchSourceAmendmentError(
                 "launch Git generation is unavailable"
             )
-        amendment.validate_launch_git(
-            source_head=head.stdout.strip(),
-            repository_tree_id=tree.stdout.strip(),
-        )
+        if not _launch_amendment_covers_git(
+            amendment,
+            source_head=head,
+            repository_tree_id=tree,
+            repo_root=repo_root,
+        ):
+            raise LaunchSourceAmendmentError(
+                "launch Git generation differs from its source amendment"
+            )
     except (OSError, LaunchSourceAmendmentError) as exc:
         raise RuntimeError("launch-source amendment is invalid") from exc
     args.launch_source_amendment_json = amendment.to_json()

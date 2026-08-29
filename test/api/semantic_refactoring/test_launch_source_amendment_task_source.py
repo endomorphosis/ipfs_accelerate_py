@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -427,6 +428,68 @@ def test_successor_for_current_generation_preserves_bootstrap_and_advances_git()
         repository_tree_id=amendment.launch_repository_tree_id,
     )
     assert unchanged is amendment
+
+
+def test_launch_amendment_covers_descendant_git_after_merge(tmp_path: Path) -> None:
+    import subprocess
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        _launch_amendment_covers_git,
+        _launch_source_amendment_from_args,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "one"], cwd=repo, check=True, capture_output=True)
+    launch_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    launch_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _task, _policy, base, _task_row, _plan_row = _fixture()
+    amendment = base.successor_for_current_generation(
+        source_head=launch_head,
+        repository_tree_id=launch_tree,
+    )
+    (repo / "README.md").write_text("two\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "two"], cwd=repo, check=True, capture_output=True)
+    descendant_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    descendant_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    assert _launch_amendment_covers_git(
+        amendment,
+        source_head=descendant_head,
+        repository_tree_id=descendant_tree,
+        repo_root=repo,
+    )
+    args = SimpleNamespace(
+        require_launch_source_amendment=True,
+        launch_source_amendment_json=amendment.to_json(),
+    )
+    loaded = _launch_source_amendment_from_args(args, repo_root=repo)
+    assert loaded.amendment_id == amendment.amendment_id
 
 
 def test_unasserted_predecessor_board_does_not_acquire_amendment() -> None:
