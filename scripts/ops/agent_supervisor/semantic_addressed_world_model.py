@@ -44,6 +44,58 @@ _M14_COORDINATION_STORE_ID = (
 _M14_GENERATION = 15
 _M14_TARGET_PLAN_REVISION = 15
 _M14_TARGET_EVENT_WATERMARK = 199
+_M15_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m15/control.duckdb"
+)
+_M15_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m15/control.coordination.duckdb"
+)
+_M15_GENERATION = 16
+_M15_TARGET_PLAN_REVISION = 16
+_M15_TARGET_EVENT_WATERMARK = 201
+_M15_RECEIPT_KEYS = frozenset(
+    {
+        "schema", "authoritative", "control_database_is_authority",
+        "coordination_database_is_authority", "receipt_is_final_pair_commit_marker",
+        "migration_revision", "program_definition_cid",
+        "current_source_binding_cid", "validation_digest", "migration_digest",
+        "migration_evidence_id", "plan_migration_event_id",
+        "migration_evidence_event_id", "plan_projection_cid",
+        "migration_projection_cid", "projection_cid", "migration_event_watermark",
+        "target_event_watermark", "target_generation", "target_quack_port",
+        "target_runtime_root", "database_path", "coordination_path",
+        "control_store_sha256", "control_store_size", "coordination_store_sha256",
+        "coordination_store_size", "semantic_authority_digest",
+        "frozen_base_authority_digest", "append_surface_digest", "catalog_digest",
+        "coordination_projection_digest", "coordination_event_count",
+        "prior_database_path", "prior_coordination_path",
+        "prior_control_store_sha256", "prior_control_store_size",
+        "prior_coordination_store_sha256", "prior_coordination_store_size",
+        "prior_event_watermark", "prior_event_prefix_sha256", "prior_projection_cid",
+        "prior_semantic_authority_digest", "prior_frozen_base_authority_digest",
+        "prior_append_surface_digest", "prior_catalog_digest", "prior_generation",
+        "prior_plan_revision", "prior_server_id", "prior_process_birth_id",
+        "prior_startup_epoch", "prior_started_at", "prior_stopped_at",
+        "prior_stopped_status_projection_path",
+        "prior_stopped_status_projection_sha256",
+        "prior_stopped_status_projection_size", "prior_migration_receipt_path",
+        "prior_migration_receipt_sha256", "prior_migration_receipt_size",
+        "prior_migration_receipt_cid", "detached_launch_blocker",
+        "runtime_root_changed", "runtime_root_collision_removed",
+        "control_and_coordination_bases_copied", "prior_control_store_mutated",
+        "prior_coordination_store_mutated", "prior_lifecycle_artifacts_preserved",
+        "plan_revision_changes", "evidence_node_changes",
+        "coordination_semantic_changes", "task_revision_changes",
+        "task_status_changes", "accepted_definition_changes",
+        "accepted_completion_changes", "implementation_provider_invocations",
+        "execution_sidecar_copied", "read_replica_sidecar_copied",
+        "effect_claim_changes", "implementation_commit_changes",
+        "merge_attempt_changes", "worker_self_approval",
+        "runtime_root_rebind_successor_materialization_cid", "receipt_cid",
+    }
+)
 _M14_RECEIPT_KEYS = frozenset(
     {
         "schema", "authoritative", "control_database_is_authority",
@@ -432,6 +484,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m15_key = "runtime_root_rebind_successor_materialization"
     m14_key = "stale_owner_restart_successor_materialization"
     quack_refresh_key = "quack_refresh_successor_materialization"
     declared_output_retry_key = "declared_output_retry_successor_materialization"
@@ -440,6 +493,41 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m15_key in config:
+        authority = config.get(m15_key)
+        required = {
+            "schema", "migration_revision", "target_store_id",
+            "target_coordination_store_id", "target_runtime_root",
+            "target_generation", "target_quack_port", "target_plan_revision",
+            "target_event_watermark", "target_projection_cid",
+            "prior_control_store_sha256", "prior_coordination_store_sha256",
+            "prior_stopped_status_projection_present", "detached_launch_blocker",
+        }
+        blocker = authority.get("detached_launch_blocker") if isinstance(authority, Mapping) else None
+        if (
+            not isinstance(authority, Mapping)
+            or any(authority.get(key) in (None, "") for key in required)
+            or authority.get("schema")
+            != "sawm/runtime-root-rebind-repair-authorization@1"
+            or authority.get("migration_revision") != "SAWM-R2-M15"
+            or authority.get("target_store_id") != _M15_STORE_ID
+            or authority.get("target_coordination_store_id")
+            != _M15_COORDINATION_STORE_ID
+            or int(authority.get("target_generation") or 0) != _M15_GENERATION
+            or int(authority.get("target_quack_port") or 0) != 24_058
+            or int(authority.get("target_plan_revision") or 0)
+            != _M15_TARGET_PLAN_REVISION
+            or int(authority.get("target_event_watermark") or 0)
+            != _M15_TARGET_EVENT_WATERMARK
+            or authority.get("prior_owner_marker_present") is not False
+            or authority.get("prior_stopped_status_projection_present") is not True
+            or not isinstance(blocker, Mapping)
+            or blocker.get("failure_kind") != "historical_runtime_pid_collision"
+            or blocker.get("worker_dispatched") is not False
+            or blocker.get("provider_dispatched") is not False
+        ):
+            raise OperatorError("active M15 runtime-root successor authority is invalid")
+        return authority
     if m14_key in config:
         authority = config.get(m14_key)
         required = {
@@ -689,6 +777,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "runtime_root_rebind_successor_materialization",
             "stale_owner_restart_successor_materialization",
             "quack_refresh_successor_materialization",
             "declared_output_retry_successor_materialization",
@@ -1988,6 +2077,241 @@ def _require_m11_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m15_final_pair_marker(
+    config: Mapping[str, Any], authority: Mapping[str, Any], materializer: Any, *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M15's receipt without deep-opening a potentially live store."""
+
+    key = "runtime_root_rebind_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    try:
+        expected_authority = (
+            materializer._expected_m15_runtime_root_rebind_authority()
+        )
+    except Exception as exc:
+        raise OperatorError("M15 exact runtime-root authority is unavailable") from exc
+    if dict(authority) != expected_authority:
+        raise OperatorError("M15 runtime-root rebind authority differs")
+    control = (REPO_ROOT / _M15_STORE_ID).resolve()
+    coordination = (REPO_ROOT / _M15_COORDINATION_STORE_ID).resolve()
+    receipt_path = control.parent / "migration-receipt.json"
+    try:
+        materializer._assert_m15_no_pending_receipts(control)
+        observed, _ = materializer._load_nofollow_json(
+            receipt_path, root=REPO_ROOT, noun="M15 final pair marker"
+        )
+    except Exception as exc:
+        raise OperatorError("M15 final pair marker is unavailable") from exc
+    population = materializer.build_population(REPO_ROOT)
+    validation_digest = materializer._identity(
+        {
+            "dependency": materializer._validator_report(
+                REPO_ROOT,
+                "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            ),
+            "board": materializer._validator_report(
+                REPO_ROOT,
+                "scripts/validate_semantic_addressed_world_model_board.py",
+            ),
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+    body = materializer._m15_migration_body(
+        population, config, validation_digest
+    )
+    unhashed = dict(observed)
+    claimed = unhashed.pop("receipt_cid", "")
+    authority_fields = {
+        "prior_database_path": "prior_store_id",
+        "prior_coordination_path": "prior_coordination_store_id",
+        "prior_control_store_sha256": "prior_control_store_sha256",
+        "prior_control_store_size": "prior_control_store_size",
+        "prior_coordination_store_sha256": (
+            "prior_coordination_store_sha256"
+        ),
+        "prior_coordination_store_size": "prior_coordination_store_size",
+        "prior_event_watermark": "prior_event_watermark",
+        "prior_event_prefix_sha256": "prior_event_prefix_sha256",
+        "prior_projection_cid": "prior_projection_cid",
+        "prior_semantic_authority_digest": (
+            "prior_semantic_authority_digest"
+        ),
+        "prior_frozen_base_authority_digest": (
+            "prior_frozen_base_authority_digest"
+        ),
+        "prior_append_surface_digest": "prior_append_surface_digest",
+        "prior_catalog_digest": "prior_catalog_digest",
+        "prior_generation": "prior_generation",
+        "prior_plan_revision": "prior_plan_revision",
+        "prior_server_id": "prior_server_id",
+        "prior_process_birth_id": "prior_process_birth_id",
+        "prior_startup_epoch": "prior_startup_epoch",
+        "prior_started_at": "prior_started_at",
+        "prior_stopped_at": "prior_stopped_at",
+        "prior_stopped_status_projection_path": (
+            "prior_stopped_status_projection_path"
+        ),
+        "prior_stopped_status_projection_sha256": (
+            "prior_stopped_status_projection_sha256"
+        ),
+        "prior_stopped_status_projection_size": (
+            "prior_stopped_status_projection_size"
+        ),
+        "prior_migration_receipt_path": "prior_migration_receipt_path",
+        "prior_migration_receipt_sha256": "prior_migration_receipt_sha256",
+        "prior_migration_receipt_size": "prior_migration_receipt_size",
+        "prior_migration_receipt_cid": "prior_migration_receipt_cid",
+        "detached_launch_blocker": "detached_launch_blocker",
+        "coordination_projection_digest": (
+            "prior_coordination_projection_digest"
+        ),
+        "coordination_event_count": "prior_coordination_event_count",
+    }
+    exact_flags = {
+        "runtime_root_changed": True,
+        "runtime_root_collision_removed": True,
+        "control_and_coordination_bases_copied": True,
+        "prior_control_store_mutated": False,
+        "prior_coordination_store_mutated": False,
+        "prior_lifecycle_artifacts_preserved": True,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "coordination_semantic_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "execution_sidecar_copied": False,
+        "read_replica_sidecar_copied": False,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    receipt_hashes_are_well_formed = all(
+        re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(observed.get(name) or ""))
+        is not None
+        for name in (
+            "control_store_sha256",
+            "coordination_store_sha256",
+            "semantic_authority_digest",
+            "frozen_base_authority_digest",
+            "append_surface_digest",
+            "catalog_digest",
+        )
+    )
+    if (
+        set(observed) != _M15_RECEIPT_KEYS
+        or claimed != materializer._identity(unhashed)
+        or observed.get("schema")
+        != "sawm/non-authoritative-migration-receipt@13"
+        or observed.get("authoritative") is not False
+        or observed.get("control_database_is_authority") is not True
+        or observed.get("coordination_database_is_authority") is not True
+        or observed.get("receipt_is_final_pair_commit_marker") is not True
+        or observed.get("migration_revision") != "SAWM-R2-M15"
+        or observed.get("database_path") != _M15_STORE_ID
+        or observed.get("coordination_path") != _M15_COORDINATION_STORE_ID
+        or observed.get("program_definition_cid")
+        != population["program_definition_cid"]
+        or observed.get("current_source_binding_cid")
+        != population["source_binding"]["source_binding_cid"]
+        or observed.get("validation_digest") != validation_digest
+        or observed.get("migration_digest") != materializer._identity(body)
+        or not receipt_hashes_are_well_formed
+        or int(observed.get("control_store_size") or 0) <= 0
+        or int(observed.get("coordination_store_size") or 0) <= 0
+        or any(
+            observed.get(receipt_key) != authority[authority_key]
+            for receipt_key, authority_key in authority_fields.items()
+        )
+        or any(observed.get(name) != value for name, value in exact_flags.items())
+        or int(observed.get("target_generation") or 0) != _M15_GENERATION
+        or int(observed.get("target_event_watermark") or 0)
+        != _M15_TARGET_EVENT_WATERMARK
+        or int(observed.get("migration_event_watermark") or 0)
+        != _M15_TARGET_EVENT_WATERMARK
+        or int(observed.get("target_quack_port") or 0) != 24_058
+        or observed.get("target_runtime_root")
+        != authority["target_runtime_root"]
+        or observed.get("plan_projection_cid")
+        != authority["prior_projection_cid"]
+        or observed.get("migration_projection_cid")
+        != authority["target_projection_cid"]
+        or observed.get("projection_cid")
+        != authority["target_projection_cid"]
+        or observed.get("semantic_authority_digest")
+        != authority["prior_semantic_authority_digest"]
+        or observed.get("frozen_base_authority_digest")
+        != authority["prior_frozen_base_authority_digest"]
+        or observed.get("catalog_digest") != authority["prior_catalog_digest"]
+        or observed.get("runtime_root_rebind_successor_materialization_cid")
+        != materializer._identity(dict(authority))
+        or config.get("runtime_paths", {}).get("root")
+        != authority["target_runtime_root"]
+    ):
+        raise OperatorError("M15 materialized final pair marker differs")
+    if checked is not None:
+        try:
+            expected = materializer._expected_m15_migration_receipt(
+                REPO_ROOT,
+                control,
+                coordination,
+                population,
+                config,
+                checked,
+                validation_digest,
+            )
+        except Exception as exc:
+            raise OperatorError("M15 exact materializer report is unavailable") from exc
+        deep_bindings = {
+            "projection_cid": "projection_cid",
+            "event_watermark": "target_event_watermark",
+            "coordination_projection_digest": (
+                "coordination_projection_digest"
+            ),
+            "coordination_event_count": "coordination_event_count",
+            "semantic_authority_digest": "semantic_authority_digest",
+            "frozen_base_authority_digest": "frozen_base_authority_digest",
+            "append_surface_digest": "append_surface_digest",
+            "catalog_digest": "catalog_digest",
+            "plan_migration_event_id": "plan_migration_event_id",
+            "migration_evidence_event_id": "migration_evidence_event_id",
+            "migration_evidence_id": "migration_evidence_id",
+            "migration_digest": "migration_digest",
+            "plan_revision_changes": "plan_revision_changes",
+            "evidence_node_changes": "evidence_node_changes",
+            "task_revision_changes": "task_revision_changes",
+            "task_status_changes": "task_status_changes",
+            "accepted_definition_changes": "accepted_definition_changes",
+            "accepted_completion_changes": "accepted_completion_changes",
+            "coordination_semantic_changes": "coordination_semantic_changes",
+        }
+        if (
+            checked.get("valid") is not True
+            or checked.get("validation_digest") != validation_digest
+            or checked.get("database_path") != str(control)
+            or checked.get("coordination_path") != str(coordination)
+            or checked.get("receipt") != observed
+            or observed != expected
+            or any(
+                checked.get(report_key) != observed.get(receipt_key)
+                for report_key, receipt_key in deep_bindings.items()
+            )
+        ):
+            raise OperatorError(
+                "M15 materializer check differs from its final pair marker"
+            )
+    try:
+        materializer._assert_m15_no_pending_receipts(control)
+    except Exception as exc:
+        raise OperatorError("M15 final pair marker has a pending temporary") from exc
+    return MappingProxyType(dict(observed))
+
+
 def _require_m14_final_pair_marker(
     config: Mapping[str, Any], authority: Mapping[str, Any], materializer: Any, *,
     checked: Mapping[str, Any] | None = None,
@@ -2203,6 +2527,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "runtime_root_rebind_successor_materialization" in config:
+        return _require_m15_final_pair_marker(
+            config, authority, materializer, checked=checked
+        )
     if "stale_owner_restart_successor_materialization" in config:
         return _require_m14_final_pair_marker(config, authority, materializer, checked=checked)
     if "quack_refresh_successor_materialization" in config:
@@ -3132,7 +3460,12 @@ def _validate_offline_quack_start(
             {
                 "dependency_valid": True,
                 "board_valid": True,
-                "prior_authority": checked["prior_authority"],
+                # M14's valid historical check report predates the explicit
+                # prior_authority member.  The sealed active authority is the
+                # fail-closed fallback; never index an optional report key.
+                "prior_authority": checked.get(
+                    "prior_authority", active_materialization
+                ),
                 "store": checked,
             }
         )

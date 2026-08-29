@@ -362,6 +362,23 @@ def _active_successor_migration_errors(
     remains independently checked as immutable history.
     """
 
+    m15_key = "runtime_root_rebind_successor_materialization"
+    m15_seal_key = "runtime_root_rebind_successor_materialization_cid"
+    m15_presence = (m15_key in scheduler, m15_key in migration, m15_seal_key in seal)
+    if any(m15_presence):
+        try:
+            module = _dependency_validator_module(REPO_ROOT)
+            errors = list(
+                module._m15_runtime_root_rebind_errors(scheduler, seal, migration)
+            )
+        except Exception as exc:
+            errors = [
+                f"M15 migration validator unavailable: {type(exc).__name__}: {exc}"
+            ]
+        if not all(m15_presence):
+            errors.append("M15 runtime-root authority is only partially declared")
+        return errors
+
     m14_key = "stale_owner_restart_successor_materialization"
     m14_seal_key = "stale_owner_restart_successor_materialization_cid"
     m14_presence = (m14_key in scheduler, m14_key in migration, m14_seal_key in seal)
@@ -1917,8 +1934,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m15_key = "runtime_root_rebind_successor_materialization"
+    m15_selected = any(
+        (
+            m15_key in config,
+            m15_key in migration,
+            "runtime_root_rebind_successor_materialization_cid" in seal,
+        )
+    )
     m14_key = "stale_owner_restart_successor_materialization"
-    m14_selected = any(
+    m14_selected = not m15_selected and any(
         (
             m14_key in config,
             m14_key in migration,
@@ -1926,7 +1951,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m13_key = "quack_refresh_successor_materialization"
-    m13_selected = any(
+    m13_selected = not m15_selected and not m14_selected and any(
         (
             m13_key in config,
             m13_key in migration,
@@ -1934,7 +1959,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = not m14_selected and not m13_selected and any(
+    m12_selected = not m15_selected and not m14_selected and not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -1966,7 +1991,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m14"
+        "run-r2-m15"
+        if m15_selected
+        else "run-r2-m14"
         if m14_selected
         else "run-r2-m13"
         if m13_selected
@@ -1981,7 +2008,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "15"
+        "16"
+        if m15_selected
+        else "15"
         if m14_selected
         else "14"
         if m13_selected
@@ -1996,7 +2025,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24057
+        24058
+        if m15_selected
+        else 24057
         if m14_selected
         else 24056
         if m13_selected
@@ -2025,7 +2056,59 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m14_selected:
+    if m15_selected:
+        rebind = config.get(m15_key)
+        required_m15 = {
+            "schema": "sawm/runtime-root-rebind-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M15",
+            "target_store_id": active_store,
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m15"
+            ),
+            "target_generation": 16,
+            "target_quack_port": 24058,
+            "target_plan_revision": 16,
+            "target_event_watermark": 201,
+            "target_projection_cid": (
+                "baguqeeraaiqn3rqfg7gr4ks25n5ffjt3k4wcf4du56534qzyk7z3j7hewxbq"
+            ),
+        }
+        if type(rebind) is not dict or any(
+            rebind.get(key) != value for key, value in required_m15.items()
+        ):
+            config_errors.append("M15 runtime-root rebind authority is not exact")
+        elif (
+            rebind != migration.get(m15_key)
+            or seal.get("runtime_root_rebind_successor_materialization_cid")
+            != "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    rebind,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        ):
+            config_errors.append("M15 runtime-root rebind authority/CID differs")
+        runtime_root = required_m15["target_runtime_root"]
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        } or any(
+            program.get(key) != value
+            for key, value in {
+                "event_store_path": f"{runtime_root}/events",
+                "runtime_registry_path": f"{runtime_root}/registry",
+                "worktree_root": f"{runtime_root}/worktrees",
+            }.items()
+        ):
+            config_errors.append("M15 active runtime paths are not exactly fresh")
+    elif m14_selected:
         restart = config.get(m14_key)
         required_m14 = {
             "schema": "sawm/stale-owner-restart-repair-authorization@1",

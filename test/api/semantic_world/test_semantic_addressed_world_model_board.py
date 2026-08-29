@@ -935,9 +935,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation. M13 through M9 keys
+    # Exercise the historical M8 selector in isolation. M15 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("runtime_root_rebind_successor_materialization")
     malformed_successor.pop("stale_owner_restart_successor_materialization")
     malformed_successor.pop("quack_refresh_successor_materialization")
     malformed_successor.pop("declared_output_retry_successor_materialization")
@@ -2017,16 +2018,19 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
     historical_seal.pop("declared_output_retry_successor_materialization_cid")
@@ -2821,14 +2825,17 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("runtime_root_rebind_successor_materialization")
     historical_config.pop("stale_owner_restart_successor_materialization")
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("runtime_root_rebind_successor_materialization")
     historical_migration.pop("stale_owner_restart_successor_materialization")
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("runtime_root_rebind_successor_materialization_cid")
     historical_seal.pop("stale_owner_restart_successor_materialization_cid")
     historical_seal.pop("quack_refresh_successor_materialization_cid")
     historical_seal.pop("declared_output_retry_successor_materialization_cid")
@@ -4186,6 +4193,455 @@ def test_m14_partial_publication_revalidates_source_and_rolls_back_its_inodes(
     assert (
         stages[0] / "control.coordination.duckdb"
     ).read_bytes() == b"staged-coordination"
+
+
+def test_m15_runtime_root_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "runtime_root_rebind_successor_materialization"
+    authority = materializer._expected_m15_runtime_root_rebind_authority()
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert materializer._m15_successor_configured(config) is True
+    assert authority["target_generation"] == 16
+    assert authority["target_quack_port"] == 24_058
+    assert authority["target_plan_revision"] == 16
+    assert authority["target_event_watermark"] == 201
+    assert authority["target_projection_cid"] == (
+        "baguqeeraaiqn3rqfg7gr4ks25n5ffjt3k4wcf4du56534qzyk7z3j7hewxbq"
+    )
+    assert authority["prior_control_store_sha256"] == (
+        "af56f7c9af54b36755225d4cb4ef1c4e4e311f5c267077f87af9c4b4e88943ef"
+    )
+    assert authority["prior_frozen_base_authority_digest"] == (
+        "sha256:96c3b52bb87fe9377e26fed3bd7e1976554db56a6301aaab356132e1aa55ebe3"
+    )
+    blocker = authority["detached_launch_blocker"]
+    assert blocker["failure_kind"] == "historical_runtime_pid_collision"
+    assert blocker["pid_liveness"] == "dead"
+    assert blocker["provider_dispatched"] is False
+    assert blocker["worker_dispatched"] is False
+    malformed = dict(config)
+    malformed[key] = []
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M15 runtime-root rebind authority is invalid",
+    ):
+        materializer._m15_successor_configured(malformed)
+
+
+def test_m15_scheduler_uses_one_fresh_runtime_namespace() -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m15"
+    assert config["runtime_paths"] == {
+        "root": root,
+        "state": f"{root}/state",
+        "worktrees": f"{root}/worktrees",
+        "merge_queue": f"{root}/merge-queue",
+        "logs": f"{root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
+    assert config["database_program"]["store_generation"] == "16"
+    assert config["database_program"]["event_store_path"] == f"{root}/events"
+    assert config["database_program"]["runtime_registry_path"] == f"{root}/registry"
+    assert config["database_program"]["worktree_root"] == f"{root}/worktrees"
+    assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
+    assert config["quack_owner"]["port"] == 24_058
+    assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
+
+
+def test_m15_stopped_m14_anchor_is_exact_and_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_prior_anchor_test",
+    )
+    authority = materializer._expected_m15_runtime_root_rebind_authority()
+    paths = tuple(
+        REPO_ROOT / authority[field]
+        for field in (
+            "prior_store_id",
+            "prior_coordination_store_id",
+            "prior_stopped_status_projection_path",
+            "prior_migration_receipt_path",
+        )
+    )
+    pid_path = REPO_ROOT / authority["detached_launch_blocker"]["pid_path"]
+    before = {
+        path: (materializer._store_sha256(path), path.stat().st_size)
+        for path in (*paths, pid_path)
+    }
+    token_scans: list[Path] = []
+    original_token_scan = materializer._assert_m15_token_handoffs_absent
+
+    def audited_token_scan(control: Path) -> None:
+        token_scans.append(control)
+        original_token_scan(control)
+
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m15_token_handoffs_absent",
+        audited_token_scan,
+    )
+    control, coordination = materializer._assert_m15_prior_anchor(
+        REPO_ROOT, authority
+    )
+    assert (control, coordination) == paths[:2]
+    assert token_scans == [control, control]
+    assert before == {
+        path: (materializer._store_sha256(path), path.stat().st_size)
+        for path in (*paths, pid_path)
+    }
+    assert not os.path.lexists(
+        control.with_name(f".{control.name}.state-owner.json")
+    )
+    assert not os.path.lexists(control.with_name(control.name + ".wal"))
+    assert not os.path.lexists(
+        coordination.with_name(coordination.name + ".wal")
+    )
+
+
+def test_m15_prior_anchor_rejects_landed_quack_token_suffix(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_token_handoff_test",
+    )
+    control = tmp_path / "control.duckdb"
+    owner = tmp_path / "quack-owner"
+    owner.mkdir()
+    legacy_wrong_name = owner / "quack-state-server.token.json"
+    legacy_wrong_name.write_text("not-a-landed-handoff\n", encoding="utf-8")
+    materializer._assert_m15_token_handoffs_absent(control)
+
+    landed = owner / "env___SAWM_QUACK_TOKEN.quack-token"
+    landed.write_text("secret-must-not-be-read\n", encoding="ascii")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="retained a Quack token handoff",
+    ):
+        materializer._assert_m15_token_handoffs_absent(control)
+
+
+def test_m15_prior_anchor_rechecks_non_database_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_anchor_recheck_test",
+    )
+    authority = materializer._expected_m15_runtime_root_rebind_authority()
+    original = materializer._stable_regular_sha256
+    status_checks = 0
+
+    def status_drift(*args: object, **kwargs: object) -> tuple[str, int]:
+        nonlocal status_checks
+        observed = original(*args, **kwargs)
+        if kwargs.get("noun") == "stopped M14 status projection":
+            status_checks += 1
+            if status_checks == 2:
+                return ("0" * 64, observed[1])
+        return observed
+
+    monkeypatch.setattr(materializer, "_stable_regular_sha256", status_drift)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="predecessor verification mutated authority",
+    ):
+        materializer._assert_m15_prior_anchor(REPO_ROOT, authority)
+    assert status_checks == 2
+
+
+def test_m15_read_only_marker_rejects_pending_receipt_temporary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_pending_receipt_test",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control.write_bytes(b"control")
+    coordination.write_bytes(b"coordination")
+    body = {
+        "schema": "sawm/non-authoritative-migration-receipt@13",
+        "receipt_is_final_pair_commit_marker": True,
+    }
+    expected = {**body, "receipt_cid": materializer._identity(body)}
+    (tmp_path / "migration-receipt.json").write_bytes(
+        materializer._canonical(expected) + b"\n"
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m15_migration_receipt",
+        lambda *_args, **_kwargs: expected,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m15_receipt_commit_inputs",
+        lambda *_args, **_kwargs: None,
+    )
+    pending = tmp_path / ".migration-receipt.json.forged.tmp"
+    pending.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="pending receipt temporary",
+    ):
+        materializer._verify_existing_m15_migration_receipt(
+            tmp_path,
+            control,
+            coordination,
+            {},
+            {},
+            {},
+            "sha256:test",
+        )
+    pending.unlink()
+    assert materializer._verify_existing_m15_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        {},
+        {},
+        {},
+        "sha256:test",
+    ) == expected
+
+
+def test_m15_disposable_stage_appends_only_events_200_and_201(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_stage_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m15_runtime_root_rebind_authority()
+    prior_control = tmp_path / "prior.duckdb"
+    prior_coordination = tmp_path / "prior.coordination.duckdb"
+    shutil.copyfile(REPO_ROOT / authority["prior_store_id"], prior_control)
+    shutil.copyfile(
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        prior_coordination,
+    )
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    validation_digest = "sha256:m15-disposable-stage"
+    staged = materializer._stage_m15_store_pair(
+        REPO_ROOT,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    verified = staged["verified"]
+    assert verified["event_watermark"] == 201
+    assert verified["projection_cid"] == authority["target_projection_cid"]
+    assert verified["semantic_authority_digest"] == authority[
+        "prior_semantic_authority_digest"
+    ]
+    assert verified["frozen_base_authority_digest"] == authority[
+        "prior_frozen_base_authority_digest"
+    ]
+    assert verified["coordination_projection_digest"] == authority[
+        "prior_coordination_projection_digest"
+    ]
+    assert verified["coordination_event_count"] == 484
+    assert verified["plan_revision_changes"] == 1
+    assert verified["evidence_node_changes"] == 1
+    assert verified["task_revision_changes"] == 0
+    assert verified["task_status_changes"] == 0
+
+
+def test_m15_live_final_marker_path_never_deep_checks_active_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m15_live_marker_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m15_live_marker_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m15_runtime_root_rebind_authority()
+    dependency_report = {"schema": "sawm/test-dependency@1", "valid": True}
+    board_report = {"schema": "sawm/test-board@1", "valid": True}
+    validation_digest = materializer._identity(
+        {
+            "dependency": dependency_report,
+            "board": board_report,
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+    target = tmp_path / authority["target_runtime_root"]
+    target.mkdir(parents=True)
+    staged = materializer._stage_m15_store_pair(
+        REPO_ROOT,
+        target,
+        REPO_ROOT / authority["prior_store_id"],
+        REPO_ROOT / authority["prior_coordination_store_id"],
+        population,
+        config,
+        validation_digest,
+    )
+    control = staged["stage_control"]
+    coordination = staged["stage_coordination"]
+    verified = staged["verified"]
+    monkeypatch.setattr(
+        materializer,
+        "_m15_runtime_root_rebind_authority",
+        lambda *_args, **_kwargs: authority,
+    )
+    receipt = materializer._expected_m15_migration_receipt(
+        tmp_path,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    receipt_path = target / "migration-receipt.json"
+    receipt_path.write_bytes(materializer._canonical(receipt) + b"\n")
+
+    def validator_report(
+        _root: Path,
+        relative_path: str,
+    ) -> dict[str, object]:
+        if relative_path.endswith("dependencies.py"):
+            return dependency_report
+        if relative_path.endswith("board.py"):
+            return board_report
+        raise AssertionError(f"unexpected validator path: {relative_path}")
+
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(materializer, "build_population", lambda _root: population)
+    monkeypatch.setattr(materializer, "_validator_report", validator_report)
+    checked = {
+        **verified,
+        "valid": True,
+        "database_path": str(control.resolve()),
+        "coordination_path": str(coordination.resolve()),
+        "validation_digest": validation_digest,
+        "receipt": receipt,
+    }
+    assert dict(
+        operator._require_m15_final_pair_marker(
+            config, authority, materializer, checked=checked
+        )
+    ) == receipt
+
+    owner = target / "quack-owner"
+    owner.mkdir()
+    (owner / "quack-state-server.status.json").write_text(
+        '{"lifecycle":"running"}\n', encoding="utf-8"
+    )
+
+    def forbidden_deep_check(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("live final-marker validation deep-checked the store")
+
+    monkeypatch.setattr(materializer, "check_materialized", forbidden_deep_check)
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m15_migration_receipt",
+        forbidden_deep_check,
+    )
+    accepted = operator._require_m15_final_pair_marker(
+        config, authority, materializer, checked=None
+    )
+    assert dict(accepted) == receipt
+    pending = target / ".migration-receipt.json.live-race.tmp"
+    pending.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        operator.OperatorError,
+        match="final pair marker",
+    ):
+        operator._require_m15_final_pair_marker(
+            config, authority, materializer, checked=None
+        )
+
+
+def test_operator_offline_check_falls_back_without_prior_authority_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m15_prior_authority_fallback_test",
+    )
+    authority = {"schema": "test/active-authority@1"}
+    config = {"source_repair_materialization": authority}
+    monkeypatch.setattr(
+        operator, "_validator", lambda *_args, **_kwargs: {"valid": True}
+    )
+    monkeypatch.setattr(
+        operator,
+        "_active_source_repair_materialization",
+        lambda _config: authority,
+    )
+    monkeypatch.setattr(
+        operator, "_successor_materialization_configured", lambda _config: True
+    )
+    monkeypatch.setattr(
+        operator,
+        "_require_active_final_pair_marker",
+        lambda *_args, **_kwargs: {},
+    )
+    fake_materializer = SimpleNamespace(
+        build_population=lambda _root: {},
+        _assert_committed_clean_source=lambda *_args: None,
+        check_materialized=lambda *_args: {"valid": True, "action": "checked"},
+    )
+    monkeypatch.setattr(operator, "_materializer", lambda: fake_materializer)
+    result = operator._validate_offline_quack_start(config)
+    assert result["prior_authority"] == authority
+    assert result["store"] == {"valid": True, "action": "checked"}
 
 
 def test_m13_source_delta_and_target_binding_are_exact(

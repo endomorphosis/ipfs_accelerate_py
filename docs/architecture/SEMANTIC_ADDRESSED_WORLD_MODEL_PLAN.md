@@ -850,7 +850,45 @@ pending-receipt hardlink protocol; partial pairs, ambiguous pending receipts,
 and forged receipts fail closed.  No M14 target artifact is created by this
 source-control change.
 
-## 23. Current limitations at seal time
+## 23. M15 fresh runtime-root successor (controlled, not materialized)
+
+M15 preserves the stopped M14 generation-15 control and coordination
+authorities and appends only plan revision 16 plus one operator evidence event.
+It fixes two launch-plane defects: the operator no longer assumes every valid
+successor check report contains a `prior_authority` member, and every active
+runtime path now uses the fresh `run-r2-m15` namespace.  The latter prevents
+the detached scheduler from mistaking the preserved dead M13 PID projection
+for an active M15 master.  The historical PID file remains untouched evidence;
+it is neither deleted nor treated as an authoritative supervisor event.
+
+M15 binds the stopped M14 control bytes
+`af56f7c9af54b36755225d4cb4ef1c4e4e311f5c267077f87af9c4b4e88943ef`,
+the unchanged coordination bytes
+`8c74530386f67352c4dd8d700e410accae1e5b9c3dc45f328a96ab84d35c5928`,
+the stopped status projection, lifecycle rows, M14 receipt, watermark 199,
+and the zero-active coordination projection.  The non-authoritative M14 read
+replica is explicitly excluded.  Its target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m15/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m15/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m15
+Quack port    24058
+generation    16
+plan revision 16
+event cursor  201
+projection    baguqeeraaiqn3rqfg7gr4ks25n5ffjt3k4wcf4du56534qzyk7z3j7hewxbq
+```
+
+No M15 database or runtime artifact is created by this control revision.
+Materialization remains a separate, committed-clean operator action.  The
+materializer copies only the exact canonical M14 control and coordination
+stores, verifies the two-event suffix on disposable copies, publishes an
+inode-bound pair, and writes its non-authoritative receipt last.  It performs
+no task CAS, provider dispatch, worker dispatch, coordination mutation, or
+completion acceptance.
+
+## 24. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

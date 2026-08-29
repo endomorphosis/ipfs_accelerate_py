@@ -553,5 +553,6 @@
     "Protected SAWM control files are expected working-tree additions above the sealed base until the operator-owned bootstrap commit is created.",
     "Dirty origin checkouts remain preserved and are not clean evidence."
   ],
-  "stale_owner_restart_successor_materialization_cid": "sha256:31c1c2d5ab7eec94a2acfd137b7f468c56f82cd325adb9f1a447492c32483cb8"
+  "stale_owner_restart_successor_materialization_cid": "sha256:31c1c2d5ab7eec94a2acfd137b7f468c56f82cd325adb9f1a447492c32483cb8",
+  "runtime_root_rebind_successor_materialization_cid": "sha256:b3cf8f504196c577b59680581d3f81e6e20b856d7691e9ddcf1d2c107d4c455a"
 }

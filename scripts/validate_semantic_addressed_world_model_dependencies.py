@@ -2983,6 +2983,81 @@ def _m12_declared_output_retry_errors(
     return errors
 
 
+def _m15_runtime_root_rebind_errors(
+    scheduler: Mapping[str, Any], seal: Mapping[str, Any], migration: Mapping[str, Any]
+) -> list[str]:
+    """Check M15 controls without opening or creating its runtime store."""
+
+    key = "runtime_root_rebind_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m15_dependency_materializer",
+            REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M15 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m15_runtime_root_rebind_authority()
+        errors: list[str] = []
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M15 runtime-root authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M15 runtime-root authority CID is not exact")
+        root = expected["target_runtime_root"]
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                expected["target_store_id"],
+                "16",
+                "quack:127.0.0.1:24058",
+                f"{root}/events",
+                f"{root}/registry",
+                f"{root}/worktrees",
+                expected["target_store_id"],
+                f"{root}/quack-owner",
+                24058,
+            )
+            or runtime
+            != {
+                "root": root,
+                "state": f"{root}/state",
+                "worktrees": f"{root}/worktrees",
+                "merge_queue": f"{root}/merge-queue",
+                "logs": f"{root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M15 target/runtime binding is not exact")
+        blocker = expected.get("detached_launch_blocker", {})
+        if (
+            blocker.get("failure_kind") != "historical_runtime_pid_collision"
+            or blocker.get("worker_dispatched") is not False
+            or blocker.get("provider_dispatched") is not False
+            or blocker.get("persisted_authoritative_failure_receipt_present")
+            is not False
+        ):
+            errors.append("M15 detached-launch blocker evidence is invalid")
+        return errors
+    except Exception as exc:
+        return [
+            f"M15 runtime-root authority is unavailable: {type(exc).__name__}: {exc}"
+        ]
+
+
 def _m14_stale_owner_restart_errors(
     scheduler: Mapping[str, Any], seal: Mapping[str, Any], migration: Mapping[str, Any]
 ) -> list[str]:
@@ -4939,9 +5014,48 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m15_key = "runtime_root_rebind_successor_materialization"
+        m15_presence = (
+            m15_key in scheduler_probe,
+            m15_key in migration_probe,
+            f"{m15_key}_cid" in seal,
+        )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m14_presence):
+        if any(m15_presence):
+            if (
+                not all(m15_presence)
+                or not isinstance(scheduler_probe.get(m15_key), Mapping)
+                or scheduler_probe.get(m15_key) != migration_probe.get(m15_key)
+            ):
+                unexpected = ["M15 authority is partial or differs across source controls"]
+            else:
+                authority = scheduler_probe[m15_key]
+                expected = {
+                    str(path): "M"
+                    for path in authority.get(
+                        "bounded_control_plane_repair_paths", ()
+                    )
+                }
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(authority.get("prior_source_head")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = (
+                    []
+                    if observed == expected and working.issubset(set(expected))
+                    else ["M15 status-qualified bounded source delta differs"]
+                )
+        elif any(m14_presence):
             if not all(m14_presence) or not isinstance(scheduler_probe.get(m14_key), Mapping) or scheduler_probe.get(m14_key) != migration_probe.get(m14_key):
                 unexpected = ["M14 authority is partial or differs across source controls"]
             else:
@@ -5289,7 +5403,11 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if "stale_owner_restart_successor_materialization" in scheduler:
+        if "runtime_root_rebind_successor_materialization" in scheduler:
+            protocol_errors.extend(
+                _m15_runtime_root_rebind_errors(scheduler, seal, migration)
+            )
+        elif "stale_owner_restart_successor_materialization" in scheduler:
             protocol_errors.extend(_m14_stale_owner_restart_errors(scheduler, seal, migration))
         else:
             protocol_errors.extend(_m13_quack_refresh_errors(scheduler, seal, migration))
@@ -5339,6 +5457,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         ):
             protocol_errors.append(
                 "operator does not select the M12 authority by fail-closed key presence"
+            )
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "runtime_root_rebind_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M15 authority by fail-closed key presence"
             )
         if not _has_presence_based_key_selection(
             operator_source,
