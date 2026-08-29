@@ -64958,6 +64958,15 @@ class PortalImplementationDaemon:
         """Bound dependency evidence in the terminal event projection."""
 
         projected = dict(payload)
+        raw_merge = projected.get("merge_result")
+        if isinstance(raw_merge, Mapping):
+            target_repository_id = str(
+                raw_merge.get("target_repository_id") or ""
+            )
+            if target_repository_id and not projected.get(
+                "target_repository_id"
+            ):
+                projected["target_repository_id"] = target_repository_id
         raw_setup = projected.get("workspace_setup")
         if not isinstance(raw_setup, Mapping):
             return projected
