@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import stat
 import subprocess
@@ -13,7 +14,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseScanInventory,
@@ -21,6 +21,9 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import scan_objective_gaps
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    worktrees as worktree_helpers,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import CommandResult
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
@@ -32,13 +35,18 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     PortalSupervisorConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import (
+    WorktreeLease,
     WorktreePool,
+    guarded_worktree_pool_mutation,
+    inspect_worktree_pool_missing_release_terminal,
+    inspect_worktree_pool_quarantine,
     python_identifier_worktree_basename,
 )
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     DuplicateAttemptError,
     ProcessBirthIdentity,
     WorkspaceLifecycleState,
+    current_process_birth,
 )
 
 
@@ -954,6 +962,8 @@ def test_failed_seed_cleanup_resolves_quarantined_effective_pool_path(
         task=task,
         attempt=1,
         exception_result={"phase": "worktree_setup"},
+        implementation_started=False,
+        provider_dispatched=False,
     )
 
     assert cleanup["cleaned"] is False
@@ -1024,6 +1034,7 @@ def test_worktree_pool_reclaims_dead_leased_and_initializing_entries(
     # Missing crashed workspaces must not strand their sidecars.
     for lease, _state_name, _dead_pid in stale_entries:
         _git(repo, "worktree", "remove", "--force", str(lease.path))
+        _git(repo, "branch", "-D", lease.branch_name)
         assert not lease.path.exists()
 
     # Change the baseline and cache key so reclamation cannot depend on a
@@ -1524,9 +1535,7 @@ def test_successor_generation_retires_exact_dead_predecessor_claim(
     assert same_generation["reason"] == (
         "task_attempt_claim_identity_mismatch"
     )
-    assert same_generation["mismatched_fields"] == [
-        "predecessor_generation"
-    ]
+    assert same_generation["mismatched_fields"] == ["state_dir_custody"]
     assert predecessor_record_path.read_bytes() == record_before
     assert predecessor_index_path.read_bytes() == index_before
     daemon.state_path = successor_state_path
@@ -1634,6 +1643,1195 @@ def test_successor_generation_retires_exact_dead_predecessor_claim(
     assert finalized["reason"] == (
         "successor_generation_dead_owner_superseded"
     )
+
+
+def test_sibling_portal_attempt_retires_only_exact_dead_same_lane_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    state_root = tmp_path / "state"
+    lane_root = state_root / "lane-1" / "spar_lane_1_database_portal_attempts"
+    current_state_dir = lane_root / ("a" * 24)
+    predecessor_state_dir = lane_root / ("b" * 24)
+    foreign_lane_state_dir = (
+        state_root
+        / "lane-2"
+        / "spar_lane_2_database_portal_attempts"
+        / ("c" * 24)
+    )
+    for path in (current_state_dir, predecessor_state_dir, foreign_lane_state_dir):
+        path.mkdir(parents=True)
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=current_state_dir / "portal-task-state.json",
+        strategy_path=current_state_dir / "portal-strategy.json",
+        events_path=current_state_dir / "portal-events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+    )
+    task = PortalTask(
+        task_id="INC-002-DEAD-PORTAL-SIBLING",
+        title="Supersede an exact dead sibling Portal attempt",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    workspace = tmp_path / "preserved-worktree"
+    workspace.mkdir()
+    marker = workspace / "preserved.txt"
+    marker.write_text("preserve\n", encoding="utf-8")
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-1",
+        workspace_path=workspace,
+        branch="implementation/inc-002-dead-portal-sibling-attempt-1",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 41,
+            start_time_ticks=1,
+            boot_id="dead-portal-sibling",
+        ),
+    )
+    live_workspace = tmp_path / "live-preserved-worktree"
+    live_workspace.mkdir()
+    live_predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=2,
+        lane_id="portal-attempt:lane-1",
+        workspace_path=live_workspace,
+        branch="implementation/inc-002-live-portal-sibling-attempt-2",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_predecessor_worktree_dispatch_quiescence",
+        lambda _record: {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+        },
+    )
+
+    symlink_target = state_root / "symlink-target"
+    (symlink_target / ("d" * 24)).mkdir(parents=True)
+    (symlink_target / ("e" * 24)).mkdir(parents=True)
+    symlink_attempt_root = (
+        state_root
+        / "lane-1"
+        / "shadow_lane_1_database_portal_attempts"
+    )
+    symlink_attempt_root.symlink_to(symlink_target, target_is_directory=True)
+    assert (
+        daemon._state_dir_portal_attempt_custody_binding(
+            symlink_attempt_root / ("d" * 24),
+            symlink_attempt_root / ("e" * 24),
+        )
+        is None
+    )
+    regular_file_leaf = lane_root / ("f" * 24)
+    regular_file_leaf.write_text("not a state directory\n", encoding="utf-8")
+    assert (
+        daemon._state_dir_portal_attempt_custody_binding(
+            current_state_dir,
+            regular_file_leaf,
+        )
+        is None
+    )
+
+    exact_state_path = daemon.state_path
+    daemon.state_path = foreign_lane_state_dir / "portal-task-state.json"
+    foreign = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert foreign["finalized"] is False
+    assert foreign["reason"] == "task_attempt_claim_identity_mismatch"
+    assert foreign["mismatched_fields"] == ["state_dir_custody"]
+    assert daemon.worktree_lifecycle.load_workspace(workspace) == predecessor
+
+    daemon.state_path = exact_state_path
+    live = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=2,
+    )
+    assert live["finalized"] is False
+    assert live["reason"] == "task_attempt_claim_owner_alive"
+    assert live["custody_kind"] == "sibling_database_portal_attempt"
+    assert daemon.worktree_lifecycle.load_workspace(live_workspace) == live_predecessor
+
+    monkeypatch.setattr(
+        daemon,
+        "_predecessor_worktree_dispatch_quiescence",
+        lambda _record: {
+            "quiescent": False,
+            "reason": "task_attempt_claim_provider_descendant_active",
+        },
+    )
+    non_quiescent = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert non_quiescent["finalized"] is False
+    assert non_quiescent["reason"] == (
+        "task_attempt_claim_provider_descendant_active"
+    )
+    assert daemon.worktree_lifecycle.load_workspace(workspace) == predecessor
+
+    monkeypatch.setattr(
+        daemon,
+        "_predecessor_worktree_dispatch_quiescence",
+        lambda _record: {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+        },
+    )
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+
+    assert recovered["finalized"] is True
+    assert recovered["custody_kind"] == "sibling_database_portal_attempt"
+    assert recovered["reason"] == "sibling_portal_attempt_dead_owner_superseded"
+    assert recovered["predecessor_owner_liveness"] == "dead"
+    assert recovered["portal_attempt_custody"]["current_lane"] == 1
+    assert recovered["portal_attempt_custody"]["source_lane"] == 1
+    assert marker.read_text(encoding="utf-8") == "preserve\n"
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+
+
+def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Supervisor construction binds the board's default Grok model into the
+    # process environment. Register the pre-test value with monkeypatch so the
+    # fixture cannot leak that route fragment into later raw-command tests.
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_GROK_MODEL", "")
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    todo_path = repo / "tasks.md"
+    todo_path.write_text("# Taskboard\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    board = "semantic-preserving-autonomous-remodularization-v1"
+    target = "codex/semantic-preserving-autonomous-remodularization-v1"
+    _git(repo, "branch", target)
+    state_root = tmp_path / "state"
+    attempt_root = state_root / "lane-1" / "spar_lane_1_database_portal_attempts"
+    current_state_dir = attempt_root / ("a" * 24)
+    predecessor_state_dir = attempt_root / ("b" * 24)
+    current_state_dir.mkdir(parents=True)
+    predecessor_state_dir.mkdir(parents=True)
+    worktree_root = tmp_path / "worktrees"
+    workspace = worktree_root / "workspace_aaaaaaaaaaaa_bbbbbbbbbbbb"
+    worktree_root.mkdir(parents=True)
+    implementation_branch = (
+        "implementation/inc-002-dead-portal-proc-attempt-1"
+    )
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        implementation_branch,
+        str(workspace),
+        "HEAD",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=current_state_dir / "portal-task-state.json",
+        strategy_path=current_state_dir / "portal-strategy.json",
+        events_path=current_state_dir / "portal-events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        board_namespace=board,
+        merge_target_branch=target,
+    )
+    task = PortalTask(
+        task_id="INC-002-DEAD-PORTAL-PROC",
+        title="Quarantine an exact denied-cwd dead lease",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=900,
+        start_time_ticks=1_000,
+        boot_id="dead-portal-proc-owner",
+        parent_pid=600,
+    )
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-1",
+        workspace_path=workspace,
+        branch=implementation_branch,
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=dead_owner,
+    )
+    daemon.worktree_lifecycle.clock = lambda: record.updated_at + 1_000.0
+
+    implementation_lock = {
+        "attempt": record.attempt,
+        "board_namespace": daemon.board_namespace,
+        "canonical_task_cid": record.canonical_task_cid,
+        "canonical_task_key": record.canonical_task_cid,
+        "kind": "implementation",
+        "lease_id": "implementation-lease",
+        "owner_process_birth": dead_owner.to_dict(),
+        "owner_script": "implementation_daemon.py",
+        "pid": dead_owner.pid,
+        "repo_root": str(repo.resolve()),
+        "started_at": "2026-08-29T07:31:25+00:00",
+        "state_dir": str(predecessor_state_dir.resolve()),
+        "task_id": record.task_id,
+    }
+    attempt_lock_path = predecessor_state_dir / "implementation.lock"
+    attempt_lock_path.write_text(json.dumps(implementation_lock), encoding="utf-8")
+    pool_root = worktree_root / ".pool-state"
+    pool_root.mkdir()
+    entry_id = "aaaaaaaaaaaa-bbbbbbbbbbbb"
+    pool_state_path = pool_root / f"{entry_id}.json"
+    pool_lock_path = pool_root / f"{entry_id}.lock"
+    pool_state = {
+        "base_commit": _git(repo, "rev-parse", "HEAD"),
+        "branch": record.branch,
+        "cache_key": "cache-key",
+        "cold_setup_seconds": 1.0,
+        "created_at_epoch": 1.0,
+        "dependency_heads": {},
+        "dependency_paths": [],
+        "last_used_at_epoch": 1.0,
+        "lease_pid": dead_owner.pid,
+        "lease_token": entry_id,
+        "path": str(workspace.resolve()),
+        "repo_common_dir": str(daemon.worktree_pool.repo_common_dir),
+        "repo_root": str(repo.resolve()),
+        "schema": "agent-supervisor-worktree-pool-v1",
+        "state": "leased",
+        "use_count": 1,
+    }
+    pool_lock = {"pid": dead_owner.pid, "created_at_epoch": 1.0}
+    pool_state_bytes = json.dumps(pool_state).encode()
+    pool_lock_bytes = json.dumps(pool_lock).encode()
+    pool_state_path.write_bytes(pool_state_bytes)
+    pool_lock_path.write_bytes(pool_lock_bytes)
+
+    proc_root = tmp_path / "proc"
+    denied_process = proc_root / "500"
+    denied_process.mkdir(parents=True)
+    (denied_process / "cmdline").write_bytes(
+        b"/usr/bin/tmux\0long-lived-unrelated-process\0"
+    )
+    (denied_process / "cwd").symlink_to(tmp_path)
+    daemon.worktree_lifecycle.proc_root = proc_root
+    real_readlink = os.readlink
+
+    def yama_denied_readlink(path: str | os.PathLike[str]) -> str:
+        candidate = Path(path)
+        if candidate == denied_process / "cwd":
+            raise PermissionError("simulated Yama ptrace_scope denial")
+        return real_readlink(path)
+
+    monkeypatch.setattr(os, "readlink", yama_denied_readlink)
+    real_run = subprocess.run
+
+    def no_containers(command: object, *args: object, **kwargs: object) -> object:
+        if isinstance(command, (list, tuple)) and command and command[0] == "docker":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", no_containers)
+
+    pool_state["lease_pid"] = dead_owner.pid + 1
+    pool_state_path.write_text(json.dumps(pool_state), encoding="utf-8")
+    missing_pool = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert missing_pool["quiescent"] is False
+    assert missing_pool["reason"] == "portal_attempt_pool_proof_unavailable"
+    pool_state["lease_pid"] = dead_owner.pid
+    pool_state_path.write_bytes(pool_state_bytes)
+
+    real_attempt_lock = tmp_path / "implementation.lock.json"
+    real_attempt_lock.write_text(json.dumps(implementation_lock), encoding="utf-8")
+    attempt_lock_path.unlink()
+    attempt_lock_path.symlink_to(real_attempt_lock)
+    symlinked_lock = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert symlinked_lock["quiescent"] is False
+    assert symlinked_lock["reason"] == "portal_attempt_lock_proof_unavailable"
+    attempt_lock_path.unlink()
+    attempt_lock_path.write_text(json.dumps(implementation_lock), encoding="utf-8")
+
+    real_pool_state = tmp_path / "pool-state.json"
+    real_pool_state.write_bytes(pool_state_bytes)
+    pool_state_path.unlink()
+    pool_state_path.symlink_to(real_pool_state)
+    symlinked_pool = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert symlinked_pool["quiescent"] is False
+    assert symlinked_pool["reason"] == "portal_attempt_pool_proof_unavailable"
+    pool_state_path.unlink()
+    pool_state_path.write_bytes(pool_state_bytes)
+
+    quarantine_root = pool_root / "quarantine"
+    genuinely_absent = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert genuinely_absent["status"] == "absent"
+    assert genuinely_absent["cleanup_fenced"] is False
+
+    empty_quarantine_target = tmp_path / "empty-quarantine-target"
+    empty_quarantine_target.mkdir()
+    quarantine_root.symlink_to(
+        empty_quarantine_target,
+        target_is_directory=True,
+    )
+    symlinked_quarantine_root = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert symlinked_quarantine_root["status"] == "invalid"
+    assert symlinked_quarantine_root["cleanup_fenced"] is True
+    assert symlinked_quarantine_root["reason"] == "quarantine_directory_unsafe"
+    quarantine_root.unlink()
+
+    quarantine_root.write_text("not a directory\n", encoding="utf-8")
+    file_quarantine_root = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert file_quarantine_root["status"] == "invalid"
+    assert file_quarantine_root["cleanup_fenced"] is True
+    assert file_quarantine_root["reason"] == "quarantine_directory_unsafe"
+    quarantine_root.unlink()
+
+    real_lstat = Path.lstat
+
+    def uninspectable_quarantine_root(path: Path) -> os.stat_result:
+        if path == quarantine_root:
+            raise PermissionError("simulated quarantine-root lstat denial")
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", uninspectable_quarantine_root)
+    uninspectable_root = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert uninspectable_root["status"] == "invalid"
+    assert uninspectable_root["cleanup_fenced"] is True
+    assert uninspectable_root["reason"] == (
+        "quarantine_directory_uninspectable"
+    )
+    monkeypatch.setattr(Path, "lstat", real_lstat)
+
+    (denied_process / "cmdline").write_bytes(
+        b"/usr/bin/worker\0" + record.branch.encode() + b"\0"
+    )
+    branch_active = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert branch_active["quiescent"] is False
+    assert branch_active["reason"] == "task_attempt_claim_worktree_process_still_active"
+    (denied_process / "cmdline").write_bytes(
+        b"/usr/bin/worker\0" + str(workspace).encode() + b"\0"
+    )
+    workspace_active = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert workspace_active["quiescent"] is False
+    assert workspace_active["reason"] == "task_attempt_claim_worktree_process_still_active"
+    (denied_process / "cmdline").write_bytes(
+        b"/usr/bin/tmux\0long-lived-unrelated-process\0"
+    )
+
+    # Publication and mutation share the exact per-entry update guard. Pause
+    # publication at its no-replace link and prove a different thread cannot
+    # enter the mutation body until the marker is durable; once admitted, it
+    # must observe the marker and refuse the write.
+    scope_proof = daemon._predecessor_portal_attempt_scope_proof(record)
+    assert scope_proof["valid"] is True
+    marker_path = pool_root / "quarantine" / f"{entry_id}.json"
+    real_link = os.link
+    real_fsync = os.fsync
+    fsynced_paths: list[str] = []
+
+    def tracing_fsync(descriptor: int) -> None:
+        try:
+            fsynced_paths.append(os.readlink(f"/proc/self/fd/{descriptor}"))
+        except OSError:
+            fsynced_paths.append("<uninspectable>")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", tracing_fsync)
+
+    # Fault-inject the crash seam after the exact native Git worktree lock but
+    # before the immutable marker link. The pending lock must independently
+    # fence every ordinary mutation, and retry must derive the same quarantine
+    # identity rather than treating its own prior lock as foreign custody.
+    def fail_first_marker_link(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if Path(destination) == marker_path:
+            raise OSError("simulated crash after native worktree lock")
+        real_link(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", fail_first_marker_link)
+    interrupted_publication = daemon._portal_attempt_denied_cwd_quiescence(
+        record,
+        denied_pids=[500],
+        scope_proof=scope_proof,
+    )
+    assert interrupted_publication["quiescent"] is False
+    assert interrupted_publication["reason"] == (
+        "portal_attempt_quarantine_unproven"
+    )
+    assert marker_path.exists() is False
+    pending_registration, pending_reason = (
+        worktree_helpers._git_worktree_registration(repo, workspace)
+    )
+    assert pending_reason == "git_worktree_registration_exact"
+    assert pending_registration is not None
+    pending_lock_reason = str(pending_registration.get("locked") or "")
+    assert re.fullmatch(
+        r"agent-supervisor-quarantine-v1:sha256:[0-9a-f]{64}",
+        pending_lock_reason,
+    )
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+        operation="test_pending_native_quarantine_lock",
+    ) as pending_admission:
+        assert pending_admission["allowed"] is False
+        assert pending_admission["reason"] == (
+            "pending_worktree_pool_quarantine"
+        )
+
+    link_entered = threading.Event()
+    release_link = threading.Event()
+    mutation_finished = threading.Event()
+    mutation_sentinel = workspace / "mutation-must-not-run.txt"
+    publisher_result: dict[str, object] = {}
+    mutation_result: dict[str, object] = {}
+    thread_errors: list[BaseException] = []
+
+    def blocking_marker_link(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if Path(destination) == marker_path:
+            link_entered.set()
+            assert release_link.wait(timeout=5.0)
+        real_link(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(os, "link", blocking_marker_link)
+
+    def publish_quarantine() -> None:
+        try:
+            publisher_result.update(
+                daemon._portal_attempt_denied_cwd_quiescence(
+                    record,
+                    denied_pids=[500],
+                    scope_proof=scope_proof,
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            thread_errors.append(exc)
+
+    def mutate_workspace() -> None:
+        try:
+            with guarded_worktree_pool_mutation(
+                repo_root=repo,
+                worktree_root=worktree_root,
+                workspace_path=workspace,
+                expected_branch=record.branch,
+                operation="test_publication_mutation_race",
+            ) as admission:
+                mutation_result.update(admission)
+                if admission.get("allowed") is True:
+                    mutation_sentinel.write_text("unsafe\n", encoding="utf-8")
+        except BaseException as exc:  # pragma: no cover - asserted below
+            thread_errors.append(exc)
+        finally:
+            mutation_finished.set()
+
+    publisher = threading.Thread(target=publish_quarantine)
+    publisher.start()
+    assert link_entered.wait(timeout=5.0)
+    mutator = threading.Thread(target=mutate_workspace)
+    mutator.start()
+    assert mutation_finished.wait(timeout=0.2) is False
+    release_link.set()
+    publisher.join(timeout=5.0)
+    mutator.join(timeout=5.0)
+    assert not publisher.is_alive()
+    assert not mutator.is_alive()
+    assert thread_errors == []
+    assert publisher_result["quiescent"] is True
+    assert mutation_result["allowed"] is False
+    assert mutation_result["reason"] == "durable_worktree_pool_quarantine"
+    assert not mutation_sentinel.exists()
+    assert str(pool_root.resolve()) in fsynced_paths
+    assert str((pool_root / "quarantine").resolve()) in fsynced_paths
+
+    quiescent = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert quiescent["quiescent"] is True
+    quarantine_proof = quiescent["generation_cgroup_proof"]
+    assert quarantine_proof["reason"] == "portal_attempt_workspace_durably_quarantined"
+    assert quarantine_proof["denied_process_count"] == 1
+    assert quarantine_proof["quarantine"]["published"] is True
+    assert quarantine_proof["quarantine"]["valid"] is True
+    assert quarantine_proof["quarantine"]["cleanup_fenced"] is True
+
+    marker_bytes = marker_path.read_bytes()
+    marker = json.loads(marker_bytes)
+    assert marker["owner_process_birth"] == dead_owner.to_dict()
+    assert marker["lifecycle_record_id"] == record.record_id
+    assert marker["lifecycle_fence"] == record.fence
+    assert marker["lifecycle_lease_id"] == record.lease_id
+    assert marker["task_id"] == record.task_id
+    assert marker["canonical_task_cid"] == record.canonical_task_cid
+    assert marker["attempt"] == record.attempt
+    assert marker["branch"] == record.branch
+    assert marker["workspace_path"] == str(workspace.resolve())
+    assert marker["predecessor_state_dir"] == str(predecessor_state_dir.resolve())
+    assert marker["current_state_dir"] == str(current_state_dir.resolve())
+    assert marker["git_worktree_lock_reason"] == pending_lock_reason
+
+    # The native Git lock is an independent cross-authority fence. A normal
+    # one-force removal fails, while repository-global prune and GC continue
+    # to run successfully without discarding the quarantined registration.
+    one_force_remove = subprocess.run(
+        ["git", "worktree", "remove", "--force", str(workspace)],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert one_force_remove.returncode != 0
+    assert workspace.is_dir()
+    _git(repo, "worktree", "prune", "--expire", "now")
+    _git(repo, "-c", "gc.worktreePruneExpire=now", "gc")
+    retained_registration, retained_reason = (
+        worktree_helpers._git_worktree_registration(repo, workspace)
+    )
+    assert retained_reason == "git_worktree_registration_exact"
+    assert retained_registration is not None
+    assert retained_registration.get("locked") == pending_lock_reason
+
+    inspected = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert inspected["status"] == "valid"
+    assert inspected["valid"] is True
+    assert inspected["cleanup_fenced"] is True
+
+    # Simulate a crash after marker publication but before lifecycle CAS.
+    retried = daemon._predecessor_worktree_dispatch_quiescence(record)
+    assert retried["quiescent"] is True
+    assert retried["generation_cgroup_proof"]["quarantine"]["idempotent"] is True
+    assert marker_path.read_bytes() == marker_bytes
+    assert pool_state_path.read_bytes() == pool_state_bytes
+    assert pool_lock_path.read_bytes() == pool_lock_bytes
+
+    cleanup_denied = daemon._authorize_worktree_cleanup(workspace, record.branch)
+    assert cleanup_denied["allowed"] is False
+    assert cleanup_denied["reason"] == "durable_worktree_pool_quarantine"
+
+    marker_path.write_text("{", encoding="utf-8")
+    malformed = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert malformed["status"] == "invalid"
+    assert malformed["cleanup_fenced"] is True
+    malformed_cleanup = daemon._authorize_worktree_cleanup(workspace, record.branch)
+    assert malformed_cleanup["allowed"] is False
+    assert malformed_cleanup["reason"] == "worktree_pool_quarantine_unverifiable"
+    marker_path.write_bytes(marker_bytes)
+
+    symlink_target = tmp_path / "quarantine-marker.json"
+    symlink_target.write_bytes(marker_bytes)
+    marker_path.unlink()
+    marker_path.symlink_to(symlink_target)
+    symlinked_marker = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert symlinked_marker["status"] == "invalid"
+    assert symlinked_marker["cleanup_fenced"] is True
+    marker_path.unlink()
+    marker_path.write_bytes(marker_bytes)
+
+    nonfinite_state = dict(pool_state)
+    nonfinite_state["cold_setup_seconds"] = float("nan")
+    pool_state_path.write_text(json.dumps(nonfinite_state), encoding="utf-8")
+    nonfinite = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert nonfinite["status"] == "invalid"
+    assert nonfinite["cleanup_fenced"] is True
+    assert nonfinite["reason"] == "quarantine_pool_binding_mismatch"
+    pool_state_path.write_bytes(pool_state_bytes)
+
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert recovered["finalized"] is True
+    assert recovered["reason"] == "sibling_portal_attempt_dead_owner_superseded"
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+    assert workspace.is_dir()
+    assert marker_path.read_bytes() == marker_bytes
+    assert json.loads(pool_state_path.read_text())["state"] == "leased"
+
+    supervisor_state = state_root / "lane-2"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo_path,
+            state_path=supervisor_state / "task_state.json",
+            strategy_path=supervisor_state / "strategy.json",
+            events_path=supervisor_state / "events.jsonl",
+            state_dir=supervisor_state,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch=target,
+        )
+    )
+    owners = supervisor._shared_active_worktree_owners(worktree_root)
+    assert owners[workspace.resolve()]["source"] == "worktree_pool_quarantine"
+    assert owners[workspace.resolve()]["quarantine_status"] == "valid"
+
+    # A valid marker blocks both stale pool-lock reclamation and the direct
+    # stale-active dirty rescue path. The supervisor must retain the active
+    # execution record so a later exact recovery pass can reason from it.
+    assert daemon.worktree_pool._try_claim(pool_state) is None  # noqa: SLF001
+    assert pool_lock_path.read_bytes() == pool_lock_bytes
+    stale_state = PortalTaskState.load(supervisor.config.state_path)
+    stale_state.active_task_id = task.task_id
+    stale_state.active_task_title = task.title
+    stale_state.active_task_track = task.track
+    stale_state.active_task_started_at = "2026-08-29T07:31:25Z"
+    stale_state.active_attempt = 1
+    stale_state.active_phase = "implementation"
+    stale_state.active_phase_started_at = "2026-08-29T07:31:25Z"
+    stale_state.active_worktree_path = str(workspace)
+    stale_state.active_branch = record.branch
+    stale_state.implementation_in_progress = True
+    stale_state.save(supervisor.config.state_path)
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: None)
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_git_status_short",
+        lambda _path: ["?? preserved-dirty.py"],
+    )
+    stale_repair = supervisor.repair_stale_active_execution_state()
+    assert stale_repair["repaired"] is False
+    assert stale_repair["reason"] == "durable_worktree_pool_quarantine"
+    retained_state = PortalTaskState.load(supervisor.config.state_path)
+    assert retained_state.implementation_in_progress is True
+    assert retained_state.active_worktree_path == str(workspace)
+    assert retained_state.active_branch == record.branch
+
+    # Per-candidate cleanup does not depend on a readable pool-state record.
+    pool_state_path.unlink()
+    supervisor._git_worktree_records = lambda _repo: [  # type: ignore[method-assign]
+        {
+            "worktree": str(workspace),
+            "branch": f"refs/heads/{record.branch}",
+            "HEAD": pool_state["base_commit"],
+        }
+    ]
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        supervisor,
+        "_rescue_dirty_worktree",
+        lambda *args, **kwargs: pytest.fail(
+            "quarantined worktree must not be rescued"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_prune_completed_leftover_worktree",
+        lambda *args, **kwargs: pytest.fail(
+            "quarantined worktree must not be pruned"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_preflight_worktree_reconciliation_merge",
+        lambda *args, **kwargs: pytest.fail(
+            "quarantined worktree must not enter merge preflight"
+        ),
+    )
+    workspace_before = {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+    refs_before = _git(repo, "show-ref")
+
+    detected = supervisor.detect_stale_worktrees()
+    detect_skip = next(
+        item for item in detected["skipped"] if item["path"] == str(workspace)
+    )
+    assert detect_skip["reason"] == "worktree_pool_quarantine_unverifiable"
+    reconciled = supervisor.reconcile_backlogged_worktrees()
+    reconcile_skip = next(
+        item for item in reconciled["skipped"] if item["path"] == str(workspace)
+    )
+    assert reconcile_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+
+    cleanup = supervisor._cleanup_backlogged_worktrees_locked()
+    assert cleanup["prune_returncode"] == 0
+    quarantine_skip = next(
+        item for item in cleanup["skipped"] if item["path"] == str(workspace)
+    )
+    assert quarantine_skip["reason"] == "worktree_pool_quarantine_unverifiable"
+    assert quarantine_skip["quarantine_status"] == "invalid"
+    assert workspace.is_dir()
+    assert marker_path.read_bytes() == marker_bytes
+    assert refs_before == _git(repo, "show-ref")
+    assert workspace_before == {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    pool_state_path.write_text("{", encoding="utf-8")
+    corrupt_detected = supervisor.detect_stale_worktrees()
+    corrupt_detect_skip = next(
+        item
+        for item in corrupt_detected["skipped"]
+        if item["path"] == str(workspace)
+    )
+    assert corrupt_detect_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+    corrupt_reconciled = supervisor.reconcile_backlogged_worktrees()
+    corrupt_reconcile_skip = next(
+        item
+        for item in corrupt_reconciled["skipped"]
+        if item["path"] == str(workspace)
+    )
+    assert corrupt_reconcile_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+    assert marker_path.read_bytes() == marker_bytes
+    assert refs_before == _git(repo, "show-ref")
+    assert workspace_before == {
+        path.relative_to(workspace).as_posix(): path.read_bytes()
+        for path in workspace.rglob("*")
+        if path.is_file()
+    }
+
+    # Marker lookup is lexical under the exact root. Replacing the workspace
+    # with a symlink outside that root must expose an invalid cleanup fence,
+    # never hide the surviving marker as a non-pooled path.
+    pool_state_path.write_bytes(pool_state_bytes)
+    outside_workspace = tmp_path / "outside-workspace"
+    workspace.rename(outside_workspace)
+    outside_sentinel = outside_workspace / "preserve.txt"
+    outside_sentinel.write_text("preserve\n", encoding="utf-8")
+    workspace.symlink_to(outside_workspace, target_is_directory=True)
+    drifted = inspect_worktree_pool_quarantine(
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=record.branch,
+    )
+    assert drifted["status"] == "invalid"
+    assert drifted["cleanup_fenced"] is True
+    assert drifted["reason"] == "quarantine_workspace_binding_mismatch"
+
+    drift_detected = supervisor.detect_stale_worktrees()
+    drift_detect_skip = next(
+        item
+        for item in drift_detected["skipped"]
+        if item["path"] == str(workspace)
+    )
+    assert drift_detect_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+    drift_reconciled = supervisor.reconcile_backlogged_worktrees()
+    drift_reconcile_skip = next(
+        item
+        for item in drift_reconciled["skipped"]
+        if item["path"] == str(workspace)
+    )
+    assert drift_reconcile_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+    drift_cleanup = supervisor._cleanup_backlogged_worktrees_locked()
+    drift_cleanup_skip = next(
+        item
+        for item in drift_cleanup["skipped"]
+        if item["path"] == str(workspace)
+    )
+    assert drift_cleanup_skip["reason"] == (
+        "worktree_pool_quarantine_unverifiable"
+    )
+    assert workspace.is_symlink()
+    assert outside_sentinel.read_text(encoding="utf-8") == "preserve\n"
+    assert marker_path.read_bytes() == marker_bytes
+
+
+def test_pool_mutation_guard_is_reentrant_and_revalidates_waiting_preimage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Supervisor construction may bind the default Grok model into the process
+    # environment.  Register an explicit pre-test value so this fixture cannot
+    # leak a partial provider route into later sealed-route tests.
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_GROK_MODEL", "")
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "seed.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    todo_path = repo / "tasks.md"
+    todo_path.write_text("# Taskboard\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "workspace_111111111111_222222222222"
+    branch = "implementation/reentrant-quarantine-guard"
+    _git(repo, "worktree", "add", "-b", branch, str(workspace), "HEAD")
+    (worktree_root / ".pool-state").mkdir()
+
+    supervisor_state = tmp_path / "supervisor-state"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo_path,
+            state_path=supervisor_state / "state.json",
+            strategy_path=supervisor_state / "strategy.json",
+            events_path=supervisor_state / "events.jsonl",
+            state_dir=supervisor_state,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    daemon_state = tmp_path / "daemon-state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=daemon_state / "state.json",
+        strategy_path=daemon_state / "strategy.json",
+        events_path=daemon_state / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_strict_process_commands_for_mutation",
+        lambda: {
+            "available": True,
+            "reason": "test_process_query_current",
+            "commands": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_strict_process_commands_for_mutation",
+        lambda: {
+            "available": True,
+            "reason": "test_process_query_current",
+            "commands": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree_guarded",
+        lambda *_args, **_kwargs: {
+            "cleaned": True,
+            "reason": "nested_cleanup_callback_completed",
+        },
+    )
+
+    nested_result: dict[str, object] = {}
+    nested_errors: list[BaseException] = []
+
+    def nested_supervisor_daemon_callback() -> None:
+        try:
+            with supervisor._pooled_worktree_mutation_guard(  # noqa: SLF001
+                workspace,
+                expected_branch=branch,
+                operation="test_supervisor_reconciliation_outer_guard",
+            ) as outer:
+                nested_result["outer"] = outer
+                nested_result["cleanup"] = daemon._cleanup_merged_worktree(  # noqa: SLF001
+                    workspace,
+                    branch,
+                )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            nested_errors.append(exc)
+
+    nested_thread = threading.Thread(target=nested_supervisor_daemon_callback)
+    nested_thread.start()
+    nested_thread.join(timeout=5.0)
+    assert not nested_thread.is_alive(), "nested exact guard self-deadlocked"
+    assert nested_errors == []
+    assert nested_result["outer"]["allowed"] is True  # type: ignore[index]
+    assert nested_result["cleanup"]["cleaned"] is True  # type: ignore[index]
+
+    monkeypatch.setattr(
+        supervisor,
+        "_strict_process_commands_for_mutation",
+        lambda: {"available": False, "reason": "simulated_ps_failure"},
+    )
+    process_unknown = supervisor._revalidate_worktree_mutation_preimage(  # noqa: SLF001
+        workspace,
+        expected_branch=branch,
+        expected_head=_git(workspace, "rev-parse", "HEAD"),
+        expected_status=(),
+    )
+    assert process_unknown["valid"] is False
+    assert process_unknown["reason"] == "worktree_process_query_unavailable"
+    monkeypatch.setattr(
+        supervisor,
+        "_strict_process_commands_for_mutation",
+        lambda: {
+            "available": True,
+            "reason": "test_process_query_current",
+            "commands": [],
+        },
+    )
+
+    unavailable_root = tmp_path / "missing-worktree-root"
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=unavailable_root,
+        workspace_path=(
+            unavailable_root / "workspace_333333333333_444444444444"
+        ),
+        expected_branch=branch,
+        operation="test_unavailable_pool_root",
+    ) as unavailable:
+        assert unavailable["allowed"] is False
+        assert unavailable["pooled"] is True
+        assert unavailable["reason"] == "worktree_pool_mutation_guard_unavailable"
+
+    legacy_workspace = worktree_root / "workspace-555555555555-666666666666"
+    legacy_branch = "implementation/legacy-pool-entry-binding"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        legacy_branch,
+        str(legacy_workspace),
+        "HEAD",
+    )
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=legacy_workspace,
+        expected_branch=legacy_branch,
+        operation="test_legacy_pool_entry_binding",
+    ) as legacy_guard:
+        assert legacy_guard["allowed"] is True
+        assert legacy_guard["pooled"] is True
+        assert legacy_guard["binding"]["entry_id"] == (  # type: ignore[index]
+            "555555555555-666666666666"
+        )
+
+    # A reasonless native Git lock is foreign custody, not an unlocked record.
+    # It must fence the shared mutation guard even when no JSON quarantine
+    # marker exists.
+    _git(repo, "worktree", "lock", str(legacy_workspace))
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=legacy_workspace,
+        expected_branch=legacy_branch,
+        operation="test_reasonless_foreign_git_lock",
+    ) as reasonless_lock:
+        assert reasonless_lock["allowed"] is False
+        assert reasonless_lock["reason"] == "foreign_git_worktree_lock"
+    assert legacy_workspace.is_dir()
+    _git(repo, "worktree", "unlock", str(legacy_workspace))
+
+    # A root/custody generation change after the kernel guard is acquired is a
+    # denial even when the lexical strings remain unchanged.
+    real_binding = worktree_helpers.worktree_pool_entry_guard_binding
+    binding_calls = 0
+
+    def generation_changing_binding(**kwargs: object) -> dict[str, object]:
+        nonlocal binding_calls
+        binding_calls += 1
+        result = dict(real_binding(**kwargs))  # type: ignore[arg-type]
+        if binding_calls == 2:
+            identity = dict(result.get("pool_root_identity") or {})
+            identity["inode"] = int(identity.get("inode") or 0) + 1
+            result["pool_root_identity"] = identity
+        return result
+
+    monkeypatch.setattr(
+        worktree_helpers,
+        "worktree_pool_entry_guard_binding",
+        generation_changing_binding,
+    )
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=branch,
+        operation="test_pool_root_generation_change",
+    ) as generation_changed:
+        assert generation_changed["allowed"] is False
+        assert generation_changed["reason"] == (
+            "worktree_pool_mutation_guard_binding_changed"
+        )
+    monkeypatch.setattr(
+        worktree_helpers,
+        "worktree_pool_entry_guard_binding",
+        real_binding,
+    )
+
+    if hasattr(os, "fork"):
+        monkeypatch.setattr(
+            worktree_helpers,
+            "WORKTREE_POOL_MUTATION_GUARD_TIMEOUT_SECONDS",
+            0.2,
+        )
+        read_fd, write_fd = os.pipe()
+        with guarded_worktree_pool_mutation(
+            repo_root=repo,
+            worktree_root=worktree_root,
+            workspace_path=workspace,
+            expected_branch=branch,
+            operation="test_parent_guard_before_fork",
+        ) as parent_guard:
+            assert parent_guard["allowed"] is True
+            child_pid = os.fork()
+            if child_pid == 0:  # pragma: no cover - asserted by parent payload
+                try:
+                    os.close(read_fd)
+                    with guarded_worktree_pool_mutation(
+                        repo_root=repo,
+                        worktree_root=worktree_root,
+                        workspace_path=workspace,
+                        expected_branch=branch,
+                        operation="test_forked_child_guard",
+                    ) as child_guard:
+                        os.write(
+                            write_fd,
+                            json.dumps(child_guard, default=str).encode("utf-8"),
+                        )
+                finally:
+                    os.close(write_fd)
+                    os._exit(0)
+            os.close(write_fd)
+            child_payload = os.read(read_fd, 65536)
+            os.close(read_fd)
+            waited_pid, wait_status = os.waitpid(child_pid, 0)
+            assert waited_pid == child_pid
+            assert os.waitstatus_to_exitcode(wait_status) == 0
+        child_guard = json.loads(child_payload)
+        assert child_guard["allowed"] is False
+        assert child_guard["reason"] == (
+            "worktree_pool_mutation_guard_unavailable"
+        )
+        monkeypatch.setattr(
+            worktree_helpers,
+            "WORKTREE_POOL_MUTATION_GUARD_TIMEOUT_SECONDS",
+            5.0,
+        )
+
+    dirty_path = workspace / "dirty.py"
+    dirty_path.write_text("DIRTY = 1\n", encoding="utf-8")
+    observed_status = supervisor._git_status_short(workspace)  # noqa: SLF001
+    observed_head = _git(workspace, "rev-parse", "HEAD")
+    target_ref = supervisor._git_current_branch(repo) or "HEAD"  # noqa: SLF001
+    worker_binding_entered = threading.Event()
+    rescue_finished = threading.Event()
+    rescue_result: dict[str, object] = {}
+    real_binding = worktree_helpers.worktree_pool_entry_guard_binding
+
+    def observed_binding(**kwargs: object) -> dict[str, object]:
+        if threading.current_thread().name == "waiting-rescue":
+            worker_binding_entered.set()
+        return real_binding(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        worktree_helpers,
+        "worktree_pool_entry_guard_binding",
+        observed_binding,
+    )
+
+    def waiting_rescue() -> None:
+        try:
+            rescue_result.update(
+                supervisor._rescue_dirty_worktree(  # noqa: SLF001
+                    workspace,
+                    branch=branch,
+                    head=observed_head,
+                    target_ref=target_ref,
+                    status_lines=observed_status,
+                    reason="deterministic_guard_wait_race",
+                )
+            )
+        finally:
+            rescue_finished.set()
+
+    with guarded_worktree_pool_mutation(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=workspace,
+        expected_branch=branch,
+        operation="test_hold_guard_for_preimage_drift",
+    ) as held:
+        assert held["allowed"] is True
+        rescue_thread = threading.Thread(
+            target=waiting_rescue,
+            name="waiting-rescue",
+        )
+        rescue_thread.start()
+        assert worker_binding_entered.wait(timeout=5.0)
+        assert rescue_finished.wait(timeout=0.2) is False
+        (workspace / "drift.py").write_text("DRIFT = 1\n", encoding="utf-8")
+    rescue_thread.join(timeout=5.0)
+    assert not rescue_thread.is_alive()
+    assert rescue_result["attempted"] is False
+    assert rescue_result["preserved"] is False
+    assert rescue_result["reason"] == "worktree_status_changed"
+    assert _git(workspace, "branch", "--show-current") == branch
 
 
 def test_successor_generation_cannot_retire_live_predecessor_claim(
@@ -2052,9 +3250,631 @@ def test_missing_pooled_workspace_is_discarded_after_setup_race(
     assert result["returncode"] == 1
     assert result["exception_result"]["exception_type"] == "FileNotFoundError"
     assert result["cleanup_result"]["pool_release"]["reason"] == "reuse_disabled"
+    assert result["cleanup_result"]["pool_release"]["metadata_only"] is True
+    assert (
+        result["cleanup_result"]["branch_disposition"]
+        == "retained_exact_expected_head"
+    )
+    assert result["cleanup_result"]["deleted_branch"] is False
+    assert _git(repo, "rev-parse", f"refs/heads/{result['branch']}") == result[
+        "baseline_ref"
+    ]
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.json")) == []
-    assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+    assert [
+        path
+        for path in (worktree_root / ".pool-state").glob("*.lock")
+        if not path.name.startswith(".")
+    ] == []
+
+
+def test_missing_pooled_workspace_metadata_cleanup_rejects_branch_drift(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise AssertionError('must not run')"),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    advanced_head: list[str] = []
+
+    def remove_workspace_and_advance_branch(*_args, **kwargs) -> None:
+        workspace = Path(kwargs["worktree_path"])
+        branch = str(kwargs["branch_name"])
+        base_head = _git(repo, "rev-parse", f"refs/heads/{branch}")
+        tree = _git(repo, "rev-parse", f"{base_head}^{{tree}}")
+        candidate = _git(
+            repo,
+            "commit-tree",
+            tree,
+            "-p",
+            base_head,
+            "-m",
+            "foreign branch advance",
+        )
+        _git(repo, "worktree", "remove", "--force", str(workspace))
+        _git(
+            repo,
+            "update-ref",
+            f"refs/heads/{branch}",
+            candidate,
+            base_head,
+        )
+        advanced_head.append(candidate)
+        raise FileNotFoundError(f"workspace disappeared: {workspace}")
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_implementation_started",
+        remove_workspace_and_advance_branch,
+    )
+    task = PortalTask(
+        task_id="INC-003-BRANCH-DRIFT",
+        title="Preserve drifted missing pooled implementation custody",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    pool_release = result["cleanup_result"]["pool_release"]
+    entry_id = str(result["workspace_setup"]["entry_id"])
+    branch = str(result["branch"])
+    assert result["returncode"] == 1
+    assert pool_release["released"] is False
+    assert pool_release["deferred"] is True
+    assert pool_release["retryable"] is True
+    assert advanced_head
+    assert _git(repo, "rev-parse", f"refs/heads/{branch}") == advanced_head[0]
+    assert (worktree_root / ".pool-state" / f"{entry_id}.json").is_file()
+    assert (worktree_root / ".pool-state" / f"{entry_id}.lock").is_file()
+    assert daemon._worktree_pool_leases
+
+
+def test_missing_release_inspector_leaves_legacy_active_state_unfenced(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="legacy-active",
+        base_ref="main",
+        branch_name="implementation/legacy-active",
+    )
+
+    inspected = inspect_worktree_pool_missing_release_terminal(
+        repo_root=repo,
+        worktree_root=worktree_root,
+        workspace_path=lease.path,
+        expected_branch=lease.branch_name,
+    )
+
+    assert inspected["status"] == "absent"
+    assert inspected["cleanup_fenced"] is False
+    assert inspected["reason"] == "missing_release_absent"
+    assert lease.release()["released"] is True
+
+
+def test_missing_workspace_after_provider_dispatch_cannot_publish_receipt(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    task = PortalTask(
+        task_id="INC-MISSING-POST-DISPATCH",
+        title="Fence missing post-dispatch workspace",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    requested = worktree_root / "requested"
+    branch = "implementation/missing-post-dispatch"
+    daemon._create_seeded_worktree(requested, branch, task=task)
+    effective = daemon._worktree_pool_effective_paths[requested.resolve()]
+    lease = daemon._worktree_pool_leases[effective]
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="test-lane",
+        workspace_path=effective,
+        branch=branch,
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(tmp_path / "state"),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        effective,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    daemon._active_worktree_lifecycle = lifecycle
+    _git(repo, "worktree", "remove", "--force", str(effective))
+
+    cleanup = daemon._cleanup_merged_worktree(
+        effective,
+        branch,
+        reusable=False,
+        allow_missing_pool_metadata_cleanup=True,
+        implementation_started=True,
+        provider_dispatched=True,
+    )
+
+    pool_release = cleanup["pool_release"]
+    assert cleanup["cleaned"] is False
+    assert pool_release["released"] is False
+    assert pool_release["reason"] == (
+        "missing_workspace_lifecycle_context_unavailable"
+    )
+    assert not list((worktree_root / ".pool-state").glob(".*.released-receipt"))
+    assert (worktree_root / ".pool-state" / f"{lease.entry_id}.json").is_file()
+    assert (worktree_root / ".pool-state" / f"{lease.entry_id}.lock").is_file()
+
+
+def _missing_current_pool_lease_fixture(
+    tmp_path: Path,
+    *,
+    label: str,
+) -> tuple[
+    Path,
+    WorktreePool,
+    WorktreeLease,
+    Path,
+    Path,
+    bytes,
+    bytes,
+    dict[str, object],
+]:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key=f"missing-{label}",
+        base_ref="main",
+        branch_name=f"implementation/missing-{label}",
+    )
+    state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+    lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+    state_bytes = state_path.read_bytes()
+    lock_bytes = lock_path.read_bytes()
+    owner = current_process_birth()
+    lifecycle = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "worktree-lifecycle-record@1"
+        ),
+        "record_id": f"test-missing-release-{label}",
+        "task_id": f"INC-MISSING-{label}",
+        "canonical_task_cid": f"cid:missing-{label}",
+        "attempt": 1,
+        "lane_id": "test-lane",
+        "state": "active",
+        "owner": owner.to_dict(),
+        "lease_id": f"test-lease-{label}",
+        "fence": 1,
+        "workspace_path": str(lease.path),
+        "branch": lease.branch_name,
+        "merge_target": "main",
+        "created_at": 1.0,
+        "updated_at": 1.0,
+        "expires_at": 2.0,
+        "repo_root": str(repo.resolve()),
+        "state_dir": str(tmp_path / "state"),
+        "terminal_reason": "",
+    }
+    missing_release_context: dict[str, object] = {
+        "release_phase": "failed_setup_before_provider",
+        "implementation_started": False,
+        "provider_dispatched": False,
+        "lifecycle": lifecycle,
+    }
+    _git(repo, "worktree", "remove", "--force", str(lease.path))
+    return (
+        repo,
+        pool,
+        lease,
+        state_path,
+        lock_path,
+        state_bytes,
+        lock_bytes,
+        missing_release_context,
+    )
+
+
+def test_missing_pool_terminal_state_survives_lock_unlink_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (
+        repo,
+        _pool,
+        lease,
+        state_path,
+        lock_path,
+        state_bytes,
+        _lock_bytes,
+        release_context,
+    ) = (
+        _missing_current_pool_lease_fixture(tmp_path, label="lock-fault")
+    )
+    real_unlink = Path.unlink
+
+    def fail_exact_lock_unlink(path: Path, *args, **kwargs) -> None:
+        if path == lock_path:
+            raise OSError("injected lease-lock unlink failure")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_exact_lock_unlink)
+
+    release = lease.release(
+        reusable=False,
+        missing_release_context=release_context,
+    )
+
+    terminal_path = Path(str(release["terminal_state_path"]))
+    assert release["released"] is True
+    assert release["terminal_state_durable"] is True
+    assert release["lock_cleanup_durable"] is False
+    assert release["cleanup_degraded"] is True
+    assert release["orphan_lock_retained"] is True
+    assert not state_path.exists()
+    assert lock_path.is_file()
+    assert terminal_path.read_bytes() == state_bytes
+    assert terminal_path.suffix == ".released-state"
+    assert _git(repo, "rev-parse", f"refs/heads/{lease.branch_name}") == (
+        lease.base_commit
+    )
+
+
+def test_missing_pool_terminal_fsync_failure_rolls_back_exact_custody(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (
+        _repo,
+        _pool,
+        lease,
+        state_path,
+        lock_path,
+        state_bytes,
+        lock_bytes,
+        release_context,
+    ) = (
+        _missing_current_pool_lease_fixture(tmp_path, label="publish-fsync")
+    )
+    real_fsync = os.fsync
+    terminal_path = state_path.parent / f".{lease.entry_id}.released-state"
+    failed = False
+
+    def fail_first_fsync(descriptor: int) -> None:
+        nonlocal failed
+        descriptor_path = Path(f"/proc/self/fd/{descriptor}")
+        try:
+            target = descriptor_path.resolve(strict=True)
+        except OSError:
+            target = None
+        if (
+            not failed
+            and target == state_path.parent
+            and terminal_path.exists()
+            and lock_path.exists()
+        ):
+            failed = True
+            raise OSError("injected terminal publication fsync failure")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_first_fsync)
+
+    release = lease.release(
+        reusable=False,
+        missing_release_context=release_context,
+    )
+
+    assert release["released"] is False
+    assert release["retryable"] is True
+    assert release["rollback_exact"] is True
+    assert release["reason"] == (
+        "missing_workspace_terminal_publish_rolled_back"
+    )
+    assert state_path.read_bytes() == state_bytes
+    assert lock_path.read_bytes() == lock_bytes
+    assert not list(state_path.parent.glob("*.released-state"))
+
+
+def test_missing_pool_post_terminal_fsync_failure_is_degraded_terminal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    (
+        _repo,
+        _pool,
+        lease,
+        state_path,
+        lock_path,
+        state_bytes,
+        _lock_bytes,
+        release_context,
+    ) = (
+        _missing_current_pool_lease_fixture(tmp_path, label="cleanup-fsync")
+    )
+    real_fsync = os.fsync
+    terminal_path = state_path.parent / f".{lease.entry_id}.released-state"
+    failed = False
+
+    def fail_second_fsync(descriptor: int) -> None:
+        nonlocal failed
+        descriptor_path = Path(f"/proc/self/fd/{descriptor}")
+        try:
+            target = descriptor_path.resolve(strict=True)
+        except OSError:
+            target = None
+        if (
+            not failed
+            and target == state_path.parent
+            and terminal_path.exists()
+            and not lock_path.exists()
+        ):
+            failed = True
+            raise OSError("injected post-terminal fsync failure")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_second_fsync)
+
+    release = lease.release(
+        reusable=False,
+        missing_release_context=release_context,
+    )
+
+    terminal_path = Path(str(release["terminal_state_path"]))
+    assert release["released"] is True
+    assert release["terminal_state_durable"] is True
+    assert release["lock_cleanup_durable"] is False
+    assert release["cleanup_degraded"] is True
+    assert release["orphan_lock_retained"] is False
+    assert not state_path.exists()
+    assert not lock_path.exists()
+    assert terminal_path.read_bytes() == state_bytes
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+@pytest.mark.parametrize("crash_phase", ["proposal", "terminal"])
+def test_missing_release_restart_recovers_exact_crash_seams(
+    tmp_path: Path,
+    crash_phase: str,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    program_root = tmp_path / "program"
+    worktree_root = tmp_path / "pool"
+    task = PortalTask(
+        task_id=f"INC-MISSING-RESTART-{crash_phase.upper()}",
+        title=f"Recover missing release {crash_phase} crash",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    branch = f"implementation/missing-restart-{crash_phase}"
+    child_pid = os.fork()
+    if child_pid == 0:
+        predecessor_state = program_root / "run-v1" / "state" / "lane-0"
+        predecessor = PortalImplementationDaemon(
+            todo_path=tmp_path / "tasks.md",
+            state_path=predecessor_state / "state.json",
+            strategy_path=predecessor_state / "strategy.json",
+            events_path=predecessor_state / "events.jsonl",
+            repo_root=repo,
+            use_ephemeral_worktree=True,
+            worktree_root=worktree_root,
+        )
+        requested = worktree_root / "requested"
+        predecessor._create_seeded_worktree(requested, branch, task=task)
+        effective = predecessor._worktree_pool_effective_paths[
+            requested.resolve()
+        ]
+        lease = predecessor._worktree_pool_leases[effective]
+        lifecycle = predecessor.worktree_lifecycle.begin_preparing(
+            task_id=task.task_id,
+            canonical_task_cid=predecessor._canonical_ref(task),
+            attempt=1,
+            lane_id="predecessor-generation:lane-0",
+            workspace_path=effective,
+            branch=branch,
+            merge_target=predecessor._main_branch_name(),
+            state_dir=str(predecessor_state.resolve()),
+        )
+        lifecycle = predecessor.worktree_lifecycle.mark_active(
+            effective,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
+        predecessor._active_worktree_lifecycle = lifecycle
+        _git(repo, "worktree", "remove", "--force", str(effective))
+        state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+        lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+        terminal_path = (
+            worktree_root
+            / ".pool-state"
+            / f".{lease.entry_id}.released-state"
+        )
+        if crash_phase == "proposal":
+            real_rename = Path.rename
+
+            def crash_before_state_rename(path: Path, target: Path) -> Path:
+                if path == state_path and Path(target) == terminal_path:
+                    os._exit(72)
+                return real_rename(path, target)
+
+            Path.rename = crash_before_state_rename  # type: ignore[method-assign]
+        else:
+            real_unlink = Path.unlink
+
+            def crash_before_lock_cleanup(path: Path, *args, **kwargs) -> None:
+                if path == lock_path:
+                    os._exit(73)
+                real_unlink(path, *args, **kwargs)
+
+            Path.unlink = crash_before_lock_cleanup  # type: ignore[method-assign]
+        predecessor._cleanup_merged_worktree(
+            effective,
+            branch,
+            reusable=False,
+            allow_missing_pool_metadata_cleanup=True,
+            implementation_started=False,
+            provider_dispatched=False,
+        )
+        os._exit(99)
+
+    waited_pid, status = os.waitpid(child_pid, 0)
+    assert waited_pid == child_pid
+    assert os.waitstatus_to_exitcode(status) == (
+        72 if crash_phase == "proposal" else 73
+    )
+    successor_state = program_root / "run-v2" / "state" / "lane-0"
+    successor = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=successor_state / "state.json",
+        strategy_path=successor_state / "strategy.json",
+        events_path=successor_state / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    record = successor.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=successor._canonical_ref(task),
+        task_id=task.task_id,
+        attempt=1,
+    )
+    assert record is not None
+    state_root = worktree_root / ".pool-state"
+    receipt_path = next(state_root.glob(".*.released-receipt"))
+    entry_id = receipt_path.name.removeprefix(".").removesuffix(
+        ".released-receipt"
+    )
+    active_path = state_root / f"{entry_id}.json"
+    terminal_path = state_root / f".{entry_id}.released-state"
+    assert receipt_path.is_file()
+    assert (active_path.is_file(), terminal_path.is_file()) == (
+        (True, False) if crash_phase == "proposal" else (False, True)
+    )
+
+    def legacy_quiescence_must_not_run(_record) -> dict[str, object]:
+        raise AssertionError("exact missing-release evidence must be consumed")
+
+    successor._predecessor_worktree_dispatch_quiescence = (  # type: ignore[method-assign]
+        legacy_quiescence_must_not_run
+    )
+    if crash_phase == "terminal":
+        receipt_bytes = receipt_path.read_bytes()
+        tampered = json.loads(receipt_bytes)
+        tampered["provider_dispatched"] = True
+        receipt_path.write_text(
+            json.dumps(tampered, sort_keys=True),
+            encoding="utf-8",
+        )
+        rejected_tamper = (
+            successor._finalize_dead_predecessor_worktree_lifecycle_claim(
+                task=task,
+                attempt=1,
+            )
+        )
+        assert rejected_tamper["finalized"] is False
+        assert rejected_tamper["reason"] == (
+            "missing_release_terminal_identity_mismatch"
+        )
+        receipt_path.write_bytes(receipt_bytes)
+
+        active_path.write_bytes(terminal_path.read_bytes())
+        rejected_active = (
+            successor._finalize_dead_predecessor_worktree_lifecycle_claim(
+                task=task,
+                attempt=1,
+            )
+        )
+        assert rejected_active["finalized"] is False
+        assert rejected_active["reason"] == (
+            "missing_release_active_state_conflicts_with_terminal"
+        )
+        active_path.unlink()
+
+        base_head = _git(repo, "rev-parse", f"refs/heads/{branch}")
+        tree = _git(repo, "rev-parse", f"{base_head}^{{tree}}")
+        advanced = _git(
+            repo,
+            "commit-tree",
+            tree,
+            "-p",
+            base_head,
+            "-m",
+            "foreign branch advance",
+        )
+        _git(repo, "update-ref", f"refs/heads/{branch}", advanced, base_head)
+        rejected_branch = (
+            successor._finalize_dead_predecessor_worktree_lifecycle_claim(
+                task=task,
+                attempt=1,
+            )
+        )
+        assert rejected_branch["finalized"] is False
+        assert rejected_branch["reason"] == (
+            "missing_release_retained_branch_changed"
+        )
+        _git(repo, "update-ref", f"refs/heads/{branch}", base_head, advanced)
+
+    recovered = successor._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+
+    assert recovered["finalized"] is True
+    assert recovered["predecessor_dispatch_quiescence"]["reason"] == (
+        "failed_setup_missing_release_terminal_pre_dispatch"
+    )
+    if crash_phase == "proposal":
+        assert recovered["missing_release_proposal_recovery"]["finalized"] is True
+    assert successor.worktree_lifecycle.load_workspace(record.workspace_path) is None
+    assert terminal_path.is_file()
+    assert not active_path.exists()
 
 
 def test_supervisor_does_not_reconcile_a_live_pooled_worktree(
@@ -2287,8 +4107,17 @@ def test_worktree_pool_orphan_reconciliation_preserves_any_recovery_signal(
     assert branch_lock_path.exists()
     assert live.release(reusable=False)["released"] is True
     assert present.release(reusable=False)["released"] is True
-    assert branch_only.release(reusable=False)["released"] is True
+    stale_release = branch_only.release(reusable=False)
+    assert stale_release["released"] is False
+    assert stale_release["reason"] == "missing_workspace_pool_custody_changed"
+    assert branch_state_path.exists()
+    assert branch_lock_path.exists()
     _git(repo, "branch", "-D", "implementation/surviving-branch")
+    recovered = pool.reconcile_orphaned_metadata()
+    assert recovered["removed_count"] == 1
+    assert recovered["removed"][0]["entry_id"] == branch_only.entry_id
+    assert not branch_state_path.exists()
+    assert not branch_lock_path.exists()
 
 
 def test_worktree_pool_orphan_reconciliation_preserves_replaced_state(
@@ -2308,8 +4137,8 @@ def test_worktree_pool_orphan_reconciliation_preserves_replaced_state(
     )
     original_try_claim = pool._try_claim
 
-    def replace_state_after_claim(state):
-        claimed = original_try_claim(state)
+    def replace_state_after_claim(state, **kwargs):
+        claimed = original_try_claim(state, **kwargs)
         if claimed is not None:
             replacement = json.loads(
                 state_path.read_text(encoding="utf-8")

@@ -364,9 +364,16 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .worktrees import (
+    WORKTREE_POOL_SCHEMA,
     WorktreeLease,
     WorktreePool,
+    guarded_worktree_pool_mutation,
+    inspect_worktree_pool_missing_release_terminal,
+    inspect_worktree_pool_quarantine,
     python_identifier_worktree_basename,
+    worktree_pool_entry_guard_binding,
+    worktree_pool_entry_id_for_workspace,
+    worktree_pool_payload_cid,
 )
 
 REPO_ROOT = Path.cwd()
@@ -44949,6 +44956,8 @@ class PortalImplementationDaemon:
                             task=task,
                             attempt=attempt,
                             exception_result=timeout_result,
+                            implementation_started=implementation_started,
+                            provider_dispatched=provider_dispatched,
                         )
                     except Exception as cleanup_exc:
                         cleanup_result = {
@@ -44980,6 +44989,8 @@ class PortalImplementationDaemon:
                     task=task,
                     attempt=attempt,
                     exception_result=timeout_result,
+                    implementation_started=implementation_started,
+                    provider_dispatched=provider_dispatched,
                 )
         except Exception as exc:
             if self._retain_task_claim_for_handoff_exception(exc):
@@ -45117,6 +45128,8 @@ class PortalImplementationDaemon:
                         task=task,
                         attempt=attempt,
                         exception_result=exception_result,
+                        implementation_started=implementation_started,
+                        provider_dispatched=provider_dispatched,
                     )
                     if typed_pre_dispatch_deferral:
                         cleanup_result.update(
@@ -46158,6 +46171,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         exception_result: dict[str, Any],
+        implementation_started: bool,
+        provider_dispatched: bool,
     ) -> dict[str, Any]:
         """Remove partial worktrees when setup fails before the implementation command starts."""
 
@@ -46173,6 +46188,9 @@ class PortalImplementationDaemon:
             effective_path,
             branch_name,
             reusable=False,
+            allow_missing_pool_metadata_cleanup=True,
+            implementation_started=implementation_started,
+            provider_dispatched=provider_dispatched,
         )
         if cleanup_result.get("cleaned") is True:
             self._worktree_pool_effective_paths.pop(requested_key, None)
@@ -63191,9 +63209,15 @@ class PortalImplementationDaemon:
                 if current:
                     entries.append(current)
                 current = {"worktree": line.split(" ", 1)[1]}
+            elif line.startswith("HEAD "):
+                current["HEAD"] = line.split(" ", 1)[1]
             elif line.startswith("branch "):
                 branch = line.split(" ", 1)[1]
                 current["branch"] = branch.removeprefix("refs/heads/")
+            elif line == "locked":
+                current["locked"] = ""
+            elif line.startswith("locked "):
+                current["locked"] = line.split(" ", 1)[1]
         if current:
             entries.append(current)
         return entries
@@ -68014,6 +68038,15 @@ class PortalImplementationDaemon:
             and predecessor_generation[0] == current_generation[0]
             and predecessor_generation[1] < current_generation[1]
         )
+        portal_attempt_custody = (
+            self._state_dir_portal_attempt_custody_binding(
+                self.state_path.parent,
+                record.state_dir,
+            )
+        )
+        predecessor_is_owned = bool(
+            predecessor_is_older or portal_attempt_custody is not None
+        )
         mismatched_fields = [
             field_name
             for field_name, matches in (
@@ -68029,7 +68062,7 @@ class PortalImplementationDaemon:
                     record.merge_target.removeprefix("refs/heads/")
                     == current_merge_target,
                 ),
-                ("predecessor_generation", predecessor_is_older),
+                ("state_dir_custody", predecessor_is_owned),
             )
             if not matches
         ]
@@ -68039,14 +68072,24 @@ class PortalImplementationDaemon:
                 "reason": "task_attempt_claim_identity_mismatch",
                 "mismatched_fields": mismatched_fields,
             }
-        assert current_generation is not None
-        assert predecessor_generation is not None
-        base.update(
-            {
-                "current_generation": current_generation[1],
-                "predecessor_generation": predecessor_generation[1],
-            }
-        )
+        if predecessor_is_older:
+            assert current_generation is not None
+            assert predecessor_generation is not None
+            base.update(
+                {
+                    "custody_kind": "older_run_generation",
+                    "current_generation": current_generation[1],
+                    "predecessor_generation": predecessor_generation[1],
+                }
+            )
+        else:
+            assert portal_attempt_custody is not None
+            base.update(
+                {
+                    "custody_kind": "sibling_database_portal_attempt",
+                    "portal_attempt_custody": portal_attempt_custody,
+                }
+            )
 
         liveness = owner_liveness(
             record.owner,
@@ -68061,7 +68104,67 @@ class PortalImplementationDaemon:
                 "reason": "task_attempt_claim_owner_liveness_unknown",
             }
 
-        quiescence = self._predecessor_worktree_dispatch_quiescence(record)
+        missing_release_terminal = (
+            inspect_worktree_pool_missing_release_terminal(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+                workspace_path=record.workspace_path,
+                expected_branch=record.branch,
+                expected_lifecycle=record.to_dict(),
+            )
+        )
+        if missing_release_terminal.get("proposal_valid") is True:
+            proposal_recovery = (
+                self.worktree_pool.finalize_missing_release_proposal(
+                    workspace_path=record.workspace_path,
+                    expected_branch=record.branch,
+                    expected_lifecycle=record.to_dict(),
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+            )
+            base["missing_release_proposal_recovery"] = proposal_recovery
+            recovered_inspection = proposal_recovery.get("inspection")
+            if (
+                proposal_recovery.get("finalized") is True
+                and isinstance(recovered_inspection, Mapping)
+            ):
+                missing_release_terminal = dict(recovered_inspection)
+            else:
+                return {
+                    **base,
+                    "missing_release_terminal": missing_release_terminal,
+                    "reason": str(
+                        proposal_recovery.get("reason")
+                        or "missing_release_proposal_recovery_failed"
+                    ),
+                }
+        base["missing_release_terminal"] = missing_release_terminal
+        if missing_release_terminal.get("valid") is True:
+            evidence = missing_release_terminal.get("evidence")
+            quiescence = {
+                "quiescent": True,
+                "reason": (
+                    "failed_setup_missing_release_terminal_pre_dispatch"
+                ),
+                "provider_dispatched": False,
+                "evidence_id": (
+                    str(evidence.get("evidence_id") or "")
+                    if isinstance(evidence, Mapping)
+                    else ""
+                ),
+            }
+        elif missing_release_terminal.get("cleanup_fenced") is True:
+            return {
+                **base,
+                "reason": str(
+                    missing_release_terminal.get("reason")
+                    or "missing_release_terminal_unverifiable"
+                ),
+            }
+        else:
+            quiescence = self._predecessor_worktree_dispatch_quiescence(
+                record
+            )
         base["predecessor_dispatch_quiescence"] = quiescence
         if quiescence.get("quiescent") is not True:
             return {
@@ -68072,6 +68175,11 @@ class PortalImplementationDaemon:
                 ),
             }
 
+        terminal_reason = (
+            "sibling_portal_attempt_dead_owner_superseded"
+            if portal_attempt_custody is not None
+            else "successor_generation_dead_owner_superseded"
+        )
         try:
             terminal = self.worktree_lifecycle.finalize_exact_dead_owner(
                 record.workspace_path,
@@ -68086,7 +68194,7 @@ class PortalImplementationDaemon:
                 expected_merge_target=record.merge_target,
                 expected_repo_root=record.repo_root,
                 expected_state_dir=record.state_dir,
-                reason="successor_generation_dead_owner_superseded",
+                reason=terminal_reason,
             )
         except (
             FenceMismatchError,
@@ -68104,7 +68212,7 @@ class PortalImplementationDaemon:
         finalized = {
             **base,
             "finalized": True,
-            "reason": "successor_generation_dead_owner_superseded",
+            "reason": terminal_reason,
             "terminal_fence": terminal.fence,
             "terminal_state": terminal.state.value,
         }
@@ -68140,6 +68248,500 @@ class PortalImplementationDaemon:
             return None
         return tuple(parts[:index]), int(match.group(1))
 
+    @staticmethod
+    def _state_dir_portal_attempt_custody_binding(
+        current_state_dir: str | Path,
+        predecessor_state_dir: str | Path,
+    ) -> dict[str, Any] | None:
+        """Prove two distinct state dirs are siblings in one exact Portal lane."""
+
+        current_raw = Path(current_state_dir)
+        predecessor_raw = Path(predecessor_state_dir)
+        if (
+            not current_raw.is_absolute()
+            or not predecessor_raw.is_absolute()
+            or current_raw == predecessor_raw
+            or re.fullmatch(r"[0-9a-f]{24}", current_raw.name) is None
+            or re.fullmatch(r"[0-9a-f]{24}", predecessor_raw.name) is None
+            or not current_raw.is_dir()
+            or not predecessor_raw.is_dir()
+            or current_raw.is_symlink()
+            or predecessor_raw.is_symlink()
+        ):
+            return None
+        from .database_portal_bridge import (
+            database_portal_shared_attempt_root_binding,
+        )
+
+        custody = database_portal_shared_attempt_root_binding(
+            current_raw.parent,
+            predecessor_raw.parent,
+        )
+        if (
+            custody is None
+            or custody.get("current_lane") != custody.get("source_lane")
+        ):
+            return None
+        try:
+            current_resolved = current_raw.resolve(strict=True)
+            predecessor_resolved = predecessor_raw.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if current_resolved == predecessor_resolved:
+            return None
+        return {
+            **custody,
+            "current_state_dir": str(current_resolved),
+            "predecessor_state_dir": str(predecessor_resolved),
+        }
+
+    @staticmethod
+    def _process_argv(process_dir: Path) -> tuple[str, ...]:
+        raw = (process_dir / "cmdline").read_bytes()
+        if not raw:
+            return ()
+        return tuple(
+            item.decode("utf-8", errors="replace")
+            for item in raw.rstrip(b"\0").split(b"\0")
+            if item
+        )
+
+    def _predecessor_portal_attempt_scope_proof(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Bind a dead Portal attempt to exact lifecycle/lock/pool custody."""
+
+        base: dict[str, Any] = {"valid": False}
+        custody = self._state_dir_portal_attempt_custody_binding(
+            self.state_path.parent,
+            record.state_dir,
+        )
+        if custody is None:
+            return {**base, "reason": "portal_attempt_custody_unavailable"}
+        try:
+            persisted = self.worktree_lifecycle.require_exact_dead_owner(
+                record.workspace_path,
+                expected_record_id=record.record_id,
+                expected_fence=record.fence,
+                expected_lease_id=record.lease_id,
+                expected_task_id=record.task_id,
+                expected_canonical_task_cid=record.canonical_task_cid,
+                expected_attempt=record.attempt,
+                expected_branch=record.branch,
+                expected_merge_target=record.merge_target,
+                expected_repo_root=record.repo_root,
+                expected_state_dir=record.state_dir,
+            )
+        except (OSError, OwnershipError, WorktreeLifecycleError) as exc:
+            return {
+                **base,
+                "reason": "portal_attempt_lifecycle_proof_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        if persisted != record:
+            return {**base, "reason": "portal_attempt_lifecycle_changed"}
+
+        state_dir = Path(str(custody["predecessor_state_dir"]))
+        implementation_lock = self._load_exact_json_object(
+            state_dir / "implementation.lock"
+        )
+        lock_fields = {
+            "attempt",
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "kind",
+            "lease_id",
+            "owner_process_birth",
+            "owner_script",
+            "pid",
+            "repo_root",
+            "started_at",
+            "state_dir",
+            "task_id",
+        }
+        owner_payload = (
+            implementation_lock.get("owner_process_birth")
+            if implementation_lock is not None
+            else None
+        )
+        try:
+            lock_repo_root = str(
+                Path(str(implementation_lock.get("repo_root") or "")).resolve(
+                    strict=False
+                )
+            )
+            lock_state_dir = str(
+                Path(str(implementation_lock.get("state_dir") or "")).resolve(
+                    strict=True
+                )
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            lock_repo_root = ""
+            lock_state_dir = ""
+        if (
+            implementation_lock is None
+            or set(implementation_lock) != lock_fields
+            or implementation_lock.get("kind") != "implementation"
+            or type(implementation_lock.get("attempt")) is not int
+            or implementation_lock.get("attempt") != record.attempt
+            or type(implementation_lock.get("pid")) is not int
+            or implementation_lock.get("pid") != record.owner.pid
+            or owner_payload != record.owner.to_dict()
+            or implementation_lock.get("task_id") != record.task_id
+            or implementation_lock.get("canonical_task_cid")
+            != record.canonical_task_cid
+            or implementation_lock.get("canonical_task_key")
+            != record.canonical_task_cid
+            or implementation_lock.get("board_namespace")
+            != self.board_namespace
+            or not str(implementation_lock.get("lease_id") or "")
+            or lock_repo_root
+            != str(Path(record.repo_root).resolve(strict=False))
+            or lock_state_dir != str(state_dir)
+        ):
+            return {**base, "reason": "portal_attempt_lock_proof_unavailable"}
+
+        try:
+            workspace = Path(record.workspace_path)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_resolved.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return {**base, "reason": "portal_attempt_workspace_unavailable"}
+        entry_id = worktree_pool_entry_id_for_workspace(workspace_resolved)
+        if (
+            not entry_id
+            or workspace_resolved.parent != worktree_root
+            or workspace.is_symlink()
+            or not workspace.is_dir()
+            or self.worktree_pool is None
+        ):
+            return {**base, "reason": "portal_attempt_workspace_unbound"}
+        pool_root = worktree_root / ".pool-state"
+        if pool_root.is_symlink() or not pool_root.is_dir():
+            return {**base, "reason": "portal_attempt_pool_proof_unavailable"}
+        pool_state = self._load_exact_json_object(
+            pool_root / f"{entry_id}.json"
+        )
+        pool_lock = self._load_exact_json_object(
+            pool_root / f"{entry_id}.lock"
+        )
+        pool_fields = {
+            "base_commit",
+            "branch",
+            "cache_key",
+            "cold_setup_seconds",
+            "created_at_epoch",
+            "dependency_heads",
+            "dependency_paths",
+            "last_used_at_epoch",
+            "lease_pid",
+            "lease_token",
+            "path",
+            "repo_common_dir",
+            "repo_root",
+            "schema",
+            "state",
+            "use_count",
+        }
+        try:
+            pool_path = str(
+                Path(str(pool_state.get("path") or "")).resolve(strict=True)
+            )
+            pool_repo_root = str(
+                Path(str(pool_state.get("repo_root") or "")).resolve(
+                    strict=False
+                )
+            )
+            pool_common_dir = str(
+                Path(str(pool_state.get("repo_common_dir") or "")).resolve(
+                    strict=True
+                )
+            )
+        except (AttributeError, OSError, RuntimeError, ValueError):
+            pool_path = ""
+            pool_repo_root = ""
+            pool_common_dir = ""
+        numeric_pool_fields = (
+            "created_at_epoch",
+            "last_used_at_epoch",
+            "cold_setup_seconds",
+        )
+        if (
+            pool_state is None
+            or set(pool_state) != pool_fields
+            or pool_state.get("schema") != WORKTREE_POOL_SCHEMA
+            or pool_state.get("state") != "leased"
+            or pool_state.get("lease_token") != entry_id
+            or type(pool_state.get("lease_pid")) is not int
+            or pool_state.get("lease_pid") != record.owner.pid
+            or pool_state.get("branch")
+            != record.branch.removeprefix("refs/heads/")
+            or pool_path != str(workspace_resolved)
+            or pool_repo_root
+            != str(Path(record.repo_root).resolve(strict=False))
+            or pool_common_dir != str(self.worktree_pool.repo_common_dir)
+            or type(pool_state.get("use_count")) is not int
+            or int(pool_state.get("use_count") or 0) < 1
+            or not isinstance(pool_state.get("dependency_heads"), dict)
+            or not isinstance(pool_state.get("dependency_paths"), list)
+            or any(
+                type(pool_state.get(field)) not in {int, float}
+                or not math.isfinite(float(pool_state.get(field)))
+                for field in numeric_pool_fields
+            )
+            or pool_lock is None
+            or set(pool_lock) != {"pid", "created_at_epoch"}
+            or type(pool_lock.get("pid")) is not int
+            or pool_lock.get("pid") != record.owner.pid
+            or type(pool_lock.get("created_at_epoch")) not in {int, float}
+            or not math.isfinite(float(pool_lock.get("created_at_epoch")))
+        ):
+            return {**base, "reason": "portal_attempt_pool_proof_unavailable"}
+        return {
+            "valid": True,
+            "reason": "portal_attempt_scope_bound",
+            "custody": custody,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "lifecycle_lease_id": record.lease_id,
+            "implementation_lease_id": implementation_lock["lease_id"],
+            "pool_entry_id": entry_id,
+            "pool_state_cid": worktree_pool_payload_cid(pool_state),
+            "pool_lock_cid": worktree_pool_payload_cid(pool_lock),
+        }
+
+    def _portal_attempt_quarantine_git_preimage(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Bind the exact registered/working Git state before quarantine."""
+
+        base: dict[str, Any] = {"valid": False}
+        workspace = Path(record.workspace_path)
+        try:
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_resolved.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return {**base, "reason": "quarantine_git_workspace_unavailable"}
+        matches: list[dict[str, str]] = []
+        for entry in self._git_worktree_entries():
+            candidate = str(entry.get("worktree") or "")
+            if not candidate:
+                continue
+            try:
+                if Path(candidate).resolve(strict=True) == workspace_resolved:
+                    matches.append(entry)
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if len(matches) != 1:
+            return {
+                **base,
+                "reason": "quarantine_git_registration_unavailable",
+                "registration_count": len(matches),
+            }
+        registration = matches[0]
+        expected_branch = record.branch.removeprefix("refs/heads/")
+        registered_branch = str(
+            registration.get("branch") or ""
+        ).removeprefix("refs/heads/")
+        registered_head = str(registration.get("HEAD") or "")
+        current_branch = self._git_current_branch(workspace_resolved)
+        try:
+            head = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=workspace_resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_head = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{expected_branch}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=workspace_resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "quarantine_git_preimage_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        current_head = head.stdout.strip() if head.returncode == 0 else ""
+        named_branch_head = (
+            branch_head.stdout.strip() if branch_head.returncode == 0 else ""
+        )
+        if (
+            status.returncode != 0
+            or not expected_branch
+            or registered_branch != expected_branch
+            or current_branch != expected_branch
+            or not registered_head
+            or registered_head != current_head
+            or named_branch_head != current_head
+        ):
+            return {
+                **base,
+                "reason": "quarantine_git_preimage_changed",
+                "expected_branch": expected_branch,
+                "registered_branch": registered_branch,
+                "current_branch": current_branch,
+                "registered_head": registered_head,
+                "current_head": current_head,
+                "named_branch_head": named_branch_head,
+                "status_returncode": status.returncode,
+            }
+        preimage = {
+            "schema": "agent-supervisor-worktree-quarantine-git-preimage-v1",
+            "workspace_path": str(workspace_resolved),
+            "branch": expected_branch,
+            "head": current_head,
+            "status_lines": status.stdout.splitlines(),
+        }
+        return {
+            "valid": True,
+            "reason": "quarantine_git_preimage_current",
+            "git_preimage": preimage,
+            "git_preimage_cid": worktree_pool_payload_cid(preimage),
+            "registered_head": current_head,
+            "observed_git_worktree_lock_reason": str(
+                registration.get("locked") or ""
+            ),
+        }
+
+    def _portal_attempt_denied_cwd_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        denied_pids: Sequence[int],
+        scope_proof: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Fence an exact dead lease when Yama prevents cwd inspection.
+
+        Process age, session membership, and command classification cannot
+        prove that an unreadable cwd is immutable.  Instead, keep the exact
+        leased checkout permanently non-reusable and cleanup-fenced before
+        allowing the independent task lifecycle claim to be retired.
+        """
+
+        base: dict[str, Any] = {
+            "quiescent": False,
+            "denied_process_count": len(denied_pids),
+        }
+        if scope_proof.get("valid") is not True:
+            return {**base, "reason": "portal_attempt_scope_unproven"}
+        custody = scope_proof.get("custody")
+        if (
+            not isinstance(custody, Mapping)
+            or self.worktree_pool is None
+        ):
+            return {**base, "reason": "portal_attempt_scope_unproven"}
+        observed_git_preimage = self._portal_attempt_quarantine_git_preimage(
+            record
+        )
+        if observed_git_preimage.get("valid") is not True:
+            return {
+                **base,
+                "reason": "portal_attempt_git_preimage_unproven",
+                "git_preimage": observed_git_preimage,
+            }
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=record.workspace_path,
+            expected_branch=record.branch,
+            operation="portal_attempt_quarantine_scope_revalidation",
+            allow_quarantine_publication=True,
+        ) as publication_admission:
+            if publication_admission.get("allowed") is not True:
+                return {
+                    **base,
+                    "reason": "portal_attempt_quarantine_guard_unavailable",
+                    "publication_admission": publication_admission,
+                }
+            current_record = self.worktree_lifecycle.load_workspace(
+                record.workspace_path
+            )
+            current_scope = self._predecessor_portal_attempt_scope_proof(
+                record
+            )
+            current_git_preimage = (
+                self._portal_attempt_quarantine_git_preimage(record)
+            )
+            if (
+                current_record is None
+                or current_record.record_id != record.record_id
+                or current_record.fence != record.fence
+                or current_record.lease_id != record.lease_id
+                or current_record.owner != record.owner
+                or current_scope != dict(scope_proof)
+                or current_git_preimage != observed_git_preimage
+            ):
+                return {
+                    **base,
+                    "reason": "portal_attempt_quarantine_preimage_changed",
+                    "current_scope": current_scope,
+                    "observed_git_preimage": observed_git_preimage,
+                    "current_git_preimage": current_git_preimage,
+                }
+            quarantine = self.worktree_pool.publish_exact_quarantine(
+                workspace_path=record.workspace_path,
+                expected_pool_state_cid=str(
+                    scope_proof.get("pool_state_cid") or ""
+                ),
+                expected_pool_lock_cid=str(
+                    scope_proof.get("pool_lock_cid") or ""
+                ),
+                expected_git_preimage_cid=str(
+                    observed_git_preimage.get("git_preimage_cid") or ""
+                ),
+                board_namespace=self.board_namespace,
+                task_id=record.task_id,
+                canonical_task_cid=record.canonical_task_cid,
+                attempt=record.attempt,
+                expected_branch=record.branch,
+                merge_target=record.merge_target,
+                lifecycle_record_id=record.record_id,
+                lifecycle_fence=record.fence,
+                lifecycle_lease_id=record.lease_id,
+                owner_process_birth=record.owner.to_dict(),
+                predecessor_state_dir=record.state_dir,
+                current_state_dir=self.state_path.parent,
+                reason="dead_owner_denied_cwd_exact_lease_quarantine",
+            )
+        if (
+            quarantine.get("published") is not True
+            or quarantine.get("valid") is not True
+            or quarantine.get("cleanup_fenced") is not True
+        ):
+            return {
+                **base,
+                "reason": "portal_attempt_quarantine_unproven",
+                "quarantine": quarantine,
+            }
+        return {
+            "quiescent": True,
+            "reason": "portal_attempt_workspace_durably_quarantined",
+            "denied_process_count": len(denied_pids),
+            "quarantine": quarantine,
+            "scope_proof": dict(scope_proof),
+        }
+
     def _predecessor_worktree_dispatch_quiescence(
         self,
         record: WorkspaceLifecycleRecord,
@@ -68162,30 +68764,55 @@ class PortalImplementationDaemon:
                 ),
             }
 
+        portal_attempt_scope: dict[str, Any] | None = None
+        if self._state_dir_portal_attempt_custody_binding(
+            self.state_path.parent,
+            record.state_dir,
+        ) is not None:
+            portal_attempt_scope = (
+                self._predecessor_portal_attempt_scope_proof(record)
+            )
+            if portal_attempt_scope.get("valid") is not True:
+                return {
+                    "quiescent": False,
+                    "reason": str(
+                        portal_attempt_scope.get("reason")
+                        or "portal_attempt_scope_unproven"
+                    ),
+                    "portal_attempt_scope_proof": portal_attempt_scope,
+                }
+
         def worktree_process_active() -> tuple[
             bool | None,
             int,
             int,
             dict[str, Any] | None,
         ]:
-            process_lines = self._list_process_commands()
+            proc_root = self.worktree_lifecycle.proc_root
+            process_lines = self._list_process_commands(proc_root=proc_root)
             if not process_lines:
                 return None, 0, 0, None
             # Cross-generation recovery is deliberately stricter than normal
             # inflight classification: any process still naming the preserved
             # workspace keeps its lifecycle fence, including custom runners
             # and validation/MCP descendants unknown to the provider regex.
-            if any(workspace in line for line in process_lines):
+            command_tokens = (
+                workspace,
+                record.branch.removeprefix("refs/heads/"),
+            )
+            if any(
+                any(token and token in line for token in command_tokens)
+                for line in process_lines
+            ):
                 return True, len(process_lines), 0, None
 
-            proc_root = self.worktree_lifecycle.proc_root
             try:
                 entries = tuple(proc_root.iterdir())
             except OSError:
                 return None, len(process_lines), 0, None
             workspace_path = Path(workspace)
             observed_cwds = 0
-            denied_cwds = 0
+            denied_pids: list[int] = []
             for entry in entries:
                 if not entry.name.isdigit():
                     continue
@@ -68195,8 +68822,19 @@ class PortalImplementationDaemon:
                 except FileNotFoundError:
                     continue
                 except OSError:
-                    denied_cwds += 1
+                    return None, len(process_lines), observed_cwds, None
+                try:
+                    argv = self._process_argv(entry)
+                except FileNotFoundError:
                     continue
+                except OSError:
+                    return None, len(process_lines), observed_cwds, None
+                command_line = " ".join(argv)
+                if any(
+                    token and token in command_line
+                    for token in command_tokens
+                ):
+                    return True, len(process_lines), observed_cwds, None
                 try:
                     cwd = Path(os.readlink(entry / "cwd"))
                 except FileNotFoundError:
@@ -68206,8 +68844,8 @@ class PortalImplementationDaemon:
                     # With Yama ptrace_scope=1 a successor cannot read an
                     # unrelated predecessor's cwd even when both have the same
                     # uid.  Keep scanning readable descendants first, then
-                    # require an exact generation-cgroup proof below.
-                    denied_cwds += 1
+                    # require an exact scoped dispatch proof below.
+                    denied_pids.append(int(entry.name))
                     continue
                 except OSError:
                     continue
@@ -68217,9 +68855,15 @@ class PortalImplementationDaemon:
                 except (OSError, RuntimeError, ValueError):
                     continue
                 return True, len(process_lines), observed_cwds, None
-            if denied_cwds:
+            if denied_pids:
                 cgroup_proof = (
-                    self._predecessor_generation_cgroup_quiescence(record)
+                    self._portal_attempt_denied_cwd_quiescence(
+                        record,
+                        denied_pids=denied_pids,
+                        scope_proof=portal_attempt_scope,
+                    )
+                    if portal_attempt_scope is not None
+                    else self._predecessor_generation_cgroup_quiescence(record)
                 )
                 if cgroup_proof.get("quiescent") is not True:
                     return (
@@ -68352,6 +68996,20 @@ class PortalImplementationDaemon:
                     "container_id": container_id,
                 }
 
+        if portal_attempt_scope is not None:
+            portal_attempt_scope = (
+                self._predecessor_portal_attempt_scope_proof(record)
+            )
+            if portal_attempt_scope.get("valid") is not True:
+                return {
+                    "quiescent": False,
+                    "reason": str(
+                        portal_attempt_scope.get("reason")
+                        or "portal_attempt_scope_unproven"
+                    ),
+                    "portal_attempt_scope_proof": portal_attempt_scope,
+                }
+
         (
             process_active,
             process_count_after,
@@ -68381,6 +69039,7 @@ class PortalImplementationDaemon:
             "generation_cgroup_proof": (
                 cgroup_proof_after or cgroup_proof
             ),
+            "portal_attempt_scope_proof": portal_attempt_scope,
         }
 
     def _predecessor_generation_cgroup_quiescence(
@@ -68669,6 +69328,31 @@ class PortalImplementationDaemon:
                 "reason": "no_worktree_path",
                 "disposition": CleanupDisposition.ALLOW.value,
             }
+        quarantine = inspect_worktree_pool_quarantine(
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+            expected_branch=branch_name,
+        )
+        if quarantine.get("cleanup_fenced") is True:
+            payload = {
+                "allowed": False,
+                "reason": (
+                    "durable_worktree_pool_quarantine"
+                    if quarantine.get("valid") is True
+                    else "worktree_pool_quarantine_unverifiable"
+                ),
+                "disposition": CleanupDisposition.DENY.value,
+                "quarantine": quarantine,
+            }
+            self._record_event(
+                "worktree_cleanup_fenced",
+                {
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    **payload,
+                },
+            )
+            return payload
         lease_id = caller_lease_id or self._active_worktree_lifecycle_lease_id()
         decision = self.worktree_lifecycle.authorize_cleanup(
             workspace_path=worktree_path,
@@ -68928,7 +69612,11 @@ class PortalImplementationDaemon:
                 )
                 continue
 
-            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+            cleanup_result = self._cleanup_merged_worktree(
+                worktree_path,
+                branch_name,
+                require_merged=True,
+            )
             removed.append({**detail, "cleanup_result": cleanup_result})
 
         result = {
@@ -68954,6 +69642,355 @@ class PortalImplementationDaemon:
         branch_name: str,
         *,
         reusable: bool = True,
+        require_merged: bool = False,
+        allow_missing_pool_metadata_cleanup: bool = False,
+        implementation_started: bool | None = None,
+        provider_dispatched: bool | None = None,
+    ) -> dict[str, Any]:
+        """Clean one checkout under its exact pool publication guard."""
+
+        if worktree_path is None:
+            return self._cleanup_merged_worktree_guarded(
+                worktree_path,
+                branch_name,
+                reusable=reusable,
+                implementation_started=implementation_started,
+                provider_dispatched=provider_dispatched,
+            )
+        pool_binding = worktree_pool_entry_guard_binding(
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+        )
+        observed_preimage: dict[str, Any] = {
+            "valid": True,
+            "reason": "non_pooled_worktree_preimage_unchanged",
+        }
+        if pool_binding.get("pooled") is True:
+            observed_preimage = self._cleanup_worktree_mutation_preimage(
+                worktree_path,
+                branch_name=branch_name,
+                require_merged=require_merged,
+            )
+            if observed_preimage.get("valid") is not True:
+                try:
+                    missing_lease_key = worktree_path.resolve(strict=False)
+                    worktree_path.lstat()
+                except FileNotFoundError:
+                    missing_lease = self._worktree_pool_leases.get(
+                        missing_lease_key
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    missing_lease = None
+                else:
+                    missing_lease = None
+                exact_missing_pool_lease = bool(
+                    allow_missing_pool_metadata_cleanup
+                    and not reusable
+                    and observed_preimage.get("reason")
+                    == "worktree_path_changed"
+                    and missing_lease is not None
+                    and missing_lease.pool is self.worktree_pool
+                    and normalize_workspace_path(missing_lease.path)
+                    == normalize_workspace_path(worktree_path)
+                    and str(missing_lease.branch_name or "").removeprefix(
+                        "refs/heads/"
+                    )
+                    == str(branch_name or "").removeprefix("refs/heads/")
+                )
+                if not exact_missing_pool_lease:
+                    return self._cleanup_mutation_preimage_denied(
+                        worktree_path,
+                        branch_name,
+                        observed_preimage,
+                    )
+                # There are no source bytes to mutate.  The pool release path
+                # below reacquires the same entry guard and admits only exact
+                # current metadata custody with an absent Git registration.
+                return self._cleanup_merged_worktree_guarded(
+                    worktree_path,
+                    branch_name,
+                    reusable=False,
+                    implementation_started=implementation_started,
+                    provider_dispatched=provider_dispatched,
+                )
+        with guarded_worktree_pool_mutation(
+            repo_root=self.repo_root,
+            worktree_root=self.worktree_root,
+            workspace_path=worktree_path,
+            expected_branch=branch_name,
+            operation="implementation_daemon_cleanup_merged_worktree",
+        ) as mutation_admission:
+            if mutation_admission.get("allowed") is not True:
+                result = {
+                    "cleaned": False,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path),
+                    "started_at": utc_now(),
+                    "finished_at": utc_now(),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                    "reason": str(
+                        mutation_admission.get("reason")
+                        or "worktree_pool_mutation_denied"
+                    ),
+                    "mutation_admission": mutation_admission,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
+                self._record_event("cleanup_finished", result)
+                return result
+            current_preimage = observed_preimage
+            if mutation_admission.get("pooled") is True:
+                current_preimage = self._cleanup_worktree_mutation_preimage(
+                    worktree_path,
+                    branch_name=branch_name,
+                    require_merged=require_merged,
+                )
+            if current_preimage.get("valid") is not True or (
+                mutation_admission.get("pooled") is True
+                and current_preimage != observed_preimage
+            ):
+                if current_preimage.get("valid") is True:
+                    current_preimage = {
+                        **current_preimage,
+                        "valid": False,
+                        "reason": "worktree_mutation_preimage_changed",
+                        "observed_preimage": observed_preimage,
+                    }
+                return self._cleanup_mutation_preimage_denied(
+                    worktree_path,
+                    branch_name,
+                    current_preimage,
+                    mutation_admission=mutation_admission,
+                )
+            return self._cleanup_merged_worktree_guarded(
+                worktree_path,
+                branch_name,
+                reusable=reusable,
+                implementation_started=implementation_started,
+                provider_dispatched=provider_dispatched,
+            )
+
+    def _cleanup_worktree_mutation_preimage(
+        self,
+        worktree_path: Path,
+        *,
+        branch_name: str,
+        require_merged: bool,
+    ) -> dict[str, Any]:
+        """Bind registration, identity, activity, status, and ancestry."""
+
+        expected_branch = str(branch_name or "").removeprefix("refs/heads/")
+        try:
+            resolved = worktree_path.resolve(strict=True)
+            resolved.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return {"valid": False, "reason": "worktree_path_changed"}
+        matches: list[dict[str, str]] = []
+        for entry in self._git_worktree_entries():
+            candidate = str(entry.get("worktree") or "")
+            if not candidate:
+                continue
+            try:
+                if Path(candidate).resolve(strict=True) == resolved:
+                    matches.append(entry)
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if len(matches) != 1:
+            return {
+                "valid": False,
+                "reason": "worktree_registration_changed",
+                "registration_count": len(matches),
+            }
+        entry = matches[0]
+        if "locked" in entry:
+            return {
+                "valid": False,
+                "reason": "git_worktree_registration_locked",
+                "git_worktree_lock_reason": str(entry.get("locked") or ""),
+            }
+        registered_branch = str(entry.get("branch") or "").removeprefix(
+            "refs/heads/"
+        )
+        registered_head = str(entry.get("HEAD") or "")
+        current_branch = self._git_current_branch(resolved)
+        try:
+            head_result = self._run_git(["rev-parse", "HEAD"], cwd=resolved)
+            branch_head_result = self._run_git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{expected_branch}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+            )
+        except (OSError, RuntimeError) as exc:
+            return {
+                "valid": False,
+                "reason": "worktree_identity_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        current_head = head_result.stdout.strip()
+        branch_head = (
+            branch_head_result.stdout.strip()
+            if branch_head_result.returncode == 0 else ""
+        )
+        if (
+            not expected_branch
+            or registered_branch != expected_branch
+            or current_branch != expected_branch
+            or not registered_head
+            or registered_head != current_head
+            or branch_head != current_head
+        ):
+            return {
+                "valid": False,
+                "reason": "worktree_identity_changed",
+                "expected_branch": expected_branch,
+                "registered_branch": registered_branch,
+                "current_branch": current_branch,
+                "registered_head": registered_head,
+                "current_head": current_head,
+                "branch_head": branch_head,
+            }
+        process_snapshot = self._strict_process_commands_for_mutation()
+        if process_snapshot.get("available") is not True:
+            return {
+                "valid": False,
+                "reason": "worktree_process_query_unavailable",
+                "process_snapshot": process_snapshot,
+            }
+        if any(
+            str(resolved) in line
+            for line in process_snapshot.get("commands", ())
+        ):
+            return {"valid": False, "reason": "worktree_became_active"}
+        try:
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "valid": False,
+                "reason": "worktree_status_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        if status.returncode != 0:
+            return {
+                "valid": False,
+                "reason": "worktree_status_unavailable",
+                "returncode": status.returncode,
+                "stderr": status.stderr[-1000:],
+            }
+        if require_merged:
+            target_branch = self._main_branch_name()
+            if not self._git_ref_is_ancestor(expected_branch, target_branch):
+                return {
+                    "valid": False,
+                    "reason": "worktree_ancestry_changed",
+                    "branch": expected_branch,
+                    "target_branch": target_branch,
+                }
+        return {
+            "valid": True,
+            "reason": "worktree_mutation_preimage_current",
+            "path": str(resolved),
+            "branch": expected_branch,
+            "head": current_head,
+            "status_short": status.stdout.splitlines(),
+        }
+
+    @staticmethod
+    def _strict_process_commands_for_mutation() -> dict[str, Any]:
+        """Return one fail-closed process snapshot for cleanup mutation."""
+
+        try:
+            result = subprocess.run(
+                ["ps", "-eo", "pid=,args="],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "error_type": type(exc).__name__,
+            }
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "reason": "process_query_failed",
+                "returncode": result.returncode,
+                "stderr": result.stderr[-1000:],
+            }
+        commands: list[str] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, separator, command = stripped.partition(" ")
+            try:
+                int(pid_text)
+            except ValueError:
+                return {
+                    "available": False,
+                    "reason": "process_query_malformed",
+                }
+            command = command.strip() if separator else ""
+            if command:
+                commands.append(command)
+        return {
+            "available": True,
+            "reason": "process_query_current",
+            "commands": commands,
+        }
+
+    def _cleanup_mutation_preimage_denied(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        preimage: Mapping[str, Any],
+        *,
+        mutation_admission: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        result = {
+            "cleaned": False,
+            "branch": branch_name,
+            "worktree_path": str(worktree_path),
+            "started_at": utc_now(),
+            "finished_at": utc_now(),
+            "removed_worktree": False,
+            "deleted_branch": False,
+            "submodule_cleanup": [],
+            "reason": str(
+                preimage.get("reason") or "worktree_mutation_preimage_changed"
+            ),
+            "mutation_preimage": dict(preimage),
+            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+            "attempt_consumed": False,
+            "provider_call_allowed": False,
+        }
+        if mutation_admission is not None:
+            result["mutation_admission"] = dict(mutation_admission)
+        self._record_event("cleanup_finished", result)
+        return result
+
+    def _cleanup_merged_worktree_guarded(
+        self,
+        worktree_path: Path | None,
+        branch_name: str,
+        *,
+        reusable: bool = True,
+        implementation_started: bool | None = None,
+        provider_dispatched: bool | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         lifecycle_record = self._active_worktree_lifecycle
@@ -68995,7 +70032,28 @@ class PortalImplementationDaemon:
                 lease_key = worktree_path
             lease = self._worktree_pool_leases.get(lease_key)
         if lease is not None:
-            pool_release = lease.release(reusable=reusable)
+            missing_release_context: dict[str, Any] | None = None
+            if (
+                lifecycle_record is not None
+                and not reusable
+                and implementation_started is False
+                and provider_dispatched is False
+            ):
+                try:
+                    lease.path.lstat()
+                except FileNotFoundError:
+                    missing_release_context = {
+                        "release_phase": "failed_setup_before_provider",
+                        "implementation_started": False,
+                        "provider_dispatched": False,
+                        "lifecycle": lifecycle_record.to_dict(),
+                    }
+                except OSError:
+                    missing_release_context = None
+            pool_release = lease.release(
+                reusable=reusable,
+                missing_release_context=missing_release_context,
+            )
             if not pool_release.get("released", False):
                 lifecycle_deferred = bool(
                     pool_release.get("deferred") is True
@@ -69035,12 +70093,16 @@ class PortalImplementationDaemon:
                 self._forget_seeded_worktree_context(worktree_path)
             deleted_branch = False
             branch_error = ""
-            try:
-                if self._git_ref_exists(branch_name):
-                    self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
-                    deleted_branch = True
-            except RuntimeError as exc:
-                branch_error = str(exc)
+            if pool_release.get("metadata_only") is not True:
+                try:
+                    if self._git_ref_exists(branch_name):
+                        self._run_git(
+                            ["branch", "-D", branch_name],
+                            cwd=self.repo_root,
+                        )
+                        deleted_branch = True
+                except RuntimeError as exc:
+                    branch_error = str(exc)
             result = {
                 "cleaned": not branch_error,
                 "branch": branch_name,
@@ -69053,6 +70115,10 @@ class PortalImplementationDaemon:
                 "pooled": bool(pool_release.get("pooled", False)),
                 "pool_release": pool_release,
             }
+            if pool_release.get("metadata_only") is True:
+                result["branch_disposition"] = str(
+                    pool_release.get("branch_disposition") or ""
+                )
             if branch_error:
                 result["error"] = branch_error
             if result.get("cleaned"):
@@ -77432,11 +78498,15 @@ class PortalImplementationDaemon:
                 return True
         return False
 
-    def _list_process_commands(self) -> list[str]:
+    def _list_process_commands(
+        self,
+        *,
+        proc_root: Path | None = None,
+    ) -> list[str]:
         # Prefer /proc cmdlines: ``ps -eo args=`` truncates long docker lines
         # and can drop the worktree path that liveness matching requires.
         lines: list[str] = []
-        proc_root = Path("/proc")
+        proc_root = proc_root or Path("/proc")
         if proc_root.is_dir():
             try:
                 for entry in proc_root.iterdir():

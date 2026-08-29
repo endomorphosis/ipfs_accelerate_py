@@ -2568,6 +2568,94 @@ def _single_projection_field(text: str, label: str) -> str:
     return next(iter(values))
 
 
+def database_portal_shared_attempt_root_binding(
+    current_attempt_root: Path | str,
+    source_attempt_root: Path | str,
+) -> dict[str, Any] | None:
+    """Bind two Portal attempt roots to one closed generated lane namespace.
+
+    Database retries use sibling attempt directories.  A retained projection
+    is lane-owned only when both attempt roots have the exact generated
+    ``lane-N/<prefix>_lane_N_database_portal_attempts`` shape below one shared
+    state root.  Queue replay and worktree-lifecycle recovery deliberately use
+    this same filesystem- and symlink-strict custody rule.
+    """
+
+    current_raw = Path(current_attempt_root)
+    source_raw = Path(source_attempt_root)
+    try:
+        raw_shared_state_root = current_raw.parent.parent
+        if (
+            raw_shared_state_root.is_symlink()
+            or source_raw.parent.parent != raw_shared_state_root
+        ):
+            return None
+        shared_state_root = raw_shared_state_root.resolve(strict=True)
+        current_resolved = current_raw.resolve(strict=True)
+        source_resolved = source_raw.resolve(strict=True)
+        current_relative = current_resolved.relative_to(shared_state_root)
+        source_relative = source_resolved.relative_to(shared_state_root)
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+    current_lane_match = re.fullmatch(
+        r"lane-([0-9]+)",
+        current_relative.parts[0] if current_relative.parts else "",
+    )
+    source_lane_match = re.fullmatch(
+        r"lane-([0-9]+)",
+        source_relative.parts[0] if source_relative.parts else "",
+    )
+    current_attempt_match = re.fullmatch(
+        r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+        current_relative.parts[1] if len(current_relative.parts) > 1 else "",
+    )
+    source_attempt_match = re.fullmatch(
+        r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+        source_relative.parts[1] if len(source_relative.parts) > 1 else "",
+    )
+    if (
+        len(current_relative.parts) != 2
+        or len(source_relative.parts) != 2
+        or current_lane_match is None
+        or source_lane_match is None
+        or current_attempt_match is None
+        or source_attempt_match is None
+        or current_lane_match.group(1) != current_attempt_match.group(2)
+        or source_lane_match.group(1) != source_attempt_match.group(2)
+        or current_attempt_match.group(1) != source_attempt_match.group(1)
+        or any(
+            not path.is_dir()
+            for path in (
+                raw_shared_state_root,
+                current_raw.parent,
+                current_raw,
+                source_raw.parent,
+                source_raw,
+            )
+        )
+        or any(
+            path.is_symlink()
+            for path in (
+                raw_shared_state_root,
+                current_raw.parent,
+                current_raw,
+                source_raw.parent,
+                source_raw,
+            )
+        )
+    ):
+        return None
+    return {
+        "shared_state_root": str(shared_state_root),
+        "current_attempt_root": str(current_resolved),
+        "source_attempt_root": str(source_resolved),
+        "board_prefix": current_attempt_match.group(1),
+        "current_lane": int(current_lane_match.group(1)),
+        "source_lane": int(source_lane_match.group(1)),
+    }
+
+
 def verify_database_portal_attempt_projection(
     task_projection: Path | str,
     *,
@@ -3952,71 +4040,17 @@ class DatabasePortalExecutionBridge:
         if source_attempt_root != self.attempt_root:
             if not allow_shared_lane_source:
                 return None
-            try:
-                raw_shared_state_root = self.attempt_root.parent.parent
-                if (
-                    raw_shared_state_root.is_symlink()
-                    or source_attempt_root.parent.parent
-                    != raw_shared_state_root
-                ):
-                    return None
-                shared_state_root = raw_shared_state_root.resolve(strict=True)
-                current_attempt_root = self.attempt_root.resolve(strict=True)
-                source_attempt_root_resolved = source_attempt_root.resolve(
-                    strict=True
-                )
-                current_relative = current_attempt_root.relative_to(
-                    shared_state_root
-                )
-                source_relative = source_attempt_root_resolved.relative_to(
-                    shared_state_root
-                )
-            except (OSError, RuntimeError, ValueError):
-                return None
-            current_lane_match = re.fullmatch(
-                r"lane-([0-9]+)",
-                current_relative.parts[0] if current_relative.parts else "",
-            )
-            source_lane_match = re.fullmatch(
-                r"lane-([0-9]+)",
-                source_relative.parts[0] if source_relative.parts else "",
-            )
-            current_attempt_match = re.fullmatch(
-                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
-                current_relative.parts[1] if len(current_relative.parts) > 1 else "",
-            )
-            source_attempt_match = re.fullmatch(
-                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
-                source_relative.parts[1] if len(source_relative.parts) > 1 else "",
+            custody = database_portal_shared_attempt_root_binding(
+                self.attempt_root,
+                source_attempt_root,
             )
             if (
-                len(current_relative.parts) != 2
-                or len(source_relative.parts) != 2
-                or current_lane_match is None
-                or source_lane_match is None
-                or current_attempt_match is None
-                or source_attempt_match is None
-                or current_lane_match.group(1)
-                != current_attempt_match.group(2)
-                or source_lane_match.group(1) != source_attempt_match.group(2)
-                or current_attempt_match.group(1)
-                != source_attempt_match.group(1)
-                or any(
-                    path.is_symlink()
-                    for path in (
-                        self.attempt_root.parent,
-                        self.attempt_root,
-                        source_attempt_root.parent,
-                        source_attempt_root,
-                        projection.parent,
-                        projection,
-                    )
-                )
-                or re.fullmatch(r"[0-9a-f]{24}", projection.parent.name)
-                is None
+                custody is None
+                or any(path.is_symlink() for path in (projection.parent, projection))
+                or re.fullmatch(r"[0-9a-f]{24}", projection.parent.name) is None
             ):
                 return None
-            verification_root = source_attempt_root_resolved
+            verification_root = Path(str(custody["source_attempt_root"]))
         root = projection.parent
         paths = DatabasePortalAttemptPaths(
             root=root,

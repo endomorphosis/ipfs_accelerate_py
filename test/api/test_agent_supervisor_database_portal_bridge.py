@@ -11857,6 +11857,7 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         ) -> object:
             captured.update(kwargs)
             return SimpleNamespace(
+                changed=True,
                 to_dict=lambda: {
                     "status": "retrying",
                     "receipt": kwargs.get("receipt"),
@@ -11884,6 +11885,11 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         daemon,
         "_post_merge_completion_crash_recovery_context",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_claim_verifier_replay_context",
+        lambda _task: None,
     )
     monkeypatch.setattr(
         daemon,
