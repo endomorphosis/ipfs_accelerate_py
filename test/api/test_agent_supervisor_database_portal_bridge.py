@@ -219,7 +219,6 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
         "implementation_commit": implementation,
         "canonical_task_cid": canonical_task_cid,
         "canonical_task_key": canonical_task_key,
-        "target_repository_id": checkout_repository_id(repository),
         "merge_result": {
             "merged": True,
             "returncode": 0,
@@ -228,6 +227,7 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
             "implementation_commit": implementation,
             "merge_commit": merge_commit,
             "target_branch": "main",
+            "target_repository_id": checkout_repository_id(repository),
             "canonical_task_cid": canonical_task_cid,
             "canonical_task_key": canonical_task_key,
             "integration_commit_proof": proof,
@@ -338,6 +338,28 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     assert transition["worker_self_approval"] is False
     assert str(transition["transition_cid"]).startswith("sha256:")
 
+    event["target_repository_id"] = "repository:foreign"
+    events.write_text(
+        json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="inconsistent"):
+        bridge._accepted_source_transition(
+            attempt=_attempt(),
+            paths=paths,
+            binding=binding,
+            task_alias="LGSWF-004",
+            task_cid="task:cid:004",
+            merge_request_loader=lambda request_id: (
+                request if request_id == request["request_id"] else None
+            ),
+        )
+    event.pop("target_repository_id")
+    events.write_text(
+        json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
     forged_request = json.loads(json.dumps(request))
     forged_request["task_id"] = "LGSWF-OTHER"
     forged_request["metadata"]["task"]["task_id"] = "LGSWF-OTHER"
@@ -369,6 +391,23 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
                 request if request_id == request["request_id"] else None
             ),
         )
+
+
+def test_finished_event_projection_emits_nested_merge_repository_binding() -> None:
+    payload = {
+        "task_id": "LGSWF-004",
+        "merge_result": {
+            "target_repository_id": "repository:exact",
+        },
+    }
+
+    projected = PortalImplementationDaemon._implementation_finished_event_payload(
+        payload
+    )
+
+    assert "target_repository_id" not in payload
+    assert projected["target_repository_id"] == "repository:exact"
+    assert projected["merge_result"] == payload["merge_result"]
 
 
 def test_projection_prefers_exact_nested_declared_output_path(

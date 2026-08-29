@@ -916,7 +916,15 @@ class DatabasePortalExecutionBridge:
         canonical_task_key = str(merge.get("canonical_task_key") or "")
         request_id = str(merge.get("request_id") or "")
         portal_attempt_number = event.get("attempt")
-        target_repository_id = str(event.get("target_repository_id") or "")
+        event_target_repository_id = str(
+            event.get("target_repository_id") or ""
+        )
+        merge_target_repository_id = str(
+            merge.get("target_repository_id") or ""
+        )
+        target_repository_id = (
+            event_target_repository_id or merge_target_repository_id
+        )
         expected_repository_id = checkout_repository_id(self.repo_root)
         if (
             any(re.fullmatch(r"[0-9a-f]{40}", item) is None for item in (
@@ -931,6 +939,11 @@ class DatabasePortalExecutionBridge:
             or portal_attempt_number < 1
             or str(event.get("board_namespace") or "") != self.board_namespace
             or target_branch != self.merge_target_branch
+            or (
+                event_target_repository_id
+                and merge_target_repository_id
+                and event_target_repository_id != merge_target_repository_id
+            )
             or target_repository_id != expected_repository_id
             or merge.get("merged") is not True
             or merge.get("returncode") != 0
