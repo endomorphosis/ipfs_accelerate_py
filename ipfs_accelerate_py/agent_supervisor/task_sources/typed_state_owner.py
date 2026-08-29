@@ -2639,7 +2639,6 @@ def _validated_post_merge_retry_recovery_parameters(
         "extension_schema",
         "extension_json",
         "status",
-        "body_json",
     }
     if set(parameters) != expected_fields:
         raise TypedStateOwnerAuthorizationError(
@@ -2681,10 +2680,6 @@ def _validated_post_merge_retry_recovery_parameters(
             parameters.get("final_transition_receipt_json"),
             noun="post-merge retry final transition receipt",
         )
-    )
-    body, canonical_body_json = _closed_canonical_json_object(
-        parameters.get("body_json"),
-        noun="post-merge retry task body",
     )
     attempt_identity = {
         name: parameters[name]
@@ -2757,23 +2752,19 @@ def _validated_post_merge_retry_recovery_parameters(
     if (
         transition.get("operation") != parameters.get("transition_operation")
         or final_transition != expected_final_transition
-        or body.get("completion_receipt") != final_transition
-        or len(canonical_body_json.encode("utf-8")) > MAX_BODY_BYTES
     ):
         raise TypedStateOwnerAuthorizationError(
-            "post-merge retry body differs from its owner-derived transition"
+            "post-merge retry transition differs from its owner-derived receipt"
         )
     return {
         **parameters,
         "expected_control_receipt_json": canonical_control_json,
         "transition_receipt_json": canonical_transition_json,
         "final_transition_receipt_json": canonical_final_transition_json,
-        "body_json": canonical_body_json,
         "expected_control_receipt": dict(expected_control_receipt),
         "transition_receipt": dict(transition),
         "final_transition_receipt": dict(final_transition),
         "queue_receipt": queue_receipt,
-        "body": dict(body),
         "cooldown_parameters": cooldown_parameters,
     }
 
@@ -6746,12 +6737,9 @@ class TypedStateOwnerGateway:
             expected_body_json = canonical_json_bytes(expected_body).decode(
                 "utf-8"
             )
-            if (
-                recovery["body"] != expected_body
-                or recovery["body_json"] != expected_body_json
-            ):
+            if len(expected_body_json.encode("utf-8")) > MAX_BODY_BYTES:
                 raise TypedStateOwnerAuthorizationError(
-                    "post-merge retry final body differs from control authority"
+                    "post-merge retry owner-derived body exceeds its byte bound"
                 )
             queue_rows = self._connection.execute(
                 """

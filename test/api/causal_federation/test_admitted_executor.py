@@ -6768,6 +6768,11 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
                     "task_id": task_alias,
                     "goal_cid": "goal:typed-post-merge-retry",
                     "status": "ready",
+                    # Real SPAR task metadata is already larger than the
+                    # ordinary StateCommand text-field bound.  The atomic
+                    # owner command must bind this body through the exact
+                    # predecessor row/history rather than retransmit it.
+                    "large_control_context": "x" * 8_500,
                 }
             ],
         }
@@ -6816,6 +6821,7 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
     )
     blocked = source.get(task_cid)
     assert blocked is not None and blocked.status == "blocked"
+    assert len(canonical_json_bytes(dict(blocked.body))) > 8_192
     repair_commit = "b" * 40
     candidate_commit = "a" * 40
     repair_receipt_id = "receipt:typed-post-merge-retry"
@@ -6932,6 +6938,10 @@ def test_post_merge_retry_owner_is_atomic_and_exactly_replayable(
         durable = adapter.get(task_cid)
         assert durable is not None and durable.status == "retrying"
         assert durable.body["completion_receipt"] == first["transition_receipt"]
+        assert durable.body == {
+            **blocked.body,
+            "completion_receipt": first["transition_receipt"],
+        }
         cooldown_rows = client.execute(
             "executor_retry_cooldown_by_task", {"task_cid": task_cid}
         )

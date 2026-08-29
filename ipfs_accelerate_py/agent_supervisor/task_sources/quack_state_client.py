@@ -3440,6 +3440,7 @@ class QuackStateClient:
             **prior_body,
             "completion_receipt": final_transition,
         }
+        final_body_json = canonical_json_bytes(final_body).decode("utf-8")
         seed = transition.get("post_merge_completion_recovery_seed")
         parameters = {
             "schema": TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
@@ -3471,7 +3472,6 @@ class QuackStateClient:
             "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
             "extension_json": extension_json,
             "status": "retrying",
-            "body_json": canonical_json_bytes(final_body).decode("utf-8"),
         }
         _validated_post_merge_retry_recovery_parameters(parameters)
         digest = _post_merge_retry_recovery_command_digest(parameters)
@@ -3583,7 +3583,7 @@ class QuackStateClient:
                         "retrying",
                         revision + 1,
                         recorded_at,
-                        values["body_json"],
+                        final_body_json,
                         values["task_cid"],
                         revision,
                     ),
