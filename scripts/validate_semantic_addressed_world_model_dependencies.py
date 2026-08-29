@@ -5809,6 +5809,66 @@ print(json.dumps({
         }
 
 
+def _effective_nested_source_authorities(
+    authorities: Sequence[Any],
+    scheduler: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Overlay only the exact accepted M18 datasets gitlink transition."""
+
+    effective = {
+        str(item.get("package")): dict(item)
+        for item in authorities
+        if isinstance(item, Mapping) and str(item.get("package") or "")
+    }
+    key = "portal_completion_persistence_successor_materialization"
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return effective, []
+    if not all(presence):
+        return effective, ["active M18 nested-source authority is partial"]
+    scheduled = scheduler.get(key)
+    migrated = migration.get(key)
+    if (
+        type(scheduled) is not dict
+        or type(migrated) is not dict
+        or scheduled != migrated
+    ):
+        return effective, ["active M18 nested-source authority differs"]
+    claimed_cid = "sha256:" + hashlib.sha256(
+        _canonical_json(scheduled)
+    ).hexdigest()
+    if seal.get(f"{key}_cid") != claimed_cid:
+        return effective, ["active M18 nested-source authority CID differs"]
+
+    datasets = effective.get("ipfs_datasets_py")
+    kit = effective.get("ipfs_kit_py")
+    if not isinstance(datasets, dict) or not isinstance(kit, dict):
+        return effective, ["historical nested-source authority is incomplete"]
+    if (
+        datasets.get("gitlink_commit") != scheduled.get("prior_datasets_gitlink")
+        or datasets.get("tree") != scheduled.get("prior_datasets_tree")
+        or kit.get("gitlink_commit") != scheduled.get("prior_kit_gitlink")
+        or kit.get("tree") != scheduled.get("prior_kit_tree")
+    ):
+        return effective, ["active M18 nested-source predecessor differs"]
+    runtime_gitlink = str(scheduled.get("runtime_datasets_gitlink") or "")
+    runtime_tree = str(scheduled.get("runtime_datasets_tree") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", runtime_gitlink) is None
+        or re.fullmatch(r"[0-9a-f]{40}", runtime_tree) is None
+    ):
+        return effective, ["active M18 datasets successor identity is invalid"]
+    effective["ipfs_datasets_py"] = {
+        **datasets,
+        "head": runtime_gitlink,
+        "gitlink_commit": runtime_gitlink,
+        "tree": runtime_tree,
+    }
+    return effective, []
+
+
 def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: bool = True) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     errors: list[str] = []
@@ -5829,6 +5889,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
     authorities = seal.get("source_authorities") if isinstance(seal.get("source_authorities"), list) else []
     by_package = {str(item.get("package")): item for item in authorities if isinstance(item, Mapping)}
     accel = by_package.get("ipfs_accelerate_py", {})
+    scheduler_probe: Mapping[str, Any] = {}
+    migration_probe: Mapping[str, Any] = {}
     try:
         head = _git(root, "rev-parse", "HEAD")
         branch = _git(root, "branch", "--show-current")
@@ -6032,9 +6094,14 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
     except Exception as exc:
         check("accelerator_source", False, f"{type(exc).__name__}: {exc}")
 
-    gitlink_errors: list[str] = []
+    effective_authorities, gitlink_errors = _effective_nested_source_authorities(
+        authorities,
+        scheduler_probe,
+        migration_probe,
+        seal,
+    )
     for package in ("ipfs_datasets_py", "ipfs_kit_py"):
-        authority = by_package.get(package, {})
+        authority = effective_authorities.get(package, {})
         nested = root / package
         try:
             index_oid = _git(root, "rev-parse", f"HEAD:{package}")

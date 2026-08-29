@@ -134,6 +134,80 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
     assert dependency["failure"] is None
 
 
+def test_m18_nested_source_authority_overlay_is_presence_first() -> None:
+    validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_validator_m18_nested_overlay_test",
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    historical = {
+        item["package"]: item
+        for item in seal["source_authorities"]
+    }
+    effective, errors = validator._effective_nested_source_authorities(
+        seal["source_authorities"], scheduler, migration, seal
+    )
+    assert errors == []
+    assert historical["ipfs_datasets_py"]["gitlink_commit"] == (
+        "1ab21f7a630aa9db1dd5e3257ca900ffd184faf2"
+    )
+    assert historical["ipfs_datasets_py"]["tree"] == (
+        "b45f817a185d508af20d482e449bf85ee2500a37"
+    )
+    assert effective["ipfs_datasets_py"]["gitlink_commit"] == (
+        "dd3e36076c9a07ed367c399510001a602c39381a"
+    )
+    assert effective["ipfs_datasets_py"]["tree"] == (
+        "582bc6af5723d86806c6c6ca82c1669b2936493a"
+    )
+    assert effective["ipfs_kit_py"]["gitlink_commit"] == (
+        "6196017ca3df016c7159dce43af60f2a0d96a9ae"
+    )
+    assert effective["ipfs_kit_py"]["tree"] == (
+        "93070c709af29095fdff11f3e2698543449c08ef"
+    )
+
+    key = "portal_completion_persistence_successor_materialization"
+    partial_seal = copy.deepcopy(seal)
+    partial_seal.pop(f"{key}_cid")
+    _effective, partial_errors = validator._effective_nested_source_authorities(
+        seal["source_authorities"], scheduler, migration, partial_seal
+    )
+    assert partial_errors == ["active M18 nested-source authority is partial"]
+
+    mismatched = copy.deepcopy(migration)
+    mismatched[key]["runtime_datasets_tree"] = "0" * 40
+    _effective, mismatch_errors = validator._effective_nested_source_authorities(
+        seal["source_authorities"], scheduler, mismatched, seal
+    )
+    assert mismatch_errors == ["active M18 nested-source authority differs"]
+
+    null_scheduler = copy.deepcopy(scheduler)
+    null_scheduler[key] = None
+    _effective, null_errors = validator._effective_nested_source_authorities(
+        seal["source_authorities"], null_scheduler, migration, seal
+    )
+    assert null_errors == ["active M18 nested-source authority differs"]
+
+
 def test_m6_validation_runtime_tamper_and_absolute_launcher_fail_closed() -> None:
     validator = _load(
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
