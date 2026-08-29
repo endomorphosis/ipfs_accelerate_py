@@ -1884,6 +1884,34 @@ def test_legacy_provider_launch_environment_remains_backward_compatible(
     }
 
 
+def test_legacy_grok_only_provider_pins_model_without_fallback(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["provider"] = {
+        "provider_id": "grok_cli",
+        "model_id": "grok-4.6",
+        "max_concurrency": 2,
+    }
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    board = load_configured_board(config_path, repo_root=repo)
+
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=True,
+        stamp="20260829T000000Z",
+    )
+
+    assert plan["environment"] == {
+        scheduler_module.PROVIDER_ENV: "grok_cli",
+        scheduler_module.GROK_MODEL_ENV: "grok-4.6",
+    }
+    assert scheduler_module.FALLBACK_PROVIDER_ENV not in plan["environment"]
+    assert scheduler_module.CODEX_MODEL_ENV not in plan["environment"]
+
+
 def test_launch_config_overrides_ambient_provider_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

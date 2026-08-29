@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import provider_failure_policy
+from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner as runtime_grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
     GROK_NOT_SIGNED_IN_GUIDANCE,
 )
@@ -424,6 +425,51 @@ def test_auth_or_quota_route_keeps_explicit_grok_task_grok_only(
     command = daemon._build_implementation_command(tmp_path, task=task)
 
     assert command[command.index("--model") + 1] == "grok-4.6"
+    assert "--codex-fallback-command-json" not in command
+    assert "--grok-failure-receipt-nonce" not in command
+
+
+def test_generic_explicit_grok_task_never_attaches_available_codex_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        raising=False,
+    )
+    grok = tmp_path / "grok"
+    codex = tmp_path / "codex"
+    for executable in (grok, codex):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o755)
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(implementation_daemon, "_grok_binary", lambda: str(grok))
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: str(codex) if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        runtime_grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: str(codex),
+    )
+    task = PortalTask(
+        task_id="GROK-ONLY-001",
+        title="Keep implementation pinned",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-only"},
+    )
+    daemon = _daemon(tmp_path)
+
+    command = daemon._build_implementation_command(tmp_path, task=task)
+
+    assert command[command.index("--grok-bin") + 1] == str(grok)
     assert "--codex-fallback-command-json" not in command
     assert "--grok-failure-receipt-nonce" not in command
 

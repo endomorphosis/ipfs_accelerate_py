@@ -44,6 +44,9 @@ from .intent_repository import (
     IntentRepositoryUnknownOutcomeError,
     PlanRevisionRepository,
     QueueEntry,
+    VALIDATION_ARGV_REPRESENTATION,
+    VALIDATION_REPRESENTATION_POLICY_KEY,
+    VALIDATION_SHELL_TEXT_REPRESENTATION,
     open_intent_repository,
 )
 
@@ -67,6 +70,34 @@ DATABASE_TASK_CAS_SCHEMA: Final[str] = (
 
 DEFAULT_QUERY_LIMIT: Final[int] = DEFAULT_PAGE_LIMIT
 MAX_QUERY_LIMIT: Final[int] = MAX_PAGE_LIMIT
+
+_DATABASE_RETRY_BUDGET_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1"
+)
+_DATABASE_VALIDATION_RETRY_EPOCH_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-validation-retry-epoch@1"
+)
+_DATABASE_TASK_MATERIALIZATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-materialization@1"
+)
+_DATABASE_TASK_MATERIALIZATION_CID_KEY: Final[str] = (
+    "database_task_materialization_cid"
+)
+_MATERIALIZATION_INITIAL_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "todo",
+        "ready",
+        "open",
+        "pending",
+        "queued",
+        "proposed",
+        "admitted",
+        "retrying",
+    }
+)
+_RETRY_RUNTIME_STATUSES: Final[frozenset[str]] = frozenset(
+    {"in_progress", "retrying", "blocked"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +314,99 @@ def _task_key(value: str | TaskRecord | Mapping[str, Any]) -> str:
     if not text:
         raise TaskSourceIntegrityError("task key must not be empty")
     return text
+
+
+def database_retry_validation_spec_cid(
+    task_cid: str,
+    validations: Any,
+) -> str:
+    """Return the stored-shape identity used by the database retry ledger.
+
+    Materialization and execution must agree on this identity.  Normalize the
+    caller form exactly as ``IntentRepository`` persists it so replaying the
+    same board cannot erase a consumed budget, while an actual validation
+    repair deliberately opens a new bounded epoch.
+    """
+
+    raw = validations or ()
+    if isinstance(raw, (str, Mapping)):
+        raw = (raw,)
+    normalized: list[dict[str, Any]] = []
+    if isinstance(raw, Sequence) and not isinstance(
+        raw, (str, bytes, bytearray, memoryview)
+    ):
+        for ordinal, item in enumerate(raw):
+            if isinstance(item, str):
+                argv = [item]
+                policy: dict[str, Any] = {
+                    VALIDATION_REPRESENTATION_POLICY_KEY: (
+                        VALIDATION_SHELL_TEXT_REPRESENTATION
+                    )
+                }
+            elif isinstance(item, Mapping):
+                mapping = dict(item)
+                nested_policy = mapping.get("policy")
+                policy = dict(nested_policy) if isinstance(nested_policy, Mapping) else {}
+                policy.update(
+                    {
+                        key: value
+                        for key, value in mapping.items()
+                        if key
+                        not in {
+                            "argv",
+                            "validation_commands",
+                            "command",
+                            "value",
+                            "policy",
+                            "ordinal",
+                        }
+                    }
+                )
+                raw_argv = mapping.get("argv")
+                if raw_argv is None:
+                    raw_argv = mapping.get("validation_commands")
+                if raw_argv is None:
+                    raw_argv = mapping.get("command") or mapping.get("value")
+                if isinstance(raw_argv, str):
+                    argv = [raw_argv]
+                    default_representation = VALIDATION_SHELL_TEXT_REPRESENTATION
+                elif isinstance(raw_argv, Sequence) and not isinstance(
+                    raw_argv, (bytes, bytearray, memoryview)
+                ):
+                    argv = [str(part) for part in raw_argv]
+                    default_representation = VALIDATION_ARGV_REPRESENTATION
+                else:
+                    # IntentRepository will reject this during the subsequent
+                    # upsert.  Give it a stable non-matching identity here so
+                    # a malformed replacement can never inherit old authority.
+                    argv = []
+                    default_representation = VALIDATION_ARGV_REPRESENTATION
+                policy[VALIDATION_REPRESENTATION_POLICY_KEY] = str(
+                    policy.get(VALIDATION_REPRESENTATION_POLICY_KEY)
+                    or default_representation
+                ).strip()
+            elif isinstance(item, Sequence) and not isinstance(
+                item, (bytes, bytearray, memoryview)
+            ):
+                argv = [str(part) for part in item]
+                policy = {
+                    VALIDATION_REPRESENTATION_POLICY_KEY: (
+                        VALIDATION_ARGV_REPRESENTATION
+                    )
+                }
+            else:
+                argv = []
+                policy = {"invalid_type": type(item).__name__}
+            normalized.append(
+                {"ordinal": ordinal, "argv": argv, "policy": policy}
+            )
+    return content_identity(
+        {
+            "schema": _DATABASE_VALIDATION_RETRY_EPOCH_SCHEMA,
+            "task_cid": str(task_cid or ""),
+            "validations": normalized,
+        }
+    )
 
 
 def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
@@ -644,59 +768,194 @@ class DatabaseTaskSource:
                 acceptance = [acceptance_raw]
             elif isinstance(acceptance_raw, Sequence):
                 acceptance = list(acceptance_raw)
-            validations_raw = item.get("validation_commands") or item.get(
-                "validations"
-            ) or ()
+            validations_raw = (
+                item.get("validation_commands")
+                or item.get("validations")
+                or item.get("validation")
+                or ()
+            )
             validations: list[Any] = []
-            if isinstance(validations_raw, str):
+            if isinstance(validations_raw, (str, Mapping)):
                 validations = [validations_raw]
             elif isinstance(validations_raw, Sequence):
                 validations = list(validations_raw)
-            self._intent.upsert_task(
-                task_cid=task_cid,
-                task_alias=task_alias,
-                goal_cid=goal_cid,
-                plan_cid=str(item.get("plan_cid") or self.plan_root_cid or ""),
-                objective_id=str(item.get("objective_id") or ""),
-                ordinal=int(item.get("ordinal") or index + 1),
-                status=str(item.get("status") or "ready"),
-                priority=str(item.get("priority") or "P2"),
-                body={
-                    key: value
-                    for key, value in item.items()
-                    if key
-                    not in {
-                        "task_cid",
-                        "task_id",
-                        "task_alias",
-                        "cid",
-                        "goal_cid",
-                        "goal_id",
-                        "depends_on",
-                        "dependencies",
-                        "effects",
-                        "outputs",
-                        "acceptance_criteria",
-                        "acceptance",
-                        "validation_commands",
-                        "validations",
-                        "status",
-                        "priority",
-                        "ordinal",
-                        "plan_cid",
-                        "objective_id",
-                    }
-                },
-                identity={
+            materialized_body = {
+                key: value
+                for key, value in item.items()
+                if key
+                not in {
+                    "task_cid",
+                    "task_id",
+                    "task_alias",
+                    "cid",
+                    "goal_cid",
+                    "goal_id",
+                    "depends_on",
+                    "dependencies",
+                    "effects",
+                    "outputs",
+                    "acceptance_criteria",
+                    "acceptance",
+                    "validation_commands",
+                    "validations",
+                    "status",
+                    "priority",
+                    "ordinal",
+                    "plan_cid",
+                    "objective_id",
+                    _DATABASE_TASK_MATERIALIZATION_CID_KEY,
+                }
+            }
+            declared_status = str(item.get("status") or "ready")
+            materialized_status = declared_status
+            plan_cid = str(item.get("plan_cid") or self.plan_root_cid or "")
+            objective_id = str(item.get("objective_id") or "")
+            ordinal = int(item.get("ordinal") or index + 1)
+            priority = str(item.get("priority") or "P2")
+            materialization_body = dict(materialized_body)
+            # Retry receipts are mutable runtime authority and must never make
+            # a declarative replay look like a changed task specification.
+            materialization_body.pop("completion_receipt", None)
+            materialization_cid = content_identity(
+                {
+                    "schema": _DATABASE_TASK_MATERIALIZATION_SCHEMA,
+                    "repository_tree_id": tree_id,
                     "task_cid": task_cid,
                     "task_alias": task_alias,
-                    "repository_tree_id": tree_id,
-                },
-                dependencies=resolved_deps,
-                outputs=outputs,
-                acceptance=acceptance,
-                validations=validations,
+                    "goal_cid": goal_cid,
+                    "plan_cid": plan_cid,
+                    "objective_id": objective_id,
+                    "ordinal": ordinal,
+                    "status": declared_status,
+                    "priority": priority,
+                    "body": materialization_body,
+                    "dependencies": list(resolved_deps),
+                    "outputs": [dict(value) for value in outputs],
+                    "acceptance": [
+                        dict(value) if isinstance(value, Mapping) else value
+                        for value in acceptance
+                    ],
+                    "validations": [
+                        dict(value) if isinstance(value, Mapping) else value
+                        for value in validations
+                    ],
+                }
             )
+            existing_task = self._intent.get_task(task_cid)
+            expected_revision = (
+                int(existing_task.get("revision") or 0)
+                if existing_task is not None
+                else 0
+            )
+            if existing_task is not None:
+                existing_body_raw = existing_task.get("body")
+                existing_body = (
+                    dict(existing_body_raw)
+                    if isinstance(existing_body_raw, Mapping)
+                    else {}
+                )
+                retry_receipt = existing_body.get("completion_receipt")
+                validation_spec_cid = database_retry_validation_spec_cid(
+                    task_cid,
+                    validations,
+                )
+                same_retry_epoch = (
+                    isinstance(retry_receipt, Mapping)
+                    and retry_receipt.get("schema")
+                    == _DATABASE_RETRY_BUDGET_SCHEMA
+                    and str(retry_receipt.get("validation_spec_cid") or "")
+                    == validation_spec_cid
+                )
+                existing_status = str(
+                    existing_task.get("status") or ""
+                ).strip().lower()
+                if same_retry_epoch:
+                    # Retry authority is runtime state, not declarative board
+                    # content.  Preserve it across byte-identical materializer
+                    # replay/restart so a blocked task cannot be rearmed by an
+                    # ordinary control refresh.
+                    materialized_body["completion_receipt"] = dict(retry_receipt)
+                    if (
+                        materialized_status.strip().lower()
+                        in _MATERIALIZATION_INITIAL_STATUSES
+                        and existing_status in _RETRY_RUNTIME_STATUSES
+                    ):
+                        existing_identity = existing_task.get("identity")
+                        existing_materialization_cid = str(
+                            existing_identity.get(
+                                _DATABASE_TASK_MATERIALIZATION_CID_KEY
+                            )
+                            if isinstance(existing_identity, Mapping)
+                            else ""
+                        )
+                        if (
+                            existing_status == "in_progress"
+                            and existing_materialization_cid == materialization_cid
+                        ):
+                            # This is an exact replay of the declarative task
+                            # that owns the live claim.  Do not call upsert:
+                            # even an identical upsert advances the revision
+                            # and would revoke the attempt's control binding.
+                            latest = self._intent.get_task(task_cid)
+                            if (
+                                latest is not None
+                                and int(latest.get("revision") or 0)
+                                == expected_revision
+                                and str(latest.get("status") or "").strip().lower()
+                                == "in_progress"
+                            ):
+                                latest_identity = latest.get("identity")
+                                if (
+                                    isinstance(latest_identity, Mapping)
+                                    and str(
+                                        latest_identity.get(
+                                            _DATABASE_TASK_MATERIALIZATION_CID_KEY
+                                        )
+                                        or ""
+                                    )
+                                    == materialization_cid
+                                ):
+                                    task_cids.append(task_cid)
+                                    continue
+                        if existing_status == "in_progress":
+                            # A changed declarative task revokes the old
+                            # execution revision.  Preserve its consumed
+                            # retry ledger, but make the replacement claimable
+                            # instead of stranding it in_progress.
+                            materialized_status = (
+                                "blocked"
+                                if retry_receipt.get("retry_exhausted") is True
+                                else "retrying"
+                            )
+                        else:
+                            materialized_status = existing_status
+            try:
+                self._intent.upsert_task(
+                    task_cid=task_cid,
+                    task_alias=task_alias,
+                    goal_cid=goal_cid,
+                    plan_cid=plan_cid,
+                    objective_id=objective_id,
+                    ordinal=ordinal,
+                    status=materialized_status,
+                    priority=priority,
+                    body=materialized_body,
+                    identity={
+                        "task_cid": task_cid,
+                        "task_alias": task_alias,
+                        "repository_tree_id": tree_id,
+                        _DATABASE_TASK_MATERIALIZATION_CID_KEY: materialization_cid,
+                    },
+                    expected_revision=expected_revision,
+                    dependencies=resolved_deps,
+                    outputs=outputs,
+                    acceptance=acceptance,
+                    validations=validations,
+                )
+            except IntentRepositoryConflictError as exc:
+                raise TaskSourceConflictError(
+                    f"task {task_cid!r} changed during materialization"
+                ) from exc
             task_cids.append(task_cid)
 
         snap = self._intent.snapshot()

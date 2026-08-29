@@ -10,6 +10,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DatabaseTaskSource,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DatabasePortalBridgeError,
@@ -26,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+    bind_database_portal_execution_from_args,
     build_portal_implementation_daemon_from_args,
 )
 
@@ -219,6 +223,92 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_database_materialize_round_trip_preserves_shell_text_and_argv(
+    tmp_path: Path,
+) -> None:
+    shell_text = (
+        "python3 -m pytest focused.py -q && git diff --check"
+    )
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:bridge-validation",
+                "objectives": [
+                    {
+                        "goal_cid": "goal:inventory",
+                        "goal_id": "PCTDD-G011",
+                        "title": "Inventory",
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:004",
+                        "task_id": "LGSWF-004",
+                        "goal_cid": "goal:inventory",
+                        "objective": "Preserve validation forms",
+                        "outputs": [{"path": "inventory/result.json"}],
+                        "validation_commands": [
+                            shell_text,
+                            {
+                                "argv": [
+                                    "python3",
+                                    "-m",
+                                    "pytest",
+                                    "focused path.py",
+                                ]
+                            },
+                        ],
+                        "acceptance": "Focused validation passes",
+                    }
+                ],
+            }
+        )
+        record = source.get_task("task:cid:004")
+        assert record is not None
+        assert record.validations[0]["argv"] == [shell_text]
+        assert record.validations[0]["policy"]["representation"] == (
+            "shell_text"
+        )
+        assert record.validations[1]["policy"]["representation"] == "argv"
+
+        bridge = DatabasePortalExecutionBridge(
+            task_source=source,
+            attempt_root=tmp_path / "attempts",
+            portal_factory=lambda _paths, _alias: None,
+        )
+        paths, binding = bridge._ensure_attempt_projection(_attempt(), record)
+        projection = paths.task_projection.read_text(encoding="utf-8")
+
+    assert f"- Validation: {shell_text} ; " in projection
+    assert "python3 -m pytest 'focused path.py'" in projection
+    assert f"'{shell_text}'" not in projection
+    assert binding["task_cid"] == "task:cid:004"
+
+
+def test_bridge_rejects_malformed_typed_shell_text_validation(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.validations = (
+        {
+            "argv": ["pytest focused.py", "git diff --check"],
+            "policy": {"representation": "shell_text"},
+        },
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="shell_text validation must contain exactly one command",
+    ):
+        bridge._render_projection(_attempt(), record)
+
+
 def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
     class TamperingPortal(_CompletingPortal):
         def run_once(self) -> dict[str, object]:
@@ -271,20 +361,311 @@ def test_production_database_daemon_cannot_complete_with_default_noops(
                 ],
             }
         )
-        with pytest.raises(
-            DatabaseImplementationAuthorityError,
-            match="no provider executor",
-        ):
-            daemon.run_once()
+        result = daemon.run_once()
+        assert result["implementation_result"]["callback_failure"] is True
+        assert "no provider executor" in result["implementation_result"]["reason"]
         task = daemon.task_source.get_task("task:cid:004")
         assert task is not None
         assert task.status != "completed"
         assert (
             daemon.provider_invocation_recorded(
-                daemon.list_running_attempts()[0].attempt_id,
-                idempotency_key=f"provider:{daemon.list_running_attempts()[0].attempt_id}",
+            result["attempt_id"],
+            idempotency_key=f"provider:{result['attempt_id']}",
             )
             is None
+        )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_real_database_portal_bridge_obeys_outer_global_retry_cap(
+    tmp_path: Path,
+) -> None:
+    provider_attempts: list[str] = []
+    inner_caps: list[int] = []
+    portal_roots: list[Path] = []
+
+    class FailingPortal:
+        def __init__(self, **kwargs: object) -> None:
+            inner_caps.append(int(kwargs["max_task_attempts"]))
+            state_path = Path(str(kwargs["state_path"]))
+            portal_roots.append(state_path.parent)
+
+        def run_once(self) -> dict[str, object]:
+            provider_attempts.append(str(portal_roots[-1]))
+            return {
+                "implementation_result": {
+                    "task_id": "PCTDD-001",
+                    "returncode": 1,
+                    "reason": "declared_validation_failed",
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "pctdd",
+            "--implement",
+            "--max-task-attempts",
+            "2",
+            "--once",
+        ]
+    )
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:real-bridge-cap",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        max_task_attempts=2,
+        require_real_execution=True,
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=tmp_path,
+            portal_daemon_class=FailingPortal,
+        )
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:real-bridge-cap",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:pctdd-001",
+                        "task_id": "PCTDD-001",
+                        "goal_cid": "goal:pctdd",
+                        "status": "ready",
+                        "validation_commands": ["python -m pytest focused.py"],
+                    }
+                ],
+            }
+        )
+        first = daemon.run_once()
+        second = daemon.run_once()
+        idle = daemon.run_once()
+        assert first["implementation_result"]["retry_exhausted"] is False
+        assert second["implementation_result"]["retry_exhausted"] is True
+        assert idle["implementation_result"] is None
+        assert len(provider_attempts) == 2
+        assert inner_caps == [1, 1]
+        assert len(set(portal_roots)) == 2
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_lost_portal_provider_return_recovers_without_reimplementation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portal_calls: list[str] = []
+
+    class CompletingPortal:
+        def __init__(self, **kwargs: object) -> None:
+            self.projection = Path(str(kwargs["todo_path"]))
+            self.state = Path(str(kwargs["state_path"]))
+            self.events = Path(str(kwargs["events_path"]))
+
+        def run_once(self) -> dict[str, object]:
+            portal_calls.append("run")
+            text = self.projection.read_text(encoding="utf-8")
+            self.projection.write_text(
+                text.replace("- Status: ready", "- Status: completed"),
+                encoding="utf-8",
+            )
+            self.state.write_text('{"accepted":true}\n', encoding="utf-8")
+            self.events.write_text(
+                json.dumps(
+                    {
+                        "type": "task_completed",
+                        "task_id": "PCTDD-001",
+                        "event_id": "event:portal-complete",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return {
+                "implementation_result": {
+                    "task_id": "PCTDD-001",
+                    "returncode": 0,
+                    "implementation_commit": "a" * 40,
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "pctdd",
+            "--implement",
+            "--max-task-attempts",
+            "2",
+            "--once",
+        ]
+    )
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:portal-return-recovery",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        max_task_attempts=2,
+        require_real_execution=True,
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=tmp_path,
+            portal_daemon_class=CompletingPortal,
+        )
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:portal-return-recovery",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:pctdd-001",
+                        "task_id": "PCTDD-001",
+                        "goal_cid": "goal:pctdd",
+                        "status": "ready",
+                        "validation_commands": ["python -m pytest focused.py"],
+                    }
+                ],
+            }
+        )
+        original_record = daemon._record_callback_dispatch_outcome
+        injected = {"done": False}
+
+        def lose_return(*call_args: object, **call_kwargs: object) -> None:
+            if (
+                not injected["done"]
+                and call_kwargs.get("dispatch_kind") == "provider"
+                and call_kwargs.get("outcome") == "returned"
+            ):
+                injected["done"] = True
+                raise RuntimeError("lost Portal provider return")
+            original_record(*call_args, **call_kwargs)
+
+        monkeypatch.setattr(daemon, "_record_callback_dispatch_outcome", lose_return)
+        pending = daemon.run_once()["implementation_result"]
+        assert pending["status"] == "provider_reconciliation_pending"
+        assert pending["retry_budget_consumed"] is False
+
+        monkeypatch.setattr(
+            daemon, "_record_callback_dispatch_outcome", original_record
+        )
+        recovered = daemon.run_once()["implementation_result"]
+        assert recovered["status"] == "succeeded"
+        assert recovered["attempt"]["attempt_id"] == pending["attempt_id"]
+        assert recovered["attempt"]["attempt_number"] == 1
+        assert recovered["provider_result"]["accepted"] is True
+        assert portal_calls == ["run"]
+        task = daemon.task_source.get_task("task:cid:pctdd-001")
+        assert task is not None and task.status == "completed"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_unknown_portal_dispatch_without_terminal_evidence_blocks(
+    tmp_path: Path,
+) -> None:
+    class PortalMustNotRun:
+        def __init__(self, **_kwargs: object) -> None:
+            raise AssertionError("unknown Portal dispatch must not be repeated")
+
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "pctdd",
+            "--implement",
+            "--max-task-attempts",
+            "3",
+            "--once",
+        ]
+    )
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:portal-unknown-block",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        max_task_attempts=3,
+        require_real_execution=True,
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=tmp_path,
+            portal_daemon_class=PortalMustNotRun,
+        )
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:portal-unknown-block",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:pctdd-001",
+                        "task_id": "PCTDD-001",
+                        "goal_cid": "goal:pctdd",
+                        "status": "ready",
+                        "validation_commands": ["python -m pytest focused.py"],
+                    }
+                ],
+            }
+        )
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+
+        result = daemon.run_once()["implementation_result"]
+        assert result["status"] == "retry_exhausted"
+        assert result["retry_exhausted"] is True
+        assert "no exact durable terminal evidence" in result["reason"]
+        task = daemon.task_source.get_task("task:cid:pctdd-001")
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["forced_block"] is True
+        assert task.body["completion_receipt"]["reason"] == (
+            "provider_dispatch_outcome_unknown"
         )
     finally:
         daemon.close()
@@ -323,6 +704,8 @@ def test_configured_production_runner_binds_real_portal_bridge(
             "--worktree-root",
             ".worktrees",
             "--implement",
+            "--max-task-attempts",
+            "2",
             "--once",
         ]
     )
@@ -333,6 +716,7 @@ def test_configured_production_runner_binds_real_portal_bridge(
     try:
         assert isinstance(daemon, DatabaseImplementationDaemon)
         assert daemon.require_real_execution is True
+        assert daemon.max_task_attempts == 2
         assert daemon.execution_callbacks_bound is True
         assert daemon.markdown_path is None
         assert daemon.markdown_status_write_count == 0

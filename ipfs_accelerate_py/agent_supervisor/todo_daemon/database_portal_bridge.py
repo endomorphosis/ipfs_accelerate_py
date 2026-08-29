@@ -27,6 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from ..task_sources.intent_repository import (
+    VALIDATION_ARGV_REPRESENTATION,
+    VALIDATION_REPRESENTATION_POLICY_KEY,
+    VALIDATION_SHELL_TEXT_REPRESENTATION,
+)
+
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@1"
@@ -39,6 +45,12 @@ _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
 )
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
+_VALIDATION_REPRESENTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        VALIDATION_SHELL_TEXT_REPRESENTATION,
+        VALIDATION_ARGV_REPRESENTATION,
+    }
+)
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -160,12 +172,65 @@ def _validation_values(record: Any, body: Mapping[str, Any]) -> list[str]:
     for item in raw:
         if isinstance(item, Mapping):
             argv = item.get("argv")
+            raw_policy = item.get("policy")
+            if raw_policy is None:
+                policy: Mapping[str, Any] = {}
+            elif isinstance(raw_policy, Mapping):
+                policy = raw_policy
+            else:
+                raise DatabasePortalBridgeError(
+                    "database validation policy is malformed"
+                )
+            representation = str(
+                policy.get(VALIDATION_REPRESENTATION_POLICY_KEY)
+                or item.get(VALIDATION_REPRESENTATION_POLICY_KEY)
+                or ""
+            ).strip()
+            if representation and representation not in _VALIDATION_REPRESENTATIONS:
+                raise DatabasePortalBridgeError(
+                    "database validation representation is unknown"
+                )
             if isinstance(argv, Sequence) and not isinstance(
                 argv, (str, bytes, bytearray, memoryview)
             ):
-                value = shlex.join(str(part) for part in argv)
+                parts = tuple(argv)
+                if not parts or any(
+                    not isinstance(part, str) or not part.strip()
+                    for part in parts
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database validation argv is malformed"
+                    )
+                if representation == VALIDATION_SHELL_TEXT_REPRESENTATION:
+                    if len(parts) != 1:
+                        raise DatabasePortalBridgeError(
+                            "shell_text validation must contain exactly one command"
+                        )
+                    # Shell-text is an already reviewed command program.  It
+                    # must survive the database projection byte-for-text;
+                    # shlex.join([program]) would quote the whole program as
+                    # one missing executable.
+                    value = _line_value(parts[0])
+                else:
+                    # Explicit argv, and legacy untyped rows, retain their
+                    # shell-safe projection behavior.
+                    value = shlex.join(parts)
             else:
-                value = _line_value(item.get("command") or item.get("value") or item)
+                command = item.get("command") or item.get("value")
+                if representation == VALIDATION_ARGV_REPRESENTATION:
+                    raise DatabasePortalBridgeError(
+                        "argv validation must provide an argv sequence"
+                    )
+                if (
+                    representation == VALIDATION_SHELL_TEXT_REPRESENTATION
+                    and not isinstance(
+                    command, str
+                    )
+                ):
+                    raise DatabasePortalBridgeError(
+                        "shell_text validation must provide command text"
+                    )
+                value = _line_value(command or item)
         else:
             value = _line_value(item)
         if value and value not in selected:
@@ -609,6 +674,41 @@ class DatabasePortalExecutionBridge:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
             if callable(close):
                 close()
+
+    def recover_provider_result(self, attempt: Any) -> Mapping[str, Any] | None:
+        """Recover an exact terminal Portal receipt without dispatching a model.
+
+        The outer database daemon calls this only after it finds a durable
+        provider-dispatch marker with no matching provider phase.  Recovery is
+        deliberately read-only: absent or incomplete Portal evidence returns
+        ``None`` and the outer attempt fails closed rather than reimplementing
+        work whose outcome is unknown.
+        """
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        if not paths.binding.is_file() or not paths.task_projection.is_file():
+            return None
+        seed = self._render_projection(attempt, record)
+        expected = self._binding(attempt, record, seed)
+        observed = self._read_binding(paths.binding)
+        if observed != expected:
+            raise DatabasePortalBridgeError(
+                "database Portal attempt binding changed before recovery"
+            )
+        projection = self._verify_projection(paths, expected)
+        alias = str(expected.get("task_alias") or "")
+        if (
+            _projection_status(projection) not in _TERMINAL_STATUSES
+            or not self._has_completion_event(paths, alias)
+        ):
+            return None
+        return self._acceptance_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=expected,
+            summaries=(),
+        )
 
     @staticmethod
     def _require_accepted_provider(attempt: Any, provider_result: Mapping[str, Any]) -> str:

@@ -357,6 +357,59 @@ _CHEAP_PATTERNS = (
 _TEST_RUNNER_RE = re.compile(
     r"(?:^|\s)(?:python(?:3)?\s+-m\s+)?(?:pytest|unittest|jest|vitest|mocha|cargo\s+test|go\s+test)(?:\s|$)"
 )
+_DIRECT_PYTHON_EXECUTABLE_RE = re.compile(r"^python(?:3)?$")
+_DIRECT_VALIDATION_EXECUTABLES = frozenset(
+    {
+        "[",
+        "black",
+        "bundle",
+        "cargo",
+        "cmake",
+        "coqc",
+        "coqtop",
+        "coverage",
+        "ctest",
+        "cvc5",
+        "deno",
+        "dotnet",
+        "eslint",
+        "flake8",
+        "go",
+        "gofmt",
+        "gradle",
+        "gradlew",
+        "jest",
+        "lake",
+        "lean",
+        "make",
+        "mocha",
+        "mvn",
+        "mvnw",
+        "mypy",
+        "node",
+        "nox",
+        "npm",
+        "npx",
+        "phpunit",
+        "pipsi",
+        "pipx",
+        "pnpm",
+        "poetry",
+        "pyright",
+        "pytest",
+        "rspec",
+        "ruff",
+        "test",
+        "tox",
+        "tsc",
+        "true",
+        "unittest",
+        "uv",
+        "vitest",
+        "yarn",
+        "z3",
+    }
+)
 _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _GLOBAL_IMPACT_NAMES = frozenset(
     {
@@ -1063,6 +1116,70 @@ def classify_validation_command(
     )
 
 
+def _is_direct_validation_command(declaration: str) -> bool:
+    """Return whether *declaration* starts with a reviewed command form.
+
+    A runner name appearing somewhere in prose is not an execution
+    declaration.  Direct compatibility is retained only when every shell
+    segment has a recognized validation executable in command position (with
+    the existing bounded leading ``cd <relative> &&`` form).  Unknown names
+    still require catalog resolution.
+    """
+
+    text = normalize_validation_command_text(declaration)
+    if not text or validation_command_repository_root(text) is None:
+        return False
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return False
+    control_tokens = tuple(
+        token
+        for token in structure_tokens
+        if token and all(character in ";&|()<>" for character in token)
+    )
+    # Direct declarations support a conjunction of independently recognized
+    # checks. Other shell flow must be named and reviewed through the catalog.
+    if any(token != "&&" for token in control_tokens):
+        return False
+    if structure_tokens[0] == "&&" or structure_tokens[-1] == "&&":
+        return False
+
+    segments = _shell_command_segments(structure_tokens)
+    executable_segments = 0
+    for segment_index, segment in enumerate(segments):
+        command = _shell_segment_command(segment)
+        if command is None:
+            return False
+        command_name, command_index = command
+        # Direct declarations are name-based policy, not PATH-shaped
+        # authority.  Collapsing an arbitrary token to its basename would let
+        # a writable executable such as ``/tmp/pytest`` or ``./cvc5`` inherit
+        # the trust assigned to the canonical launcher name.  Reviewed shell
+        # wrappers above may still precede the command, but the executable in
+        # command position itself must be the exact bare spelling.  The
+        # hermetic runtime subsequently resolves/pins the supported launchers.
+        raw_command = str(segment[command_index]).replace("\\", "/")
+        if raw_command != command_name:
+            return False
+        if command_name == "cd":
+            if segment_index != 0 or command_index != 0:
+                return False
+            continue
+        if command_name == "git":
+            command_text = shlex.join(
+                str(part) for part in segment[command_index:]
+            )
+            if not _CHEAP_PATTERNS[0].search(command_text):
+                return False
+        elif not (
+            _DIRECT_PYTHON_EXECUTABLE_RE.fullmatch(command_name)
+            or command_name in _DIRECT_VALIDATION_EXECUTABLES
+        ):
+            return False
+        executable_segments += 1
+    return executable_segments > 0
+
+
 def parse_validation_declaration(
     value: str | ValidationCommand | DeclaredValidation,
     *,
@@ -1115,10 +1232,7 @@ def parse_validation_declaration(
             if isinstance(resolved, ValidationCommand)
             else classify_validation_command(str(resolved))
         )
-    elif declared_kind is None and (
-        _TEST_RUNNER_RE.search(declaration)
-        or any(pattern.search(declaration) for pattern in _CHEAP_PATTERNS)
-    ):
+    elif declared_kind is None and _is_direct_validation_command(declaration):
         # Direct commands remain supported for todo-board compatibility.
         command = classify_validation_command(declaration)
         declared_kind = (

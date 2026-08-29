@@ -2743,8 +2743,19 @@ def configured_board_launch_plan(
         environment = {}
         if provider_id and provider_id != "auto":
             environment[PROVIDER_ENV] = provider_id
-        if model_id and provider_id in {"", "auto", "codex", "openai"}:
-            environment[CODEX_MODEL_ENV] = model_id
+        if model_id:
+            if provider_id in {
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "grok_build",
+                "grok-build",
+                "xai_cli",
+                "xai-cli",
+            }:
+                environment[GROK_MODEL_ENV] = model_id
+            elif provider_id in {"", "auto", "codex", "openai"}:
+                environment[CODEX_MODEL_ENV] = model_id
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:

@@ -183,10 +183,25 @@ def test_objectives_goals_plans_tasks_retain_canonical_ids(tmp_path: Path) -> No
         assert len(by_task_alias["acceptance"]) == 1
         assert len(by_task_alias["validations"]) == 1
         assert len(by_task_alias["outputs"]) == 1
+        assert by_task_alias["validations"][0]["argv"] == [
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+        ]
+        assert by_task_alias["validations"][0]["policy"][
+            "representation"
+        ] == "argv"
 
         dependent = repo.get_task(ids["task_b"])
         assert dependent is not None
         assert dependent["dependencies"] == ("task:cid:001",)
+        assert dependent["validations"][0]["argv"] == [
+            "pytest test_rebuild.py"
+        ]
+        assert dependent["validations"][0]["policy"][
+            "representation"
+        ] == "shell_text"
 
 
 def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:

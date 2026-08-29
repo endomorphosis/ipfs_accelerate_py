@@ -1233,7 +1233,11 @@ def bind_database_portal_execution_from_args(
             implement=True,
             implementation_command=parsed.implementation_command or None,
             implementation_timeout=parsed.implementation_timeout,
-            max_task_attempts=parsed.max_task_attempts,
+            # The canonical DatabaseImplementationDaemon owns the total retry
+            # budget across disposable Portal epochs.  An attempt-local Portal
+            # may issue at most one implementation attempt; otherwise the two
+            # retry loops multiply (for example 2 outer x 2 inner calls).
+            max_task_attempts=1,
             implementation_log_dir=paths.implementation_logs,
             use_ephemeral_worktree=not parsed.no_ephemeral_worktree,
             worktree_root=parsed.worktree_root,
@@ -1367,6 +1371,9 @@ def build_portal_implementation_daemon_from_args(
             pid_path=None,
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            max_task_attempts=int(
+                getattr(parsed, "max_task_attempts", 0) or 0
+            ),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
             task_shard_count=int(getattr(parsed, "task_shard_count", 1) or 1),
             task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
@@ -1521,6 +1528,7 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
         task_shard_count=int(getattr(parsed, "task_shard_count", 1) or 1),
         task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
         strict_task_sharding=bool(

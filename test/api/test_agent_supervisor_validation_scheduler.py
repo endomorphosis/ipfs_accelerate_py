@@ -12,6 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
     command_runner_from_legacy_function,
     run_validation_commands,
@@ -19,10 +22,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoImplementationDaemon,
+    TodoTaskState,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationStage,
     build_validation_commands,
+    parse_validation_declaration,
     select_validation_commands,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
@@ -79,6 +84,56 @@ def _sealed_daemon_environment() -> dict[str, str]:
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
     )
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    (
+        "/tmp/pytest -q test/api/test_example.py",
+        "./cvc5 proof.smt2",
+        "/opt/untrusted/lean Main.lean",
+        "python -m pytest -q && /tmp/true",
+        "command /tmp/pytest -q test/api/test_example.py",
+        "env ./python -m pytest -q",
+        "python3.11 -c 'print(1)'",
+        "python3.12 -m pytest -q",
+    ),
+)
+def test_direct_validation_rejects_path_aliases_for_reviewed_names(
+    declaration: str,
+) -> None:
+    parsed = parse_validation_declaration(declaration)
+
+    assert parsed.executable is False
+    assert parsed.manual_review_required is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "python3.11 -c 'print(1)'",
+        "/usr/bin/python3.12 -m pytest -q",
+    ),
+)
+def test_validation_runtime_rejects_unsealed_python_spellings(
+    command: str,
+) -> None:
+    with pytest.raises(ValidationRuntimeError, match="versioned or path-qualified"):
+        validation_shell_command(command)
+
+
+@pytest.mark.parametrize(
+    "argv",
+    (
+        ("python3.11", "-c", "print(1)"),
+        ("/usr/bin/python3.12", "-m", "pytest", "-q"),
+    ),
+)
+def test_validation_argv_rejects_unsealed_python_spellings(
+    argv: tuple[str, ...],
+) -> None:
+    with pytest.raises(ValidationRuntimeError, match="versioned or path-qualified"):
+        validation_argv_command(argv)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -164,6 +219,14 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert shell_command[4].endswith(
         "readonly -f _ipfs_accelerate_validation_python python python3 pytest; test -f artifact"
     )
+    flattened_chain = validation_shell_command(
+        "export PYTHONPATH=x && 'python3 -m pytest -q'"
+    )
+    assert flattened_chain[4].endswith(
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
+        "export PYTHONPATH=x && python3 -m pytest -q"
+    )
+    assert "'&&'" not in flattened_chain[4]
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
         "true && bash -lc 'python -V'",
@@ -1153,6 +1216,63 @@ def test_daemon_classifies_invalid_shell_command_as_policy_rejection(
     assert result["reason"] == "validation_shell_command_policy_violation"
     assert result["infrastructure_failure"] is False
     assert "validation_python_launcher" not in result
+
+
+def test_unresolved_validation_configuration_blocks_provider_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[tuple[object, ...]] = []
+
+    def provider_runner(*args: object, **kwargs: object) -> object:
+        provider_calls.append(args)
+        return subprocess.CompletedProcess(args=(), returncode=0)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider_runner,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        implement=True,
+        implementation_command="python3 -c 'raise SystemExit(0)'",
+    )
+    task = PortalTask(
+        task_id="PCTDD-001",
+        title="Inventory current paths",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="analysis",
+        outputs=["inventory/result.json"],
+        validation=[
+            "focused owning-repository pytest plus cross-package API tests"
+        ],
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["error"] == "validation_configuration_failed"
+    assert result["reason"] == "unresolved_validation_declaration"
+    assert result["returncode"] == 78
+    assert result["provider_dispatched"] is False
+    assert result["provider_call_allowed"] is False
+    assert result["auto_rescue_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert len(result["unresolved_validation_declarations"]) == 1
+    assert provider_calls == []
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["type"] for event in events] == [
+        "implementation_validation_configuration_failed"
+    ]
 
 
 def test_validation_runtime_extends_task_local_pythonpath_with_approved_packages(

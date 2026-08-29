@@ -174,6 +174,23 @@ def test_unresolved_and_unknown_declarations_never_become_shell_commands() -> No
     ]
 
 
+def test_prose_containing_runner_names_is_not_an_executable_declaration() -> None:
+    declarations = build_declared_validations(
+        [
+            "focused owning-repository pytest plus cross-package API tests",
+            "run ruff checks for the affected package",
+            "python3 scripts/validate_program.py",
+        ]
+    )
+
+    assert declarations[0].kind is ValidationRequirementKind.MANUAL_REVIEW
+    assert declarations[0].command is None
+    assert declarations[1].kind is ValidationRequirementKind.MANUAL_REVIEW
+    assert declarations[1].command is None
+    assert declarations[2].kind is ValidationRequirementKind.FOCUSED_TEST
+    assert declarations[2].command is not None
+
+
 def test_shadow_continues_but_enforcement_preserves_required_assurance() -> None:
     result = {"status": "unsupported", "reason_code": "no_supported_backend"}
     shadow = route_proof_fallback(_obligation(), result, rollout_mode=RolloutMode.SHADOW)

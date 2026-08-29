@@ -106,6 +106,20 @@ MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
 
+# ``argv_json`` predates shell-text validation declarations.  Keep the
+# physical column for schema compatibility, but type its logical meaning in
+# policy so a command program is never later mistaken for one executable
+# pathname containing spaces.
+VALIDATION_REPRESENTATION_POLICY_KEY: Final[str] = "representation"
+VALIDATION_SHELL_TEXT_REPRESENTATION: Final[str] = "shell_text"
+VALIDATION_ARGV_REPRESENTATION: Final[str] = "argv"
+_VALIDATION_REPRESENTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        VALIDATION_SHELL_TEXT_REPRESENTATION,
+        VALIDATION_ARGV_REPRESENTATION,
+    }
+)
+
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
 
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
@@ -2055,26 +2069,81 @@ class IntentRepository:
         for ordinal, item in enumerate(validations):
             if isinstance(item, str):
                 argv = [item]
-                policy: dict[str, Any] = {}
+                policy: dict[str, Any] = {
+                    VALIDATION_REPRESENTATION_POLICY_KEY: (
+                        VALIDATION_SHELL_TEXT_REPRESENTATION
+                    )
+                }
             elif isinstance(item, Mapping):
                 mapping = _mapping(item, noun="validation")
-                raw_argv = mapping.get("argv") or mapping.get("validation_commands")
+                nested_policy = mapping.get("policy")
+                if nested_policy is None:
+                    policy = {}
+                elif isinstance(nested_policy, Mapping):
+                    policy = dict(nested_policy)
+                else:
+                    raise IntentRepositoryError(
+                        "validation policy must be a mapping"
+                    )
+                policy.update(
+                    {
+                        key: value
+                        for key, value in mapping.items()
+                        if key
+                        not in {
+                            "argv",
+                            "validation_commands",
+                            "command",
+                            "value",
+                            "policy",
+                            "ordinal",
+                        }
+                    }
+                )
+                raw_argv = mapping.get("argv")
+                if raw_argv is None:
+                    raw_argv = mapping.get("validation_commands")
+                if raw_argv is None:
+                    raw_argv = mapping.get("command") or mapping.get("value")
                 if isinstance(raw_argv, str):
                     argv = [raw_argv]
+                    default_representation = VALIDATION_SHELL_TEXT_REPRESENTATION
                 elif isinstance(raw_argv, Sequence):
                     argv = [str(part) for part in raw_argv]
+                    default_representation = VALIDATION_ARGV_REPRESENTATION
                 else:
-                    argv = [str(mapping.get("command") or f"validation:{ordinal}")]
-                policy = {
-                    key: value
-                    for key, value in mapping.items()
-                    if key not in {"argv", "validation_commands", "command"}
-                }
+                    raise IntentRepositoryError(
+                        "validation mapping must provide command text or argv"
+                    )
+                representation = str(
+                    policy.get(VALIDATION_REPRESENTATION_POLICY_KEY)
+                    or default_representation
+                ).strip()
+                if representation not in _VALIDATION_REPRESENTATIONS:
+                    raise IntentRepositoryError(
+                        "validation representation must be shell_text or argv"
+                    )
+                if (
+                    representation == VALIDATION_SHELL_TEXT_REPRESENTATION
+                    and len(argv) != 1
+                ):
+                    raise IntentRepositoryError(
+                        "shell_text validation must contain exactly one command"
+                    )
+                policy[VALIDATION_REPRESENTATION_POLICY_KEY] = representation
             elif isinstance(item, Sequence):
                 argv = [str(part) for part in item]
-                policy = {}
+                policy = {
+                    VALIDATION_REPRESENTATION_POLICY_KEY: (
+                        VALIDATION_ARGV_REPRESENTATION
+                    )
+                }
             else:
                 raise IntentRepositoryError("validation entry has unsupported type")
+            if not argv or any(not str(part).strip() for part in argv):
+                raise IntentRepositoryError(
+                    "validation command or argv entries must not be empty"
+                )
             connection.execute(
                 """
                 INSERT INTO task_validations (
@@ -2450,6 +2519,7 @@ class IntentRepository:
                                 "result_id": result_id,
                                 "argv": argv_list,
                                 "outcome": outcome_text,
+                                **body_map,
                             },
                             noun="validation evidence body",
                         ),
@@ -2641,6 +2711,68 @@ class IntentRepository:
                 )
 
             completing = status_text in _COMPLETED_STATUSES
+            if completing and receipt_map.get("operation") == "database_complete":
+                control_claim = receipt_map.get("control_claim")
+                if not isinstance(control_claim, Mapping):
+                    raise IntentCompletionError(
+                        "database completion receipt lacks control-claim binding"
+                    )
+                if int(control_claim.get("revision") or 0) != current_revision:
+                    raise IntentCompletionError(
+                        "database completion evidence belongs to another task revision"
+                    )
+                expected_attempt = str(receipt_map.get("attempt_id") or "")
+                expected_claim = str(receipt_map.get("claim_id") or "")
+                expected_execution_spec = str(
+                    control_claim.get("execution_spec_cid") or ""
+                )
+                expected_validation_spec = str(
+                    control_claim.get("validation_spec_cid") or ""
+                )
+                if not all(
+                    (
+                        expected_attempt,
+                        expected_claim,
+                        expected_execution_spec,
+                        expected_validation_spec,
+                    )
+                ):
+                    raise IntentCompletionError(
+                        "database completion control binding is incomplete"
+                    )
+                supplied = tuple(evidence_digests or ())
+                if len(supplied) != 1:
+                    raise IntentCompletionError(
+                        "database completion requires exactly one bound evidence digest"
+                    )
+                evidence_row = connection.execute(
+                    """
+                    SELECT body_json FROM evidence_nodes
+                    WHERE task_cid = ? AND digest = ? AND evidence_kind = 'validation'
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    [resolved_cid, str(supplied[0])],
+                ).fetchone()
+                evidence_body = (
+                    _decode_json(evidence_row[0], noun="validation evidence body")
+                    if evidence_row is not None
+                    else {}
+                )
+                evidence_checks = {
+                    "attempt_id": expected_attempt,
+                    "claim_id": expected_claim,
+                    "control_revision": current_revision,
+                    "execution_spec_cid": expected_execution_spec,
+                    "validation_spec_cid": expected_validation_spec,
+                }
+                if not isinstance(evidence_body, Mapping) or any(
+                    evidence_body.get(key) != expected
+                    for key, expected in evidence_checks.items()
+                ):
+                    raise IntentCompletionError(
+                        "database completion evidence is not exactly bound to "
+                        "the claimed task revision"
+                    )
             if completing and not allow_completion_without_evidence:
                 # Gate completion on current required evidence inside the same
                 # transaction that mutates status.
@@ -4382,6 +4514,9 @@ __all__ = (
     "PLAN_REVISION_REPOSITORY_INTERFACE",
     "INTENT_REPOSITORY_SCHEMA",
     "PLAN_REVISION_REPOSITORY_SCHEMA",
+    "VALIDATION_REPRESENTATION_POLICY_KEY",
+    "VALIDATION_SHELL_TEXT_REPRESENTATION",
+    "VALIDATION_ARGV_REPRESENTATION",
     "IntentEventType",
     "IntentRepository",
     "IntentRepositoryError",

@@ -39,6 +39,11 @@ from .duckdb_state import (
     exclusive_file_lock,
     is_quack_transport_target,
 )
+from .intent_repository import (
+    VALIDATION_ARGV_REPRESENTATION,
+    VALIDATION_REPRESENTATION_POLICY_KEY,
+    VALIDATION_SHELL_TEXT_REPRESENTATION,
+)
 
 DUCKDB_TASK_SOURCE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/duckdb-task-source@1"
 DUCKDB_TASK_SOURCE_SCHEMA_VERSION: Final = 1
@@ -94,6 +99,13 @@ MAX_EVENTS: Final = 100_000
 MAX_JSON_BYTES: Final = 2 * 1024 * 1024
 MAX_IDENTIFIER_BYTES: Final = 512
 MAX_WATCH_SECONDS: Final = 30.0
+
+_VALIDATION_REPRESENTATIONS: Final = frozenset(
+    {
+        VALIDATION_SHELL_TEXT_REPRESENTATION,
+        VALIDATION_ARGV_REPRESENTATION,
+    }
+)
 
 _CURSOR_VERSION: Final = 1
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
@@ -1170,7 +1182,46 @@ def _nested_rows(
             if isinstance(raw, Mapping) or hasattr(raw, "to_dict"):
                 item = _as_mapping(raw, noun="task validation")
                 argv = item.get("argv")
-                policy = {key: value for key, value in item.items() if key != "argv"}
+                if argv is None:
+                    argv = item.get("command") or item.get("value")
+                nested_policy = item.get("policy")
+                if nested_policy is None:
+                    policy = {}
+                elif isinstance(nested_policy, Mapping):
+                    policy = dict(nested_policy)
+                else:
+                    raise TaskSourceIntegrityError(
+                        "task validation policy must be a mapping"
+                    )
+                policy.update(
+                    {
+                        key: value
+                        for key, value in item.items()
+                        if key
+                        not in {
+                            "argv",
+                            "command",
+                            "value",
+                            "policy",
+                            "ordinal",
+                        }
+                    }
+                )
+                default_representation = (
+                    VALIDATION_SHELL_TEXT_REPRESENTATION
+                    if isinstance(argv, str)
+                    else VALIDATION_ARGV_REPRESENTATION
+                )
+            elif isinstance(raw, Sequence) and not isinstance(
+                raw, (str, bytes, bytearray, memoryview)
+            ):
+                argv = list(raw)
+                policy = {
+                    VALIDATION_REPRESENTATION_POLICY_KEY: (
+                        VALIDATION_ARGV_REPRESENTATION
+                    )
+                }
+                default_representation = VALIDATION_ARGV_REPRESENTATION
             else:
                 text = str(raw)
                 try:
@@ -1179,16 +1230,87 @@ def _nested_rows(
                     decoded = [text]
                 if isinstance(decoded, Mapping):
                     item = dict(decoded)
-                    argv = item.get("argv", [])
-                    policy = {key: value for key, value in item.items() if key != "argv"}
+                    argv = item.get("argv")
+                    if argv is None:
+                        argv = item.get("command") or item.get("value")
+                    nested_policy = item.get("policy")
+                    if nested_policy is None:
+                        policy = {}
+                    elif isinstance(nested_policy, Mapping):
+                        policy = dict(nested_policy)
+                    else:
+                        raise TaskSourceIntegrityError(
+                            "task validation policy must be a mapping"
+                        )
+                    policy.update(
+                        {
+                            key: value
+                            for key, value in item.items()
+                            if key
+                            not in {
+                                "argv",
+                                "command",
+                                "value",
+                                "policy",
+                                "ordinal",
+                            }
+                        }
+                    )
+                    default_representation = (
+                        VALIDATION_SHELL_TEXT_REPRESENTATION
+                        if isinstance(argv, str)
+                        else VALIDATION_ARGV_REPRESENTATION
+                    )
                 else:
                     argv = decoded if isinstance(decoded, list) else [decoded]
-                    policy = {}
+                    policy = {
+                        VALIDATION_REPRESENTATION_POLICY_KEY: (
+                            VALIDATION_ARGV_REPRESENTATION
+                            if isinstance(decoded, list)
+                            and not (
+                                len(decoded) == 1 and decoded[0] == text
+                            )
+                            else VALIDATION_SHELL_TEXT_REPRESENTATION
+                        )
+                    }
+                    default_representation = str(
+                        policy[VALIDATION_REPRESENTATION_POLICY_KEY]
+                    )
+            if isinstance(argv, str):
+                normalized_argv = [argv]
+            elif isinstance(argv, Sequence) and not isinstance(
+                argv, (str, bytes, bytearray, memoryview)
+            ):
+                normalized_argv = [str(part) for part in argv]
+            else:
+                raise TaskSourceIntegrityError(
+                    "task validation must provide command text or argv"
+                )
+            representation = str(
+                policy.get(VALIDATION_REPRESENTATION_POLICY_KEY)
+                or default_representation
+            ).strip()
+            if representation not in _VALIDATION_REPRESENTATIONS:
+                raise TaskSourceIntegrityError(
+                    "task validation representation must be shell_text or argv"
+                )
+            if (
+                representation == VALIDATION_SHELL_TEXT_REPRESENTATION
+                and len(normalized_argv) != 1
+            ):
+                raise TaskSourceIntegrityError(
+                    "shell_text task validation must contain exactly one command"
+                )
+            if not normalized_argv or any(not part.strip() for part in normalized_argv):
+                raise TaskSourceIntegrityError(
+                    "task validation command or argv entries must not be empty"
+                )
+            policy[VALIDATION_REPRESENTATION_POLICY_KEY] = representation
             validations.append(
                 (
                     cid,
                     ordinal,
-                    _canonical(argv, noun="validation argv"),
+                    _canonical(normalized_argv, noun="validation argv"),
                     _canonical(policy, noun="validation policy"),
                 )
             )

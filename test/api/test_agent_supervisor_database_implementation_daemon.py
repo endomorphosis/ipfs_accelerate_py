@@ -19,6 +19,7 @@ from typing import Callable
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
+    open_database_coordinator,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -30,11 +31,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+    TaskSourceUnknownOutcomeError as DatabaseTaskSourceUnknownOutcomeError,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA,
+    DATABASE_RETRY_BUDGET_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
@@ -42,6 +49,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -93,12 +103,18 @@ def _open_daemon(
     effect_calls: list[str] | None = None,
     markdown_path: Path | None = None,
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
+    effect_fn: Callable[[DatabaseTaskAttempt, object], dict[str, object]] | None = None,
+    validation_fn: Callable[
+        [DatabaseTaskAttempt, object], dict[str, object]
+    ]
+    | None = None,
     lease_ms: int = 60_000,
     clock_ms: Callable[[], int] | None = None,
     task_shard_count: int = 1,
     task_shard_index: int = 0,
     strict_task_sharding: bool = False,
     task_prefix: str = "",
+    max_task_attempts: int = 0,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -136,12 +152,14 @@ def _open_daemon(
         queue_path=None,
         lease_ms=lease_ms,
         provider_fn=provider_fn or default_provider,
-        effect_fn=effect,
+        effect_fn=effect_fn or effect,
+        validation_fn=validation_fn,
         clock_ms=clock_ms,
         task_shard_count=task_shard_count,
         task_shard_index=task_shard_index,
         strict_task_sharding=strict_task_sharding,
         task_prefix=task_prefix,
+        max_task_attempts=max_task_attempts,
     )
 
 
@@ -198,9 +216,1063 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
     try:
         assert idle.claim_next() is None
         assert idle.markdown_status_write_count == 0
-        assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
+    assert markdown.read_text(encoding="utf-8") == original_markdown
+
+
+def test_retry_budget_caps_provider_across_fresh_database_portal_epochs(
+    tmp_path: Path,
+) -> None:
+    provider_attempts: list[str] = []
+
+    def failing_portal_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:bounded-portals",
+        provider_fn=failing_portal_provider,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        first = daemon.run_once()
+        assert first["implementation_result"]["status"] == "failed"
+        assert first["implementation_result"]["retry_exhausted"] is False
+        first_task = daemon.task_source.get("task:cid:001")
+        assert first_task is not None
+        assert first_task.status == "retrying"
+        assert first_task.body["completion_receipt"]["schema"] == (
+            DATABASE_RETRY_BUDGET_SCHEMA
+        )
+        assert first_task.body["completion_receipt"]["attempts_used"] == 1
+
+        second = daemon.run_once()
+        assert second["attempt_id"] != first["attempt_id"]
+        assert second["implementation_result"]["status"] == "retry_exhausted"
+        assert second["implementation_result"]["retry_exhausted"] is True
+        second_task = daemon.task_source.get("task:cid:001")
+        assert second_task is not None
+        assert second_task.status == "blocked"
+        assert second_task.body["completion_receipt"]["attempts_used"] == 2
+
+        backpressure = daemon.run_once()
+        assert backpressure["implementation_result"] is None
+        assert backpressure["selection_idle_reason"] == (
+            "all_selectable_ready_tasks_reached_max_task_attempts"
+        )
+        assert backpressure["retry_exhausted_task_cids"] == ["task:cid:001"]
+        assert backpressure["retry_budget_backpressure"]["schema"] == (
+            DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA
+        )
+        assert backpressure["retry_budget_backpressure"]["tasks"][0][
+            "attempts_used"
+        ] == 2
+
+        # Each failed database claim gets a fresh private Portal directory in
+        # production.  The canonical database receipt, not that disposable
+        # directory, owns the total provider budget.
+        assert len(provider_attempts) == 2
+        assert len(set(provider_attempts)) == 2
+    finally:
+        daemon.close()
+
+
+def test_validation_spec_repair_opens_one_fresh_bounded_retry_epoch(
+    tmp_path: Path,
+) -> None:
+    provider_attempts: list[str] = []
+
+    def failing_portal_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-repair",
+        provider_fn=failing_portal_provider,
+        max_task_attempts=1,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        exhausted = daemon.run_once()
+        assert exhausted["implementation_result"]["retry_exhausted"] is True
+        assert len(provider_attempts) == 1
+
+        repaired = _population(1)
+        repaired_task = repaired["tasks"][0]
+        assert isinstance(repaired_task, dict)
+        repaired_task["status"] = "retrying"
+        repaired_task["validation_commands"] = [
+            {"argv": ["python", "-m", "pytest", "fixed_validation.py"]}
+        ]
+        daemon.materialize_population(repaired)
+
+        retried = daemon.run_once()
+        assert retried["implementation_result"]["retry_exhausted"] is True
+        assert len(provider_attempts) == 2
+        assert provider_attempts[0] != provider_attempts[1]
+    finally:
+        daemon.close()
+
+
+def test_retry_budget_is_global_across_lane_local_coordination_stores(
+    tmp_path: Path,
+) -> None:
+    provider_attempts: list[tuple[str, str]] = []
+
+    def failing_portal_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append((attempt.owner_session_id, attempt.attempt_id))
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    seed = _open_daemon(tmp_path / "seed", session="session:seed")
+    lane_coordinators = []
+    lanes: list[DatabaseImplementationDaemon] = []
+    try:
+        seed.materialize_population(_population(1))
+        for lane_index in range(2):
+            lane_root = tmp_path / f"lane-{lane_index}"
+            coordinator = open_database_coordinator(
+                lane_root / "coordination.duckdb"
+            )
+            lane_coordinators.append(coordinator)
+            lane = DatabaseImplementationDaemon(
+                database_path=seed.database_path,
+                coordination_path=lane_root / "coordination.duckdb",
+                execution_path=lane_root / "execution.duckdb",
+                owner_session_id=f"session:lane-{lane_index}",
+                authority_mode="embedded",
+                task_source_kind="duckdb",
+                task_source=seed.task_source,
+                coordinator=coordinator,
+                provider_fn=failing_portal_provider,
+                max_task_attempts=2,
+            )
+            lanes.append(lane)
+
+        first = lanes[0].run_once()
+        assert first["implementation_result"]["retry_exhausted"] is False
+        second = lanes[1].run_once()
+        assert second["implementation_result"]["retry_exhausted"] is True
+
+        for lane in lanes:
+            idle = lane.run_once()
+            assert idle["implementation_result"] is None
+            assert idle["selection_idle_reason"] == (
+                "all_selectable_ready_tasks_reached_max_task_attempts"
+            )
+        assert [owner for owner, _attempt_id in provider_attempts] == [
+            "session:lane-0",
+            "session:lane-1",
+        ]
+        assert len({attempt_id for _owner, attempt_id in provider_attempts}) == 2
+    finally:
+        for lane in lanes:
+            lane.close()
+        for coordinator in lane_coordinators:
+            coordinator.close()
+        seed.close()
+
+
+@pytest.mark.parametrize("replacement_cap", [0, 1, 3])
+def test_persisted_retry_policy_rejects_lane_cap_mismatch(
+    tmp_path: Path,
+    replacement_cap: int,
+) -> None:
+    first_calls: list[str] = []
+
+    def fail_first(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        first_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:policy-origin",
+        provider_fn=fail_first,
+        max_task_attempts=2,
+    )
+    try:
+        first.materialize_population(_population(1))
+        result = first.run_once()
+        assert result["implementation_result"]["retry_exhausted"] is False
+        persisted = first.task_source.get("task:cid:001")
+        assert persisted is not None
+        assert persisted.body["completion_receipt"]["max_task_attempts"] == 2
+    finally:
+        first.close()
+
+    replacement_calls: list[str] = []
+    replacement = _open_daemon(
+        tmp_path,
+        session=f"session:policy-mismatch:{replacement_cap}",
+        provider_calls=replacement_calls,
+        max_task_attempts=replacement_cap,
+    )
+    try:
+        claims_before = replacement.coordinator.coordination_registry_projection()[
+            "task_claim_state_counts"
+        ]
+        blocked = replacement.run_once()
+        assert blocked["implementation_result"] is None
+        assert blocked["selection_idle_reason"] == (
+            "all_selectable_ready_tasks_reached_max_task_attempts"
+        )
+        entry = blocked["retry_budget_backpressure"]["tasks"][0]
+        assert entry["policy_mismatch"] is True
+        assert entry["max_task_attempts"] == 2
+        assert entry["configured_max_task_attempts"] == replacement_cap
+        assert replacement_calls == []
+        assert len(first_calls) == 1
+        projection = replacement.coordinator.coordination_registry_projection()
+        assert projection["counts"]["active_task_claims"] == 0
+        assert projection["task_claim_state_counts"] == claims_before
+        repeated = replacement.run_once()
+        assert repeated["unchanged"] is True
+        assert repeated["write_count"] == 0
+        assert (
+            replacement.coordinator.coordination_registry_projection()[
+                "task_claim_state_counts"
+            ]
+            == claims_before
+        )
+    finally:
+        replacement.close()
+
+
+def test_canonical_cross_lane_claim_cas_loss_is_benign_and_never_dispatches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_attempts: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:cas-loser",
+        provider_calls=provider_attempts,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        def lose_canonical_cas(*_args: object, **_kwargs: object) -> object:
+            raise DatabaseTaskSourceConflictError("simulated other-lane winner")
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lose_canonical_cas,
+        )
+        assert daemon.claim_next() is None
+        assert provider_attempts == []
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert projection["counts"]["active_task_claims"] == 0
+        assert projection["task_claim_state_counts"] == [
+            {"state": "released", "count": 1}
+        ]
+        assert daemon.list_running_attempts() == []
+    finally:
+        daemon.close()
+
+
+def test_identical_materializer_replay_cannot_rearm_exhausted_budget(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def fail(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:materializer-replay",
+        provider_fn=fail,
+        max_task_attempts=1,
+    )
+    population = _population(1)
+    try:
+        daemon.materialize_population(population)
+        daemon.run_once()
+        assert len(calls) == 1
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "blocked"
+        assert task.body["completion_receipt"]["attempts_used"] == 1
+        idle = daemon.run_once()
+        assert idle["implementation_result"] is None
+        assert len(calls) == 1
+    finally:
+        daemon.close()
+
+
+def test_identical_materializer_replay_preserves_live_claim_revision(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:live-materializer-replay",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    population = _population(1)
+    try:
+        daemon.materialize_population(population)
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        before = daemon.task_source.get(attempt.task_cid)
+        assert before is not None and before.status == "in_progress"
+        before_receipt = dict(before.body["completion_receipt"])
+
+        daemon.materialize_population(population)
+
+        after = daemon.task_source.get(attempt.task_cid)
+        assert after is not None and after.status == "in_progress"
+        assert after.revision == before.revision
+        assert after.body["completion_receipt"] == before_receipt
+        result = daemon.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert provider_calls == [attempt.task_cid]
+    finally:
+        daemon.close()
+
+
+def test_materializer_revision_cas_cannot_overwrite_concurrent_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:materializer-claim-race",
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original_upsert = daemon.task_source._intent.upsert_task
+        injected: dict[str, DatabaseTaskAttempt] = {}
+
+        def claim_before_stale_upsert(**kwargs: object) -> object:
+            if kwargs.get("task_cid") == "task:cid:001" and not injected:
+                attempt = daemon.claim_next()
+                assert attempt is not None
+                injected["attempt"] = attempt
+            return original_upsert(**kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source._intent,
+            "upsert_task",
+            claim_before_stale_upsert,
+        )
+        changed = _population(1)
+        changed_task = changed["tasks"][0]
+        assert isinstance(changed_task, dict)
+        changed_task["title"] = "Changed during claim race"
+
+        with pytest.raises(DatabaseTaskSourceConflictError):
+            daemon.materialize_population(changed)
+
+        attempt = injected["attempt"]
+        current = daemon.task_source.get(attempt.task_cid)
+        assert current is not None and current.status == "in_progress"
+        assert current.body["completion_receipt"]["attempt_id"] == attempt.attempt_id
+        assert current.body["completion_receipt"]["attempts_used"] == 1
+    finally:
+        daemon.close()
+
+
+def test_identical_singular_validation_replay_preserves_exhausted_budget(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def fail(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:singular-validation-replay",
+        provider_fn=fail,
+        max_task_attempts=1,
+    )
+    population = _population(1)
+    population_task = population["tasks"][0]
+    assert isinstance(population_task, dict)
+    population_task["validation"] = "python -m pytest singular_validation.py"
+    try:
+        daemon.materialize_population(population)
+        exhausted = daemon.run_once()
+        assert exhausted["implementation_result"]["retry_exhausted"] is True
+        before = daemon.task_source.get("task:cid:001")
+        assert before is not None and before.status == "blocked"
+        before_receipt = dict(before.body["completion_receipt"])
+
+        daemon.materialize_population(population)
+
+        after = daemon.task_source.get("task:cid:001")
+        assert after is not None and after.status == "blocked"
+        assert after.body["completion_receipt"] == before_receipt
+        idle = daemon.run_once()
+        assert idle["implementation_result"] is None
+        assert calls == [before_receipt["attempt_id"]]
+    finally:
+        daemon.close()
+
+
+def test_unexpected_provider_exception_never_replays_same_attempt(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    def explode(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        calls.append(attempt.attempt_id)
+        raise RuntimeError("provider exploded")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:provider-exception",
+        provider_fn=explode,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        second = daemon.run_once()
+        idle = daemon.run_once()
+        assert first["implementation_result"]["retry_exhausted"] is False
+        assert second["implementation_result"]["retry_exhausted"] is True
+        assert idle["implementation_result"] is None
+        assert len(calls) == 2
+        assert len(set(calls)) == 2
+    finally:
+        daemon.close()
+
+
+def test_effect_exception_is_unknown_and_blocks_without_replay(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+
+    def effect(attempt: DatabaseTaskAttempt, _result: object) -> dict[str, object]:
+        effect_calls.append(attempt.attempt_id)
+        raise RuntimeError("effect outcome unknown")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:effect-exception",
+        provider_calls=provider_calls,
+        effect_fn=effect,
+        max_task_attempts=3,
+    )
+
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        assert failed["implementation_result"]["retry_exhausted"] is True
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["forced_block"] is True
+        daemon.run_once()
+        assert len(provider_calls) == 1
+        assert len(effect_calls) == 1
+    finally:
+        daemon.close()
+
+
+def test_post_effect_dispatch_journal_failure_blocks_without_reapplying(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    effect_calls: list[str] = []
+
+    def effect(attempt: DatabaseTaskAttempt, _result: object) -> dict[str, object]:
+        effect_calls.append(attempt.attempt_id)
+        return {"status": "applied", "effect_key": "external:one"}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:effect-post-return",
+        effect_fn=effect,
+        max_task_attempts=3,
+    )
+
+    original_record = daemon._record_callback_dispatch_outcome
+
+    def fail_after_effect(*args: object, **kwargs: object) -> None:
+        if kwargs.get("dispatch_kind") == "effect" and kwargs.get("outcome") == "returned":
+            raise RuntimeError("lost effect return journal")
+        original_record(*args, **kwargs)
+
+    monkeypatch.setattr(daemon, "_record_callback_dispatch_outcome", fail_after_effect)
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        assert failed["implementation_result"]["retry_exhausted"] is True
+        monkeypatch.setattr(
+            daemon, "_record_callback_dispatch_outcome", original_record
+        )
+        daemon.run_once()
+        assert len(effect_calls) == 1
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("dispatch_kind", ["provider", "effect"])
+@pytest.mark.parametrize("failure_site", ["phase_event", "committed_journal"])
+def test_post_phase_callback_bookkeeping_failure_resumes_exact_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dispatch_kind: str,
+    failure_site: str,
+) -> None:
+    provider_attempts: list[str] = []
+    effect_attempts: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_attempts.append(attempt.attempt_id)
+        return {"status": "ok", "attempt_id": attempt.attempt_id}
+
+    def effect(
+        attempt: DatabaseTaskAttempt,
+        _provider_result: object,
+    ) -> dict[str, object]:
+        effect_attempts.append(attempt.attempt_id)
+        return {
+            "status": "applied",
+            "effect_key": "external:post-phase",
+            "attempt_id": attempt.attempt_id,
+        }
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:post-phase:{dispatch_kind}:{failure_site}",
+        provider_fn=provider,
+        effect_fn=effect,
+        max_task_attempts=2,
+    )
+    injected = {"done": False}
+    if failure_site == "phase_event":
+        original_event = daemon._record_event
+        target_phase = (
+            ATTEMPT_PHASE_PROVIDER
+            if dispatch_kind == "provider"
+            else ATTEMPT_PHASE_EFFECT
+        )
+
+        def fail_committed_phase_event(
+            event_type: str,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            body = kwargs.get("body")
+            if (
+                not injected["done"]
+                and event_type == "attempt_phase_committed"
+                and isinstance(body, dict)
+                and body.get("phase") == target_phase
+            ):
+                injected["done"] = True
+                raise RuntimeError("lost committed phase event response")
+            original_event(event_type, *args, **kwargs)
+
+        monkeypatch.setattr(daemon, "_record_event", fail_committed_phase_event)
+    else:
+        original_dispatch = daemon._record_callback_dispatch_outcome
+
+        def fail_committed_dispatch_journal(
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            if (
+                not injected["done"]
+                and kwargs.get("dispatch_kind") == dispatch_kind
+                and kwargs.get("outcome") == "committed"
+            ):
+                injected["done"] = True
+                raise RuntimeError("lost committed dispatch journal response")
+            original_dispatch(*args, **kwargs)
+
+        monkeypatch.setattr(
+            daemon,
+            "_record_callback_dispatch_outcome",
+            fail_committed_dispatch_journal,
+        )
+
+    try:
+        daemon.materialize_population(_population(1))
+        pending = daemon.run_once()
+        pending_result = pending["implementation_result"]
+        assert pending_result["status"] == (
+            "callback_commit_reconciliation_pending"
+        )
+        assert pending_result["dispatch_kind"] == dispatch_kind
+        assert pending_result["retry_budget_consumed"] is False
+        attempt_id = pending_result["attempt_id"]
+        attempt = daemon.get_attempt(attempt_id)
+        assert attempt is not None and attempt.status == "running"
+        assert attempt.phase_committed(
+            ATTEMPT_PHASE_PROVIDER
+            if dispatch_kind == "provider"
+            else ATTEMPT_PHASE_EFFECT
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert task.body["completion_receipt"]["attempts_used"] == 1
+
+        recovered = daemon.run_once()
+        recovered_result = recovered["implementation_result"]
+        assert recovered_result["status"] == "succeeded"
+        assert recovered_result["attempt"]["attempt_id"] == attempt_id
+        assert provider_attempts == [attempt_id]
+        assert effect_attempts == [attempt_id]
+        assert injected["done"] is True
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("max_attempts", "expected_status"),
+    [(2, "retrying"), (1, "blocked")],
+)
+def test_missing_claim_history_rearms_or_blocks_canonical_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    max_attempts: int,
+    expected_status: str,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:missing-claim:{max_attempts}",
+        max_task_attempts=max_attempts,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        monkeypatch.setattr(daemon.coordinator, "get_task_claim", lambda _claim: None)
+        outcomes = daemon.reconcile_expired_running_attempts()
+        assert outcomes[0]["authority_outcome"] == "unknown"
+        assert outcomes[0]["status"] == expected_status
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == expected_status
+        assert daemon.get_attempt(attempt.attempt_id).status == "failed"
+    finally:
+        daemon.close()
+
+
+def test_failure_status_cas_outage_recovers_without_provider_redispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def fail(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError("declared_validation_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:failure-cas",
+        provider_fn=fail,
+        max_task_attempts=2,
+    )
+    original_cas = daemon._cas_task_status_database
+    injected = {"done": False}
+
+    def fail_retry_cas(*args: object, **kwargs: object) -> object:
+        if kwargs.get("new_status") in {"retrying", "blocked"} and not injected["done"]:
+            injected["done"] = True
+            raise RuntimeError("injected retry CAS outage")
+        return original_cas(*args, **kwargs)
+
+    monkeypatch.setattr(daemon, "_cas_task_status_database", fail_retry_cas)
+    try:
+        daemon.materialize_population(_population(1))
+        pending = daemon.run_once()
+        assert pending["implementation_result"]["status"] == (
+            "failure_reconciliation_pending"
+        )
+        assert len(calls) == 1
+        recovered = daemon.run_once()
+        assert recovered["implementation_result"]["status"] == "failed"
+        assert len(calls) == 1
+    finally:
+        daemon.close()
+
+
+def test_claim_insert_failure_is_compensated_before_any_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-insert",
+        provider_calls=calls,
+        max_task_attempts=2,
+    )
+    original_insert = daemon._insert_attempt_from_claim
+    monkeypatch.setattr(
+        daemon,
+        "_insert_attempt_from_claim",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("insert outage")),
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        assert result["implementation_result"] is None
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None and task.status == "retrying"
+        assert calls == []
+        monkeypatch.setattr(daemon, "_insert_attempt_from_claim", original_insert)
+        daemon.run_once()
+        assert calls == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_claim_insert_and_compensation_cas_failure_recovers_next_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-insert-compensation",
+        provider_calls=calls,
+        max_task_attempts=2,
+    )
+    original_insert = daemon._insert_attempt_from_claim
+    original_cas = daemon._cas_task_status_database
+    injected = {"insert": False, "compensation": False}
+
+    def fail_first_insert(*args: object, **kwargs: object) -> object:
+        if not injected["insert"]:
+            injected["insert"] = True
+            raise RuntimeError("insert outage")
+        return original_insert(*args, **kwargs)
+
+    def fail_first_compensation(*args: object, **kwargs: object) -> object:
+        if (
+            kwargs.get("new_status") in {"retrying", "blocked"}
+            and not injected["compensation"]
+        ):
+            injected["compensation"] = True
+            raise RuntimeError("compensation CAS outage")
+        return original_cas(*args, **kwargs)
+
+    monkeypatch.setattr(daemon, "_insert_attempt_from_claim", fail_first_insert)
+    monkeypatch.setattr(daemon, "_cas_task_status_database", fail_first_compensation)
+    try:
+        daemon.materialize_population(_population(1))
+        pending = daemon.run_once()
+        assert pending["implementation_result"] is None
+        stranded = daemon.task_source.get("task:cid:001")
+        assert stranded is not None and stranded.status == "in_progress"
+        assert daemon.list_running_attempts() == []
+        assert calls == []
+
+        # The next pass consumes the durable database_claim marker, restores
+        # retryable state, releases the old claim, and opens one fresh attempt.
+        recovered = daemon.run_once()
+        assert recovered["implementation_result"]["status"] == "succeeded"
+        assert calls == ["task:cid:001"]
+        assert recovered["write_count"] >= 2
+    finally:
+        daemon.close()
+
+
+def test_nonpassing_validation_consumes_only_global_retry_budget(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    def reject(attempt: DatabaseTaskAttempt, _effect: object) -> dict[str, object]:
+        validation_calls.append(attempt.attempt_id)
+        return {"outcome": "failed", "evidence_digest": "sha256:rejected"}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:validation-nonpass",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        validation_fn=reject,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        second = daemon.run_once()
+        idle = daemon.run_once()
+        assert first["implementation_result"]["retry_exhausted"] is False
+        assert second["implementation_result"]["retry_exhausted"] is True
+        assert idle["implementation_result"] is None
+        assert len(provider_calls) == len(effect_calls) == len(validation_calls) == 2
+        assert len(set(validation_calls)) == 2
+    finally:
+        daemon.close()
+
+
+def test_malformed_retry_receipt_fails_closed_without_dispatch(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:malformed-retry",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    try:
+        population = _population(1)
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        malformed = _population(1)
+        malformed_task = malformed["tasks"][0]
+        assert isinstance(malformed_task, dict)
+        malformed_task["completion_receipt"] = {
+            "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+            "task_cid": task.task_cid,
+            "validation_spec_cid": daemon._retry_budget_validation_spec_cid(task),
+            "attempts_used": "not-an-integer",
+        }
+        daemon.materialize_population(malformed)
+
+        blocked = daemon.run_once()
+        assert blocked["implementation_result"] is None
+        assert blocked["selection_idle_reason"] == (
+            "all_selectable_ready_tasks_reached_max_task_attempts"
+        )
+        entry = blocked["retry_budget_backpressure"]["tasks"][0]
+        assert entry["malformed"] is True
+        assert provider_calls == []
+    finally:
+        daemon.close()
+
+
+def test_orphan_recovery_preserves_malformed_retry_latch(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:malformed-orphan",
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.sync_ready_tasks_into_coordination()
+        claim = daemon.coordinator.claim_ready_task(
+            owner_session_id=daemon.owner_session_id,
+            lease_ms=daemon.lease_ms,
+            now_ms=daemon._now_ms(),
+        )
+        assert claim is not None
+        task = daemon.task_source.get(claim.task_cid)
+        assert task is not None
+        malformed_receipt = daemon._retry_budget_receipt(
+            task,
+            attempts_used=1,
+            operation="database_claim",
+            attempt=claim,
+        )
+        malformed_receipt["attempts_used"] = "not-an-integer"
+        daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=task.revision,
+            new_status="in_progress",
+            receipt=malformed_receipt,
+        )
+
+        outcomes = daemon.reconcile_orphaned_canonical_claims()
+        assert outcomes[0]["status"] == "blocked"
+        recovered = daemon.task_source.get(task.task_cid)
+        assert recovered is not None and recovered.status == "blocked"
+        assert recovered.body["completion_receipt"]["malformed"] is True
+        assert recovered.body["completion_receipt"]["retry_exhausted"] is True
+
+        idle = daemon.run_once()
+        assert idle["selection_idle_reason"] == (
+            "all_selectable_ready_tasks_reached_max_task_attempts"
+        )
+        entry = idle["retry_budget_backpressure"]["tasks"][0]
+        assert entry["task_cid"] == task.task_cid
+        assert entry["malformed"] is True
+    finally:
+        daemon.close()
+
+
+def test_retry_backpressure_distinguishes_some_from_all_selectable_tasks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:partial-backpressure",
+        task_prefix="DQP-T",
+        max_task_attempts=1,
+    )
+    try:
+        population = _population(2)
+        daemon.materialize_population(population)
+        first = daemon.task_source.get("task:cid:001")
+        assert first is not None
+        population_task = population["tasks"][0]
+        assert isinstance(population_task, dict)
+        population_task["completion_receipt"] = {
+            "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+            "task_cid": first.task_cid,
+            "validation_spec_cid": daemon._retry_budget_validation_spec_cid(first),
+            "attempts_used": 1,
+        }
+        daemon.materialize_population(population)
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == (
+            "some_selectable_tasks_reached_max_task_attempts"
+        )
+        backpressure = result["retry_budget_backpressure"]
+        assert backpressure["any_eligible_exhausted"] is True
+        assert backpressure["all_eligible_exhausted"] is False
+        assert backpressure["eligible_ready_task_cids"] == ["task:cid:002"]
+        assert result["retry_exhausted_task_cids"] == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_claim_cas_unknown_response_is_reconciled_without_release_or_duplicate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-unknown",
+        provider_calls=calls,
+        max_task_attempts=2,
+    )
+    original_cas = daemon._cas_task_status_database
+    injected = {"done": False}
+
+    def commit_then_unknown(*args: object, **kwargs: object) -> object:
+        result = original_cas(*args, **kwargs)
+        if kwargs.get("new_status") == "in_progress" and not injected["done"]:
+            injected["done"] = True
+            raise DatabaseTaskSourceUnknownOutcomeError("lost CAS response")
+        return result
+
+    monkeypatch.setattr(daemon, "_cas_task_status_database", commit_then_unknown)
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert calls == ["task:cid:001"]
+    finally:
+        daemon.close()
+
+
+def test_replacement_task_body_revokes_old_claim_before_provider(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:task-replacement",
+        provider_calls=calls,
+        max_task_attempts=2,
+    )
+    try:
+        original = _population(1)
+        daemon.materialize_population(original)
+        old = daemon.claim_next()
+        assert old is not None
+        replacement = _population(1)
+        replacement_task = replacement["tasks"][0]
+        assert isinstance(replacement_task, dict)
+        replacement_task["title"] = "Replacement task body"
+        replacement_task["validation_commands"] = ["python -m pytest replacement.py"]
+        daemon.materialize_population(replacement)
+        revoked = daemon.run_once()
+        assert revoked["implementation_result"]["callback_failure"] is True
+        assert calls == []
+        current = daemon.task_source.get(old.task_cid)
+        assert current is not None and current.status == "ready"
+        daemon.run_once()
+        assert calls == [old.task_cid]
+    finally:
+        daemon.close()
+
+
+def test_old_validation_epoch_failure_cannot_charge_replacement_claim(
+    tmp_path: Path,
+) -> None:
+    old_lane = _open_daemon(
+        tmp_path / "seed",
+        session="session:old-validation-epoch",
+        max_task_attempts=2,
+    )
+    new_coordinator = None
+    new_lane = None
+    try:
+        old_lane.materialize_population(_population(1))
+        old_attempt = old_lane.claim_next()
+        assert old_attempt is not None
+
+        replacement = _population(1)
+        replacement_task = replacement["tasks"][0]
+        assert isinstance(replacement_task, dict)
+        replacement_task["validation_commands"] = [
+            {"argv": ["python", "-m", "pytest", "replacement.py"]}
+        ]
+        old_lane.materialize_population(replacement)
+
+        lane_root = tmp_path / "replacement-lane"
+        new_coordinator = open_database_coordinator(
+            lane_root / "coordination.duckdb"
+        )
+        new_lane = DatabaseImplementationDaemon(
+            database_path=old_lane.database_path,
+            coordination_path=lane_root / "coordination.duckdb",
+            execution_path=lane_root / "execution.duckdb",
+            owner_session_id="session:new-validation-epoch",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_source=old_lane.task_source,
+            coordinator=new_coordinator,
+            max_task_attempts=2,
+        )
+        new_attempt = new_lane.claim_next()
+        assert new_attempt is not None
+        before = new_lane.task_source.get(new_attempt.task_cid)
+        assert before is not None and before.status == "in_progress"
+        new_receipt = dict(before.body["completion_receipt"])
+        assert new_receipt["attempt_id"] == new_attempt.attempt_id
+        assert new_receipt["attempts_used"] == 1
+
+        _failed, stale_receipt = old_lane._finalize_failed_attempt(
+            old_attempt,
+            reason="old validation callback failed after replacement",
+        )
+        assert stale_receipt["operation"] == (
+            "database_superseded_attempt_revoked"
+        )
+        after = new_lane.task_source.get(new_attempt.task_cid)
+        assert after is not None and after.status == "in_progress"
+        assert after.body["completion_receipt"] == new_receipt
+        assert old_lane.get_attempt(old_attempt.attempt_id).status == "failed"
+    finally:
+        if new_lane is not None:
+            new_lane.close()
+        if new_coordinator is not None:
+            new_coordinator.close()
+        old_lane.close()
 
 
 def test_strict_shards_claim_only_home_lane_tasks(tmp_path: Path) -> None:
@@ -998,6 +2070,96 @@ def test_promoted_completion_replays_after_local_phase_response_loss(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "failure_window",
+    ["promotion_response_loss", "local_complete_outage"],
+)
+def test_run_once_preserves_promoted_completion_for_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_window: str,
+) -> None:
+    """The non-crashing wrapper must not turn durable success into FAILED."""
+
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:wrapper-{failure_window}",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        if failure_window == "promotion_response_loss":
+            original_complete_claim = daemon.coordinator.complete_task_claim
+
+            def lose_promotion_response(
+                *args: object,
+                **kwargs: object,
+            ) -> object:
+                original_complete_claim(*args, **kwargs)
+                raise RuntimeError("simulated promotion response loss")
+
+            monkeypatch.setattr(
+                daemon.coordinator,
+                "complete_task_claim",
+                lose_promotion_response,
+            )
+        else:
+            original_commit_phase = daemon.commit_phase
+
+            def lose_local_complete(
+                current: DatabaseTaskAttempt | str,
+                phase: str,
+                **kwargs: object,
+            ) -> DatabaseTaskAttempt:
+                if phase == ATTEMPT_PHASE_COMPLETE:
+                    raise RuntimeError("simulated local COMPLETE outage")
+                return original_commit_phase(current, phase, **kwargs)
+
+            monkeypatch.setattr(daemon, "commit_phase", lose_local_complete)
+
+        first = daemon.run_once()
+        pending = first["implementation_result"]
+        assert pending["status"] == "completion_reconciliation_pending"
+        assert pending["retry_budget_consumed"] is False
+        attempt_id = str(first["attempt_id"])
+        claim_id = str(first["claim_id"])
+        stored = daemon.get_attempt(attempt_id)
+        assert stored is not None
+        assert stored.status == "running"
+        assert stored.committed_phase == "validation"
+        promoted = daemon.coordinator.get_prepared_task_completion(
+            stored.task_cid
+        )
+        assert promoted is not None
+        assert promoted["status"] == "succeeded"
+
+        if failure_window == "promotion_response_loss":
+            monkeypatch.setattr(
+                daemon.coordinator,
+                "complete_task_claim",
+                original_complete_claim,
+            )
+        else:
+            monkeypatch.setattr(daemon, "commit_phase", original_commit_phase)
+
+        second = daemon.run_once()
+        assert len(second["completion_reconciliations"]) == 1
+        repaired = daemon.get_attempt(attempt_id)
+        assert repaired is not None
+        assert repaired.status == "succeeded"
+        assert repaired.committed_phase == ATTEMPT_PHASE_COMPLETE
+        settled = daemon.coordinator.get_task_claim(claim_id)
+        assert settled is not None
+        assert settled.state.value in {"completed", "released"}
+        assert provider_calls == [stored.task_cid]
+        assert effect_calls == [stored.task_cid]
+    finally:
+        daemon.close()
+
+
 def test_expired_preparation_without_control_cas_is_aborted_and_requeued(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1349,6 +2511,8 @@ def test_runner_builds_database_daemon_without_json_projections(
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--max-task-attempts",
+            "3",
             "--once",
         ]
     )
@@ -1360,6 +2524,7 @@ def test_runner_builds_database_daemon_without_json_projections(
         assert isinstance(daemon, DatabaseImplementationDaemon)
         assert daemon.state_path is None
         assert daemon.events_path is None
+        assert daemon.max_task_attempts == 3
         assert daemon.projections_required() is False
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
@@ -1387,6 +2552,8 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
             "dqp",
             "--task-prefix",
             "DQP-",
+            "--max-task-attempts",
+            "3",
             "--once",
         ]
     )
@@ -1396,6 +2563,7 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
     )
     try:
         assert isinstance(daemon, DatabaseImplementationDaemon)
+        assert daemon.max_task_attempts == 3
         assert context.state_path.name.startswith("dqp_")
         daemon.materialize_population(_population(2))
         first = daemon.claim_next()

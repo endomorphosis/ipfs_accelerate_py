@@ -234,6 +234,7 @@ from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
+    parse_validation_declaration,
     rewrite_shell_makefile_ignore_check,
     rewrite_validation_command,
     split_validation_commands,
@@ -19537,6 +19538,20 @@ class PortalImplementationDaemon:
                 "provider_dispatched": False,
             }
             self._record_event("implementation_skipped", result)
+            return result
+        validation_configuration_failure = (
+            self._validation_configuration_failure(task)
+        )
+        if validation_configuration_failure is not None:
+            result = {
+                **validation_configuration_failure,
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+            }
+            self._record_event(
+                "implementation_validation_configuration_failed",
+                result,
+            )
             return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
@@ -44811,6 +44826,62 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _validation_configuration_failure(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any] | None:
+        """Return a fail-closed result for non-executable declarations.
+
+        Validation text is control-plane input, not a repair prompt.  Reject
+        prose, unresolved named declarations, and explicit manual-review
+        declarations before an implementation provider or validation-rescue
+        provider can be dispatched.
+        """
+
+        unresolved: list[dict[str, str]] = []
+        for raw_command in task.validation:
+            normalized, _notes = self._normalize_validation_command(
+                rewrite_validation_command(str(raw_command))
+            )
+            try:
+                declaration = parse_validation_declaration(normalized)
+            except (TypeError, ValueError) as exc:
+                unresolved.append(
+                    {
+                        "declaration": normalize_validation_command_text(
+                            str(raw_command)
+                        )[:2000],
+                        "kind": "invalid",
+                        "reason": "invalid_validation_declaration",
+                        "detail": str(exc)[:1000],
+                    }
+                )
+                continue
+            if declaration.command is None:
+                unresolved.append(
+                    {
+                        "declaration": declaration.declaration[:2000],
+                        "kind": declaration.kind.value,
+                        "reason": declaration.reason,
+                    }
+                )
+        if not unresolved:
+            return None
+        return {
+            "attempted": False,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "results": [],
+            "error": "validation_configuration_failed",
+            "reason": "unresolved_validation_declaration",
+            "configuration_error": "unresolved_validation_declaration",
+            "unresolved_validation_declarations": unresolved,
+            "provider_call_allowed": False,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "auto_rescue_allowed": False,
+        }
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -44821,6 +44892,9 @@ class PortalImplementationDaemon:
         proposal_validation: Any = None,
         force_uncached: bool = False,
     ) -> dict[str, Any]:
+        configuration_failure = self._validation_configuration_failure(task)
+        if configuration_failure is not None:
+            return configuration_failure
         authority_context_id = ""
         authority_revalidation_required = False
         if self.manual_completion_authority_task_ids:
@@ -60291,7 +60365,15 @@ class PortalImplementationDaemon:
                     f"{provider!r} requires the Grok Build CLI (`grok`) with "
                     "login/auth (or XAI_API_KEY)"
                 )
-            return _grok_cli_command(workspace_path=workspace_path)
+            # An explicit Grok provider role is an implementation pin.  It
+            # must not inherit the generic helper's quota-routed Codex
+            # fallback: doing so would let an installed Codex binary implement
+            # work whose task contract reserves completion/review authority
+            # elsewhere.  Automatic routes opt into fallback explicitly.
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                enable_codex_fallback=False,
+            )
         if (
             prefer_grok
             and grok_ready
@@ -65843,7 +65925,7 @@ class PortalImplementationDaemon:
                 lines.append(f"exception_type={exception_type}")
         return "\n".join(lines)
 
-
+    @staticmethod
     def _validation_command_declares_pythonpath(command: str) -> bool:
         """Return whether reviewed command text supplies its own PYTHONPATH."""
 
@@ -65865,7 +65947,7 @@ class PortalImplementationDaemon:
             # Do not turn normalization into a separate failure surface.
             return False
 
-
+    @staticmethod
     def _validation_command_uses_python(command: str) -> bool:
         """Return whether command text invokes a Python-family entry point."""
 
@@ -67294,6 +67376,12 @@ DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
+DATABASE_RETRY_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1"
+)
+DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-retry-budget-backpressure@1"
+)
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -67384,6 +67472,22 @@ CREATE TABLE IF NOT EXISTS effect_claims (
     UNIQUE (attempt_id, idempotency_key)
 );
 
+CREATE TABLE IF NOT EXISTS attempt_dispatch_journal (
+    dispatch_id VARCHAR PRIMARY KEY,
+    attempt_id VARCHAR NOT NULL,
+    task_cid VARCHAR NOT NULL,
+    dispatch_kind VARCHAR NOT NULL,
+    idempotency_key VARCHAR NOT NULL,
+    owner_session_id VARCHAR NOT NULL,
+    fencing_token BIGINT NOT NULL,
+    fence_epoch BIGINT NOT NULL,
+    started_at_ms BIGINT NOT NULL,
+    updated_at_ms BIGINT NOT NULL,
+    outcome VARCHAR NOT NULL,
+    body_json VARCHAR NOT NULL DEFAULT '{}',
+    UNIQUE (attempt_id, dispatch_kind, idempotency_key)
+);
+
 CREATE TABLE IF NOT EXISTS daemon_execution_events (
     event_id VARCHAR PRIMARY KEY,
     attempt_id VARCHAR NOT NULL DEFAULT '',
@@ -67405,6 +67509,45 @@ class DatabaseImplementationAuthorityError(DatabaseImplementationDaemonError):
 
 class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
     """Raised when a claim or phase transition conflicts with durable state."""
+
+
+class DatabaseImplementationDispatchOutcomeUnknownError(
+    DatabaseImplementationAuthorityError
+):
+    """A callback crossed its dispatch boundary without admissible evidence."""
+
+
+class DatabaseImplementationProviderDispatchError(
+    DatabaseImplementationDispatchOutcomeUnknownError
+):
+    """Provider dispatch raised or its return was lost; never replay its attempt."""
+
+
+class DatabaseImplementationEffectDispatchError(
+    DatabaseImplementationDispatchOutcomeUnknownError
+):
+    """Effect dispatch may have mutated state; fail closed without replay."""
+
+
+class DatabaseImplementationCallbackCommitReconciliationPendingError(
+    DatabaseImplementationDaemonError
+):
+    """A callback result and phase committed before ancillary bookkeeping failed."""
+
+    def __init__(
+        self,
+        *,
+        dispatch_kind: str,
+        committed_phase: str,
+        idempotency_key: str,
+    ) -> None:
+        self.dispatch_kind = str(dispatch_kind)
+        self.committed_phase = str(committed_phase)
+        self.idempotency_key = str(idempotency_key)
+        super().__init__(
+            f"{self.dispatch_kind} result and phase committed; "
+            "post-commit bookkeeping requires reconciliation"
+        )
 
 
 def _database_daemon_json(value: Any) -> str:
@@ -67556,6 +67699,7 @@ class DatabaseImplementationDaemon:
         pid_path: Path | str | None = None,
         queue_path: Path | str | None = None,
         lease_ms: int = 7_200_000,
+        max_task_attempts: int = 0,
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
@@ -67666,6 +67810,7 @@ class DatabaseImplementationDaemon:
         self.pid_path = Path(pid_path).absolute() if pid_path else None
         self.queue_path = Path(queue_path).absolute() if queue_path else None
         self.lease_ms = int(lease_ms)
+        self.max_task_attempts = max(0, int(max_task_attempts))
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
@@ -68637,6 +68782,493 @@ class DatabaseImplementationDaemon:
             if self._automatic_claim_forbidden(task)
         }
 
+    @staticmethod
+    def _retry_budget_validation_spec_cid(task: Any) -> str:
+        """Bind retries to the exact validation contract, not a Portal epoch.
+
+        Task status CAS operations advance the task revision, so revision alone
+        cannot be the retry epoch.  A reviewed validation-spec repair changes
+        this identity and intentionally opens a fresh bounded budget while an
+        unchanged failing contract retains its consumed count across claims,
+        lane processes, and disposable Portal state directories.
+        """
+
+        from ..task_sources.database_task_source import (
+            database_retry_validation_spec_cid,
+        )
+
+        body = dict(getattr(task, "body", {}) or {})
+        raw: Any = getattr(task, "validations", ()) or ()
+        if not raw:
+            raw = (
+                body.get("validations")
+                or body.get("validation_commands")
+                or body.get("validation")
+                or ()
+            )
+        return database_retry_validation_spec_cid(
+            str(getattr(task, "task_cid", "") or ""),
+            raw,
+        )
+
+    def _retry_budget_state(self, task: Any) -> dict[str, Any]:
+        validation_spec_cid = self._retry_budget_validation_spec_cid(task)
+        body = dict(getattr(task, "body", {}) or {})
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            receipt = {}
+        is_retry_receipt = receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+        receipt_epoch = str(receipt.get("validation_spec_cid") or "")
+        same_epoch = is_retry_receipt and receipt_epoch == validation_spec_cid
+        # Recovery may replace an unreadable value with a bounded canonical
+        # integer, but the authority defect must remain latched until a trusted
+        # repair changes the validation epoch.
+        malformed = receipt.get("malformed") is True and same_epoch
+        policy_mismatch = False
+        persisted_max_task_attempts: int | None = None
+        try:
+            if is_retry_receipt and (
+                not receipt_epoch
+                or str(receipt.get("task_cid") or "")
+                != str(getattr(task, "task_cid", "") or "")
+                or isinstance(receipt.get("attempts_used"), bool)
+            ):
+                malformed = True
+            attempts_used = int(receipt.get("attempts_used")) if same_epoch else 0
+        except (TypeError, ValueError):
+            attempts_used = 0
+            if same_epoch:
+                malformed = True
+        if same_epoch:
+            raw_persisted_cap = receipt.get("max_task_attempts")
+            try:
+                if isinstance(raw_persisted_cap, bool):
+                    raise ValueError("boolean retry cap")
+                persisted_max_task_attempts = int(raw_persisted_cap)
+                if persisted_max_task_attempts < 0:
+                    raise ValueError("negative retry cap")
+            except (TypeError, ValueError):
+                malformed = True
+                persisted_max_task_attempts = None
+            if persisted_max_task_attempts is not None:
+                policy_mismatch = (
+                    persisted_max_task_attempts != self.max_task_attempts
+                )
+        if same_epoch and attempts_used < 0:
+            malformed = True
+        attempts_used = max(0, attempts_used)
+        effective_max_task_attempts = (
+            persisted_max_task_attempts
+            if persisted_max_task_attempts is not None
+            else self.max_task_attempts
+        )
+        return {
+            "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+            "validation_spec_cid": validation_spec_cid,
+            "attempts_used": attempts_used,
+            # Once the first claim persists the policy, that value is the
+            # authority for the whole validation epoch.  A restarted lane may
+            # not silently raise it or turn it off with a local configuration.
+            "max_task_attempts": effective_max_task_attempts,
+            "configured_max_task_attempts": self.max_task_attempts,
+            "policy_mismatch": policy_mismatch,
+            "malformed": malformed,
+            "retry_exhausted": bool(
+                malformed
+                or policy_mismatch
+                or (
+                    effective_max_task_attempts > 0
+                    and attempts_used >= effective_max_task_attempts
+                )
+            ),
+        }
+
+    def _retry_budget_receipt(
+        self,
+        task: Any,
+        *,
+        attempts_used: int,
+        operation: str,
+        attempt: Any | None = None,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        used = max(0, int(attempts_used))
+        budget_state = self._retry_budget_state(task)
+        retry_cap = int(budget_state["max_task_attempts"])
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+            "operation": str(operation),
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            "validation_spec_cid": self._retry_budget_validation_spec_cid(task),
+            "attempts_used": used,
+            "max_task_attempts": retry_cap,
+            "retry_exhausted": bool(
+                retry_cap > 0 and used >= retry_cap
+            ),
+        }
+        if attempt is not None:
+            receipt.update(
+                {
+                    "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+                    "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+                    "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+                    "owner_session_id": self.owner_session_id,
+                    "fencing_token": int(getattr(attempt, "fencing_token", 0) or 0),
+                    "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+                }
+            )
+        if reason:
+            receipt["reason"] = str(reason)[:256]
+        return receipt
+
+    def _finalize_failed_attempt(
+        self,
+        attempt: "DatabaseTaskAttempt",
+        *,
+        reason: str,
+        force_block: bool = False,
+        unknown_authority: bool = False,
+    ) -> tuple["DatabaseTaskAttempt", dict[str, Any]]:
+        """Close a failed attempt without a redispatch/crash window.
+
+        Canonical retry/blocked state is committed before the lane-local claim
+        is released and before the execution projection becomes terminal.  If
+        any later write fails, the still-running projection and dispatch
+        journal make the operation replayable without invoking callbacks.
+        """
+
+        current = self.get_attempt(attempt.attempt_id) or attempt
+        task = self.task_source.get(current.task_cid)
+        budget = dict(current.body.get("retry_budget") or {})
+        try:
+            attempts_used = max(
+                1,
+                int(
+                    budget.get("attempts_used")
+                    or (
+                        self._retry_budget_state(task)["attempts_used"]
+                        if task is not None
+                        else 0
+                    )
+                    or current.attempt_number
+                ),
+            )
+        except (TypeError, ValueError):
+            attempts_used = max(1, int(current.attempt_number))
+        try:
+            retry_cap = int(
+                budget.get("max_task_attempts", self.max_task_attempts)
+            )
+        except (TypeError, ValueError):
+            retry_cap = self.max_task_attempts
+        retry_exhausted = bool(
+            force_block
+            or (retry_cap > 0 and attempts_used >= retry_cap)
+        )
+        target_status = "blocked" if retry_exhausted else "retrying"
+        binding = dict(current.body.get("control_claim") or {})
+        task_status = (
+            str(task.status or "").strip().lower() if task is not None else ""
+        )
+        task_receipt = (
+            dict(task.body.get("completion_receipt") or {})
+            if task is not None
+            else {}
+        )
+        already_finalized = bool(
+            task is not None
+            and task_status in {"retrying", "blocked"}
+            and task_receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and str(task_receipt.get("attempt_id") or "") == current.attempt_id
+            and str(task_receipt.get("claim_id") or "") == current.claim_id
+        )
+        exact_control = bool(
+            task is not None
+            and str(binding.get("task_cid") or "") == str(task.task_cid)
+            and int(binding.get("revision") or 0) == int(task.revision)
+            and str(binding.get("execution_spec_cid") or "")
+            == self._task_execution_spec_cid(task)
+            and str(binding.get("validation_spec_cid") or "")
+            == self._retry_budget_validation_spec_cid(task)
+        )
+        if already_finalized:
+            receipt = task_receipt
+            retry_exhausted = bool(receipt.get("retry_exhausted"))
+            target_status = "blocked" if retry_exhausted else "retrying"
+        elif exact_control:
+            receipt = self._retry_budget_receipt(
+                task,
+                attempts_used=attempts_used,
+                operation=(
+                    "database_unknown_outcome_blocked"
+                    if force_block
+                    else (
+                        "database_retry_exhausted"
+                        if retry_exhausted
+                        else "database_retry_rearmed"
+                    )
+                ),
+                attempt=current,
+                reason=reason,
+            )
+        else:
+            # A replacement revision/validation epoch owns the canonical row.
+            # Retire only this stale attempt and never debit or block the new
+            # epoch with an old callback outcome.
+            receipt = {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_superseded_attempt_revoked",
+                "task_cid": current.task_cid,
+                "validation_spec_cid": str(
+                    binding.get("validation_spec_cid") or ""
+                ),
+                "attempts_used": attempts_used,
+                "max_task_attempts": retry_cap,
+                "retry_exhausted": False,
+                "attempt_id": current.attempt_id,
+                "claim_id": current.claim_id,
+                "superseded": True,
+                "reason": str(reason)[:256],
+            }
+            retry_exhausted = False
+            target_status = "superseded"
+        receipt["retry_exhausted"] = retry_exhausted
+        if force_block:
+            receipt["forced_block"] = True
+        if unknown_authority:
+            receipt["authority_outcome"] = "unknown"
+        if exact_control and task_status == "in_progress":
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status=target_status,
+                receipt=receipt,
+            )
+        elif exact_control and not already_finalized and task_status not in {
+            target_status,
+            "ready",
+            "todo",
+            "open",
+            "pending",
+            "queued",
+            "proposed",
+            "admitted",
+            "cancelled",
+            "canceled",
+            "quarantined",
+        }:
+            raise DatabaseImplementationConflictError(
+                f"cannot terminalize failed attempt against task status "
+                f"{task_status!r}"
+            )
+
+        claim = self.coordinator.get_task_claim(current.claim_id)
+        if claim is not None:
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            if claim_state == "accepted":
+                self.coordinator.release(
+                    claim.as_fenced_lease(),
+                    reason=(
+                        "effect_outcome_unknown"
+                        if force_block
+                        else "implementation_attempt_failed"
+                    ),
+                    expected_fencing_token=int(claim.fencing_token),
+                    expected_fence_epoch=int(claim.fence_epoch),
+                    now_ms=self._now_ms(),
+                )
+        current = self.get_attempt(current.attempt_id) or current
+        if current.status == "running":
+            current = self.commit_phase(
+                current,
+                ATTEMPT_PHASE_FAILED,
+                body={
+                    "reason": str(reason)[:512],
+                    "retry_exhausted": retry_exhausted,
+                    "unknown_authority": unknown_authority,
+                },
+                require_live_claim=False,
+            )
+        return current, receipt
+
+    def _retry_exhausted_tasks(self) -> list[dict[str, Any]]:
+        """Return bounded typed backpressure from canonical task state."""
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            page = list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        except Exception:
+            return []
+        exhausted: list[dict[str, Any]] = []
+        for task in getattr(page, "tasks", ()):
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            if status not in {
+                "todo",
+                "ready",
+                "open",
+                "pending",
+                "queued",
+                "proposed",
+                "admitted",
+                "retrying",
+                "blocked",
+            }:
+                continue
+            alias = str(getattr(task, "task_alias", "") or "")
+            if self.task_prefix and not alias.startswith(self.task_prefix):
+                continue
+            if self._automatic_claim_forbidden(task):
+                continue
+            if self.strict_task_sharding and self.task_shard_count > 1:
+                if not self._task_belongs_to_shard(
+                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                ):
+                    continue
+            dependencies_current = True
+            for dependency_cid in getattr(task, "dependencies", ()) or ():
+                dependency = self.task_source.get(str(dependency_cid))
+                if dependency is None or str(
+                    dependency.status or ""
+                ).strip().lower() not in {
+                    "completed",
+                    "complete",
+                    "done",
+                    "skipped",
+                }:
+                    dependencies_current = False
+                    break
+            if not dependencies_current:
+                continue
+            state = self._retry_budget_state(task)
+            if not state["retry_exhausted"]:
+                continue
+            exhausted.append(
+                {
+                    "task_cid": str(getattr(task, "task_cid", "") or ""),
+                    "task_alias": str(getattr(task, "task_alias", "") or ""),
+                    "validation_spec_cid": state["validation_spec_cid"],
+                    "attempts_used": state["attempts_used"],
+                    "max_task_attempts": state["max_task_attempts"],
+                    "configured_max_task_attempts": state[
+                        "configured_max_task_attempts"
+                    ],
+                    "policy_mismatch": bool(state.get("policy_mismatch")),
+                    "malformed": bool(state.get("malformed")),
+                }
+            )
+            if len(exhausted) >= 128:
+                break
+        return exhausted
+
+    def _eligible_ready_task_cids(self) -> list[str]:
+        try:
+            page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        except Exception:
+            return []
+        eligible: list[str] = []
+        for task in getattr(page, "tasks", ()):
+            alias = str(getattr(task, "task_alias", "") or "")
+            if self.task_prefix and not alias.startswith(self.task_prefix):
+                continue
+            if self._automatic_claim_forbidden(task):
+                continue
+            if self.strict_task_sharding and self.task_shard_count > 1:
+                if not self._task_belongs_to_shard(
+                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                ):
+                    continue
+            if self._retry_budget_state(task)["retry_exhausted"]:
+                continue
+            eligible.append(str(task.task_cid))
+        return eligible
+
+    @staticmethod
+    def _task_execution_spec_cid(task: Any) -> str:
+        body = dict(getattr(task, "body", {}) or {})
+        body.pop("completion_receipt", None)
+        return content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-task-execution-spec@1"
+                ),
+                "task_cid": str(getattr(task, "task_cid", "") or ""),
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "goal_cid": str(getattr(task, "goal_cid", "") or ""),
+                "plan_cid": str(getattr(task, "plan_cid", "") or ""),
+                "objective_id": str(getattr(task, "objective_id", "") or ""),
+                "priority": str(getattr(task, "priority", "") or ""),
+                "body": body,
+                "dependencies": list(getattr(task, "dependencies", ()) or ()),
+                "outputs": [
+                    dict(item)
+                    for item in (getattr(task, "outputs", ()) or ())
+                    if isinstance(item, Mapping)
+                ],
+                "acceptance": [
+                    dict(item)
+                    for item in (getattr(task, "acceptance", ()) or ())
+                    if isinstance(item, Mapping)
+                ],
+                "validations": [
+                    dict(item)
+                    for item in (getattr(task, "validations", ()) or ())
+                    if isinstance(item, Mapping)
+                ],
+            }
+        )
+
+    def _protect_attempt_control_binding(
+        self,
+        attempt: "DatabaseTaskAttempt",
+    ) -> Any:
+        """Reject a stale claim before any callback sees replacement control."""
+
+        binding = dict(attempt.body.get("control_claim") or {})
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationDispatchOutcomeUnknownError(
+                "claimed canonical task disappeared"
+            )
+        observed = {
+            "task_cid": str(task.task_cid),
+            "revision": int(task.revision),
+            "execution_spec_cid": self._task_execution_spec_cid(task),
+            "validation_spec_cid": self._retry_budget_validation_spec_cid(task),
+        }
+        expected = {
+            "task_cid": str(binding.get("task_cid") or ""),
+            "revision": int(binding.get("revision") or 0),
+            "execution_spec_cid": str(binding.get("execution_spec_cid") or ""),
+            "validation_spec_cid": str(binding.get("validation_spec_cid") or ""),
+        }
+        if not binding or observed != expected:
+            raise DatabaseImplementationDispatchOutcomeUnknownError(
+                "canonical task changed after claim; revoking stale attempt"
+            )
+        if str(task.status or "").strip().lower() != "in_progress":
+            raise DatabaseImplementationDispatchOutcomeUnknownError(
+                "canonical task no longer belongs to the running attempt"
+            )
+        receipt = dict(task.body.get("completion_receipt") or {})
+        if (
+            receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
+            or str(receipt.get("attempt_id") or "") != attempt.attempt_id
+            or str(receipt.get("claim_id") or "") != attempt.claim_id
+            or int(receipt.get("fencing_token") or -1)
+            != int(attempt.fencing_token)
+            or int(receipt.get("fence_epoch") or -1) != int(attempt.fence_epoch)
+        ):
+            raise DatabaseImplementationDispatchOutcomeUnknownError(
+                "canonical retry receipt no longer binds the running attempt"
+            )
+        return task
+
     # -- claim / attempt ----------------------------------------------------
 
     def claim_next(
@@ -68648,32 +69280,51 @@ class DatabaseImplementationDaemon:
         """Claim one ready task for this session; four sessions never share work."""
 
         self.sync_ready_tasks_into_coordination()
+        ready_page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        ready_by_cid = {
+            str(task.task_cid): task
+            for task in ready_page.tasks
+            if str(getattr(task, "task_cid", "") or "")
+        }
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
             if str(task_cid)
         }
-        excluded.update(self._automatic_claim_exclusions())
+        excluded.update(
+            task_cid
+            for task_cid, task in ready_by_cid.items()
+            if self._automatic_claim_forbidden(task)
+        )
+        excluded.update(
+            task_cid
+            for task_cid, task in ready_by_cid.items()
+            if self._retry_budget_state(task)["retry_exhausted"]
+        )
         if self.task_prefix:
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
             excluded.update(
-                str(task.task_cid)
-                for task in ready.tasks
+                task_cid
+                for task_cid, task in ready_by_cid.items()
                 if not str(task.task_alias or "").startswith(self.task_prefix)
             )
-        accept_task_cid = None
-        if self.strict_task_sharding and self.task_shard_count > 1:
-            def accept_task_cid(task_cid: str) -> bool:
-                record = self.task_source.get(task_cid)
+        def accept_task_cid(task_cid: str) -> bool:
+            # A lane-local coordination row is only a candidate.  Canonical
+            # database readiness is rechecked for every claim so an old
+            # ``ready=TRUE`` row cannot rearm an in-progress/exhausted task.
+            record = ready_by_cid.get(str(task_cid))
+            if record is None:
+                return False
+            if self.strict_task_sharding and self.task_shard_count > 1:
                 return self._task_belongs_to_shard(
                     self._shard_key_for_task(record, task_cid=task_cid)
                 )
+            return True
 
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        if self.strict_task_sharding and self.task_shard_count > 1:
             excluded.update(
-                str(task.task_cid)
-                for task in ready.tasks
-                if not accept_task_cid(str(task.task_cid))
+                task_cid
+                for task_cid in ready_by_cid
+                if not accept_task_cid(task_cid)
             )
         claim = self.coordinator.claim_ready_task(
             owner_session_id=self.owner_session_id,
@@ -68685,30 +69336,229 @@ class DatabaseImplementationDaemon:
         if claim is None:
             return None
         task = self.task_source.get(claim.task_cid)
+        retryable_statuses = {
+            "todo",
+            "ready",
+            "open",
+            "pending",
+            "queued",
+            "proposed",
+            "admitted",
+            "retrying",
+        }
+        if task is None or str(task.status).strip().lower() not in retryable_statuses:
+            # Another lane won the canonical task-CID CAS after this lane
+            # selected its local candidate.  Relinquish the losing claim before
+            # any provider is allowed to observe it.
+            self.coordinator.release(
+                claim.as_fenced_lease(),
+                reason="canonical_task_not_ready",
+                expected_fencing_token=int(claim.fencing_token),
+                expected_fence_epoch=int(claim.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+            return None
+        retry_state = self._retry_budget_state(task)
+        if retry_state["retry_exhausted"]:
+            self.coordinator.release(
+                claim.as_fenced_lease(),
+                reason="max_task_attempts_reached",
+                expected_fencing_token=int(claim.fencing_token),
+                expected_fence_epoch=int(claim.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+            return None
+        global_attempt_number = int(retry_state["attempts_used"]) + 1
         task_alias = (
             str(task.task_alias)
             if task is not None and getattr(task, "task_alias", None)
             else str(claim.task_cid)
         )
         # Move durable task status through the database only (never Markdown).
-        if task is not None and str(task.status).lower() in {
-            "todo",
-            "ready",
-            "open",
-        }:
+        try:
             self._protect_new_claim(claim)
-            self._cas_task_status_database(
+            claim_cas = self._cas_task_status_database(
                 task.task_cid,
                 expected_revision=int(task.revision),
                 new_status="in_progress",
-                receipt={
-                    "operation": "database_claim",
-                    "claim_id": claim.claim_id,
-                    "attempt_id": claim.attempt_id,
-                    "owner_session_id": self.owner_session_id,
+                receipt=self._retry_budget_receipt(
+                    task,
+                    attempts_used=global_attempt_number,
+                    operation="database_claim",
+                    attempt=claim,
+                ),
+            )
+        except Exception as exc:
+            from ..task_sources.database_task_source import (
+                TaskSourceConflictError as DatabaseTaskSourceConflictError,
+                TaskSourceTransitionError as DatabaseTaskSourceTransitionError,
+                TaskSourceUnknownOutcomeError as DatabaseTaskSourceUnknownOutcomeError,
+            )
+
+            unknown_committed = False
+            if isinstance(exc, DatabaseTaskSourceUnknownOutcomeError):
+                latest = self.task_source.get(task.task_cid)
+                latest_receipt = (
+                    dict(latest.body.get("completion_receipt") or {})
+                    if latest is not None
+                    else {}
+                )
+                unknown_committed = bool(
+                    latest is not None
+                    and str(latest.status).strip().lower() == "in_progress"
+                    and latest_receipt.get("schema")
+                    == DATABASE_RETRY_BUDGET_SCHEMA
+                    and str(latest_receipt.get("claim_id") or "")
+                    == str(claim.claim_id)
+                    and str(latest_receipt.get("attempt_id") or "")
+                    == str(claim.attempt_id)
+                    and int(latest_receipt.get("fencing_token") or -1)
+                    == int(claim.fencing_token)
+                    and int(latest_receipt.get("fence_epoch") or -1)
+                    == int(claim.fence_epoch)
+                    and int(latest_receipt.get("attempts_used") or -1)
+                    == global_attempt_number
+                )
+                if unknown_committed:
+                    # Exact read-after-unknown proves the CAS committed.  Keep
+                    # the live claim and create the local resumable attempt.
+                    claim_cas = latest
+            if not unknown_committed:
+                # Cross-lane races are fenced by the canonical task CAS.  The
+                # loser must release its lane-local claim and must not dispatch.
+                try:
+                    self.coordinator.release(
+                        claim.as_fenced_lease(),
+                        reason="canonical_task_claim_cas_lost",
+                        expected_fencing_token=int(claim.fencing_token),
+                        expected_fence_epoch=int(claim.fence_epoch),
+                        now_ms=self._now_ms(),
+                    )
+                except Exception:
+                    pass
+            if not unknown_committed and isinstance(
+                exc,
+                (DatabaseTaskSourceConflictError, DatabaseTaskSourceTransitionError),
+            ):
+                self._record_event(
+                    "canonical_task_claim_lost",
+                    task_cid=str(claim.task_cid),
+                    body={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "database-canonical-claim-lost@1"
+                        ),
+                        "reason": "canonical_task_claim_cas_lost",
+                        "claim_id": str(claim.claim_id),
+                        "attempt_id": str(claim.attempt_id),
+                    },
+                )
+                return None
+            if not unknown_committed:
+                raise
+        claimed_task = (
+            getattr(claim_cas, "task", None)
+            or (
+                claim_cas
+                if getattr(claim_cas, "task_cid", None)
+                else None
+            )
+            or self.task_source.get(task.task_cid)
+        )
+        if claimed_task is None:
+            raise DatabaseImplementationConflictError(
+                "canonical task disappeared after claim CAS"
+            )
+        retry_budget = {
+            **retry_state,
+            "attempts_used": global_attempt_number,
+            "retry_exhausted": bool(
+                int(retry_state["max_task_attempts"]) > 0
+                and global_attempt_number
+                >= int(retry_state["max_task_attempts"])
+            ),
+        }
+        control_claim = {
+            "task_cid": str(claimed_task.task_cid),
+            "revision": int(claimed_task.revision),
+            "execution_spec_cid": self._task_execution_spec_cid(claimed_task),
+            "validation_spec_cid": self._retry_budget_validation_spec_cid(
+                claimed_task
+            ),
+        }
+        try:
+            attempt = self._insert_attempt_from_claim(
+                claim,
+                task_alias=task_alias,
+                retry_budget=retry_budget,
+                control_claim=control_claim,
+            )
+        except BaseException as insert_exc:
+            # The canonical claim CAS is already durable.  Compensate before
+            # propagating process-control exceptions so an insert failure can
+            # never leave an accepted claim with no resumable local attempt.
+            compensation_error: Exception | None = None
+            try:
+                latest = self.task_source.get(task.task_cid)
+                if (
+                    latest is not None
+                    and str(latest.status).strip().lower() == "in_progress"
+                ):
+                    retry_cap = int(retry_state["max_task_attempts"])
+                    exhausted = bool(
+                        retry_cap > 0 and global_attempt_number >= retry_cap
+                    )
+                    self._cas_task_status_database(
+                        latest.task_cid,
+                        expected_revision=int(latest.revision),
+                        new_status="blocked" if exhausted else "retrying",
+                        receipt=self._retry_budget_receipt(
+                            latest,
+                            attempts_used=global_attempt_number,
+                            operation=(
+                                "database_retry_exhausted"
+                                if exhausted
+                                else "database_claim_insert_compensated"
+                            ),
+                            attempt=claim,
+                            reason="execution_attempt_insert_failed",
+                        ),
+                    )
+            except Exception as exc:
+                # Do not release the accepted claim while the canonical task
+                # may still be in_progress.  The exact database_claim receipt
+                # is a durable prepared marker; the next pass's orphan scan
+                # can finish the CAS and release in the correct order.
+                compensation_error = exc
+            if compensation_error is None:
+                self.coordinator.release(
+                    claim.as_fenced_lease(),
+                    reason="execution_attempt_insert_failed",
+                    expected_fencing_token=int(claim.fencing_token),
+                    expected_fence_epoch=int(claim.fence_epoch),
+                    now_ms=self._now_ms(),
+                )
+            if isinstance(insert_exc, (KeyboardInterrupt, SystemExit)):
+                raise
+            self._record_event(
+                (
+                    "execution_attempt_insert_compensation_pending"
+                    if compensation_error is not None
+                    else "execution_attempt_insert_compensated"
+                ),
+                task_cid=str(task.task_cid),
+                body={
+                    "claim_id": str(claim.claim_id),
+                    "attempt_id": str(claim.attempt_id),
+                    "exception_type": type(insert_exc).__name__,
+                    "compensation_error_type": (
+                        type(compensation_error).__name__
+                        if compensation_error is not None
+                        else ""
+                    ),
                 },
             )
-        attempt = self._insert_attempt_from_claim(claim, task_alias=task_alias)
+            return None
         self._record_event(
             "task_claimed",
             attempt_id=attempt.attempt_id,
@@ -68722,6 +69572,8 @@ class DatabaseImplementationDaemon:
         claim: Any,
         *,
         task_alias: str,
+        retry_budget: Mapping[str, Any] | None = None,
+        control_claim: Mapping[str, Any] | None = None,
     ) -> DatabaseTaskAttempt:
         self._protect_new_claim(claim)
         now = self._now_ms()
@@ -68739,7 +69591,11 @@ class DatabaseImplementationDaemon:
             status="running",
             started_at_ms=int(getattr(claim, "claimed_at_ms", now) or now),
             revision=1,
-            body={"worktree_id": str(getattr(claim, "worktree_id", "") or "")},
+            body={
+                "worktree_id": str(getattr(claim, "worktree_id", "") or ""),
+                "retry_budget": dict(retry_budget or {}),
+                "control_claim": dict(control_claim or {}),
+            },
         )
         connection = self._require_connection()
         existing = connection.execute(
@@ -69065,6 +69921,139 @@ class DatabaseImplementationDaemon:
 
     # -- provider / effect (idempotent) -------------------------------------
 
+    def _dispatch_journal_entry(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> Mapping[str, Any] | None:
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT outcome, body_json, fencing_token, fence_epoch
+            FROM attempt_dispatch_journal
+            WHERE attempt_id = ? AND dispatch_kind = ? AND idempotency_key = ?
+            """,
+            [attempt.attempt_id, dispatch_kind, idempotency_key],
+        ).fetchone()
+        if row is None:
+            return None
+        if int(row[2]) != int(attempt.fencing_token) or int(row[3]) != int(
+            attempt.fence_epoch
+        ):
+            raise DatabaseImplementationConflictError(
+                "dispatch journal fencing identity changed"
+            )
+        return MappingProxyType(
+            {
+                "outcome": str(row[0] or "unknown"),
+                "body": _database_daemon_load_json(row[1]),
+            }
+        )
+
+    def _begin_callback_dispatch(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> None:
+        """Persist a fenced unknown-outcome marker before external code runs."""
+
+        self._protect_attempt_write(attempt)
+        prior = self._dispatch_journal_entry(
+            attempt,
+            dispatch_kind=dispatch_kind,
+            idempotency_key=idempotency_key,
+        )
+        error_class = (
+            DatabaseImplementationEffectDispatchError
+            if dispatch_kind == "effect"
+            else DatabaseImplementationProviderDispatchError
+        )
+        if prior is not None:
+            if prior.get("outcome") != "deferred":
+                raise error_class(
+                    f"{dispatch_kind} callback has a prior non-replayable "
+                    f"dispatch outcome ({prior.get('outcome') or 'unknown'})"
+                )
+            # A typed Portal deferral is a poll/resume operation, not authority
+            # to issue another inner implementation attempt.  The private
+            # Portal itself is capped at one attempt per outer claim.
+            self._record_callback_dispatch_outcome(
+                attempt,
+                dispatch_kind=dispatch_kind,
+                idempotency_key=idempotency_key,
+                outcome="started",
+                body={"resumed_from": "deferred"},
+            )
+            return
+        now = self._now_ms()
+        self._require_connection().execute(
+            """
+            INSERT INTO attempt_dispatch_journal(
+                dispatch_id, attempt_id, task_cid, dispatch_kind,
+                idempotency_key, owner_session_id, fencing_token, fence_epoch,
+                started_at_ms, updated_at_ms, outcome, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', ?)
+            """,
+            [
+                _database_daemon_new_id("dispatch"),
+                attempt.attempt_id,
+                attempt.task_cid,
+                dispatch_kind,
+                idempotency_key,
+                self.owner_session_id,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+                now,
+                now,
+                _database_daemon_json(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "database-callback-dispatch@1"
+                        ),
+                        "outcome": "unknown_until_callback_returns",
+                    }
+                ),
+            ],
+        )
+
+    def _record_callback_dispatch_outcome(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+        outcome: str,
+        body: Mapping[str, Any] | None = None,
+    ) -> None:
+        updated = self._require_connection().execute(
+            """
+            UPDATE attempt_dispatch_journal
+            SET outcome = ?, body_json = ?, updated_at_ms = ?
+            WHERE attempt_id = ? AND dispatch_kind = ? AND idempotency_key = ?
+              AND fencing_token = ? AND fence_epoch = ?
+            RETURNING dispatch_id
+            """,
+            [
+                str(outcome),
+                _database_daemon_json(dict(body or {})),
+                self._now_ms(),
+                attempt.attempt_id,
+                dispatch_kind,
+                idempotency_key,
+                int(attempt.fencing_token),
+                int(attempt.fence_epoch),
+            ],
+        ).fetchone()
+        if updated is None:
+            raise DatabaseImplementationConflictError(
+                "callback dispatch journal changed before outcome recording"
+            )
+
     def provider_invocation_recorded(
         self,
         attempt_id: str,
@@ -69117,6 +70106,7 @@ class DatabaseImplementationDaemon:
         """
 
         self._protect_attempt_write(attempt)
+        self._protect_attempt_control_binding(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
@@ -69146,6 +70136,28 @@ class DatabaseImplementationDaemon:
                 )
             return attempt, {"status": "already_committed"}, True
         callback = provider_fn or self._provider_fn
+        recovered_from_dispatch = False
+        prior_dispatch = self._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=key,
+        )
+        if (
+            callback is not None
+            and prior_dispatch is not None
+            and str(prior_dispatch.get("outcome") or "")
+            in {"started", "returned", "committed"}
+        ):
+            callback_owner = getattr(callback, "__self__", None)
+            recovery = getattr(callback_owner, "recover_provider_result", None)
+            recovered = recovery(attempt) if callable(recovery) else None
+            if recovered is None:
+                raise DatabaseImplementationProviderDispatchError(
+                    "provider dispatch outcome is unknown and has no exact "
+                    "durable terminal evidence"
+                )
+            result = dict(recovered)
+            recovered_from_dispatch = True
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -69158,12 +70170,62 @@ class DatabaseImplementationDaemon:
                 "attempt_id": attempt.attempt_id,
                 "task_cid": attempt.task_cid,
             }
-        else:
-            result = dict(
-                self._run_with_attempt_heartbeat(
-                    attempt,
-                    lambda: callback(attempt),
+        elif not recovered_from_dispatch:
+            self._begin_callback_dispatch(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=key,
+            )
+            try:
+                result = dict(
+                    self._run_with_attempt_heartbeat(
+                        attempt,
+                        lambda: callback(attempt),
+                    )
                 )
+            except Exception as exc:
+                from ..merge.database_coordination import DatabaseCoordinationError
+                from .database_portal_bridge import (
+                    DatabasePortalBridgeDeferred,
+                    DatabasePortalBridgeError,
+                )
+
+                self._record_callback_dispatch_outcome(
+                    attempt,
+                    dispatch_kind="provider",
+                    idempotency_key=key,
+                    outcome=(
+                        "deferred"
+                        if isinstance(exc, DatabasePortalBridgeDeferred)
+                        else "raised"
+                    ),
+                    body={"exception_type": type(exc).__name__},
+                )
+                if isinstance(
+                    exc,
+                    (DatabasePortalBridgeError, DatabaseCoordinationError),
+                ):
+                    raise
+                raise DatabaseImplementationProviderDispatchError(
+                    "provider callback raised without admissible return evidence"
+                ) from exc
+            self._record_callback_dispatch_outcome(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=key,
+                outcome="returned",
+                body={"status": str(result.get("status") or "")[:128]},
+            )
+        else:
+            self._record_callback_dispatch_outcome(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=key,
+                outcome="returned",
+                body={
+                    "status": str(result.get("status") or "")[:128],
+                    "recovered_from_durable_terminal_evidence": True,
+                },
             )
         if self.require_real_execution and (
             str(result.get("status") or "").strip().lower() in {"", "noop"}
@@ -69173,35 +70235,67 @@ class DatabaseImplementationDaemon:
                 "production database provider result is not accepted real-execution evidence"
             )
         self._protect_attempt_write(attempt)
-        connection = self._require_connection()
-        connection.execute(
-            """
-            INSERT INTO provider_invocations(
-                invocation_id, attempt_id, task_cid, idempotency_key,
-                owner_session_id, recorded_at_ms, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                _database_daemon_new_id("provider"),
+        try:
+            connection = self._require_connection()
+            connection.execute(
+                """
+                INSERT INTO provider_invocations(
+                    invocation_id, attempt_id, task_cid, idempotency_key,
+                    owner_session_id, recorded_at_ms, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    _database_daemon_new_id("provider"),
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    key,
+                    self.owner_session_id,
+                    self._now_ms(),
+                    _database_daemon_json(result),
+                ],
+            )
+            updated = self.commit_phase(
+                attempt,
+                ATTEMPT_PHASE_PROVIDER,
+                body={"idempotency_key": key, "result": result},
+            )
+            if callback is not None:
+                self._record_callback_dispatch_outcome(
+                    updated,
+                    dispatch_kind="provider",
+                    idempotency_key=key,
+                    outcome="committed",
+                    body={"provider_receipt_recorded": True},
+                )
+            self._record_event(
+                "provider_invocation_committed",
+                attempt_id=updated.attempt_id,
+                task_cid=updated.task_cid,
+                body={"idempotency_key": key, "result": result},
+            )
+        except Exception as exc:
+            # ``commit_phase`` writes the authoritative phase transaction
+            # before emitting its event.  The committed callback receipt and
+            # phase therefore prove that the same attempt can resume without
+            # dispatching the provider again, even if either that phase event
+            # or the later journal/event bookkeeping lost its response.
+            durable = self.get_attempt(attempt.attempt_id)
+            durable_result = self.provider_invocation_recorded(
                 attempt.attempt_id,
-                attempt.task_cid,
-                key,
-                self.owner_session_id,
-                self._now_ms(),
-                _database_daemon_json(result),
-            ],
-        )
-        updated = self.commit_phase(
-            attempt,
-            ATTEMPT_PHASE_PROVIDER,
-            body={"idempotency_key": key, "result": result},
-        )
-        self._record_event(
-            "provider_invocation_committed",
-            attempt_id=updated.attempt_id,
-            task_cid=updated.task_cid,
-            body={"idempotency_key": key, "result": result},
-        )
+                idempotency_key=key,
+            )
+            if (
+                durable is not None
+                and durable.status == "running"
+                and durable.phase_committed(ATTEMPT_PHASE_PROVIDER)
+                and durable_result is not None
+            ):
+                raise DatabaseImplementationCallbackCommitReconciliationPendingError(
+                    dispatch_kind="provider",
+                    committed_phase=ATTEMPT_PHASE_PROVIDER,
+                    idempotency_key=key,
+                ) from exc
+            raise
         return updated, result, False
 
     def run_effect(
@@ -69218,6 +70312,7 @@ class DatabaseImplementationDaemon:
         """Apply effect work once per attempt idempotency key."""
 
         self._protect_attempt_write(attempt)
+        self._protect_attempt_control_binding(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
         if prior is not None:
@@ -69256,11 +70351,35 @@ class DatabaseImplementationDaemon:
                 "provider_result": dict(provider_result),
             }
         else:
-            result = dict(
-                self._run_with_attempt_heartbeat(
-                    attempt,
-                    lambda: callback(attempt, provider_result),
+            self._begin_callback_dispatch(
+                attempt,
+                dispatch_kind="effect",
+                idempotency_key=key,
+            )
+            try:
+                result = dict(
+                    self._run_with_attempt_heartbeat(
+                        attempt,
+                        lambda: callback(attempt, provider_result),
+                    )
                 )
+            except Exception as exc:
+                self._record_callback_dispatch_outcome(
+                    attempt,
+                    dispatch_kind="effect",
+                    idempotency_key=key,
+                    outcome="raised",
+                    body={"exception_type": type(exc).__name__},
+                )
+                raise DatabaseImplementationEffectDispatchError(
+                    "effect callback raised with a potentially applied outcome"
+                ) from exc
+            self._record_callback_dispatch_outcome(
+                attempt,
+                dispatch_kind="effect",
+                idempotency_key=key,
+                outcome="returned",
+                body={"status": str(result.get("status") or "")[:128]},
             )
         if self.require_real_execution and str(
             result.get("status") or ""
@@ -69269,36 +70388,63 @@ class DatabaseImplementationDaemon:
                 "production database effect lacks applied-effect evidence"
             )
         self._protect_attempt_write(attempt)
-        connection = self._require_connection()
-        connection.execute(
-            """
-            INSERT INTO effect_claims(
-                effect_id, attempt_id, task_cid, effect_key, idempotency_key,
-                owner_session_id, recorded_at_ms, result_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                _database_daemon_new_id("effect"),
+        try:
+            connection = self._require_connection()
+            connection.execute(
+                """
+                INSERT INTO effect_claims(
+                    effect_id, attempt_id, task_cid, effect_key, idempotency_key,
+                    owner_session_id, recorded_at_ms, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    _database_daemon_new_id("effect"),
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    str(result.get("effect_key") or "default"),
+                    key,
+                    self.owner_session_id,
+                    self._now_ms(),
+                    _database_daemon_json(result),
+                ],
+            )
+            updated = self.commit_phase(
+                attempt,
+                ATTEMPT_PHASE_EFFECT,
+                body={"idempotency_key": key, "result": result},
+            )
+            if callback is not None:
+                self._record_callback_dispatch_outcome(
+                    updated,
+                    dispatch_kind="effect",
+                    idempotency_key=key,
+                    outcome="committed",
+                    body={"effect_receipt_recorded": True},
+                )
+            self._record_event(
+                "effect_claim_committed",
+                attempt_id=updated.attempt_id,
+                task_cid=updated.task_cid,
+                body={"idempotency_key": key, "result": result},
+            )
+        except Exception as exc:
+            durable = self.get_attempt(attempt.attempt_id)
+            durable_result = self.effect_claim_recorded(
                 attempt.attempt_id,
-                attempt.task_cid,
-                str(result.get("effect_key") or "default"),
-                key,
-                self.owner_session_id,
-                self._now_ms(),
-                _database_daemon_json(result),
-            ],
-        )
-        updated = self.commit_phase(
-            attempt,
-            ATTEMPT_PHASE_EFFECT,
-            body={"idempotency_key": key, "result": result},
-        )
-        self._record_event(
-            "effect_claim_committed",
-            attempt_id=updated.attempt_id,
-            task_cid=updated.task_cid,
-            body={"idempotency_key": key, "result": result},
-        )
+                idempotency_key=key,
+            )
+            if (
+                durable is not None
+                and durable.status == "running"
+                and durable.phase_committed(ATTEMPT_PHASE_EFFECT)
+                and durable_result is not None
+            ):
+                raise DatabaseImplementationCallbackCommitReconciliationPendingError(
+                    dispatch_kind="effect",
+                    committed_phase=ATTEMPT_PHASE_EFFECT,
+                    idempotency_key=key,
+                ) from exc
+            raise
         return updated, result, False
 
     # -- status / completion (database only) --------------------------------
@@ -69371,6 +70517,21 @@ class DatabaseImplementationDaemon:
                 "completion evidence digest does not match validation evidence"
             )
         digest = supplied_digest or validation_digest or f"sha256:{secrets.token_hex(32)}"
+        control_claim_binding = dict(current.body.get("control_claim") or {})
+        validation_payload = {
+            **validation_payload,
+            "attempt_id": current.attempt_id,
+            "claim_id": current.claim_id,
+            "fencing_token": int(current.fencing_token),
+            "fence_epoch": int(current.fence_epoch),
+            "control_revision": int(control_claim_binding.get("revision") or 0),
+            "execution_spec_cid": str(
+                control_claim_binding.get("execution_spec_cid") or ""
+            ),
+            "validation_spec_cid": str(
+                control_claim_binding.get("validation_spec_cid") or ""
+            ),
+        }
         task = self.task_source.get(current.task_cid)
         if task is None:
             raise KeyError(current.task_cid)
@@ -69384,6 +70545,8 @@ class DatabaseImplementationDaemon:
             "blocked",
             "quarantined",
         }
+        if task_status not in successful_statuses:
+            self._protect_attempt_control_binding(current)
         if task_status in unsuccessful_terminal_statuses:
             raise DatabaseImplementationConflictError(
                 f"task {current.task_cid} is terminal with non-success status "
@@ -69431,6 +70594,7 @@ class DatabaseImplementationDaemon:
                 argv=list(
                     validation_payload.get("argv") or ["database-validation"]
                 ),
+                attempt_id=current.attempt_id,
                 body=validation_payload,
             )
             self._protect_attempt_claim(
@@ -69453,6 +70617,7 @@ class DatabaseImplementationDaemon:
                     "evidence_digest": digest,
                     "coordination_preparation": dict(prepared),
                     "validation": validation_payload,
+                    "control_claim": control_claim_binding,
                 },
                 evidence_digests=[digest],
             )
@@ -69727,11 +70892,22 @@ class DatabaseImplementationDaemon:
                         now_ms=now,
                     )
                 )
-                self._commit_reconciled_attempt_terminal(
-                    prepared,
-                    succeeded=False,
-                    reconciliation=outcome,
+                failed_attempt = self.get_attempt(
+                    str(prepared.get("attempt_id") or "")
                 )
+                if failed_attempt is not None:
+                    _failed, retry_receipt = self._finalize_failed_attempt(
+                        failed_attempt,
+                        reason="expired_before_control_completion",
+                        unknown_authority=True,
+                    )
+                    outcome["retry_exhausted"] = bool(
+                        retry_receipt.get("retry_exhausted")
+                    )
+                    outcome["attempts_used"] = int(
+                        retry_receipt.get("attempts_used") or 0
+                    )
+                    outcome["max_task_attempts"] = self.max_task_attempts
             outcomes.append(outcome)
         return outcomes
 
@@ -69765,11 +70941,10 @@ class DatabaseImplementationDaemon:
                     attempt.attempt_id,
                 )
                 try:
-                    self.commit_phase(
+                    failed, retry_receipt = self._finalize_failed_attempt(
                         attempt,
-                        ATTEMPT_PHASE_FAILED,
-                        body={"reason": "running_attempt_missing_claim_history"},
-                        require_live_claim=False,
+                        reason="running_attempt_missing_claim_history",
+                        unknown_authority=True,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -69783,9 +70958,22 @@ class DatabaseImplementationDaemon:
                         "task_cid": attempt.task_cid,
                         "claim_id": attempt.claim_id,
                         "attempt_id": attempt.attempt_id,
-                        "status": "failed",
+                        "status": (
+                            "blocked"
+                            if retry_receipt.get("retry_exhausted")
+                            else "retrying"
+                        ),
                         "reason": "running_attempt_missing_claim_history",
                         "retry_required": True,
+                        "authority_outcome": "unknown",
+                        "retry_exhausted": bool(
+                            retry_receipt.get("retry_exhausted")
+                        ),
+                        "attempts_used": int(
+                            retry_receipt.get("attempts_used") or 0
+                        ),
+                        "max_task_attempts": self.max_task_attempts,
+                        "local_attempt_status": failed.status,
                     }
                 )
                 continue
@@ -69818,10 +71006,37 @@ class DatabaseImplementationDaemon:
             )
             if claim_state in {"released", "completed"}:
                 if completion is None or completion.get("status") != "succeeded":
-                    raise DatabaseImplementationAuthorityError(
-                        "terminal successful task authority has no exact promoted "
-                        "completion"
+                    failed, retry_receipt = self._finalize_failed_attempt(
+                        attempt,
+                        reason="released_claim_without_promoted_completion",
+                        unknown_authority=True,
                     )
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": (
+                                "blocked"
+                                if retry_receipt.get("retry_exhausted")
+                                else "retrying"
+                            ),
+                            "reason": (
+                                "released_claim_without_promoted_completion"
+                            ),
+                            "authority_outcome": "unknown",
+                            "retry_required": True,
+                            "retry_exhausted": bool(
+                                retry_receipt.get("retry_exhausted")
+                            ),
+                            "attempts_used": int(
+                                retry_receipt.get("attempts_used") or 0
+                            ),
+                            "max_task_attempts": self.max_task_attempts,
+                            "local_attempt_status": failed.status,
+                        }
+                    )
+                    continue
                 outcome = {
                     "task_cid": attempt.task_cid,
                     "claim_id": attempt.claim_id,
@@ -69860,12 +71075,115 @@ class DatabaseImplementationDaemon:
                 "effect_evidence_reused": False,
                 "reason": "coordination_lease_expired_before_completion",
             }
-            self._commit_reconciled_attempt_terminal(
-                identity,
-                succeeded=False,
-                reconciliation=outcome,
+            _failed, retry_receipt = self._finalize_failed_attempt(
+                attempt,
+                reason="coordination_lease_expired_before_completion",
+                unknown_authority=True,
             )
+            outcome["retry_exhausted"] = bool(
+                retry_receipt.get("retry_exhausted")
+            )
+            outcome["attempts_used"] = int(
+                retry_receipt.get("attempts_used") or 0
+            )
+            outcome["max_task_attempts"] = self.max_task_attempts
             outcomes.append(outcome)
+        return outcomes
+
+    def reconcile_orphaned_canonical_claims(self) -> list[dict[str, Any]]:
+        """Repair claim CASes that committed before local attempt insertion."""
+
+        try:
+            page = self.task_source.list_tasks(
+                status="in_progress",
+                limit=TASK_SOURCE_QUERY_LIMIT,
+            )
+        except Exception:
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for task in getattr(page, "tasks", ()):
+            receipt = dict(task.body.get("completion_receipt") or {})
+            if (
+                receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
+                or receipt.get("operation") != "database_claim"
+                or str(receipt.get("owner_session_id") or "")
+                != self.owner_session_id
+            ):
+                continue
+            attempt_id = str(receipt.get("attempt_id") or "")
+            claim_id = str(receipt.get("claim_id") or "")
+            if not attempt_id or self.get_attempt(attempt_id) is not None:
+                continue
+            try:
+                attempts_used = max(1, int(receipt.get("attempts_used") or 1))
+            except (TypeError, ValueError):
+                attempts_used = 1
+            budget_state = self._retry_budget_state(task)
+            retry_cap = int(budget_state["max_task_attempts"])
+            exhausted = bool(
+                budget_state["retry_exhausted"]
+                or (retry_cap > 0 and attempts_used >= retry_cap)
+            )
+            recovery_receipt = self._retry_budget_receipt(
+                task,
+                attempts_used=attempts_used,
+                operation=(
+                    "database_retry_policy_mismatch_blocked"
+                    if budget_state.get("policy_mismatch")
+                    else (
+                        "database_retry_receipt_malformed_blocked"
+                        if budget_state.get("malformed")
+                        else (
+                            "database_retry_exhausted"
+                            if exhausted
+                            else "database_orphaned_claim_rearmed"
+                        )
+                    )
+                ),
+                reason="canonical_claim_has_no_local_attempt",
+            )
+            recovery_receipt.update(
+                {
+                    "orphaned_attempt_id": attempt_id,
+                    "orphaned_claim_id": claim_id,
+                    "authority_outcome": "unknown",
+                    "policy_mismatch": bool(
+                        budget_state.get("policy_mismatch")
+                    ),
+                    "malformed": bool(budget_state.get("malformed")),
+                    "configured_max_task_attempts": self.max_task_attempts,
+                }
+            )
+            recovery_receipt["retry_exhausted"] = exhausted
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="blocked" if exhausted else "retrying",
+                receipt=recovery_receipt,
+            )
+            claim = self.coordinator.get_task_claim(claim_id) if claim_id else None
+            if claim is not None and str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            ) == "accepted":
+                self.coordinator.release(
+                    claim.as_fenced_lease(),
+                    reason="canonical_claim_has_no_local_attempt",
+                    expected_fencing_token=int(claim.fencing_token),
+                    expected_fence_epoch=int(claim.fence_epoch),
+                    now_ms=self._now_ms(),
+                )
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "attempt_id": attempt_id,
+                    "claim_id": claim_id,
+                    "status": "blocked" if exhausted else "retrying",
+                    "retry_exhausted": exhausted,
+                    "attempts_used": attempts_used,
+                    "reason": "canonical_claim_has_no_local_attempt",
+                }
+            )
         return outcomes
 
     # -- resume / run_once --------------------------------------------------
@@ -69948,6 +71266,7 @@ class DatabaseImplementationDaemon:
             effect_duplicated = True
 
         if not current.phase_committed(ATTEMPT_PHASE_VALIDATION):
+            self._protect_attempt_control_binding(current)
             callback = validation_fn or self._validation_fn
             if callback is None:
                 if self.require_real_execution:
@@ -69967,11 +71286,13 @@ class DatabaseImplementationDaemon:
                         lambda: callback(current, effect_result),
                     )
                 )
-            if self.require_real_execution and (
-                str(validation_result.get("outcome") or "").strip().lower()
-                != "passed"
-                or not str(validation_result.get("evidence_digest") or "").strip()
-            ):
+            if str(validation_result.get("outcome") or "").strip().lower() != "passed":
+                raise DatabaseImplementationAuthorityError(
+                    "database validation returned a non-passing outcome"
+                )
+            if self.require_real_execution and not str(
+                validation_result.get("evidence_digest") or ""
+            ).strip():
                 raise DatabaseImplementationAuthorityError(
                     "production database validation did not provide passing evidence"
                 )
@@ -69991,11 +71312,13 @@ class DatabaseImplementationDaemon:
                 if validation_history
                 else {}
             )
-            if self.require_real_execution and (
-                str(validation_body.get("outcome") or "").strip().lower()
-                != "passed"
-                or not str(validation_body.get("evidence_digest") or "").strip()
-            ):
+            if str(validation_body.get("outcome") or "").strip().lower() != "passed":
+                raise DatabaseImplementationAuthorityError(
+                    "stored database validation is not passing evidence"
+                )
+            if self.require_real_execution and not str(
+                validation_body.get("evidence_digest") or ""
+            ).strip():
                 raise DatabaseImplementationAuthorityError(
                     "production validation phase has no replayable passing evidence"
                 )
@@ -70063,50 +71386,224 @@ class DatabaseImplementationDaemon:
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": "running",
                 }
-            if not isinstance(exc, DatabasePortalBridgeError):
-                raise
             failed = None
+            current = None
+            retry_receipt: dict[str, Any] = {}
             try:
-                current = (
-                    attempt
-                    if isinstance(attempt, DatabaseTaskAttempt)
-                    else self.get_attempt(str(getattr(attempt, "attempt_id", "") or attempt))
-                )
-                if current is not None and current.status == "running":
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
+                if isinstance(attempt, DatabaseTaskAttempt):
+                    current = self.get_attempt(attempt.attempt_id) or attempt
+                else:
+                    current = self.get_attempt(
+                        str(getattr(attempt, "attempt_id", "") or attempt)
+                    )
+                if current is not None and current.status != "running":
+                    # Completion/settlement authority errors are not retry
+                    # failures and must never be relabelled or suppressed.
+                    raise
+                if current is not None:
+                    if isinstance(
+                        exc,
+                        DatabaseImplementationCallbackCommitReconciliationPendingError,
+                    ):
+                        phase = exc.committed_phase
+                        recorded_result = (
+                            self.provider_invocation_recorded(
+                                current.attempt_id,
+                                idempotency_key=exc.idempotency_key,
+                            )
+                            if exc.dispatch_kind == "provider"
+                            else self.effect_claim_recorded(
+                                current.attempt_id,
+                                idempotency_key=exc.idempotency_key,
+                            )
+                        )
+                        if (
+                            not current.phase_committed(phase)
+                            or recorded_result is None
+                        ):
+                            raise DatabaseImplementationConflictError(
+                                "callback reconciliation lost its committed "
+                                "phase or exact result"
+                            ) from exc
+                        try:
+                            self._renew_attempt_lease(current)
+                        except Exception:
+                            pass
+                        return {
+                            "resumed": True,
+                            "callback_commit_reconciliation_pending": True,
                             "reason": str(exc),
-                            "portal_retryable_failure": True,
-                        },
+                            "attempt_id": current.attempt_id,
+                            "task_alias": current.task_alias,
+                            "status": "callback_commit_reconciliation_pending",
+                            "dispatch_kind": exc.dispatch_kind,
+                            "committed_phase": current.committed_phase,
+                            "retry_budget_consumed": False,
+                        }
+                    # Completion is a cross-store protocol.  Once the exact
+                    # preparation exists, a response can be lost after the
+                    # control task or coordination barrier became successful
+                    # but before the lane-local COMPLETE projection commits.
+                    # Treating that window as an ordinary callback failure
+                    # would release the claim and write local FAILED, making
+                    # the authoritative success impossible to reconcile on
+                    # the next pass.  Leave the exact attempt intact; the
+                    # reconciliation pass at the start of ``run_once`` owns
+                    # the terminal decision.
+                    prepared = self.coordinator.get_prepared_task_completion(
+                        current.task_cid
+                    )
+                    if prepared is not None:
+                        expected_completion_identity = {
+                            "attempt_id": current.attempt_id,
+                            "claim_id": current.claim_id,
+                            "task_cid": current.task_cid,
+                            "attempt_number": int(current.attempt_number),
+                            "owner_session_id": current.owner_session_id,
+                            "fencing_token": int(current.fencing_token),
+                            "fence_epoch": int(current.fence_epoch),
+                            "lease_id": current.lease_id,
+                        }
+                        mismatched = [
+                            name
+                            for name, expected in expected_completion_identity.items()
+                            if prepared.get(name) != expected
+                        ]
+                        if mismatched:
+                            raise DatabaseImplementationConflictError(
+                                "completion preparation does not match running "
+                                "attempt: " + ", ".join(mismatched)
+                            ) from exc
+                        try:
+                            self._renew_attempt_lease(current)
+                        except Exception:
+                            # A promoted completion may no longer be renewable;
+                            # its durable barrier is sufficient for replay.
+                            pass
+                        return {
+                            "resumed": True,
+                            "completion_reconciliation_pending": True,
+                            "reason": str(exc),
+                            "attempt_id": current.attempt_id,
+                            "task_alias": current.task_alias,
+                            "status": "completion_reconciliation_pending",
+                            "completion_status": str(
+                                prepared.get("status") or "prepared"
+                            ),
+                            "retry_budget_consumed": False,
+                        }
+                    provider_dispatch = self._dispatch_journal_entry(
+                        current,
+                        dispatch_kind="provider",
+                        idempotency_key=f"provider:{current.attempt_id}",
+                    )
+                    provider_recovery = getattr(
+                        getattr(self._provider_fn, "__self__", None),
+                        "recover_provider_result",
+                        None,
+                    )
+                    provider_outcome = str(
+                        (provider_dispatch or {}).get("outcome") or ""
+                    )
+                    provider_unknown = bool(
+                        provider_dispatch is not None
+                        and not current.phase_committed(ATTEMPT_PHASE_PROVIDER)
+                        and provider_outcome in {"started", "returned", "committed"}
+                        and callable(provider_recovery)
+                    )
+                    if provider_unknown and not isinstance(
+                        exc, DatabaseImplementationProviderDispatchError
+                    ):
+                        # The Portal may already have merged and published its
+                        # terminal event while the outer callback return was
+                        # lost.  Keep this exact fenced attempt alive; the next
+                        # pass reconstructs a receipt from its sealed binding,
+                        # terminal projection, and completion event.
+                        try:
+                            self._renew_attempt_lease(current)
+                        except Exception:
+                            pass
+                        return {
+                            "resumed": True,
+                            "provider_reconciliation_pending": True,
+                            "reason": str(exc),
+                            "attempt_id": current.attempt_id,
+                            "task_alias": current.task_alias,
+                            "status": "provider_reconciliation_pending",
+                            "retry_budget_consumed": False,
+                        }
+                    effect_dispatch = self._dispatch_journal_entry(
+                        current,
+                        dispatch_kind="effect",
+                        idempotency_key=f"effect:{current.attempt_id}",
+                    )
+                    force_block = bool(
+                        provider_unknown
+                        or isinstance(exc, DatabaseImplementationEffectDispatchError)
+                        or (
+                            effect_dispatch is not None
+                            and not current.phase_committed(ATTEMPT_PHASE_EFFECT)
+                        )
+                    )
+                    failed, retry_receipt = self._finalize_failed_attempt(
+                        current,
+                        reason=(
+                            (
+                                "provider_dispatch_outcome_unknown"
+                                if provider_unknown
+                                else "effect_dispatch_outcome_unknown"
+                            )
+                            if force_block
+                            else str(exc)
+                        ),
+                        force_block=force_block,
+                        unknown_authority=isinstance(
+                            exc,
+                            DatabaseImplementationDispatchOutcomeUnknownError,
+                        ),
                     )
             except Exception as fail_exc:
+                if current is not None and current.status != "running":
+                    raise exc
                 return {
                     "resumed": True,
-                    "portal_retryable_failure": True,
+                    "portal_retryable_failure": isinstance(
+                        exc, DatabasePortalBridgeError
+                    ),
                     "reason": str(exc),
                     "fail_error": str(fail_exc),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                    "status": "retryable_portal_failure",
+                    "status": "failure_reconciliation_pending",
                 }
+            retry_exhausted = bool(retry_receipt.get("retry_exhausted"))
             return {
                 "resumed": True,
-                "portal_retryable_failure": True,
+                "portal_retryable_failure": (
+                    isinstance(exc, DatabasePortalBridgeError)
+                    and not retry_exhausted
+                ),
+                "callback_failure": not isinstance(
+                    exc, DatabasePortalBridgeError
+                ),
+                "retry_exhausted": retry_exhausted,
+                "retry_budget": retry_receipt,
                 "reason": str(exc),
                 "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
                 "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
-                "status": "failed",
+                "status": "retry_exhausted" if retry_exhausted else "failed",
             }
 
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        orphaned_claim_reconciliations = self.reconcile_orphaned_canonical_claims()
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
-        reconciliation_write_count = len(completion_reconciliations) + len(
-            expired_attempt_reconciliations
+        reconciliation_write_count = (
+            len(orphaned_claim_reconciliations)
+            + len(completion_reconciliations)
+            + len(expired_attempt_reconciliations)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -70130,12 +71627,48 @@ class DatabaseImplementationDaemon:
 
         attempt = self.claim_next()
         if attempt is None:
+            retry_exhausted_tasks = self._retry_exhausted_tasks()
+            eligible_ready_task_cids = self._eligible_ready_task_cids()
+            all_eligible_exhausted = bool(
+                retry_exhausted_tasks and not eligible_ready_task_cids
+            )
+            retry_budget_backpressure = (
+                {
+                    "schema": DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA,
+                    "reason": "max_task_attempts_reached",
+                    "max_task_attempts": self.max_task_attempts,
+                    "tasks": retry_exhausted_tasks,
+                    "selection_scope": {
+                        "task_prefix": self.task_prefix,
+                        "task_shard_count": self.task_shard_count,
+                        "task_shard_index": self.task_shard_index,
+                        "strict_task_sharding": self.strict_task_sharding,
+                    },
+                    "any_eligible_exhausted": bool(retry_exhausted_tasks),
+                    "all_eligible_exhausted": all_eligible_exhausted,
+                    "eligible_ready_task_cids": eligible_ready_task_cids,
+                }
+                if retry_exhausted_tasks
+                else None
+            )
             return {
                 "unchanged": reconciliation_write_count == 0,
                 "write_count": reconciliation_write_count,
                 "active_task_id": "",
-                "selection_idle_reason": "no_ready_tasks",
+                "selection_idle_reason": (
+                    "all_selectable_ready_tasks_reached_max_task_attempts"
+                    if all_eligible_exhausted
+                    else (
+                        "some_selectable_tasks_reached_max_task_attempts"
+                        if retry_exhausted_tasks
+                        else "no_ready_tasks"
+                    )
+                ),
                 "implementation_result": None,
+                "retry_budget_backpressure": retry_budget_backpressure,
+                "retry_exhausted_task_cids": [
+                    item["task_cid"] for item in retry_exhausted_tasks
+                ],
                 "authority_mode": self.authority_mode,
                 "task_source_kind": self.task_source_kind,
                 "markdown_status_writes": self._markdown_status_writes,
@@ -70878,6 +72411,7 @@ def main(argv: list[str] | None = None) -> None:
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,
             require_real_execution=bool(args.implement),
+            max_task_attempts=args.max_task_attempts,
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
         )
         bind_database_portal_execution_from_args(

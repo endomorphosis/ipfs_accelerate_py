@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -230,6 +231,13 @@ def test_atomic_projection_has_all_tables_and_recompiles_losslessly(
     assert expected_tables.issubset(tables)
     assert formal_metadata["repository_tree_id"] == "tree:candidate"
     assert formal_metadata["source_identity"] == original.source_identity
+    validation_rows = source.query("task_validations")
+    assert json.loads(validation_rows[0]["argv_json"]) == [
+        "pytest test_contracts.py"
+    ]
+    assert json.loads(validation_rows[0]["policy_json"])[
+        "representation"
+    ] == "shell_text"
 
 
 def test_prompt_graph_uses_canonical_plan_root_and_rich_projection(

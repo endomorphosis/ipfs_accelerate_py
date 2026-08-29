@@ -125,6 +125,7 @@ _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
 )
+_PYTHON_LAUNCHER_FAMILY_RE = re.compile(r"^python(?:3(?:\.\d+)*)?$")
 _LANDLOCK_CREATE_RULESET_VERSION = 1
 _LANDLOCK_RULE_PATH_BENEATH = 1
 _LANDLOCK_MINIMUM_ABI = 3
@@ -2546,21 +2547,55 @@ def validation_shell_command(command: str) -> list[str]:
         # keeps that as one token, and Bash then treats the whole string as
         # a missing executable.  Flatten those nested command tokens.
         flattened: list[str] = []
+        shell_controls: list[bool] = []
+        at_command_start = True
         for token in leading:
-            if any(character.isspace() for character in token):
+            is_control = _SHELL_CONTROL_TOKEN.fullmatch(token) is not None
+            if is_control:
+                flattened.append(token)
+                shell_controls.append(True)
+                at_command_start = True
+                continue
+            is_assignment = _SHELL_ASSIGNMENT.fullmatch(token) is not None
+            if (
+                at_command_start
+                and not is_assignment
+                and any(character.isspace() for character in token)
+            ):
                 try:
                     nested = shlex.split(token, posix=True)
                 except ValueError:
                     nested = [token]
                 if len(nested) > 1:
                     flattened.extend(nested)
+                    # This token occupied command position and is the legacy
+                    # quoted-whole-command form. Operators revealed by that
+                    # deliberate flatten retain their shell semantics.
+                    shell_controls.extend(
+                        _SHELL_CONTROL_TOKEN.fullmatch(part) is not None
+                        for part in nested
+                    )
+                    at_command_start = False
                     continue
             flattened.append(token)
+            shell_controls.append(False)
+            if not is_assignment:
+                at_command_start = False
         if flattened != leading:
             rebuilt: list[str] = []
-            for token in flattened:
+            for token, is_shell_control in zip(
+                flattened,
+                shell_controls,
+                strict=True,
+            ):
                 name, separator, _value = token.partition("=")
-                if (
+                if is_shell_control:
+                    # ``shlex.quote('&&')`` turns a command boundary into a
+                    # literal argv entry.  Flattening may expose operators
+                    # that were outside the quoted nested command, so retain
+                    # their shell-control semantics in the rebuilt program.
+                    rebuilt.append(token)
+                elif (
                     separator
                     and name.isidentifier()
                     and not token.startswith("-")
@@ -2574,14 +2609,14 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "validation command has invalid shell quoting"
         ) from exc
+    if any(Path(token).name == "eval" for token in leading):
+        raise ValidationRuntimeError(
+            "dynamic shell evaluation is not permitted for validation"
+        )
     if any(Path(token).name in {"bash", "sh"} for token in leading):
         raise ValidationRuntimeError(
             "nested validation shells are not permitted; provide the inner "
             "command directly"
-        )
-    if any(Path(token).name == "eval" for token in leading):
-        raise ValidationRuntimeError(
-            "dynamic shell evaluation is not permitted for validation"
         )
     for token in leading:
         if not any(character.isspace() for character in token):
@@ -2645,6 +2680,15 @@ def validation_shell_command(command: str) -> list[str]:
                     "wrapped Python validation commands are not permitted"
                 )
         command_name = segment[command_index]
+        command_basename = Path(command_name).name
+        if (
+            _PYTHON_LAUNCHER_FAMILY_RE.fullmatch(command_basename)
+            and command_name not in {"python", "python3"}
+        ):
+            raise ValidationRuntimeError(
+                "versioned or path-qualified Python validation launchers are "
+                "not permitted; use sealed python or python3"
+            )
         if Path(command_name).name in _COMMAND_WRAPPERS and any(
             _DYNAMIC_SHELL_COMMAND_WORD.search(argument)
             for argument in segment[command_index + 1 :]
@@ -2715,6 +2759,13 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
     executable_name = Path(parts[0]).name
+    if (
+        _PYTHON_LAUNCHER_FAMILY_RE.fullmatch(executable_name)
+        and parts[0] not in {"python", "python3"}
+    ):
+        raise ValidationRuntimeError(
+            "versioned or path-qualified direct argv Python is not permitted"
+        )
     split_env_argv: list[str] = []
     for index, part in enumerate(parts):
         split_text = ""
