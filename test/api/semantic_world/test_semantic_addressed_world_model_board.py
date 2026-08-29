@@ -4100,10 +4100,14 @@ def test_m18_operator_and_validators_are_presence_first(
         "_m16_migration_errors",
         lambda *_args, **_kwargs: ["M16 history checked"],
     )
+    historical_inventory = dict(inventory)
+    historical_inventory.pop("live_catalog_inventory_successor_materialization")
+    historical_seal = dict(seal)
+    historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     assert board_validator._active_successor_migration_errors(
         malformed,
-        seal,
-        inventory,
+        historical_seal,
+        historical_inventory,
     ) == ["M18 malformed", "M17 history checked", "M16 history checked"]
 
 
