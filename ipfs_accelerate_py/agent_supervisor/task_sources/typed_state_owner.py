@@ -116,6 +116,12 @@ TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-post-merge-retry-queue-receipt@1"
 )
+DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION: Final = (
+    "database_post_merge_completion_claim_verifier_replay"
+)
+DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON: Final = (
+    "post-merge completion recovery seed failed claim verification"
+)
 TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS: Final[
     frozenset[str]
 ] = frozenset(
@@ -126,6 +132,7 @@ TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS: Final[
             "database_post_merge_declared_outputs_"
             "callback_integration_recovery"
         ),
+        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
     }
 )
 _TYPED_DATABASE_POST_MERGE_TERMINAL_REASONS: Final[frozenset[str]] = (
@@ -260,6 +267,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
             "database_post_merge_declared_outputs_"
             "callback_integration_recovery"
         ),
+        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     }
@@ -2146,6 +2154,13 @@ def _validated_post_merge_retry_transition(
             "callback_requalification_receipt_id",
             "callback_reconciliation_evidence_id",
         },
+        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION: {
+            "source_integration_commit",
+            "source_train_receipt_id",
+            "qualified_target_commit",
+            "callback_requalification_receipt_id",
+            "callback_reconciliation_evidence_id",
+        },
     }
     selected_fields = operation_fields.get(operation)
     seed = receipt.get("post_merge_completion_recovery_seed")
@@ -2315,6 +2330,10 @@ def _validated_post_merge_retry_transition(
             "callback_integration",
             "callback_requalification_receipt_id",
         ),
+        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION: (
+            "callback_integration",
+            "callback_requalification_receipt_id",
+        ),
     }[operation]
     qualification_receipt_id = receipt.get(qualification_receipt_name)
     expected_queue_reason = (
@@ -2454,6 +2473,12 @@ def _validated_post_merge_retry_transition(
                 "callback_requalification_receipt_id",
                 "callback_reconciliation_evidence_id",
             ),
+            DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION: (
+                "callback_integration",
+                "qualified_target_commit",
+                "callback_requalification_receipt_id",
+                "callback_reconciliation_evidence_id",
+            ),
         }[operation]
         (
             qualification_kind,
@@ -2474,10 +2499,32 @@ def _validated_post_merge_retry_transition(
             != canonical_json_bytes(dict(seed_value)).decode("utf-8")
             or seed_id != expected_seed_id
             or seed_value.get("task_cid") != task_cid
-            or bound_revision != expected_task_revision
-            or any(
-                not _strict_scalar_equal(seed_value.get(name), expected)
-                for name, expected in attempt_identity.items()
+            or (
+                operation
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                and (
+                    schema
+                    != (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-post-merge-completion-recovery-seed@2"
+                    )
+                    or seed_value.get("source_task_revision")
+                    != expected_task_revision - 4
+                    or bound_revision != expected_task_revision
+                )
+            )
+            or (
+                operation
+                != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                and bound_revision != expected_task_revision
+            )
+            or (
+                operation
+                != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+                and any(
+                    not _strict_scalar_equal(seed_value.get(name), expected)
+                    for name, expected in attempt_identity.items()
+                )
             )
             or seed_value.get("request_id") != receipt.get("request_id")
             or seed_value.get("candidate_commit")
@@ -2611,6 +2658,10 @@ def _validated_post_merge_terminal_control_receipt(
     )
     seed = transition.get("post_merge_completion_recovery_seed")
     terminal_reason = receipt.get("reason")
+    verifier_replay = bool(
+        transition.get("operation")
+        == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+    )
     if (
         receipt.get("operation") != "database_portal_terminal_failure"
         or receipt.get("retryable") is not False
@@ -2620,8 +2671,18 @@ def _validated_post_merge_terminal_control_receipt(
         or receipt.get("control_expected_revision")
         != expected_task_revision - 1
         or any(
-            not _strict_scalar_equal(receipt.get(name), transition.get(name))
+            not _strict_scalar_equal(
+                receipt.get(name), transition.get(name)
+            )
             for name in attempt_fields
+        )
+        or (
+            verifier_replay
+            and (
+                terminal_reason
+                != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON
+                or not isinstance(seed, Mapping)
+            )
         )
         or (
             seed is None
@@ -2630,6 +2691,7 @@ def _validated_post_merge_terminal_control_receipt(
         )
         or (
             isinstance(seed, Mapping)
+            and not verifier_replay
             and (
                 terminal_reason != seed.get("terminal_reason")
                 or terminal_reason
@@ -2757,6 +2819,331 @@ def validated_post_merge_retry_predecessor_lineage(
             raise TaskSourceIntegrityError(
                 "post-merge lineage transfer bytes are noncanonical"
             )
+    return MappingProxyType(lineage)
+
+
+def validated_post_merge_completion_claim_verifier_replay_lineage(
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_status: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    revisions: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    """Prove the sole five-row compatibility suffix admitted for replay.
+
+    This is intentionally narrower than ordinary post-merge recovery.  It
+    recognizes only the historical typed-admission shape that reached the old
+    Portal claim verifier, and it never infers authority from the terminal
+    reason alone.
+    """
+
+    rows = tuple(revisions)
+    if (
+        type(task_cid) is not str
+        or not task_cid
+        or type(task_alias) is not str
+        or not task_alias
+        or task_status != "blocked"
+        or type(task_revision) is not int
+        or task_revision < 5
+        or not isinstance(task_body, Mapping)
+        or len(rows) != 5
+        or any(
+            not isinstance(row, Mapping)
+            or set(row) != {"revision", "status", "body"}
+            for row in rows
+        )
+        or [row.get("revision") for row in rows]
+        != list(range(task_revision - 4, task_revision + 1))
+        or [row.get("status") for row in rows]
+        != ["blocked", "retrying", "in_progress", "in_progress", "blocked"]
+        or rows[-1].get("body") != dict(task_body)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay has no exact five-row suffix"
+        )
+    bodies = [row.get("body") for row in rows]
+    if any(not isinstance(body, Mapping) for body in bodies):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay task body is malformed"
+        )
+    semantic_bodies = []
+    receipts = []
+    for body in bodies:
+        semantic = dict(body)
+        receipt = semantic.pop("completion_receipt", None)
+        semantic_bodies.append(semantic)
+        receipts.append(receipt)
+    if (
+        any(body != semantic_bodies[0] for body in semantic_bodies[1:])
+        or any(not isinstance(receipt, Mapping) for receipt in receipts)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay changed semantic task bytes"
+        )
+    source, recovery, seeded_claim, admitted_claim, terminal = (
+        dict(receipt) for receipt in receipts
+    )
+    seed = recovery.get("post_merge_completion_recovery_seed")
+    prequeue_recovery = dict(recovery)
+    prequeue_recovery["queue_receipt"] = {}
+    source_revision = task_revision - 4
+    recovery_identity = {
+        name: recovery.get(name)
+        for name in (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+    }
+    try:
+        verified_recovery = _validated_post_merge_retry_transition(
+            prequeue_recovery,
+            task_cid=task_cid,
+            expected_task_revision=source_revision,
+            queue_reason=str(recovery.get("queue_reason") or ""),
+            attempt_identity=recovery_identity,
+            recovery_seed_json=(
+                canonical_json_bytes(dict(seed)).decode("utf-8")
+                if isinstance(seed, Mapping)
+                else ""
+            ),
+        )
+        _validated_post_merge_terminal_control_receipt(
+            source,
+            expected_task_revision=source_revision,
+            transition=verified_recovery,
+        )
+    except TypedStateOwnerError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay source recovery is invalid"
+        ) from exc
+    if (
+        not isinstance(seed, Mapping)
+        or seed.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1"
+        )
+        or seed.get("source_task_revision") != source_revision
+        or seed.get("task_cid") != task_cid
+        or seed.get("task_alias") != task_alias
+        or seed.get("qualification_kind") != "callback_integration"
+        or recovery.get("operation")
+        != "database_post_merge_declared_outputs_callback_integration_recovery"
+        or set(recovery)
+        & (
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay seed is outside generation nine"
+        )
+
+    seeded_claim_fields = {
+        "operation",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
+        "claim_phase_schema",
+        "claim_process_attestation",
+        "post_merge_completion_recovery_source_attempt_id",
+        "post_merge_completion_recovery_seed",
+    }
+    claim_route_fields = set(seeded_claim) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+    )
+    claim_transfer_fields = set(seeded_claim) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    source_route_fields = set(source) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+    )
+    source_transfer_fields = set(source) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    try:
+        claim_identity = _validated_database_claim_identity(seeded_claim)
+        source_identity = _validated_database_claim_identity(seed)
+        _validated_database_claim_process_attestation(seeded_claim)
+        route = TaskExecutionRouteBinding.from_dict(
+            seeded_claim.get("execution_route_binding")
+        ).to_dict()
+    except (TaskSourceIntegrityError, TypedStateOwnerError, TypeError, ValueError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay seeded claim is invalid"
+        ) from exc
+    if (
+        claim_identity["attempt_number"] <= source_identity["attempt_number"]
+        or claim_identity["fencing_token"] <= source_identity["fencing_token"]
+        or claim_identity["fence_epoch"] < source_identity["fence_epoch"]
+        or any(
+            claim_identity[name] == source_identity[name]
+            for name in ("attempt_id", "claim_id", "lease_id")
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay claim did not advance its source"
+        )
+    if (
+        set(seeded_claim)
+        != seeded_claim_fields | claim_route_fields | claim_transfer_fields
+        or seeded_claim.get("operation") != "database_claim"
+        or seeded_claim.get("claim_phase_schema")
+        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        or seeded_claim.get("claimed_from_revision") != task_revision - 3
+        or seeded_claim.get("post_merge_completion_recovery_seed")
+        != dict(seed)
+        or seeded_claim.get("post_merge_completion_recovery_source_attempt_id")
+        != seed.get("attempt_id")
+        or claim_route_fields
+        != set(_DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS)
+        or source_route_fields != claim_route_fields
+        or any(seeded_claim.get(name) != source.get(name) for name in claim_route_fields)
+        or dict(seeded_claim.get("execution_route_binding") or {}) != route
+        or route.get("task_cid") != task_cid
+        or route.get("task_alias") != task_alias
+        or seeded_claim.get("execution_route_policy_id") != route.get("policy_id")
+        or seeded_claim.get("execution_route_origin_revision")
+        != route.get("task_revision")
+        or source_transfer_fields != claim_transfer_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay claim lineage differs"
+        )
+    if claim_transfer_fields:
+        binding = seeded_claim.get("virgin_task_transfer")
+        cursor = seeded_claim.get("virgin_task_transfer_claim_cursor")
+        source_binding = source.get("virgin_task_transfer")
+        source_cursor = source.get("virgin_task_transfer_claim_cursor")
+        shard_count = (
+            binding.get("task_shard_count")
+            if isinstance(binding, Mapping)
+            else None
+        )
+        try:
+            expected_binding = _database_virgin_transfer_binding(
+                task_cid=task_cid,
+                task_alias=task_alias,
+                receipt=seeded_claim,
+                shard_count=int(shard_count),
+            )
+            expected_cursor = _database_virgin_transfer_claim_cursor(
+                receipt=seeded_claim,
+                binding=expected_binding,
+            )
+            cursor_advanced = bool(
+                isinstance(source_cursor, Mapping)
+                and cursor.get("claimed_from_revision")
+                > source_cursor.get("claimed_from_revision")
+                and cursor.get("fencing_token")
+                > source_cursor.get("fencing_token")
+                and cursor.get("fence_epoch") >= source_cursor.get("fence_epoch")
+                and all(
+                    cursor.get(name) != source_cursor.get(name)
+                    for name in ("claim_id", "attempt_id", "lease_id")
+                )
+            )
+        except (IntentRepositoryError, KeyError, TypeError, ValueError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge claim-verifier replay transfer is invalid"
+            ) from exc
+        if (
+            not isinstance(binding, Mapping)
+            or not isinstance(cursor, Mapping)
+            or not isinstance(source_binding, Mapping)
+            or dict(binding) != dict(source_binding)
+            or dict(binding) != dict(expected_binding)
+            or dict(cursor) != dict(expected_cursor)
+            or not cursor_advanced
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge claim-verifier replay transfer did not advance"
+            )
+
+    expected_admission = {
+        **seeded_claim,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": task_revision - 2,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    if admitted_claim != expected_admission:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay admission is not exact"
+        )
+    terminal_route_fields = set(terminal) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+    )
+    terminal_transfer_fields = set(terminal) & set(
+        _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+    )
+    terminal_identity = {
+        name: terminal.get(name)
+        for name in claim_identity
+    }
+    if (
+        set(terminal)
+        != set(_DATABASE_PORTAL_TERMINAL_FAILURE_FIELDS)
+        | terminal_route_fields
+        | terminal_transfer_fields
+        or terminal.get("operation") != "database_portal_terminal_failure"
+        or terminal.get("reason")
+        != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON
+        or terminal.get("retryable") is not False
+        or terminal.get("execution_phase") != "failed"
+        or terminal.get("control_expected_status") != "in_progress"
+        or terminal.get("control_expected_revision") != task_revision - 1
+        or not isinstance(terminal.get("coordination"), Mapping)
+        or any(
+            not _strict_scalar_equal(terminal_identity.get(name), value)
+            for name, value in claim_identity.items()
+        )
+        or terminal_route_fields != claim_route_fields
+        or terminal_transfer_fields != claim_transfer_fields
+        or any(
+            terminal.get(name) != admitted_claim.get(name)
+            for name in terminal_route_fields | terminal_transfer_fields
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge claim-verifier replay terminal is not exact"
+        )
+    lineage = {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "source_task_revision": source_revision,
+        "recovery_task_revision": task_revision - 3,
+        "seeded_claim_task_revision": task_revision - 2,
+        "admitted_claim_task_revision": task_revision - 1,
+        "terminal_task_revision": task_revision,
+        "source_receipt": source,
+        "recovery_receipt": recovery,
+        "seeded_claim_receipt": seeded_claim,
+        "admitted_claim_receipt": admitted_claim,
+        "terminal_receipt": terminal,
+        "source_seed": dict(seed),
+        "source_coordination": dict(recovery.get("coordination") or {}),
+    }
+    lineage["lineage_id"] = content_identity(lineage)
     return MappingProxyType(lineage)
 
 
@@ -6491,6 +6878,28 @@ class TypedStateOwnerGateway:
             requested_status = str(
                 command.parameters.get("status") or ""
             ).strip().lower()
+            try:
+                requested_body = json.loads(
+                    str(command.parameters.get("body_json") or "{}")
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "task status CAS body is malformed"
+                ) from exc
+            requested_receipt = (
+                requested_body.get("completion_receipt")
+                if isinstance(requested_body, Mapping)
+                else None
+            )
+            if (
+                isinstance(requested_receipt, Mapping)
+                and requested_receipt.get("operation")
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge claim-verifier replay requires the dedicated "
+                    "history-bound recovery command"
+                )
             rows = self._connection.execute(
                 """
                 SELECT status, body_json FROM tasks
@@ -6521,6 +6930,17 @@ class TypedStateOwnerGateway:
                 ):
                     raise TypedStateOwnerAuthorizationError(
                         "protected typed-deferral task cannot be reopened by generic CAS"
+                    )
+                if (
+                    isinstance(prior_receipt, Mapping)
+                    and prior_receipt.get("operation")
+                    == "database_portal_terminal_failure"
+                    and prior_receipt.get("reason")
+                    == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_FAILURE_REASON
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge claim-verifier failure requires the dedicated "
+                        "history-bound recovery command"
                     )
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             recovery = _validated_dead_claim_recovery_parameters(
@@ -6870,6 +7290,7 @@ class TypedStateOwnerGateway:
                 command.parameters
             )
             values = dict(recovery["cooldown_parameters"])
+            verifier_replay_source_seed: dict[str, Any] | None = None
             task_rows = self._connection.execute(
                 """
                 SELECT task_alias, status, revision, body_json FROM tasks
@@ -6910,6 +7331,101 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "post-merge retry blocked predecessor history is absent or stale"
                 )
+            if (
+                recovery["transition_receipt"].get("operation")
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+            ):
+                replay_rows = self._connection.execute(
+                    """
+                    SELECT revision, status, body_json FROM task_revisions
+                    WHERE task_cid = ? AND revision BETWEEN ? AND ?
+                    ORDER BY revision LIMIT 6
+                    """,
+                    [
+                        values["task_cid"],
+                        values["expected_task_revision"] - 4,
+                        values["expected_task_revision"],
+                    ],
+                ).fetchall()
+                replay_revisions = []
+                for row in replay_rows:
+                    revision, status, body_json = row[0], row[1], row[2]
+                    body, _ = _closed_canonical_json_object(
+                        body_json,
+                        noun="post-merge claim-verifier replay history body",
+                    )
+                    replay_revisions.append(
+                        {
+                            "revision": revision,
+                            "status": str(status or ""),
+                            "body": body,
+                        }
+                    )
+                lineage = (
+                    validated_post_merge_completion_claim_verifier_replay_lineage(
+                        task_cid=values["task_cid"],
+                        task_alias=str(task_row[0] or ""),
+                        task_status="blocked",
+                        task_revision=values["expected_task_revision"],
+                        task_body=prior_body,
+                        revisions=replay_revisions,
+                    )
+                )
+                source_seed = lineage["source_seed"]
+                verifier_replay_source_seed = dict(source_seed)
+                successor_seed = recovery["transition_receipt"].get(
+                    "post_merge_completion_recovery_seed"
+                )
+                lineage_fields = (
+                    "task_cid",
+                    "task_alias",
+                    "attempt_id",
+                    "attempt_number",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "source_task_revision",
+                    "request_id",
+                    "candidate_commit",
+                    "queue_source_attempt_id",
+                    "queue_source_claim_id",
+                    "queue_source_lease_id",
+                    "queue_source_fencing_token",
+                    "queue_source_fence_epoch",
+                    "queue_source_binding_id",
+                    "queue_source_projection_immutable_digest",
+                    "terminal_reason",
+                )
+                if (
+                    not isinstance(successor_seed, Mapping)
+                    or successor_seed.get("schema")
+                    != (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-post-merge-completion-recovery-seed@2"
+                    )
+                    or successor_seed.get("recovery_control_revision")
+                    != values["expected_task_revision"]
+                    or any(
+                        not _strict_scalar_equal(
+                            successor_seed.get(name), source_seed.get(name)
+                        )
+                        for name in lineage_fields
+                    )
+                    or any(
+                        successor_seed.get(name) == source_seed.get(name)
+                        for name in (
+                            "qualified_target_commit",
+                            "qualification_receipt_id",
+                            "recovery_evidence_id",
+                        )
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge claim-verifier replay successor seed is "
+                        "not an advanced exact lineage"
+                    )
             prior_receipt = prior_body.get("completion_receipt")
             if (
                 not isinstance(prior_receipt, Mapping)
@@ -6977,6 +7493,41 @@ class TypedStateOwnerGateway:
                     **validated_prior,
                     "attempt_number": validated_prior["attempt"],
                 }
+            if verifier_replay_source_seed is not None:
+                prior_extension = prior_queue.get("extension")
+                source_attempt_fields = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if (
+                    not isinstance(prior_extension, Mapping)
+                    or any(
+                        not _strict_scalar_equal(
+                            prior_extension.get(name),
+                            verifier_replay_source_seed.get(name),
+                        )
+                        for name in source_attempt_fields
+                    )
+                    or not _strict_scalar_equal(
+                        prior_extension.get("expected_task_revision"),
+                        verifier_replay_source_seed.get(
+                            "source_task_revision"
+                        ),
+                    )
+                    or prior_extension.get("reason")
+                    != lineage["recovery_receipt"].get(
+                        "queue_reason"
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge claim-verifier replay cooldown does not "
+                        "match its historical source attempt"
+                    )
             if (
                 (values["expected_queue_revision"] == -1 and prior_queue)
                 or (values["expected_queue_revision"] >= 0 and not prior_queue)

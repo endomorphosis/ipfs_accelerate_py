@@ -43,6 +43,7 @@ POST_MERGE_RETRY_RECOVERY_OPERATIONS: Final = frozenset(
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
         "database_post_merge_declared_outputs_callback_integration_recovery",
+        "database_post_merge_completion_claim_verifier_replay",
     }
 )
 EXECUTION_ROUTE_RECEIPT_FIELDS: Final = frozenset(

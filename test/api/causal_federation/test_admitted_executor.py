@@ -5189,6 +5189,9 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             _post_merge_completion_crash_recovery_context=(
                 lambda _task, **_kwargs: None
             ),
+            _post_merge_completion_claim_verifier_replay_context=(
+                lambda _task: None
+            ),
             _post_merge_source_admitted=(
                 lambda _raw, _attempt, _task: True
             ),

@@ -65,15 +65,16 @@ from .task_execution_route_policy import (
     task_execution_contract_cid,
 )
 from .typed_state_owner import (
+    DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_COMMAND,
     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_OPERATIONS,
-    TYPED_DATABASE_POST_MERGE_RETRY_QUEUE_RECEIPT_SCHEMA,
     TYPED_DATABASE_POST_MERGE_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
@@ -82,11 +83,12 @@ from .typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
     _post_merge_retry_queue_receipt,
+    _validated_database_strict_resume_rejection_receipt,
+    _validated_legacy_unstall_claim_receipt,
     _validated_post_merge_retry_transition,
     _validated_post_merge_terminal_control_receipt,
-    _validated_legacy_unstall_claim_receipt,
-    _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
+    validated_post_merge_completion_claim_verifier_replay_lineage,
     validated_post_merge_retry_predecessor_lineage,
 )
 
@@ -2013,6 +2015,24 @@ class TypedDatabaseTaskSource:
                 **dict(prior.body),
                 "completion_receipt": dict(expected_control_receipt),
             }
+            if (
+                transition.get("operation")
+                == DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFIER_REPLAY_OPERATION
+            ):
+                validated_post_merge_completion_claim_verifier_replay_lineage(
+                    task_cid=prior.task_cid,
+                    task_alias=prior.task_alias,
+                    task_status="blocked",
+                    task_revision=expected_revision,
+                    task_body=expected_predecessor_body,
+                    revisions=[
+                        by_revision.get(revision)
+                        for revision in range(
+                            expected_revision - 4,
+                            expected_revision + 1,
+                        )
+                    ],
+                )
             if (
                 len(by_revision) != len(revisions)
                 or not isinstance(predecessor, Mapping)
