@@ -168,9 +168,24 @@ def test_rendered_controls_are_deterministic_and_sealed() -> None:
     )
     assert {
         "pyproject.toml",
+        "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+        "pre_implementation_kernel.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+        "pre_implementation_provider_gate.py",
         "ipfs_accelerate_py/agent_supervisor/validation/"
         "project_dependency_preflight.py",
     }.issubset(seal["bootstrap_runtime_file_sha256"])
+    scheduler = json.loads(
+        (
+            ROOT
+            / "config/agent_supervisor_semantic_preserving_remodularization_scheduler.json"
+        ).read_text()
+    )
+    assert scheduler["provider"]["merge_resolver_mode"] == (
+        "disabled_until_sealed_residual"
+    )
 
 
 def test_dependency_binding_separates_planning_and_current_gitlinks(

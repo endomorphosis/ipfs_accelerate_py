@@ -18011,7 +18011,10 @@ def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
     assert events[-1]["reason"] == "todo_read_failed"
 
 
-def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
+def test_implementation_daemon_defers_non_ephemeral_provider_dispatch(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -18047,15 +18050,37 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
         # before the missing executable can be exercised.
         worktree_root=repo,
     )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "direct provider command must remain unreachable"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "direct provider process must remain unreachable"
+        ),
+    )
 
     result = daemon.run_once()
 
     implementation = result["implementation_result"]
-    assert implementation["returncode"] == 1
-    assert implementation["exception_result"]["exception_type"] == "FileNotFoundError"
-    assert implementation["exception_result"]["phase"] == "implementing"
+    assert implementation["skipped"] is True
+    assert implementation["deferred"] is True
+    assert implementation["retryable"] is True
+    assert implementation["reason"] == (
+        "residual_provider_requires_isolated_fenced_worktree"
+    )
+    assert implementation["attempt_consumed"] is False
+    assert implementation["provider_dispatched"] is False
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert any(event["type"] == "implementation_exception" for event in events)
+    assert any(
+        event["type"] == "implementation_retry_deferred"
+        for event in events
+    )
     assert events[-1]["type"] == "daemon_pass"
 
 
@@ -19430,6 +19455,197 @@ def test_ephemeral_lifecycle_rebind_failure_preserves_attempt_budget(
     )
 
 
+def test_ephemeral_provider_without_residual_authority_defers_without_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SPAR-",
+        implement=True,
+        implementation_command="provider-must-remain-unreachable",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="SPAR-TEST",
+        title="Require exact residual authority",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="control-plane",
+        outputs=["feature.py"],
+        validation=["python3 -m py_compile feature.py"],
+    )
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    state.save(daemon.state_path)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider must remain unreachable without residual authority"
+        ),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["deferred"] is True
+    assert result["retryable"] is True
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["reason"] == (
+        "pre_implementation_abstain_review_no_analytical_close"
+    )
+    assert persisted.implementation_attempts.get(task.task_id, 0) == 0
+    assert persisted.implementation_attempts_by_cid.get(
+        identity.canonical_task_cid,
+        0,
+    ) == 0
+
+
+def _install_receipt_backed_residual_authority(daemon, task):
+    """Install a hermetic exact-receipt fixture; production has no default."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TaskExecutionRouteBinding,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_disposition import (
+        ImplementationForestRoots,
+    )
+
+    task_cid = daemon._canonical_ref(task)
+    repository_tree_id = _git(
+        Path(daemon.repo_root),
+        "rev-parse",
+        "HEAD^{tree}",
+    )
+    policy_id = implementation_daemon_module.content_identity(
+        {"fixture": "residual-route-policy"}
+    )
+    daemon.bind_launch_task_execution_route(
+        TaskExecutionRouteBinding(
+            policy_id=policy_id,
+            plan_root_cid=implementation_daemon_module.content_identity(
+                {"fixture": "residual-plan-root"}
+            ),
+            repository_tree_id=repository_tree_id,
+            source_revision=1,
+            task_cid=task_cid,
+            task_alias=task.task_id,
+            task_revision=1,
+            task_contract_cid=implementation_daemon_module.content_identity(
+                {"fixture": "residual-task-contract"}
+            ),
+            execution_mode="grok-codex",
+        ).to_dict()
+    )
+    forest_roots = ImplementationForestRoots(
+        repository_id="repository:test-residual-authority",
+        repository_forest_cid=implementation_daemon_module.content_identity(
+            {"fixture": "residual-forest", "tree": repository_tree_id}
+        ),
+        git_tree_id=repository_tree_id,
+        policy_root=policy_id,
+    )
+
+    def authority_materials(
+        *,
+        task,
+        task_cid,
+        current_git_tree_id,
+        execution_route_binding,
+        attempt,
+    ):
+        del attempt
+        assert current_git_tree_id == repository_tree_id
+        assert execution_route_binding is not None
+        from ipfs_accelerate_py.agent_supervisor.planning.residual_llm_packet import (
+            seal_residual_llm_packet,
+        )
+
+        receipts = {}
+        for kind in ("planner", "doctor", "obligation", "logic", "repair"):
+            body = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/authority-receipt@1"
+                ),
+                "receipt_kind": kind,
+                "task_cid": task_cid,
+                "repository_forest_cid": (
+                    forest_roots.repository_forest_cid
+                ),
+            }
+            receipts[kind] = {
+                **body,
+                "content_id": implementation_daemon_module.content_identity(
+                    body
+                ),
+            }
+        receipt_cids = {
+            kind: receipt["content_id"]
+            for kind, receipt in receipts.items()
+        }
+        packet = seal_residual_llm_packet(
+            task_id=task_cid,
+            repository_id=forest_roots.repository_id,
+            tree_id=forest_roots.git_tree_id,
+            forest_id=forest_roots.repository_forest_cid,
+            write_paths=tuple(task.outputs),
+            obligation_ids=(receipt_cids["obligation"],),
+            counterexample_capsule={"target_ids": ["lifecycle-fixture"]},
+            validation_commands=tuple(task.validation),
+            authority_roots={
+                "repository_forest_cid": (
+                    forest_roots.repository_forest_cid
+                ),
+                "policy_root": forest_roots.policy_root,
+            },
+        )
+        return {
+            "forest_roots": forest_roots,
+            "residual_packet": packet,
+            "obligation_graph_cid": receipt_cids["obligation"],
+            "plan_cid": receipt_cids["planner"],
+            "doctor_cid": receipt_cids["doctor"],
+            "authority_receipt_cids": receipt_cids,
+            "authority_receipt_resolver": lambda cid: next(
+                (
+                    receipt
+                    for receipt in receipts.values()
+                    if receipt["content_id"] == cid
+                ),
+                None,
+            ),
+        }
+
+    daemon.pre_implementation_authority_materials_resolver = (
+        authority_materials
+    )
+
+
 def test_ephemeral_lifecycle_cleanup_after_provider_dispatch_consumes_attempt(
     tmp_path,
     monkeypatch,
@@ -19473,9 +19689,15 @@ def test_ephemeral_lifecycle_cleanup_after_provider_dispatch_consumes_attempt(
         priority="P1",
         track="proof-search",
         outputs=["feature.py"],
+        validation=["python3 -m py_compile feature.py"],
     )
     daemon._register_task_identities([task])
     identity = daemon._identity_for_task(task)
+    task = replace(
+        task,
+        canonical_task_cid=identity.canonical_task_cid,
+    )
+    _install_receipt_backed_residual_authority(daemon, task)
     state = TodoTaskState(
         task_identities={task.task_id: identity.to_dict()},
         implementation_attempts={task.task_id: 2},
@@ -23830,6 +24052,105 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "Preserve implementation authority." not in receipt_text
     assert "raw_prompt" not in receipt_text
     assert "decoded_output" not in receipt_text
+
+
+def test_structured_board_token_budget_binds_context_and_output_reserve(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SPAR-",
+    )
+    task = PortalTask(
+        task_id="SPAR-TEST",
+        title="Bind the declared structured budget",
+        status="ready",
+        completion="auto",
+        priority="P0",
+        track="control-plane",
+        outputs=["src/bounded.py"],
+        validation=["python3 -m py_compile src/bounded.py"],
+        acceptance="Retain exact task budget authority.",
+        metadata={
+            "context budget": (
+                "input_tokens=36000; output_tokens=12000; "
+                "exact/procedural prefix first; residual-only fallback"
+            ),
+            "token budget": "input_tokens=36000; output_tokens=12000",
+        },
+        canonical_task_cid="task:spar-budget",
+    )
+
+    provider_window, budget, byte_limit = (
+        daemon._implementation_provider_context_window_for_task(task)
+    )
+
+    assert daemon._task_context_token_limit(task) == 36_000
+    assert daemon._task_output_token_reserve(task) == 12_000
+    assert budget.max_input_tokens == 36_000
+    assert budget.reserved_output_tokens == 12_000
+    assert provider_window == 200_000
+    assert byte_limit is None
+
+
+@pytest.mark.parametrize(
+    "metadata, message",
+    (
+        (
+            {
+                "context budget": "input_tokens=36000; output_tokens=12000",
+                "token budget": "input_tokens=35000; output_tokens=12000",
+            },
+            "structured task token budget fields disagree",
+        ),
+        (
+            {"context budget": "input_tokens=36000; output_tokens=oops"},
+            "invalid structured task context budget",
+        ),
+        (
+            {
+                "context budget tokens": "32000",
+                "token budget": "input_tokens=36000; output_tokens=12000",
+            },
+            "task context token budget fields disagree",
+        ),
+    ),
+)
+def test_structured_board_token_budget_fails_closed_on_drift(
+    tmp_path,
+    metadata,
+    message,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SPAR-",
+    )
+    task = PortalTask(
+        task_id="SPAR-TEST",
+        title="Reject budget drift",
+        status="ready",
+        completion="auto",
+        priority="P0",
+        track="control-plane",
+        metadata=metadata,
+        canonical_task_cid="task:spar-budget-drift",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match=message,
+    ):
+        daemon._implementation_provider_context_window_for_task(task)
 
 
 @pytest.mark.parametrize("byte_limit", (12_288, 16_384))

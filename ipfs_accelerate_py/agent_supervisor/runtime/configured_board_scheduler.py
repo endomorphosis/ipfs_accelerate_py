@@ -183,6 +183,9 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+LLM_MERGE_RESOLVER_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
+)
 EXTERNAL_PROVIDER_ISOLATION_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
@@ -386,6 +389,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     ROUTE_SOURCE_HEAD_ENV,
     ROUTE_SOURCE_TREE_ENV,
     ROUTE_ID_ENV,
+    LLM_MERGE_RESOLVER_COMMAND_ENV,
 )
 ORDERED_PROVIDER_FIELDS = (
     "primary_provider_id",
@@ -396,6 +400,10 @@ ORDERED_PROVIDER_FIELDS = (
     "fallback_reasoning_effort",
 )
 ORDERED_PRIMARY_EXECUTABLE_FIELD = "primary_executable"
+MERGE_RESOLVER_MODE_FIELD = "merge_resolver_mode"
+MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL = (
+    "disabled_until_sealed_residual"
+)
 ORDERED_PROVIDER_DETECTION_FIELDS = (
     *ORDERED_PROVIDER_FIELDS,
     ORDERED_PRIMARY_EXECUTABLE_FIELD,
@@ -2827,6 +2835,16 @@ def load_configured_board(
             raise ConfiguredBoardError(
                 f"provider.external_isolation is unavailable: {exc}"
             ) from exc
+    merge_resolver_mode = str(
+        provider.get(MERGE_RESOLVER_MODE_FIELD) or ""
+    ).strip()
+    if merge_resolver_mode not in {
+        "",
+        MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL,
+    }:
+        raise ConfiguredBoardError(
+            "provider.merge_resolver_mode is unsupported"
+        )
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -5593,6 +5611,14 @@ def configured_board_launch_plan(
             environment[EXTERNAL_PROVIDER_ISOLATION_ENV] = (
                 isolation_config.environment_json()
             )
+    if (
+        str(provider.get(MERGE_RESOLVER_MODE_FIELD) or "").strip()
+        == MERGE_RESOLVER_DISABLED_UNTIL_RESIDUAL
+    ):
+        # Merge repair is a distinct semantic residual.  Until that route has
+        # its own sealed packet and lease, retain deterministic/manual merge
+        # handling and make the legacy free-form LLM resolver unreachable.
+        environment[LLM_MERGE_RESOLVER_COMMAND_ENV] = "disabled"
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:

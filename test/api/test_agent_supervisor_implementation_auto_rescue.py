@@ -176,9 +176,9 @@ def test_vrif_owner_gate_reserves_provider_free_empty_candidate(
     assert reserved["skip_provider"] is True
     assert reserved["provider_authorized"] is False
     assert reserved["owner_recovery_reserved"] is True
-    assert ordinary["reason_code"] == "no_analytical_close_provider_dispatched"
-    assert ordinary["skip_provider"] is False
-    assert ordinary["provider_authorized"] is True
+    assert ordinary["reason_code"] == "no_analytical_close"
+    assert ordinary["skip_provider"] is True
+    assert ordinary["provider_authorized"] is False
     assert ordinary["owner_recovery_reserved"] is False
 
 
@@ -202,6 +202,10 @@ def test_vrif_reserved_candidate_is_provider_independent_and_terminal(
     task = _vrif_task()
     state = PortalTaskState()
     baseline = "a" * 40
+    # This unit isolates the reserved provider-free execution branch.  Event
+    # projection independently requires a canonical dependency receipt and is
+    # exercised by its own integration tests.
+    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
 
     def seed(worktree_path: Path, _branch_name: str, *, task=None) -> str:
         worktree_path.mkdir(parents=True)
@@ -2054,11 +2058,11 @@ def test_inline_provider_rescue_fails_closed_on_ambiguous_sealed_fd(
     assert not any(name.endswith("provider_started") for name, _payload in events)
 
 
-def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
+def test_inline_provider_rescue_requires_fresh_residual_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon, events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
     daemon._scoped_control_plane_launch = None
     daemon._scoped_recovery_control_plane_launches = {}
     command = ["/opt/providers/grok", "--model", "grok-4.6"]
@@ -2076,10 +2080,16 @@ def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
 
     result = _run_inline_rescue(daemon, tmp_path, command)
 
-    assert result["passed"] is True
-    assert len(calls) == 1
-    assert calls[0]["inherit_environment"] is False
-    assert "pass_fds" not in calls[0]
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 0
+    assert calls == []
+    assert any(
+        name == "implementation_auto_rescue_provider_blocked"
+        and payload["reason"] == "fresh_residual_authority_required"
+        and payload["provider_call_allowed"] is False
+        for name, payload in events
+    )
 
 
 def test_auto_rescue_materializer_uses_sanitized_exact_environment(

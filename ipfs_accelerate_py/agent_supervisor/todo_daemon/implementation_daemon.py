@@ -8496,6 +8496,11 @@ class PortalImplementationDaemon:
         # Optional injectable PreImplementationKernel for WPD-021 tests / composition.
         # Production default builds a hermetic kernel at gate evaluation time.
         self.pre_implementation_kernel = None
+        # Optional read-only adapter to the current receipt/packet authorities.
+        # No default is synthesized: until the planner, doctor, obligation,
+        # logic, and repair owners publish an exact resolvable bundle, model
+        # execution must terminate at the typed pre-implementation gate.
+        self.pre_implementation_authority_materials_resolver = None
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
         # A completion decision is emitted before its protected checkout
@@ -27335,6 +27340,167 @@ class PortalImplementationDaemon:
             ),
         )
 
+    def _resolve_pre_implementation_authority_materials(
+        self,
+        *,
+        task: PortalTask,
+        task_cid: str,
+        current_git_tree_id: str,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Resolve one exact residual bundle without minting authority.
+
+        The adapter is deliberately absent by default.  A composition owner
+        may inject a read-only resolver backed by the current receipt and
+        packet stores; task prose or identifiers alone are never promoted into
+        planner/doctor/proof authority here.
+        """
+
+        resolver = getattr(
+            self,
+            "pre_implementation_authority_materials_resolver",
+            None,
+        )
+        if resolver is None:
+            return {}
+        if not callable(resolver):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority resolver invalid",
+                backoff_seconds=300,
+            )
+        try:
+            raw = resolver(
+                task=task,
+                task_cid=task_cid,
+                current_git_tree_id=current_git_tree_id,
+                execution_route_binding=(
+                    None
+                    if self._launch_task_execution_route_binding is None
+                    else dict(self._launch_task_execution_route_binding)
+                ),
+                attempt=int(attempt),
+            )
+        except Exception as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation authority resolution unavailable",
+                backoff_seconds=300,
+            ) from exc
+        if not isinstance(raw, Mapping):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority materials invalid",
+                backoff_seconds=300,
+            )
+        required = {
+            "forest_roots",
+            "residual_packet",
+            "obligation_graph_cid",
+            "plan_cid",
+            "doctor_cid",
+            "authority_receipt_cids",
+        }
+        allowed = required | {"authority_receipt_resolver"}
+        if set(raw) - allowed or not required.issubset(raw):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority materials invalid",
+                backoff_seconds=300,
+            )
+
+        from ..planning.residual_llm_packet import (
+            ResidualLlmPacket,
+            ResidualLlmPacketError,
+        )
+        from .implementation_disposition import ImplementationForestRoots
+
+        route_binding = self._launch_task_execution_route_binding
+        if route_binding is None:
+            raise ImplementationRetryDeferred(
+                "pre implementation execution route binding unavailable",
+                backoff_seconds=300,
+            )
+        forest_value = raw.get("forest_roots")
+        try:
+            forest_roots = (
+                forest_value
+                if isinstance(forest_value, ImplementationForestRoots)
+                else ImplementationForestRoots.from_dict(forest_value)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation forest roots invalid",
+                backoff_seconds=300,
+            ) from exc
+        if (
+            str(route_binding.get("task_alias") or "") != task.task_id
+            or str(route_binding.get("task_cid") or "") != task_cid
+            or str(route_binding.get("repository_tree_id") or "")
+            != current_git_tree_id
+            or forest_roots.git_tree_id != current_git_tree_id
+            or forest_roots.policy_root
+            != str(route_binding.get("policy_id") or "")
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation forest or route binding mismatch",
+                backoff_seconds=300,
+            )
+
+        packet_value = raw.get("residual_packet")
+        try:
+            packet = (
+                packet_value
+                if isinstance(packet_value, ResidualLlmPacket)
+                else ResidualLlmPacket.from_dict(packet_value)
+            )
+        except (ResidualLlmPacketError, TypeError, ValueError) as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation residual packet invalid",
+                backoff_seconds=300,
+            ) from exc
+        declared_outputs = set(task_declared_output_paths(task))
+        declared_validation = tuple(task.validation or ())
+        expected_authority_roots = {
+            "repository_forest_cid": forest_roots.repository_forest_cid,
+            "policy_root": forest_roots.policy_root,
+        }
+        if (
+            packet.task_id != task_cid
+            or packet.repository_id != forest_roots.repository_id
+            or packet.tree_id != forest_roots.git_tree_id
+            or packet.forest_id != forest_roots.repository_forest_cid
+            or not set(packet.write_paths).issubset(declared_outputs)
+            or tuple(packet.validation_commands) != declared_validation
+            or dict(packet.authority_roots or {}) != expected_authority_roots
+            or str(raw.get("obligation_graph_cid") or "").strip()
+            not in set(packet.obligation_ids)
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation residual packet binding mismatch",
+                backoff_seconds=300,
+            )
+        receipt_cids = raw.get("authority_receipt_cids")
+        if not isinstance(receipt_cids, Mapping):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority receipt bundle invalid",
+                backoff_seconds=300,
+            )
+        receipt_resolver = raw.get("authority_receipt_resolver")
+        if receipt_resolver is not None and not callable(receipt_resolver):
+            raise ImplementationRetryDeferred(
+                "pre implementation authority receipt resolver invalid",
+                backoff_seconds=300,
+            )
+        return {
+            "forest_roots": forest_roots,
+            "residual_packet": packet,
+            "residual_packet_cid": packet.packet_id,
+            "obligation_graph_cid": str(
+                raw.get("obligation_graph_cid") or ""
+            ).strip(),
+            "plan_cid": str(raw.get("plan_cid") or "").strip(),
+            "doctor_cid": str(raw.get("doctor_cid") or "").strip(),
+            "authority_receipt_cids": dict(receipt_cids),
+            "authority_receipt_resolver": receipt_resolver,
+        }
+
     def _evaluate_pre_implementation_provider_gate(
         self,
         *,
@@ -27351,6 +27517,7 @@ class PortalImplementationDaemon:
 
         try:
             from .pre_implementation_provider_gate import (
+                assert_provider_dispatch_allowed,
                 evaluate_provider_gate,
                 build_forest_roots_from_identity,
             )
@@ -27374,88 +27541,397 @@ class PortalImplementationDaemon:
             {"repo_root": str(self.repo_root), "kind": "repository"}
         )
         try:
-            head = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or "HEAD"
-            tree = (
-                subprocess.run(
-                    ["git", "rev-parse", "HEAD^{tree}"],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                ).stdout
-                or ""
-            ).strip() or head
-        except OSError:
-            head = "HEAD"
-            tree = "HEAD"
-        forest = build_forest_roots_from_identity(
-            repository_id=f"repository:{repo_id}",
-            repository_forest_cid=implementation_disposition_cid(
-                {"head": head, "tree": tree}
-            ),
-            git_tree_id=tree if " " not in tree else implementation_disposition_cid(
-                {"tree": tree}
-            ),
-            policy_root=implementation_disposition_cid(
-                {"policy": "wpd-pre-implementation@1"}
-            ),
-        )
+            head_result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            tree_result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status_result = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise ImplementationRetryDeferred(
+                "pre implementation Git identity unavailable",
+                backoff_seconds=300,
+            ) from exc
+        head = str(head_result.stdout or "").strip()
+        tree = str(tree_result.stdout or "").strip()
+        object_id_pattern = r"(?:[0-9a-f]{40}|[0-9a-f]{64})"
+        if (
+            head_result.returncode != 0
+            or tree_result.returncode != 0
+            or status_result.returncode != 0
+            or re.fullmatch(object_id_pattern, head) is None
+            or re.fullmatch(object_id_pattern, tree) is None
+        ):
+            raise ImplementationRetryDeferred(
+                "pre implementation Git identity unavailable",
+                backoff_seconds=300,
+            )
         kernel = getattr(self, "pre_implementation_kernel", None)
+        materials = self._resolve_pre_implementation_authority_materials(
+            task=task,
+            task_cid=task_cid,
+            current_git_tree_id=tree,
+            attempt=attempt,
+        )
+        if materials and str(status_result.stdout or ""):
+            raise ImplementationRetryDeferred(
+                "pre implementation dirty overlay authority unavailable",
+                backoff_seconds=300,
+            )
+        forest = materials.get("forest_roots")
+        if forest is None:
+            # This exact local projection can support a fail-closed kernel
+            # disposition only.  It is not accepted as a production source of
+            # model authority; the residual resolver must supply roots bound
+            # to an immutable launch route before authorization is possible.
+            forest = build_forest_roots_from_identity(
+                repository_id=f"repository:{repo_id}",
+                repository_forest_cid=implementation_disposition_cid(
+                    {"head": head, "tree": tree}
+                ),
+                git_tree_id=(
+                    tree
+                    if " " not in tree
+                    else implementation_disposition_cid({"tree": tree})
+                ),
+                policy_root=implementation_disposition_cid(
+                    {"policy": "wpd-pre-implementation@1"}
+                ),
+            )
         decision = evaluate_provider_gate(
             task_cid=task_cid,
             forest_roots=forest,
             attempt=int(attempt),
+            residual_packet_cid=str(
+                materials.get("residual_packet_cid") or ""
+            ),
             kernel=kernel,
-            allow_legacy_residual=True,
+            allow_legacy_residual=False,
+            obligation_graph_cid=str(
+                materials.get("obligation_graph_cid") or ""
+            ),
+            plan_cid=str(materials.get("plan_cid") or ""),
+            doctor_cid=str(materials.get("doctor_cid") or ""),
+            authority_receipt_cids=dict(
+                materials.get("authority_receipt_cids") or {}
+            ),
+            authority_receipt_resolver=materials.get(
+                "authority_receipt_resolver"
+            ),
         )
-        skip_provider = decision.skip_provider
-        provider_authorized = decision.provider_authorized
-        disposition = decision.disposition.value
-        reason_code = decision.reason_code
         owner_recovery_reserved = bool(
             str(getattr(task, "task_id", "") or "")
             == VRIF_BENCHMARK_RECOVERY_TASK_ID
-            and skip_provider
-            and disposition == "abstain_review"
-            and reason_code == "no_analytical_close"
+            and decision.skip_provider
+            and decision.disposition.value == "abstain_review"
+            and decision.reason_code == "no_analytical_close"
         )
-        # Implementation-authorized auto tasks with no unique analytical close
-        # still need the reviewed Grok/Codex route.  The kernel remains honest
-        # about abstaining; this board cannot mint residual authority receipts
-        # during bootstrap, so block-on-abstain would freeze the entire board.
-        if (
-            skip_provider
-            and reason_code == "no_analytical_close"
-            and bool(getattr(self, "implement", True))
-            and self._lgswf_writer_path(getattr(task, "task_id", "")) is None
-            and not owner_recovery_reserved
-        ):
-            skip_provider = False
-            provider_authorized = True
-            reason_code = "no_analytical_close_provider_dispatched"
+        # Exercise the canonical assertion here as a consistency check whenever
+        # the immutable decision authorizes a provider.  The spawn boundary
+        # repeats this check immediately before process creation.
+        if not decision.skip_provider:
+            assert_provider_dispatch_allowed(decision)
         return {
-            "skip_provider": skip_provider,
-            "provider_authorized": provider_authorized,
-            "disposition": disposition,
-            "reason_code": reason_code,
+            "skip_provider": decision.skip_provider,
+            "provider_authorized": decision.provider_authorized,
+            "disposition": decision.disposition.value,
+            "reason_code": decision.reason_code,
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
             "owner_recovery_reserved": owner_recovery_reserved,
+            "_decision": decision,
+            "_residual_packet": materials.get("residual_packet"),
             "event": decision.to_event_payload(
                 task_id=task.task_id,
                 attempt=int(attempt),
             ),
         }
+
+    def _prepare_residual_provider_handoff(
+        self,
+        *,
+        provider_gate: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        checkpoint_dir: Path,
+        command: Sequence[str],
+        workspace_path: Path,
+        lifecycle_record: WorkspaceLifecycleRecord | None,
+    ) -> dict[str, Any]:
+        """Bind an authorized gate to the existing sealed provider wrapper."""
+
+        from .pre_implementation_provider_gate import (
+            ProviderGateDecision,
+            assert_provider_dispatch_allowed,
+        )
+        from .residual_provider_invocation import (
+            PathLease,
+            build_residual_provider_invocation,
+        )
+
+        decision = provider_gate.get("_decision")
+        if not isinstance(decision, ProviderGateDecision):
+            raise ImplementationRetryDeferred(
+                "residual provider gate decision unavailable",
+                backoff_seconds=300,
+            )
+        assert_provider_dispatch_allowed(decision)
+        packet = provider_gate.get("_residual_packet")
+        packet_cid = str(getattr(packet, "packet_id", "") or "")
+        if not packet_cid or packet_cid != decision.residual_packet_cid:
+            raise ImplementationRetryDeferred(
+                "residual provider packet body unavailable",
+                backoff_seconds=300,
+            )
+        canonical_task_cid = self._canonical_ref(task)
+        normalized_workspace = str(workspace_path.resolve(strict=False))
+        if (
+            lifecycle_record is None
+            or lifecycle_record.task_id != task.task_id
+            or lifecycle_record.canonical_task_cid != canonical_task_cid
+            or lifecycle_record.attempt != int(attempt)
+            or lifecycle_record.state
+            not in {
+                WorkspaceLifecycleState.PREPARING,
+                WorkspaceLifecycleState.ACTIVE,
+            }
+            or not lifecycle_record.lease_id
+            or lifecycle_record.fence < 1
+            or str(Path(lifecycle_record.workspace_path).resolve(strict=False))
+            != normalized_workspace
+        ):
+            raise ImplementationRetryDeferred(
+                "residual provider requires exact fenced worktree lifecycle",
+                backoff_seconds=300,
+            )
+        permitted_paths = tuple(getattr(packet, "write_paths", ()) or ())
+        if not permitted_paths:
+            raise ImplementationRetryDeferred(
+                "residual provider path lease unavailable",
+                backoff_seconds=300,
+            )
+        path_lease = PathLease(
+            permitted_write_paths=permitted_paths,
+            lease_id=lifecycle_record.lease_id,
+        )
+        invocation = build_residual_provider_invocation(
+            require_path_lease=True,
+        )
+        base_env = self._implementation_process_environment(
+            task,
+            attempt=attempt,
+            checkpoint_dir=checkpoint_dir,
+        )
+        context = invocation.prepare(
+            packet,
+            path_lease=path_lease,
+            base_env=base_env,
+            base_argv=command,
+            attempt=attempt,
+        )
+        preparation_phase = "command" if command else "precommand"
+        receipt_path = checkpoint_dir / (
+            f"residual-provider-handoff-attempt-{int(attempt)}-"
+            f"{preparation_phase}.prepared.json"
+        )
+        invoked_receipt_path = checkpoint_dir / (
+            f"residual-provider-handoff-attempt-{int(attempt)}.invoked.json"
+        )
+        prepared_receipt = invocation.prepare_receipt(context)
+        write_json_atomic(
+            receipt_path,
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-provider-handoff@1"
+                ),
+                "stage": "prepared",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "gate_receipt_cid": decision.receipt_cid,
+                "residual_packet_cid": packet_cid,
+                "workspace_lifecycle_record_id": lifecycle_record.record_id,
+                "workspace_lease_id": lifecycle_record.lease_id,
+                "workspace_fence": lifecycle_record.fence,
+                "authoritative": False,
+                "diagnostic_only": True,
+                "receipt": prepared_receipt.to_dict(),
+            },
+        )
+        return {
+            "decision": decision,
+            "packet": packet,
+            "path_lease": path_lease,
+            "invocation": invocation,
+            "context": context,
+            "base_env": base_env,
+            "receipt_path": receipt_path,
+            "invoked_receipt_path": invoked_receipt_path,
+            "workspace_path": normalized_workspace,
+            "workspace_lifecycle_record": lifecycle_record,
+        }
+
+    def _assert_residual_provider_lifecycle_current(
+        self,
+        *,
+        handoff: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Re-open the exact active lease/fence at the provider spawn edge."""
+
+        expected = handoff.get("workspace_lifecycle_record")
+        if not isinstance(expected, WorkspaceLifecycleRecord):
+            raise RuntimeError(
+                "provider dispatch requires a fenced worktree lifecycle"
+            )
+        normalized_workspace = workspace_path.resolve(strict=False)
+        normalized_repo_root = Path(self.repo_root).resolve(strict=False)
+        observed = self.worktree_lifecycle.load_workspace(workspace_path)
+        if (
+            observed is None
+            or expected.state is not WorkspaceLifecycleState.ACTIVE
+            or observed.task_id != task.task_id
+            or observed.canonical_task_cid != self._canonical_ref(task)
+            or observed.attempt != int(attempt)
+            or observed.state is not WorkspaceLifecycleState.ACTIVE
+            or observed.record_id != expected.record_id
+            or observed.lease_id != expected.lease_id
+            or observed.fence != expected.fence
+            or observed.owner != expected.owner
+            or observed.lane_id != expected.lane_id
+            or observed.branch != expected.branch
+            or observed.merge_target != expected.merge_target
+            or observed.state_dir != expected.state_dir
+            or observed.expires_at != expected.expires_at
+            or observed.expires_at <= time.time()
+            or Path(observed.repo_root).resolve(strict=False)
+            != normalized_repo_root
+            or Path(observed.workspace_path).resolve(strict=False)
+            != normalized_workspace
+            or normalized_workspace == normalized_repo_root
+            or owner_liveness(
+                observed.owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError(
+                "provider dispatch worktree lease or fence is stale"
+            )
+        if (
+            not self._worktree_path_registered_in_repo(
+                normalized_repo_root,
+                normalized_workspace,
+            )
+            or self._git_current_branch(normalized_workspace)
+            != observed.branch
+        ):
+            raise RuntimeError(
+                "provider dispatch worktree registration or branch is stale"
+            )
+        packet = handoff.get("packet")
+        expected_tree = str(getattr(packet, "tree_id", "") or "")
+        tree_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        status_result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        observed_tree = str(tree_result.stdout or "").strip()
+        if (
+            tree_result.returncode != 0
+            or status_result.returncode != 0
+            or not expected_tree
+            or observed_tree != expected_tree
+            or bool(str(status_result.stdout or ""))
+        ):
+            raise RuntimeError(
+                "provider dispatch source tree or overlay is stale"
+            )
+        return observed
+
+    @staticmethod
+    def _persist_residual_provider_invocation_receipt(
+        *,
+        handoff: Mapping[str, Any],
+        task: PortalTask,
+        attempt: int,
+        receipt: Any,
+    ) -> None:
+        decision = handoff.get("decision")
+        packet = handoff.get("packet")
+        receipt_path = handoff.get("invoked_receipt_path")
+        lifecycle_record = handoff.get("workspace_lifecycle_record")
+        if not isinstance(receipt_path, Path):
+            raise RuntimeError("residual provider receipt path unavailable")
+        write_json_atomic(
+            receipt_path,
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-provider-handoff@1"
+                ),
+                "stage": "invoked",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "gate_receipt_cid": str(
+                    getattr(decision, "receipt_cid", "") or ""
+                ),
+                "residual_packet_cid": str(
+                    getattr(packet, "packet_id", "") or ""
+                ),
+                "workspace_lifecycle_record_id": str(
+                    getattr(lifecycle_record, "record_id", "") or ""
+                ),
+                "workspace_lease_id": str(
+                    getattr(lifecycle_record, "lease_id", "") or ""
+                ),
+                "workspace_fence": int(
+                    getattr(lifecycle_record, "fence", 0) or 0
+                ),
+                "authoritative": False,
+                "diagnostic_only": True,
+                "receipt": receipt.to_dict(),
+            },
+        )
 
     def _retain_task_claim_for_handoff_exception(
         self,
@@ -27851,6 +28327,11 @@ class PortalImplementationDaemon:
             elif retry_probe_eligible:
                 # Provider-only context stays lazy until the disposable local
                 # proof establishes that a fresh provider workspace is needed.
+                if not self.use_ephemeral_worktree:
+                    raise ImplementationRetryDeferred(
+                        "residual provider requires isolated fenced worktree",
+                        backoff_seconds=300,
+                    )
                 if self._implementation_cancel_requested():
                     raise ImplementationRetryDeferred(
                         "implementation dispatch cancelled"
@@ -27866,8 +28347,21 @@ class PortalImplementationDaemon:
                     )
                 prompt = ""
             else:
-                self._require_primary_provider_readiness(task)
-                prompt = self._build_implementation_prompt(task, attempt)
+                # Provider readiness and provider-facing context are resolved
+                # only after the exact pre-implementation kernel authorizes a
+                # sealed residual.  Compiling the legacy full-task prompt here
+                # would do work, and persist context, for an unauthorized
+                # route that must terminate before provider selection.
+                if not self.use_ephemeral_worktree:
+                    raise ImplementationRetryDeferred(
+                        "residual provider requires isolated fenced worktree",
+                        backoff_seconds=300,
+                    )
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "implementation dispatch cancelled"
+                    )
+                prompt = ""
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
             reason_key = exc.reason.replace(" ", "_")
@@ -28040,6 +28534,8 @@ class PortalImplementationDaemon:
         provider_route_receipt: dict[str, Any] = {}
         provider_route_receipt_path: Path | None = None
         operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
+        provider_gate: dict[str, Any] = {}
+        residual_handoff: dict[str, Any] = {}
 
         try:
             acquired_lock, lock_reason, existing_lock = (
@@ -28075,7 +28571,7 @@ class PortalImplementationDaemon:
             )
             timeout_policy = self._implementation_timeout_policy(task)
             if self.use_ephemeral_worktree:
-                if not retry_probe_eligible and not owner_recovery_task:
+                if deterministic_only:
                     context_receipt_path = (
                         self._persist_implementation_context_receipt(
                             task,
@@ -28135,11 +28631,11 @@ class PortalImplementationDaemon:
                         )
                         return backoff_result
                     try:
-                        self._require_primary_provider_readiness(task)
-                        prompt = self._build_implementation_prompt(
-                            task,
-                            attempt,
-                        )
+                        if self._implementation_cancel_requested():
+                            raise ImplementationRetryDeferred(
+                                "implementation dispatch cancelled"
+                            )
+                        prompt = ""
                     except ImplementationRetryDeferred as exc:
                         if exc.backoff_seconds > 0:
                             self.task_queue.defer(
@@ -28167,12 +28663,6 @@ class PortalImplementationDaemon:
                             deferred_result,
                         )
                         return deferred_result
-                    context_receipt_path = (
-                        self._persist_implementation_context_receipt(
-                            task,
-                            attempt,
-                        )
-                    )
                     ephemeral_result = (
                         self._run_implementation_in_ephemeral_worktree(
                             task=task,
@@ -28346,6 +28836,81 @@ class PortalImplementationDaemon:
                 baseline_ref = ""
                 baseline_branch = ""
             if not deterministic_only:
+                provider_gate = self._evaluate_pre_implementation_provider_gate(
+                    task=task,
+                    attempt=attempt,
+                    worktree_path=workspace_path,
+                )
+                if provider_gate.get("skip_provider"):
+                    disposition = str(
+                        provider_gate.get("disposition") or ""
+                    )
+                    reason_code = str(
+                        provider_gate.get("reason_code") or ""
+                    )
+                    backoff_seconds = 300
+                    reason = (
+                        "pre_implementation_"
+                        f"{disposition}_{reason_code}"
+                    )
+                    self.task_queue.defer(
+                        self._canonical_ref(task),
+                        backoff_seconds,
+                        reason=reason,
+                    )
+                    self.task_queue.save()
+                    self._restore_task_attempt(
+                        state,
+                        task,
+                        max(0, attempt - 1),
+                    )
+                    if not state.implementation_in_progress:
+                        self._clear_active_execution_state(
+                            state,
+                            clear_task=True,
+                        )
+                    state.save(self.state_path)
+                    result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "returncode": 1,
+                        "deferred": True,
+                        "retryable": True,
+                        "reason": reason,
+                        "disposition": disposition,
+                        "reason_code": reason_code,
+                        "pre_implementation_gate": dict(
+                            provider_gate.get("event") or {}
+                        ),
+                        "failure_kind": (
+                            LifecycleFailureKind.LIFECYCLE_SETUP.value
+                        ),
+                        "provider_call_allowed": False,
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                        "backoff_seconds": backoff_seconds,
+                        "workspace_path": str(workspace_path),
+                        "context_receipt_path": str(context_receipt_path),
+                    }
+                    self._record_event(
+                        "implementation_retry_deferred",
+                        result,
+                    )
+                    return result
+                preliminary_handoff = (
+                    self._prepare_residual_provider_handoff(
+                        provider_gate=provider_gate,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint_dir=checkpoint_dir,
+                        command=(),
+                        workspace_path=workspace_path,
+                        lifecycle_record=None,
+                    )
+                )
+                prompt = str(preliminary_handoff["context"].prompt_body)
+            if not deterministic_only:
                 _prepare_provider_route_receipt(
                     provider_route_receipt_path
                 )
@@ -28360,6 +28925,17 @@ class PortalImplementationDaemon:
                     state=state,
                 )
             )
+            if command:
+                residual_handoff = self._prepare_residual_provider_handoff(
+                    provider_gate=provider_gate,
+                    task=task,
+                    attempt=attempt,
+                    checkpoint_dir=checkpoint_dir,
+                    command=command,
+                    workspace_path=workspace_path,
+                    lifecycle_record=None,
+                )
+                prompt = str(residual_handoff["context"].prompt_body)
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -28390,6 +28966,11 @@ class PortalImplementationDaemon:
                     ),
                 },
             )
+            if provider_gate:
+                self._record_event(
+                    "pre_implementation_kernel_evaluated",
+                    dict(provider_gate.get("event") or {}),
+                )
             with _open_private_implementation_log(log_path, "w") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -28410,6 +28991,41 @@ class PortalImplementationDaemon:
                     )
                 else:
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
+                        from .pre_implementation_provider_gate import (
+                            ProviderGateDecision,
+                            assert_provider_dispatch_allowed,
+                        )
+
+                        gate_decision = residual_handoff.get("decision")
+                        invocation = residual_handoff.get("invocation")
+                        packet = residual_handoff.get("packet")
+                        path_lease = residual_handoff.get("path_lease")
+                        prepared_context = residual_handoff.get("context")
+                        base_env = residual_handoff.get("base_env")
+                        if not isinstance(
+                            gate_decision,
+                            ProviderGateDecision,
+                        ):
+                            raise RuntimeError(
+                                "provider dispatch requires an immutable "
+                                "pre-implementation gate decision"
+                            )
+                        assert_provider_dispatch_allowed(gate_decision)
+                        self._assert_residual_provider_lifecycle_current(
+                            handoff=residual_handoff,
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace_path,
+                        )
+                        if not (
+                            callable(getattr(invocation, "invoke", None))
+                            and packet is not None
+                            and prepared_context is not None
+                            and isinstance(base_env, Mapping)
+                        ):
+                            raise RuntimeError(
+                                "sealed residual provider handoff unavailable"
+                            )
                         self._mark_provider_launch_boundary(
                             state,
                             task=task,
@@ -28425,35 +29041,79 @@ class PortalImplementationDaemon:
                                 workspace_path=workspace_path,
                             )
                         )
-                        return run_process_group_stream(
-                            command,
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=prompt,
-                            env=self._implementation_process_environment(
-                                task,
+
+                        def invoke_sealed(
+                            *,
+                            prompt: str,
+                            env: Mapping[str, str],
+                            argv_bindings: Mapping[str, str],
+                            packet_cid: str,
+                        ) -> subprocess.CompletedProcess[str]:
+                            del argv_bindings
+                            assert_provider_dispatch_allowed(gate_decision)
+                            self._assert_residual_provider_lifecycle_current(
+                                handoff=residual_handoff,
+                                task=task,
                                 attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            ),
-                            inherit_environment=False,
-                            pass_fds=self._accepted_control_plane_pass_fds(
-                                command
-                            ),
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_started=birth_callback,
-                            on_progress=self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            ),
+                                workspace_path=workspace_path,
+                            )
+                            if (
+                                packet_cid != gate_decision.residual_packet_cid
+                                or prompt != prepared_context.prompt_body
+                                or dict(env) != dict(prepared_context.environment)
+                            ):
+                                raise RuntimeError(
+                                    "sealed residual provider context drifted"
+                                )
+                            return run_process_group_stream(
+                                command,
+                                cwd=workspace_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=dict(env),
+                                inherit_environment=False,
+                                pass_fds=(
+                                    self._accepted_control_plane_pass_fds(
+                                        command
+                                    )
+                                ),
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_started=birth_callback,
+                                on_progress=(
+                                    self._implementation_progress_observer(
+                                        state,
+                                        task,
+                                        attempt=attempt,
+                                    )
+                                ),
+                            )
+
+                        receipt, completed_provider = invocation.invoke(
+                            packet,
+                            invoke_sealed,
+                            path_lease=path_lease,
+                            base_env=dict(base_env),
+                            base_argv=command,
+                            attempt=attempt,
                         )
+                        self._persist_residual_provider_invocation_receipt(
+                            handoff=residual_handoff,
+                            task=task,
+                            attempt=attempt,
+                            receipt=receipt,
+                        )
+                        return completed_provider
 
                     completed = self._decision_runtime_mutation(
                         "command_invocation",
@@ -42982,6 +43642,8 @@ class PortalImplementationDaemon:
         provider_filesystem_boundary_receipt: dict[str, Any] = {}
         provider_dispatched = False
         owner_recovery_reserved = False
+        provider_gate: dict[str, Any] = {}
+        residual_handoff: dict[str, Any] = {}
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         provider_route_receipt_path = (
@@ -43185,12 +43847,60 @@ class PortalImplementationDaemon:
             ] = compact_project_dependency_preflight_receipt(
                 dependency_preflight
             )
+            if not (
+                deterministic_only
+                or retry_no_change_probe_only
+            ):
+                provider_gate = self._evaluate_pre_implementation_provider_gate(
+                    task=task,
+                    attempt=attempt,
+                    worktree_path=worktree_path,
+                )
+                owner_recovery_reserved = bool(
+                    provider_gate.get("owner_recovery_reserved") is True
+                    and self._vrif_benchmark_owner_recovery_task_contract(task)
+                )
+                if provider_gate.get("skip_provider"):
+                    writer_path = self._lgswf_writer_path(task.task_id)
+                    disposition = str(
+                        provider_gate.get("disposition") or ""
+                    )
+                    reason_code = str(
+                        provider_gate.get("reason_code") or ""
+                    )
+                    if (
+                        writer_path is None
+                        and not owner_recovery_reserved
+                        and disposition != "closed_deterministic"
+                    ):
+                        raise ImplementationRetryDeferred(
+                            "pre implementation "
+                            f"{disposition} {reason_code}",
+                            backoff_seconds=300,
+                        )
+                else:
+                    self._require_primary_provider_readiness(task)
+                    preliminary_handoff = (
+                    self._prepare_residual_provider_handoff(
+                        provider_gate=provider_gate,
+                        task=task,
+                        attempt=attempt,
+                        checkpoint_dir=checkpoint_dir,
+                        command=(),
+                        workspace_path=worktree_path,
+                        lifecycle_record=lifecycle_record,
+                    )
+                    )
+                    prompt = str(
+                        preliminary_handoff["context"].prompt_body
+                    )
             command = (
                 []
                 if (
                     deterministic_only
                     or retry_no_change_probe_only
                     or self._vrif_benchmark_owner_recovery_task_contract(task)
+                    or provider_gate.get("skip_provider")
                 )
                 else self._build_implementation_command(
                     worktree_path,
@@ -43234,6 +43944,20 @@ class PortalImplementationDaemon:
                             "lifecycle_finalize": lifecycle_finalize,
                         },
                     )
+            if command:
+                # Bind the process-facing packet to the ACTIVE lifecycle
+                # record.  mark_active advances the fence, so a handoff made
+                # from the earlier PREPARING record would already be stale.
+                residual_handoff = self._prepare_residual_provider_handoff(
+                    provider_gate=provider_gate,
+                    task=task,
+                    attempt=attempt,
+                    checkpoint_dir=checkpoint_dir,
+                    command=command,
+                    workspace_path=worktree_path,
+                    lifecycle_record=lifecycle_record,
+                )
+                prompt = str(residual_handoff["context"].prompt_body)
             self._mark_implementation_started(
                 state,
                 task=task,
@@ -43325,17 +44049,6 @@ class PortalImplementationDaemon:
                     # WPD-021: PreImplementationKernel gate — provider path is
                     # unreachable unless disposition is residual_llm_authorized
                     # with a residual packet CID.
-                    provider_gate = self._evaluate_pre_implementation_provider_gate(
-                        task=task,
-                        attempt=attempt,
-                        worktree_path=worktree_path,
-                    )
-                    owner_recovery_reserved = bool(
-                        provider_gate.get("owner_recovery_reserved") is True
-                        and self._vrif_benchmark_owner_recovery_task_contract(
-                            task
-                        )
-                    )
                     self._record_event(
                         "pre_implementation_kernel_evaluated",
                         dict(provider_gate.get("event") or {}),
@@ -43434,18 +44147,41 @@ class PortalImplementationDaemon:
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
                             nonlocal provider_dispatched
-                            # Fail closed if gate identity drifted.
-                            if not provider_gate.get("provider_authorized"):
-                                raise RuntimeError(
-                                    "provider dispatch blocked by pre-implementation kernel"
-                                )
-                            provider_environment = (
-                                self._implementation_process_environment(
-                                    task,
-                                    attempt=attempt,
-                                    checkpoint_dir=checkpoint_dir,
-                                )
+                            # Reconstruct no authority from booleans.  Require
+                            # the exact immutable decision and invoke the
+                            # canonical assertion at the process-spawn edge.
+                            from .pre_implementation_provider_gate import (
+                                ProviderGateDecision,
+                                assert_provider_dispatch_allowed,
                             )
+
+                            gate_decision = residual_handoff.get("decision")
+                            if not isinstance(gate_decision, ProviderGateDecision):
+                                raise RuntimeError(
+                                    "provider dispatch requires an immutable "
+                                    "pre-implementation gate decision"
+                                )
+                            assert_provider_dispatch_allowed(gate_decision)
+                            self._assert_residual_provider_lifecycle_current(
+                                handoff=residual_handoff,
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                            )
+                            invocation = residual_handoff.get("invocation")
+                            packet = residual_handoff.get("packet")
+                            path_lease = residual_handoff.get("path_lease")
+                            prepared_context = residual_handoff.get("context")
+                            base_env = residual_handoff.get("base_env")
+                            if not (
+                                callable(getattr(invocation, "invoke", None))
+                                and packet is not None
+                                and prepared_context is not None
+                                and isinstance(base_env, Mapping)
+                            ):
+                                raise RuntimeError(
+                                    "sealed residual provider handoff unavailable"
+                                )
                             progress_observer = (
                                 self._implementation_progress_observer(
                                     state,
@@ -43477,27 +44213,72 @@ class PortalImplementationDaemon:
                                 if birth_callback is not None:
                                     birth_callback(process)
 
-                            return run_process_group_stream(
-                                command,
-                                cwd=worktree_path,
-                                stdout=log_fh,
-                                input_text=prompt,
-                                env=provider_environment,
-                                inherit_environment=False,
-                                pass_fds=self._accepted_control_plane_pass_fds(
-                                    command
-                                ),
-                                timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_timeout_seconds=(
-                                    timeout_policy.progress_timeout_seconds
-                                    if timeout_policy.progress_aware
-                                    else None
-                                ),
-                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_paths=(checkpoint_dir,),
-                                on_started=provider_started,
-                                on_progress=progress_observer,
+                            def invoke_sealed(
+                                *,
+                                prompt: str,
+                                env: Mapping[str, str],
+                                argv_bindings: Mapping[str, str],
+                                packet_cid: str,
+                            ) -> subprocess.CompletedProcess[str]:
+                                del argv_bindings
+                                assert_provider_dispatch_allowed(gate_decision)
+                                self._assert_residual_provider_lifecycle_current(
+                                    handoff=residual_handoff,
+                                    task=task,
+                                    attempt=attempt,
+                                    workspace_path=worktree_path,
+                                )
+                                if (
+                                    packet_cid != gate_decision.residual_packet_cid
+                                    or prompt != prepared_context.prompt_body
+                                    or dict(env) != dict(prepared_context.environment)
+                                ):
+                                    raise RuntimeError(
+                                        "sealed residual provider context drifted"
+                                    )
+                                return run_process_group_stream(
+                                    command,
+                                    cwd=worktree_path,
+                                    stdout=log_fh,
+                                    input_text=prompt,
+                                    env=dict(env),
+                                    inherit_environment=False,
+                                    pass_fds=(
+                                        self._accepted_control_plane_pass_fds(
+                                            command
+                                        )
+                                    ),
+                                    timeout_seconds=(
+                                        timeout_policy.max_timeout_seconds
+                                    ),
+                                    progress_timeout_seconds=(
+                                        timeout_policy.progress_timeout_seconds
+                                        if timeout_policy.progress_aware
+                                        else None
+                                    ),
+                                    max_timeout_seconds=(
+                                        timeout_policy.max_timeout_seconds
+                                    ),
+                                    progress_paths=(checkpoint_dir,),
+                                    on_started=provider_started,
+                                    on_progress=progress_observer,
+                                )
+
+                            receipt, completed_provider = invocation.invoke(
+                                packet,
+                                invoke_sealed,
+                                path_lease=path_lease,
+                                base_env=dict(base_env),
+                                base_argv=command,
+                                attempt=attempt,
                             )
+                            self._persist_residual_provider_invocation_receipt(
+                                handoff=residual_handoff,
+                                task=task,
+                                attempt=attempt,
+                                receipt=receipt,
+                            )
+                            return completed_provider
 
                         completed = self._decision_runtime_mutation(
                             "command_invocation",
@@ -45035,6 +45816,10 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
+            if provider_gate:
+                exception_result["pre_implementation_gate"] = dict(
+                    provider_gate.get("event") or {}
+                )
             if submodule_setup_deferral:
                 exception_result.update(
                     {
@@ -61002,7 +61787,6 @@ class PortalImplementationDaemon:
 
         from ..validation.implementation_auto_rescue import (
             AutoRescueAction,
-            build_inline_provider_rescue_prompt,
             plan_automatic_implementation_rescue,
         )
 
@@ -61371,146 +62155,28 @@ class PortalImplementationDaemon:
                 continue
 
             if plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE:
-                if not command or not allow_provider_rescue:
-                    break
-                provider_passes += 1
-                rescue_prompt = build_inline_provider_rescue_prompt(
-                    base_prompt=base_prompt,
-                    validation_result=result,
-                    auto_rescue_plan=plan,
-                )
+                # A failed validation is new evidence and therefore requires a
+                # fresh failure-replan packet and a fresh receipt-backed kernel
+                # decision.  Reusing the initial task prompt/decision would be
+                # an unsealed second model call.  No current production owner
+                # supplies that bundle, so retain the candidate and fail closed
+                # for later typed repair instead of free re-prompting.
                 self._record_event(
-                    "implementation_auto_rescue_provider_started",
+                    "implementation_auto_rescue_provider_blocked",
                     {
                         "task_id": task.task_id,
                         "attempt": int(attempt),
                         "plan": plan.to_record(),
                         "failed_commands": list(plan.failed_commands),
+                        "reason": "fresh_residual_authority_required",
+                        "provider_call_allowed": False,
                     },
                 )
                 with _open_private_implementation_log(log_path, "a") as log_fh:
                     log_fh.write(
-                        "\n[auto-rescue] inline_provider_rescue start\n"
+                        "\n[auto-rescue] inline_provider_rescue blocked: "
+                        "fresh_residual_authority_required\n"
                     )
-                    log_fh.flush()
-                    try:
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=(
-                                    self._ensure_implementation_checkpoint_dir(
-                                        task
-                                    )
-                                ),
-                            )
-                        )
-                        completed = run_process_group_stream(
-                            list(command),
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            input_text=rescue_prompt,
-                            env=provider_environment,
-                            inherit_environment=False,
-                            pass_fds=self._accepted_control_plane_pass_fds(
-                                command
-                            ),
-                            timeout_seconds=min(
-                                float(self.implementation_timeout),
-                                3600.0,
-                            ),
-                            progress_timeout_seconds=None,
-                            max_timeout_seconds=min(
-                                float(
-                                    getattr(
-                                        self,
-                                        "implementation_max_timeout",
-                                        self.implementation_timeout,
-                                    )
-                                    or self.implementation_timeout
-                                ),
-                                7200.0,
-                            ),
-                            progress_paths=(),
-                            on_progress=None,
-                        )
-                        log_fh.write(
-                            "\n[auto-rescue] inline_provider_rescue "
-                            f"returncode={completed.returncode}\n"
-                        )
-                    except Exception as exc:
-                        log_fh.write(
-                            "\n[auto-rescue] inline_provider_rescue error: "
-                            f"{exc}\n"
-                        )
-                        self._record_event(
-                            "implementation_auto_rescue_provider_failed",
-                            {
-                                "task_id": task.task_id,
-                                "attempt": int(attempt),
-                                "error": str(exc)[-1000:],
-                            },
-                        )
-                        break
-                self._stage_declared_candidate_outputs(workspace_path, task)
-                result.pop("failure_review", None)
-                result.pop("next_attempt_prompt_addendum", None)
-                result.pop("rescue_guidance_markdown", None)
-                revalidated = self._run_validation_with_candidate_binding(
-                    workspace_path,
-                    task,
-                    log_path,
-                    state=state,
-                    baseline_ref=baseline_ref,
-                    proposal_validation=None,
-                    replayable_consumed_proposal_ids=(
-                        same_attempt_replayable_proposal_ids
-                    ),
-                )
-                same_attempt_replayable_proposal_ids = (
-                    self._same_attempt_replayable_proposal_ids(
-                        revalidated,
-                        task_id=task.task_id,
-                        repository_tree_id=baseline_ref,
-                        seed_proposal_ids=(
-                            same_attempt_replayable_proposal_ids
-                        ),
-                    )
-                )
-                proposal_validation = revalidated.get("proposal_validation")
-                revalidated = self._apply_implementation_failure_review(
-                    task=task,
-                    attempt=attempt,
-                    workspace_path=workspace_path,
-                    validation_result=revalidated,
-                    log_path=log_path,
-                    proposal_validation=proposal_validation,
-                    baseline_ref=baseline_ref,
-                    state=state,
-                )
-                revalidated = dict(revalidated)
-                revalidated["auto_rescue"] = {
-                    "steps": list(steps),
-                    "stage_used": stage_used,
-                    "provider_passes": provider_passes,
-                    "last_action": plan.action.value,
-                }
-                result = revalidated
-                if result.get("passed", False):
-                    result["auto_rescue_terminal"] = True
-                    result["reason"] = (
-                        result.get("reason")
-                        or "auto_rescue_provider_revalidate_passed"
-                    )
-                    self._record_event(
-                        "implementation_auto_rescue_succeeded",
-                        {
-                            "task_id": task.task_id,
-                            "attempt": int(attempt),
-                            "last_action": plan.action.value,
-                        },
-                    )
-                    return result
                 break
 
         result = dict(result)
@@ -78688,7 +79354,10 @@ class PortalImplementationDaemon:
 
     def _task_context_token_limit(self, task: PortalTask) -> int | None:
         raw_limit = self._task_metadata_value(task, "context budget tokens")
+        structured_budget = self._task_structured_token_budget(task)
         if not raw_limit:
+            if structured_budget is not None:
+                return structured_budget[0]
             if _env_bool(REQUIRE_TASK_EXECUTION_METADATA_ENV, False):
                 raise ImplementationRetryDeferred(
                     "task context budget tokens are required by execution policy",
@@ -78709,7 +79378,79 @@ class PortalImplementationDaemon:
                 "invalid task context budget tokens",
                 backoff_seconds=300,
             )
+        if structured_budget is not None and limit != structured_budget[0]:
+            raise ImplementationRetryDeferred(
+                "task context token budget fields disagree",
+                backoff_seconds=300,
+            )
         return limit
+
+    def _task_structured_token_budget(
+        self,
+        task: PortalTask,
+    ) -> tuple[int, int] | None:
+        """Parse the board's closed ``input_tokens/output_tokens`` grammar.
+
+        Several configured boards predate ``context budget tokens`` and bind
+        the same limits in ``Context budget`` and ``Token budget`` records.
+        Treat those records as authority when they use the structured grammar;
+        retain unrelated legacy prose/integer fields as non-authoritative.
+        Duplicate normalized keys, malformed structured values, and disagreeing
+        records fail closed before context compilation or provider dispatch.
+        """
+
+        parsed: list[tuple[str, tuple[int, int]]] = []
+        for field_name in ("context budget", "token budget"):
+            matches = [
+                value
+                for key, value in task.metadata.items()
+                if str(key).strip().lower().replace("_", " ") == field_name
+            ]
+            if len(matches) > 1:
+                raise ImplementationRetryDeferred(
+                    f"duplicate task {field_name}",
+                    backoff_seconds=300,
+                )
+            if not matches:
+                continue
+            raw = str(matches[0]).strip()
+            declares_structured_budget = (
+                "input_tokens" in raw or "output_tokens" in raw
+            )
+            if not declares_structured_budget:
+                continue
+            match = re.fullmatch(
+                r"input_tokens=([1-9][0-9]*);\s*"
+                r"output_tokens=([0-9]+)(?:;\s*[^\r\n]+)?",
+                raw,
+            )
+            if match is None:
+                raise ImplementationRetryDeferred(
+                    f"invalid structured task {field_name}",
+                    backoff_seconds=300,
+                )
+            input_text, output_text = match.groups()
+            if len(input_text) > 12 or len(output_text) > 12:
+                raise ImplementationRetryDeferred(
+                    f"invalid structured task {field_name}",
+                    backoff_seconds=300,
+                )
+            parsed.append(
+                (field_name, (int(input_text), int(output_text)))
+            )
+        if not parsed:
+            return None
+        budget = parsed[0][1]
+        if any(candidate != budget for _, candidate in parsed[1:]):
+            raise ImplementationRetryDeferred(
+                "structured task token budget fields disagree",
+                backoff_seconds=300,
+            )
+        return budget
+
+    def _task_output_token_reserve(self, task: PortalTask) -> int | None:
+        structured_budget = self._task_structured_token_budget(task)
+        return None if structured_budget is None else structured_budget[1]
 
     def _implementation_context_window(self, task: PortalTask) -> int:
         return self._configured_implementation_provider_context_window(task)
@@ -80496,6 +81237,12 @@ class PortalImplementationDaemon:
         task: PortalTask,
     ) -> tuple[int, ContextBudget, int | None]:
         budget = self._base_implementation_context_budget()
+        output_reserve = self._task_output_token_reserve(task)
+        if output_reserve is not None:
+            budget = replace(
+                budget,
+                reserved_output_tokens=output_reserve,
+            )
         token_limit = self._task_context_token_limit(task)
         if token_limit is not None and token_limit > 0:
             budget = replace(

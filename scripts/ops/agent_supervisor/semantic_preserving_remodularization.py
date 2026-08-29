@@ -521,11 +521,14 @@ def dependency_seal(documents: dict[str, bytes]) -> dict[str, Any]:
     bootstrap_runtime_paths = (
         "pyproject.toml",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_kernel.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_provider_gate.py",
         "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
     )
     seal = {
@@ -566,7 +569,7 @@ def scheduler_config(seal: dict[str, Any]) -> dict[str, Any]:
         "runtime_paths": {"root": runtime, "state": f"{runtime}/state", "worktrees": f"{runtime}/worktrees", "merge_queue": f"{runtime}/merge-queue", "logs": f"{runtime}/logs", "evidence": f"{runtime}/evidence", "quack_owner": f"{runtime}/quack-owner"},
         "lanes": [{"index": 0, "name": "spar-lane-0", "strict_shard_remainder": 0, "initial_task_ids": ["SPAR-001"], "initial_focus": "semantic-and-identity"}, {"index": 1, "name": "spar-lane-1", "strict_shard_remainder": 1, "initial_task_ids": [], "initial_focus": "storage-transformation-and-validation"}, {"index": 2, "name": "spar-lane-2", "strict_shard_remainder": 2, "initial_task_ids": [], "initial_focus": "proof-rollout-and-qualification"}],
         "goal_hierarchy": hierarchy, "task_groups": groups, "waves": [{"id": wave, "task_ids": list(tasks)} for wave, tasks in WAVES],
-        "provider": {"primary_provider_id": "grok_cli", "primary_model_id": "grok-4.6", "fallback_provider_id": "codex", "fallback_model_id": "gpt-5.6-terra", "fallback_trigger": "primary_quota_exhausted", "fallback_reasoning_effort": "high", "max_concurrency": 3, "capability_probe_required_at_launch": True, "secrets_from_environment_only": True, "secrets_in_argv_prompts_logs_or_receipts": False},
+        "provider": {"primary_provider_id": "grok_cli", "primary_model_id": "grok-4.6", "fallback_provider_id": "codex", "fallback_model_id": "gpt-5.6-terra", "fallback_trigger": "primary_quota_exhausted", "fallback_reasoning_effort": "high", "merge_resolver_mode": "disabled_until_sealed_residual", "max_concurrency": 3, "capability_probe_required_at_launch": True, "secrets_from_environment_only": True, "secrets_in_argv_prompts_logs_or_receipts": False},
         "authority_policy": {"duckdb_transactional_authority": True, "quack_exclusive_state_owner_transport": True, "ducklake_projection_authority": False, "ducklake_projection_is_scheduling_prerequisite": False, "ducklake_projection_is_acceptance_prerequisite": False, "markdown_is_completion_authority": False, "task_board_status_is_completion_evidence": False, "direct_multi_process_duckdb_file_open_permitted": False, "automatic_quack_to_file_fallback": False, "provider_or_model_claim_is_completion_authority": False, "vector_similarity_is_authority": False, "one_authoritative_store_per_mutable_semantic_fact": True, "deterministic_current_tree_admission_required": True, "exact_receipt_identity_required": True, "unknown_ownership_disposition": "typed_blocker", "cross_repository_writes_require_explicit_owner_and_gitlink_receipt": True, "candidate_self_promotion": False, "procedure_self_authorization": False, "worker_self_approval": False},
         "autonomy_ceiling": {"candidate_may_raise_ceiling": False, "tier_a": "deterministic validation", "tier_b": "full declared validation", "tier_c": "guarded stronger trace/proof gates", "tier_d": "approval unless qualified procedure", "tier_e": "abstain", "public_api_state_provider_receipt_or_cross_package_migration_mode": "proposal_only"},
         "completion_policy": {"terminal_task_id": "SPAR-050", "all_task_dependencies_terminal_required": True, "goal_completion_contracts_required": True, "current_tree_required": True, "active_mutating_claims_empty_required": True, "merge_queue_settled_required": True, "blocking_obligations_empty_required": True, "required_receipts_and_seals_verify": True, "required_mode_roots_and_receipts_required": True, "self_hosted_capstone_required": True, "safety_floors_noncompensable": True, "non_success_terminals_never_report_success": True, "ducklake_outage_cannot_block_core_completion": True, "final_report_required": True},

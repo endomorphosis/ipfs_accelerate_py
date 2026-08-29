@@ -110,6 +110,9 @@ def evaluate_provider_gate(
     doctor_available: bool = True,
     allow_legacy_residual: bool = False,
     policy_revision: str = "1",
+    obligation_graph_cid: str = "",
+    plan_cid: str = "",
+    doctor_cid: str = "",
     authority_receipt_cids: Mapping[str, str] | None = None,
     authority_receipt_resolver: AuthorityReceiptResolver | None = None,
 ) -> ProviderGateDecision:
@@ -138,6 +141,9 @@ def evaluate_provider_gate(
         policy_revision=policy_revision,
         planner_available=None if kernel is not None else planner_available,
         doctor_available=None if kernel is not None else doctor_available,
+        obligation_graph_cid=str(obligation_graph_cid or "").strip(),
+        plan_cid=str(plan_cid or "").strip(),
+        doctor_cid=str(doctor_cid or "").strip(),
         authority_receipt_cids=dict(authority_receipt_cids or {}),
     )
     result: KernelEvaluationResult = active_kernel.evaluate(request)
@@ -167,7 +173,13 @@ def evaluate_provider_gate(
 def assert_provider_dispatch_allowed(decision: ProviderGateDecision) -> None:
     """Fail closed when a caller attempts provider dispatch illegally."""
 
-    if not decision.provider_authorized or decision.skip_provider:
+    if (
+        decision.disposition
+        is not ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED
+        or decision.receipt.disposition is not decision.disposition
+        or not decision.provider_authorized
+        or decision.skip_provider
+    ):
         raise PermissionError(
             "provider dispatch blocked by pre-implementation kernel: "
             f"disposition={decision.disposition.value} "
@@ -176,6 +188,16 @@ def assert_provider_dispatch_allowed(decision: ProviderGateDecision) -> None:
     if not decision.residual_packet_cid:
         raise PermissionError(
             "provider dispatch requires residual_packet_cid on residual_llm_authorized"
+        )
+    try:
+        receipt_packet_cid = decision.receipt.require_provider_gate()
+    except Exception as exc:
+        raise PermissionError(
+            "provider dispatch kernel receipt does not authorize invocation"
+        ) from exc
+    if receipt_packet_cid != decision.residual_packet_cid:
+        raise PermissionError(
+            "provider dispatch residual packet differs from kernel receipt"
         )
 
 

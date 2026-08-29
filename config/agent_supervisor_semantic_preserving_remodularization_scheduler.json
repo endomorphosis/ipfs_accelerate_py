@@ -84,7 +84,7 @@
     "worktree_root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
   },
   "dependency_guardrail_enabled": true,
-  "dependency_seal_cid": "sha256:7ff1ce872fc1c534931a9a50632aa7ffc7637b58f810fc2dd547fe4248333e8e",
+  "dependency_seal_cid": "sha256:626ffbddee6ae4f940dcdc9d313590a3caab20d92d7428bb83d112f9f8272485",
   "dependency_seal_path": "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
   "dependency_validator_path": "scripts/validate_semantic_preserving_remodularization_dependencies.py",
   "ducklake_projection_program": {
@@ -250,6 +250,7 @@
     "fallback_reasoning_effort": "high",
     "fallback_trigger": "primary_quota_exhausted",
     "max_concurrency": 3,
+    "merge_resolver_mode": "disabled_until_sealed_residual",
     "primary_model_id": "grok-4.6",
     "primary_provider_id": "grok_cli",
     "secrets_from_environment_only": true,

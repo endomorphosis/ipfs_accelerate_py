@@ -368,7 +368,17 @@ class PreImplementationKernel:
                 disposition=ImplementationDisposition.RESIDUAL_LLM_AUTHORIZED,
                 reason_code=REASON_RESIDUAL_AUTHORIZED,
                 residual_packet_cid=normalized.residual_packet_cid,
-                evidence_cids=normalized.evidence_cids,
+                evidence_cids=tuple(
+                    dict.fromkeys(
+                        [
+                            *normalized.evidence_cids,
+                            *(
+                                normalized.authority_receipt_cids[kind]
+                                for kind in _REQUIRED_AUTHORITY_RECEIPT_KINDS
+                            ),
+                        ]
+                    )
+                ),
             )
             return KernelEvaluationResult(
                 receipt=receipt,
