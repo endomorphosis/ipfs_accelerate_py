@@ -91756,6 +91756,11 @@ def _post_admission_health_action(
                 )
             return "continue", "", next_edges
         return "fail", "authoritative_health_admission_lost", unhealthy_edges
+    active_workers = receipt.get("lane_active_worker_count")
+    if type(active_workers) is int and active_workers > 0:
+        # Replica identity can flap on one of two samples while grok is
+        # still implementing. Do not burn the outage budget on live work.
+        return "continue", "", 0
     next_edges = unhealthy_edges + 1
     if next_edges > 2:
         return (
