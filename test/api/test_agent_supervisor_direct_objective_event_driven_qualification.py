@@ -7,6 +7,7 @@ from types import MappingProxyType
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_driven_qualification import (
+    ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES,
     CASE_UNAVAILABLE_REASONS,
     CLOSED_RELEASE_OUTCOMES,
     CURRENT_HEAD_UNAVAILABLE_VERDICT_CID,
@@ -18,6 +19,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     LIVE_REPLAY_MINIMUM,
     PCPR_PHASE0_GOAL_ID,
     PCPR_PHASE0_TASK_ID,
+    PENDING_MERGE_RECOVERY_HERMETIC_SUITES,
+    POST_LANDING_HERMETIC_SUITES,
     REQUIRED_COHORT_CASES,
     REQUIRED_TARGETS,
     TARGET_CONTEXTPACK_REUSE_BPS,
@@ -78,13 +81,24 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
     assert GITLINK_LANDED_MERGE_HERMETIC_SUITES == (
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
     )
+    assert ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES == (
+        "test/api/test_agent_supervisor_landed_completion_recovery.py",
+    )
+    assert PENDING_MERGE_RECOVERY_HERMETIC_SUITES == (
+        "test/api/test_agent_supervisor_merge_train.py",
+    )
+    assert POST_LANDING_HERMETIC_SUITES == (
+        *GITLINK_LANDED_MERGE_HERMETIC_SUITES,
+        *ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES,
+        *PENDING_MERGE_RECOVERY_HERMETIC_SUITES,
+    )
     assert all(
         path in HERMETIC_CANDIDATE_SUITES["automatic_task_frontier_refill"]
-        for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES
+        for path in POST_LANDING_HERMETIC_SUITES
     )
     assert all(
         path in HERMETIC_CANDIDATE_SUITES["stale_task_recovery"]
-        for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES
+        for path in POST_LANDING_HERMETIC_SUITES
     )
 
 
@@ -546,9 +560,9 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     )
     assert "test/api/test_agent_supervisor_todo_daemon_port.py" in refill.hermetic_suite_paths
     assert "test/api/test_agent_supervisor_database_portal_bridge.py" in refill.hermetic_suite_paths
-    assert all(path in refill.hermetic_suite_paths for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES)
+    assert all(path in refill.hermetic_suite_paths for path in POST_LANDING_HERMETIC_SUITES)
     stale = next(item for item in verdict.cohort if item.case_id == "stale_task_recovery")
-    assert all(path in stale.hermetic_suite_paths for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES)
+    assert all(path in stale.hermetic_suite_paths for path in POST_LANDING_HERMETIC_SUITES)
     assert refill.evidence_kind == "unavailable"
     assert stale.evidence_kind == "unavailable"
     assert "automatic_task_frontier_refill" in verdict.missed_live_cohort
@@ -562,3 +576,12 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     )
     assert refill_section["live_status"] == "unavailable"
     assert "gitlink landed-merge" in refill_section["reason"]
+    assert "admitted-claim landed completion" in refill_section["reason"]
+    assert "pending-merge recovery" in refill_section["reason"]
+    stale_section = next(
+        item for item in section["cases"] if item["case_id"] == "stale_task_recovery"
+    )
+    assert stale_section["live_status"] == "unavailable"
+    assert "admitted-claim landed completion" in stale_section["reason"]
+    assert "pending-merge dummy-consumer" in stale_section["reason"]
+    assert "stale index.lock" in stale_section["reason"]
