@@ -1181,6 +1181,41 @@ def test_recover_poisoned_owner_connection_reconnects_without_second_lock(
     assert server._command_gateway._connection is owner
 
 
+def test_recover_force_does_not_bounce_healthy_owner_when_listener_is_up(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = False
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+
+    owner = _Owner()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=owner,
+        config=SimpleNamespace(
+            database_path=tmp_path / "control.duckdb",
+            container_bind_host="127.0.0.1",
+            container_port=46731,
+        ),
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
+
+    assert materializer._recover_poisoned_owner_connection(server, force=True) is False
+    assert owner.reconnected == 0
+    assert server._connection is owner
+    assert server._transport_connection is owner
+
+
 def test_reconnect_exclusive_owner_keeps_usable_handle(tmp_path: Path) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         DuckDBConnection,

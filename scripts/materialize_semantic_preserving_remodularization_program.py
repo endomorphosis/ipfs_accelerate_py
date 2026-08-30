@@ -1891,6 +1891,38 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
     return server, paths, program, identity, ready
 
 
+def _owner_listener_ready(server: Any) -> bool:
+    config = getattr(server, "config", None)
+    host = str(getattr(config, "container_bind_host", "") or "") if config is not None else ""
+    port = 0
+    if config is not None:
+        port = int(getattr(config, "container_port", 0) or 0)
+    if port <= 0:
+        port = int(getattr(server, "_bound_port", 0) or 0)
+    if not host or port <= 0:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=0.1):
+            return True
+    except OSError:
+        return False
+
+
+def _restart_owner_transport(server: Any, *, previous: Any, replacement: Any) -> None:
+    transport_connection = getattr(server, "_transport_connection", None)
+    if transport_connection not in {previous, None, replacement}:
+        return
+    server._transport_connection = None
+    refresh = getattr(server, "_refresh_read_replica", None)
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            pass
+    if getattr(server, "_transport_connection", None) is None:
+        server._transport_connection = replacement
+
+
 def _recover_poisoned_owner_connection(
     server: Any,
     *,
@@ -1902,6 +1934,10 @@ def _recover_poisoned_owner_connection(
     wrapper unusable.  The projection monitor previously treated that as a
     terminal owner failure and killed every lane.  Reopening the exclusive
     file owner lets live claims continue.
+
+    ``force=True`` restores a down listener without reconnecting a usable
+    writer. Reconnecting a healthy owner bounces ``quack_serve`` and drops
+    every attached lane.
     """
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -1913,49 +1949,50 @@ def _recover_poisoned_owner_connection(
     path = _owner_database_path(server, connection)
     if connection is None or lock is None or path is None:
         return False
-    if not force and getattr(connection, "_poisoned", False) is not True:
+    poisoned = getattr(connection, "_poisoned", False) is True
+    if not force and not poisoned:
         return False
     with lock:
         current = getattr(server, "_connection", None)
         current_path = _owner_database_path(server, current)
         if current is None or current_path is None:
             return False
-        if not force and getattr(current, "_poisoned", False) is not True:
+        poisoned = getattr(current, "_poisoned", False) is True
+        if not force and not poisoned:
             return False
-        # Same-process reopen cannot take exclusive_file_lock again: the live
-        # handle still holds the path's thread RLock. Reconnect the native
-        # owner in place. Fall back to close+open only when reconnect is absent.
-        replacement: Any | None = None
-        reconnect = getattr(current, "reconnect_exclusive_owner", None)
-        if callable(reconnect) and getattr(current, "path", None) is not None:
-            reconnect()
-            replacement = current
-        else:
-            close = getattr(current, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
-            replacement = open_quack_state_owner_connection(current_path)
-        server._connection = replacement
-        gateway = getattr(server, "_command_gateway", None)
-        if gateway is not None:
-            gateway._connection = replacement
-        # SPAR loads quack_serve on the exclusive writer. Closing that handle
-        # kills the listener; lanes then cycle on attach. Restart transport
-        # on the replacement when it was sharing the poisoned writer.
-        if getattr(server, "_transport_connection", None) is current:
-            server._transport_connection = None
-            refresh = getattr(server, "_refresh_read_replica", None)
-            if callable(refresh):
-                try:
-                    refresh()
-                except Exception:
-                    pass
-            if getattr(server, "_transport_connection", None) is None:
-                server._transport_connection = replacement
-        return True
+        replacement = current
+        native_replaced = False
+        if poisoned:
+            # Same-process reopen cannot take exclusive_file_lock again: the
+            # live handle still holds the path's thread RLock. Reconnect the
+            # native owner in place. Fall back to close+open only when
+            # reconnect is absent.
+            reconnect = getattr(current, "reconnect_exclusive_owner", None)
+            if callable(reconnect) and getattr(current, "path", None) is not None:
+                reconnect()
+                replacement = current
+            else:
+                close = getattr(current, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
+                replacement = open_quack_state_owner_connection(current_path)
+            server._connection = replacement
+            gateway = getattr(server, "_command_gateway", None)
+            if gateway is not None:
+                gateway._connection = replacement
+            native_replaced = True
+        listener_down = not _owner_listener_ready(server)
+        if native_replaced or listener_down:
+            _restart_owner_transport(
+                server,
+                previous=current,
+                replacement=replacement,
+            )
+            return True
+        return False
 
 
 def _owner_task_projection(server: Any) -> dict[str, Any]:
