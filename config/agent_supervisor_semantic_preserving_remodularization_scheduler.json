@@ -84,7 +84,7 @@
     "worktree_root": "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/worktrees"
   },
   "dependency_guardrail_enabled": true,
-  "dependency_seal_cid": "sha256:f3c72889f28fed65d814ce5b3b1987bfcf7f7790e0ba262a05be77770adb0e3b",
+  "dependency_seal_cid": "sha256:34153a1693161a6815c9302db697adc4c2ff9fa965949214109e4273ce3019b0",
   "dependency_seal_path": "config/semantic_preserving_autonomous_remodularization_dependencies.seal.json",
   "dependency_validator_path": "scripts/validate_semantic_preserving_remodularization_dependencies.py",
   "ducklake_projection_program": {

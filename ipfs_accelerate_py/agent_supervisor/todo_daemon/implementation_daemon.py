@@ -88579,6 +88579,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "declared_validation_failed",
         "quack_attach_contended",
         "authentication_failed",
+        "protected-path preservation event chain is not exact",
     }
 )
 _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS = 31 * 86_400
@@ -112786,16 +112787,103 @@ class DatabaseImplementationDaemon:
             task_cids.append(attempt.task_cid)
         return tuple(sorted(task_cids))
 
+    def _requeue_interrupt_preservation_chain_blocks(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Reopen blocked tasks whose preservation chain was truncated.
+
+        SIGTERM/unstall can leave a protected-path marker without the exact
+        preservation event chain.  Portal fail-closes that attempt, but the
+        control task must not stay blocked when declared outputs never landed
+        and dependents are otherwise ready.
+        """
+
+        from .implementation_progress_recovery import (
+            INTERRUPT_PRESERVATION_CHAIN_MARKER,
+        )
+
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            reason = self._terminal_portal_failure_reason(attempt)
+            if reason != INTERRUPT_PRESERVATION_CHAIN_MARKER:
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status in _DATABASE_READY_TASK_STATUSES:
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            if self._task_outputs_landed_on_target(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "declared_outputs_landed_on_target",
+                    }
+                )
+                continue
+            prior_receipt = self._raw_control_receipt(task)
+            cas_kwargs: dict[str, Any] = {
+                "expected_revision": int(task.revision),
+                "new_status": "todo",
+                "receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-interrupt-preservation-chain-requeue@1"
+                    ),
+                    "operation": "requeue_interrupt_preservation_chain",
+                    "reason": INTERRUPT_PRESERVATION_CHAIN_MARKER,
+                    "source_attempt_id": attempt.attempt_id,
+                    "previous_operation": (
+                        prior_receipt.get("operation")
+                        if isinstance(prior_receipt, Mapping)
+                        else ""
+                    ),
+                },
+            }
+            if isinstance(prior_receipt, Mapping):
+                cas_kwargs["expected_control_receipt"] = dict(prior_receipt)
+            self._cas_task_status_database(str(task.task_cid), **cas_kwargs)
+            outcomes.append(
+                {
+                    "task_cid": attempt.task_cid,
+                    "attempt_id": attempt.attempt_id,
+                    "status": "todo",
+                    "changed": True,
+                    "reason": "interrupt_preservation_chain_requeued",
+                }
+            )
+        return outcomes
+
     def reconcile_blocked_protected_path_recoveries(
         self,
     ) -> list[dict[str, Any]]:
         """Automatically rearm only bridge-proved protected-path false alarms."""
 
         self._require_execution_authority("protected-path recovery reconciliation")
+        outcomes: list[dict[str, Any]] = list(
+            self._requeue_interrupt_preservation_chain_blocks()
+        )
         callback = self._protected_path_recovery_fn
         if not callable(callback):
-            return []
-        outcomes: list[dict[str, Any]] = []
+            return outcomes
         for attempt in self._latest_failed_attempts():
             if (
                 self._terminal_portal_failure_reason(attempt)

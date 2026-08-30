@@ -115,6 +115,48 @@ def test_should_reset_budget_when_outputs_missing_and_repair_exhausted(
     assert decision.details.get("missing") == ["missing.py"]
 
 
+def test_should_requeue_blocked_interrupt_preservation_chain(
+    tmp_path: Path,
+) -> None:
+    decision = should_recover_stalled_task(
+        task_id="SPAR-014",
+        outputs=["missing.py"],
+        repo_root=tmp_path,
+        attempt_count=1,
+        max_repair_rounds=4,
+        last_returncode=1,
+        last_failure_text=(
+            "protected-path preservation event chain is not exact"
+        ),
+        board_status="blocked",
+    )
+    assert decision is not None
+    assert decision.action == "requeue_interrupt_preservation_chain"
+    assert decision.reset_attempt_budget is True
+    assert decision.treat_as_landed_outputs is False
+    assert decision.soft_complete_board is False
+
+
+def test_should_not_requeue_interrupt_chain_when_outputs_landed(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "present.py").write_text("ok\n", encoding="utf-8")
+    decision = should_recover_stalled_task(
+        task_id="SPAR-014",
+        outputs=["present.py"],
+        repo_root=tmp_path,
+        attempt_count=1,
+        max_repair_rounds=4,
+        last_returncode=1,
+        last_failure_text=(
+            "protected-path preservation event chain is not exact"
+        ),
+        board_status="blocked",
+    )
+    assert decision is not None
+    assert decision.action != "requeue_interrupt_preservation_chain"
+
+
 def test_should_not_reset_open_work_without_exhaustion_signal(tmp_path: Path) -> None:
     decision = should_recover_stalled_task(
         task_id="ASE2-007",

@@ -408,6 +408,100 @@ def test_automatic_recovery_fails_closed_on_unproved_incident(
         daemon.close()
 
 
+def test_interrupt_preservation_chain_requeues_blocked_task(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population())
+        task = daemon.task_source.get("task:cid:protected-recovery")
+        assert task is not None
+        claim = daemon.coordinator.claim_ready_task(
+            owner_session_id=daemon.owner_session_id,
+            lease_ms=daemon.lease_ms,
+            now_ms=daemon._now_ms(),
+        )
+        assert claim is not None
+        daemon._protect_new_claim(claim)
+        attempt = daemon._insert_attempt_from_claim(
+            claim,
+            task_alias=task.task_alias,
+        )
+        claim_receipt = {
+            "operation": "database_claim",
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "attempt_number": int(attempt.attempt_number),
+        }
+        daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        attempt = daemon.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": (
+                    "protected-path preservation event chain is not exact"
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+                "deferred": False,
+                "attempt_consumed": "unknown",
+                "provider_dispatched": "unknown",
+                "typed_deferral_slot_consumed": "unknown",
+                "backoff_seconds": 0,
+            },
+        )
+        in_progress = daemon.task_source.get(task.task_cid)
+        assert in_progress is not None
+        daemon._cas_task_status_database(
+            in_progress.task_cid,
+            expected_revision=int(in_progress.revision),
+            new_status="blocked",
+            expected_control_receipt=claim_receipt,
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": (
+                    "protected-path preservation event chain is not exact"
+                ),
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "attempt_number": int(attempt.attempt_number),
+                "execution_phase": "failed",
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": int(attempt.finished_at_ms or 1),
+                "retryable": False,
+                "coordination": {},
+                "control_expected_status": "in_progress",
+                "control_expected_revision": int(in_progress.revision),
+            },
+        )
+        blocked = daemon.task_source.get(task.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        outcomes = daemon.reconcile_blocked_protected_path_recoveries()
+        requeued = daemon.task_source.get(task.task_cid)
+        assert requeued is not None
+        assert requeued.status == "todo"
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["reason"] == "interrupt_preservation_chain_requeued"
+        assert outcomes[0]["attempt_id"] == attempt.attempt_id
+    finally:
+        daemon.close()
+
+
 def test_manual_task_and_exhausted_budget_remain_blocked(tmp_path: Path) -> None:
     calls: list[str] = []
     holder: dict[str, DatabaseImplementationDaemon] = {}
