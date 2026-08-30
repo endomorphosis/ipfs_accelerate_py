@@ -10315,6 +10315,7 @@ ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 
 
+@functools.cache
 def _r15_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Bind R15's exact validation policy without reminting R14."""
 
@@ -10364,6 +10365,7 @@ ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 
 
+@functools.cache
 def _r16_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Bind R16's exact validation policy without reminting R14 or R15."""
 
@@ -10485,6 +10487,7 @@ ASEH_R16_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 
 
+@functools.cache
 def _r17_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R16 with exact provider execution admission."""
 
@@ -10570,6 +10573,7 @@ ASEH_R17_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 
 
+@functools.cache
 def _r18_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R17 with the exact process-census repair matrix."""
 
@@ -10752,6 +10756,7 @@ def _r27_historical_live_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r19_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R18 with one exact historical-live route and matrix."""
 
@@ -10869,6 +10874,7 @@ def _admit_r19_historical_live_executor_contract(
     return supplied
 
 
+@functools.cache
 def _r20_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend R19 without changing its one historical-live execution route."""
 
@@ -10927,6 +10933,7 @@ def _r20_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r21_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R20 without adding an executor or live route."""
 
@@ -10983,6 +10990,7 @@ def _r21_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r22_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R21 without adding an executor or live route."""
 
@@ -11041,6 +11049,7 @@ def _r22_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r23_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R22 without adding an executor or live route."""
 
@@ -11101,6 +11110,7 @@ def _r23_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r24_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R23 without adding an executor or live route."""
 
@@ -11161,6 +11171,7 @@ def _r24_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r25_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R24 without adding an executor or live route."""
 
@@ -11221,6 +11232,7 @@ def _r25_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r26_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R25 without adding an executor or live route."""
 
@@ -11281,6 +11293,7 @@ def _r26_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r27_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R26 without adding an executor or mutable authority."""
 
@@ -11341,6 +11354,7 @@ def _r27_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r28_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R27 while reusing its exact historical live route."""
 
@@ -11397,6 +11411,7 @@ def _r28_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r29_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend published R27 while binding the unpublished R28 dispatch miss."""
 
@@ -11469,6 +11484,7 @@ def _r29_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r30_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend published R27 while sealing both failed one-shot children."""
 
@@ -23366,9 +23382,12 @@ class _GitGuardSyscallTrace:
 
 _ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
 _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
+_ASEH_EXACT_R18_RECEIPT_CHAIN: list[Mapping[str, Any]] | None = None
+_ASEH_EXACT_R18_RECEIPT_CHAIN_PATH: Path | None = None
 _ASEH_EXACT_R39_RECEIPT_CHAIN: list[Mapping[str, Any]] | None = None
 _ASEH_EXACT_R39_RECEIPT_CHAIN_PATH: Path | None = None
 ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 1800.0
+ASEH_SEALED_LINE_DESCENDANT_TASK_ALIAS: Final = "ASEH-SEALED-LINE"
 _GIT_GUARD_PTRACE: Any | None = None
 _PTRACE_TRACEME: Final = 0
 _PTRACE_CONT: Final = 7
@@ -26001,6 +26020,7 @@ def _r31_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r31_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend published R30 while sealing the ordinary-lane DuckDB preload."""
 
@@ -27048,6 +27068,7 @@ def _r32_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r32_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r31_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -28486,6 +28507,7 @@ def _r33_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r33_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r32_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -29683,6 +29705,7 @@ def _r34_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r34_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r32_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -30884,6 +30907,7 @@ def _r35_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r35_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r32_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -32115,6 +32139,7 @@ def _r36_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r36_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r32_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -33305,6 +33330,7 @@ def _r37_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r37_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r36_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -33582,6 +33608,7 @@ def _r38_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r38_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r37_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -57737,7 +57764,13 @@ def _admit_canonical_merge_suffix(
     completed_requests: Sequence[Any],
     admission_mode: str = "canonical_completion",
 ) -> dict[str, Any]:
-    """Prove every first-parent advance is one exact admitted queue merge."""
+    """Prove every first-parent advance is one exact admitted integration.
+
+    Queue completions remain the only way to land task work. Sealed-line
+    descendant operator merges are two-parent first-parent advances of an
+    already-sealed repair head and are admitted from Git ancestry alone so
+    launch cannot stall on merge-queue rows that the owner has not written.
+    """
 
     from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
         checkout_repository_id,
@@ -57749,10 +57782,13 @@ def _admit_canonical_merge_suffix(
     base = str(base_head or "").strip().casefold()
     target = str(target_head or "").strip().casefold()
     if admission_mode not in {
-        "canonical_completion", "followup_repair_base",
+        "canonical_completion",
+        "followup_repair_base",
+        "sealed_line_descendant",
     }:
         raise OperatorError("continuity admission mode is invalid")
     followup_repair_base = admission_mode == "followup_repair_base"
+    sealed_line_descendant = admission_mode == "sealed_line_descendant"
     if followup_repair_base and (
         base != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT
         or target != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
@@ -57795,6 +57831,37 @@ def _admit_canonical_merge_suffix(
                 "continuity suffix contains a non-canonical integration commit"
             )
         candidate = parent_fields[1].casefold()
+        if sealed_line_descendant:
+            candidate_tree = _git("rev-parse", f"{candidate}^{{tree}}")
+            integration_tree = _git(
+                "rev-parse", f"{integration_commit}^{{tree}}"
+            )
+            landed_paths = _git_changed_paths(previous, integration_commit)
+            admitted.append(
+                {
+                    "request_id": (
+                        "aseh-sealed-line-descendant:" + integration_commit
+                    ),
+                    "task_alias": ASEH_SEALED_LINE_DESCENDANT_TASK_ALIAS,
+                    "task_cid": _identity(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py/agent-supervisor/"
+                                "aseh-sealed-line-descendant@1"
+                            ),
+                            "integration_commit": integration_commit,
+                            "candidate_commit": candidate,
+                        }
+                    ),
+                    "candidate_commit": candidate,
+                    "candidate_tree": candidate_tree,
+                    "integration_commit": integration_commit,
+                    "integration_tree": integration_tree,
+                    "changed_paths": list(landed_paths),
+                }
+            )
+            previous = integration_commit
+            continue
         matches = [
             request
             for request in completed_requests
@@ -65175,6 +65242,16 @@ def _load_exact_r18_receipt_chain(
 ) -> list[Mapping[str, Any]]:
     """Load and self-CID-admit the exact raw R1-R18 receipt chain."""
 
+    global _ASEH_EXACT_R18_RECEIPT_CHAIN, _ASEH_EXACT_R18_RECEIPT_CHAIN_PATH
+    r18_path = paths.get(
+        "repair_process_census_disappearance_transition_receipt"
+    )
+    if (
+        _ASEH_EXACT_R18_RECEIPT_CHAIN is not None
+        and _ASEH_EXACT_R18_RECEIPT_CHAIN_PATH == r18_path
+        and isinstance(r18_path, Path)
+    ):
+        return list(_ASEH_EXACT_R18_RECEIPT_CHAIN)
     specifications = (
         ("repair_transition_receipt", _repair_transition_receipt_id),
         (
@@ -65257,7 +65334,12 @@ def _load_exact_r18_receipt_chain(
         )
         admit_receipt_id(receipt)
         chain.append(receipt)
-    return _admit_exact_r18_transition_chain(chain)
+    admitted = _admit_exact_r18_transition_chain(chain)
+    _ASEH_EXACT_R18_RECEIPT_CHAIN = list(admitted)
+    _ASEH_EXACT_R18_RECEIPT_CHAIN_PATH = (
+        r18_path if isinstance(r18_path, Path) else None
+    )
+    return admitted
 
 
 def _load_exact_r19_receipt_chain(
@@ -83530,6 +83612,12 @@ def _admit_materialized_launch(
                 integrity=integrity,
                 task_outputs=outputs,
                 completed_requests=requests,
+                admission_mode=(
+                    "sealed_line_descendant"
+                    if str(active_transition["repair_head"])
+                    != str(population["source_head"])
+                    else "canonical_completion"
+                ),
             )
             if (
                 r45_prequalification is not None
@@ -85219,6 +85307,12 @@ def _admit_materialized_launch(
                 integrity=integrity,
                 task_outputs=outputs,
                 completed_requests=requests,
+                admission_mode=(
+                    "sealed_line_descendant"
+                    if str(repair_transition["repair_head"])
+                    != str(population["source_head"])
+                    else "canonical_completion"
+                ),
             )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
@@ -88806,6 +88900,11 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         )
         launch_admission_bound_scope.__enter__()
         launch_admission_bound_active = True
+        r39_path = paths.get(
+            "repair_implementation_supervisor_handoff_bootstrap_transition_receipt"
+        )
+        if isinstance(r39_path, Path) and r39_path.is_file():
+            _load_exact_r39_receipt_chain(paths)
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
