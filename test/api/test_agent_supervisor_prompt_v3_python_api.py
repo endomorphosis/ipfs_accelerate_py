@@ -979,3 +979,16 @@ def test_scheduler_handoff_disables_complete_launch_plan_injection() -> None:
     assert handoff["initial_task_ceiling"] == 80
     assert handoff["model_assertion_cannot_complete"] is True
     assert handoff["empty_queue_cannot_complete"] is True
+
+
+def test_scan_directory_falls_back_to_repository_root_when_pkg_is_absent(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import (
+        _scan_directory_for_repository,
+    )
+
+    assert _scan_directory_for_repository(str(tmp_path)) == str(tmp_path)
+    packaged = tmp_path / "pkg"
+    packaged.mkdir()
+    assert _scan_directory_for_repository(str(tmp_path)) == str(packaged)

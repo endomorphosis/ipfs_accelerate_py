@@ -46,6 +46,21 @@ class SupervisorUnavailableError(SupervisorError):
     """A required production backend is unavailable."""
 
 
+def _scan_directory_for_repository(repository_root: str) -> str:
+    """Return an existing in-repo scan directory.
+
+    Tests and fixtures may provide ``pkg/``. Production checkouts usually
+    do not. Scanning the repository root is valid; a missing ``pkg/`` must
+    not fail closed as ``DirectoryResolutionError``.
+    """
+
+    root = Path(repository_root)
+    packaged = root / "pkg"
+    if packaged.is_dir():
+        return str(packaged)
+    return str(root)
+
+
 @dataclass(frozen=True)
 class SupervisorObservation:
     """Body-free run observation snapshot."""
@@ -433,7 +448,7 @@ class Supervisor:
             policy_root=observation.policy_root,
             caller=observation.caller,
             output_root=output_root,
-            directory=str(Path(observation.repository_root) / "pkg"),
+            directory=_scan_directory_for_repository(observation.repository_root),
             state_root=str(self._composition.state_root),
             supervisor_profile=observation.supervisor_profile,
             board_namespace=observation.board_namespace,
