@@ -1885,14 +1885,6 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
     return server, paths, program, identity, ready
 
 
-_OWNER_PROJECTION_RETRYABLE_ERRORS: Final[frozenset[str]] = frozenset(
-    {
-        "DuckDBConnectionPolicyError",
-    }
-)
-_OWNER_PROJECTION_MAX_RECOVERIES: Final[int] = 8
-
-
 def _recover_poisoned_owner_connection(server: Any) -> bool:
     """Replace a poisoned exclusive owner handle without SIGTERM'ing SPAR.
 
@@ -2863,28 +2855,40 @@ class _OwnerProjectionMonitor:
 
     def _run(self) -> None:
         initial = True
-        recoveries = 0
         while not self.stopping.is_set():
             try:
                 _publish_live_projection(self.server, self.paths)
             except BaseException as exc:
-                retryable = type(exc).__name__ in _OWNER_PROJECTION_RETRYABLE_ERRORS
                 recovered = False
-                if retryable and recoveries < _OWNER_PROJECTION_MAX_RECOVERIES:
-                    try:
-                        recovered = _recover_poisoned_owner_connection(
-                            self.server
-                        )
-                    except Exception:
-                        recovered = False
+                try:
+                    recovered = _recover_poisoned_owner_connection(self.server)
+                except Exception:
+                    recovered = False
+                if initial and not recovered:
+                    self.failure = type(exc).__name__
+                    self.ready.set()
+                    self.on_failure(exc)
+                    return
+                print(
+                    json.dumps(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py/agent-supervisor/"
+                                "spar-owner-projection-retry@1"
+                            ),
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[-1000:],
+                            "recovered": recovered,
+                            "initial": initial,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
                 if recovered:
-                    recoveries += 1
                     continue
-                self.failure = type(exc).__name__
-                self.ready.set()
-                self.on_failure(exc)
-                return
-            recoveries = 0
+                self.stopping.wait(1.0)
+                continue
             if initial:
                 initial = False
                 self.ready.set()
