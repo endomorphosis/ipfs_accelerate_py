@@ -95924,7 +95924,8 @@ class DatabaseImplementationDaemon:
                 candidate = self.task_source.get(task_cid)
                 if (
                     candidate is not None
-                    and str(candidate.status or "").strip().lower() == "ready"
+                    and str(candidate.status or "").strip().lower()
+                    in _DATABASE_READY_TASK_STATUSES
                     and self._typed_authoritative_attempt_floor(candidate)
                     >= self.max_task_attempts
                 ):
@@ -98017,6 +98018,7 @@ class DatabaseImplementationDaemon:
                 source_attempt: DatabaseTaskAttempt,
                 *,
                 forbidden_attempts: Sequence[DatabaseTaskAttempt] = (),
+                require_bounded_successor: bool = False,
             ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
                 coordination_attempt = self.coordinator.get_task_attempt(
                     str(receipt_payload.get("attempt_id") or "")
@@ -98056,6 +98058,17 @@ class DatabaseImplementationDaemon:
                     or isinstance(target_attempt_number, bool)
                     or not isinstance(target_attempt_number, int)
                     or target_attempt_number < 1
+                    or target_attempt_number
+                    <= int(source_attempt.attempt_number)
+                    or (
+                        require_bounded_successor
+                        and (
+                            self.max_task_attempts <= 0
+                            or target_attempt_number
+                            != int(source_attempt.attempt_number) + 1
+                            or target_attempt_number > self.max_task_attempts
+                        )
+                    )
                     or target_identity.get("attempt_id")
                     in {source_attempt.attempt_id, *forbidden_attempt_ids}
                     or target_claim_identity.get("claim_id")
@@ -98381,7 +98394,8 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 target_identity, target_claim_identity = feature_retry_target(
-                    source_attempt
+                    source_attempt,
+                    require_bounded_successor=True,
                 )
                 carry_feature_retry_target(
                     target_identity,
@@ -122029,9 +122043,14 @@ class DatabaseImplementationDaemon:
                 "reason": "post_commit_recovery_control_superseded",
                 "operator_review_required": False,
             }
+        no_effect_portal_attempt = (
+            int(no_effect["portal_attempt"])
+            if no_effect is not None
+            else 0
+        )
         if no_effect is not None and (
             self.max_task_attempts > 0
-            and int(attempt.attempt_number) >= self.max_task_attempts
+            and no_effect_portal_attempt >= self.max_task_attempts
         ):
             budget_stop_receipt = {
                 "schema": (
@@ -122043,6 +122062,8 @@ class DatabaseImplementationDaemon:
                 ),
                 "attempt_id": attempt.attempt_id,
                 "attempt_number": int(attempt.attempt_number),
+                "portal_attempt": no_effect_portal_attempt,
+                "retry_budget_basis": "portal_attempt",
                 "claim_id": attempt.claim_id,
                 "lease_id": attempt.lease_id,
                 "owner_session_id": attempt.owner_session_id,
@@ -122087,6 +122108,10 @@ class DatabaseImplementationDaemon:
                 != attempt.attempt_id
                 or updated_control_receipt.get("attempt_number")
                 != int(attempt.attempt_number)
+                or updated_control_receipt.get("portal_attempt")
+                != no_effect_portal_attempt
+                or updated_control_receipt.get("retry_budget_basis")
+                != "portal_attempt"
                 or updated_control_receipt.get(
                     "callback_no_effect_recovery_receipt"
                 )
@@ -122106,6 +122131,8 @@ class DatabaseImplementationDaemon:
                     "provider_dispatched": False,
                     "source_provider_dispatched": True,
                     "attempt_consumed": True,
+                    "portal_attempt": no_effect_portal_attempt,
+                    "retry_budget_basis": "portal_attempt",
                     "max_task_attempts": int(self.max_task_attempts),
                     "remaining_task_attempts": 0,
                 },
@@ -122123,6 +122150,8 @@ class DatabaseImplementationDaemon:
                 "provider_dispatched": False,
                 "source_provider_dispatched": True,
                 "attempt_consumed": True,
+                "portal_attempt": no_effect_portal_attempt,
+                "retry_budget_basis": "portal_attempt",
                 "max_task_attempts": int(self.max_task_attempts),
                 "remaining_task_attempts": 0,
                 "source_receipt_id": str(no_effect["receipt_id"]),
@@ -122472,6 +122501,8 @@ class DatabaseImplementationDaemon:
             "portal_reconciliation_reason",
             "portal_attempt_newly_charged",
             "portal_attempt_charged",
+            "retry_budget_basis",
+            "max_task_attempts",
             "provider_dispatched",
             "attempt_consumed",
             "effect_state",
@@ -122502,6 +122533,8 @@ class DatabaseImplementationDaemon:
             or receipt.get("attempt_consumed") is not True
             or receipt.get("portal_attempt_charged") is not True
             or type(receipt.get("portal_attempt_newly_charged")) is not bool
+            or receipt.get("retry_budget_basis") != "portal_attempt"
+            or receipt.get("max_task_attempts") != self.max_task_attempts
             or receipt.get("effect_state")
             != "proven_absent_in_allowed_workspace_scope"
             or receipt.get("completion_authoritative") is not False
@@ -122563,6 +122596,11 @@ class DatabaseImplementationDaemon:
             or isinstance(receipt.get("portal_attempt"), bool)
             or not isinstance(receipt.get("portal_attempt"), int)
             or int(receipt["portal_attempt"]) < 1
+            or (
+                self.max_task_attempts > 0
+                and int(receipt["portal_attempt"])
+                > self.max_task_attempts
+            )
             or isinstance(receipt.get("source_task_revision"), bool)
             or not isinstance(receipt.get("source_task_revision"), int)
             or int(receipt["source_task_revision"]) < 1

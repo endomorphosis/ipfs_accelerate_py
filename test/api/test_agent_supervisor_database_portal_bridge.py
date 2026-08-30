@@ -87,8 +87,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
     DatabasePortalProtectedPathPreserved,
-    DatabasePortalVerificationRecoveryDeferred,
     DatabasePortalValidationRetry,
+    DatabasePortalVerificationRecoveryDeferred,
     _is_implementation_conflict,
     _PostMergeRecoveryDisposition,
     database_portal_consumed_no_progress_fingerprint,
@@ -692,6 +692,7 @@ def _callback_no_effect_fixture(
         worktree_root=worktree_root,
         implementation_protected_paths=("README.md",),
         portal_factory=lambda paths, alias: _CleanRestartPortal(paths, alias),
+        max_task_attempts=2,
     )
     paths, _binding = bridge._ensure_attempt_projection(source, record)
     append_jsonl_event(
@@ -787,6 +788,8 @@ def test_bridge_reconciles_exact_clean_baseline_callback_unknown(
     assert receipt["provider_dispatched"] is True
     assert receipt["attempt_consumed"] is True
     assert receipt["portal_attempt_charged"] is True
+    assert receipt["retry_budget_basis"] == "portal_attempt"
+    assert receipt["max_task_attempts"] == 2
     assert receipt["effect_state"] == "proven_absent_in_allowed_workspace_scope"
     assert receipt["observed_head"] == receipt["baseline_commit"]
     assert subprocess.run(

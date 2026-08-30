@@ -18360,6 +18360,12 @@ class DatabasePortalExecutionBridge:
                 attempt_recovery.get("consumed")
             ),
             "portal_attempt_charged": True,
+            # Retry admission is governed by the Portal generation proved by
+            # the event stream, not by the outer DuckDB claim generation.
+            # Bind both the basis and configured ceiling into the immutable
+            # receipt so the database daemon cannot reinterpret the budget.
+            "retry_budget_basis": "portal_attempt",
+            "max_task_attempts": int(self.max_task_attempts),
             "provider_dispatched": True,
             "attempt_consumed": True,
             "effect_state": "proven_absent_in_allowed_workspace_scope",
@@ -18400,6 +18406,18 @@ class DatabasePortalExecutionBridge:
             or body.get("attempt_consumed") is not True
             or body.get("portal_attempt_charged") is not True
             or type(body.get("portal_attempt_newly_charged")) is not bool
+            or body.get("retry_budget_basis") != "portal_attempt"
+            or body.get("max_task_attempts") != self.max_task_attempts
+            or (
+                self.max_task_attempts > 0
+                and (
+                    isinstance(body.get("portal_attempt"), bool)
+                    or not isinstance(body.get("portal_attempt"), int)
+                    or not 1
+                    <= int(body["portal_attempt"])
+                    <= self.max_task_attempts
+                )
+            )
             or body.get("effect_state")
             != "proven_absent_in_allowed_workspace_scope"
             or body.get("completion_authoritative") is not False

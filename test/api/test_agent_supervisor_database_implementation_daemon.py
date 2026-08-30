@@ -111,9 +111,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
-    DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+    DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -4913,6 +4913,8 @@ def _exact_callback_no_effect_receipt(
     source: DatabaseTaskAttempt,
     *,
     workspace: Path,
+    portal_attempt: int | None = None,
+    max_task_attempts: int = 2,
 ) -> dict[str, object]:
     body: dict[str, object] = {
         "schema": (
@@ -4946,7 +4948,9 @@ def _exact_callback_no_effect_receipt(
         "source_ref_commit": "a" * 40,
         "candidate_rescue_refs": [],
         "submodule_dirt_checked": True,
-        "portal_attempt": int(source.attempt_number),
+        "portal_attempt": int(
+            source.attempt_number if portal_attempt is None else portal_attempt
+        ),
         "allowed_effects": [
             "isolated worktree edits",
             "local deterministic validation",
@@ -4968,6 +4972,8 @@ def _exact_callback_no_effect_receipt(
         "portal_reconciliation_reason": "quiesced_active_attempt_reconciled",
         "portal_attempt_newly_charged": False,
         "portal_attempt_charged": True,
+        "retry_budget_basis": "portal_attempt",
+        "max_task_attempts": max_task_attempts,
         "provider_dispatched": True,
         "attempt_consumed": True,
         "effect_state": "proven_absent_in_allowed_workspace_scope",
@@ -5113,6 +5119,144 @@ def test_callback_no_effect_recovery_stops_at_budget_without_global_stall(
         assert provider_calls == [first_attempt.attempt_id, second_attempt.attempt_id]
     finally:
         restarted.close()
+
+
+def test_callback_no_effect_budget_uses_portal_generation_not_outer_claim(
+    tmp_path: Path,
+) -> None:
+    """Portal attempt 2-of-2 cannot be rearmed by outer attempt 1-of-2."""
+
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+
+    def crash_after_callback_started(
+        _attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise SimulatedProcessCrash("injected callback no-effect crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-no-effect-portal-budget",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(2))
+        source = first.claim_next()
+        assert source is not None and source.attempt_number == 1
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(source)
+    finally:
+        first.close()
+
+    def exact_portal_budget_exhausted(
+        failed: DatabaseTaskAttempt,
+    ) -> Mapping[str, object]:
+        return _exact_callback_no_effect_receipt(
+            failed,
+            workspace=tmp_path / "retained-portal-attempt-2",
+            portal_attempt=2,
+            max_task_attempts=2,
+        )
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        repo_root=tmp_path,
+        session="session:callback-no-effect-portal-budget",
+        provider_fn=crash_after_callback_started,
+        post_commit_candidate_recovery_fn=exact_portal_budget_exhausted,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        assert any(
+            item.get("disposition") == "quarantined"
+            for item in restarted.reconcile_expired_running_attempts()
+        )
+        [outcome] = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert outcome["status"] == "blocked"
+        assert outcome["reason"] == (
+            "callback_no_effect_attempt_budget_exhausted"
+        )
+        assert outcome["portal_attempt"] == 2
+        assert outcome["retry_budget_basis"] == "portal_attempt"
+        assert restarted.claim_next(
+            exclude_task_cids=("task:cid:002",)
+        ) is None
+        attempt_numbers = [
+            int(row[0])
+            for row in restarted._require_connection().execute(
+                "SELECT attempt_number FROM database_task_attempts "
+                "WHERE task_cid = ? ORDER BY attempt_number",
+                [source.task_cid],
+            ).fetchall()
+        ]
+        assert attempt_numbers == [1]
+    finally:
+        restarted.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("retry_budget_basis", "outer_attempt"),
+        ("max_task_attempts", 3),
+        ("portal_attempt", 3),
+    ),
+)
+def test_callback_no_effect_receipt_rejects_budget_reinterpretation(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        control_path=tmp_path / "control.duckdb",
+        session="session:callback-no-effect-receipt-budget",
+        strict_task_sharding=True,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        source = daemon.claim_next()
+        assert source is not None
+        receipt = _exact_callback_no_effect_receipt(
+            source,
+            workspace=tmp_path / "retained",
+            max_task_attempts=2,
+        )
+        receipt[field] = value
+        body = dict(receipt)
+        body.pop("receipt_id")
+        receipt["receipt_id"] = (
+            implementation_daemon_module._database_daemon_evidence_digest(
+                body
+            )
+        )
+        with pytest.raises(
+            implementation_daemon_module.DatabaseImplementationAuthorityError,
+            match="callback no-effect recovery receipt failed verification",
+        ):
+            daemon._verified_callback_no_effect_recovery_receipt(
+                source,
+                receipt,
+            )
+    finally:
+        daemon.close()
 
 
 def test_blocked_response_replay_rejects_different_failure_body(
