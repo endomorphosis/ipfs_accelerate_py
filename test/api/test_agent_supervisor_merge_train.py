@@ -1186,6 +1186,87 @@ def test_database_portal_wrong_lane_leaves_request_for_compatible_consumer(
     assert completed.status == "completed"
 
 
+def test_isolated_dummy_consumer_consumes_pending_projection_merge(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:ref-040",
+        claim_id="claim:ref-040",
+        task_cid="task:cid:ref-040",
+        task_alias="REF-040",
+        attempt_number=1,
+    )
+    producer, _producer_paths, _producer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=producer_attempt,
+            record=_database_projection_record(
+                task_cid="task:cid:ref-040",
+                task_alias="REF-040",
+                allowed_paths="base.txt",
+            ),
+        )
+    )
+    dummy_root = tmp_path / "merge-train-consumer"
+    dummy_root.mkdir()
+    dummy_projection = dummy_root / "task-projection.md"
+    dummy_projection.write_text("# merge-train-consumer\n", encoding="utf-8")
+    dummy = PortalImplementationDaemon(
+        todo_path=dummy_projection,
+        state_path=dummy_root / "portal-task-state.json",
+        strategy_path=dummy_root / "portal-strategy.json",
+        events_path=dummy_root / "portal-events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch="main",
+        merge_queue=producer.merge_queue,
+        merge_queue_dir=merge_queue_dir,
+        isolate_merge_queue_to_task_projection=True,
+        execution_slice_task_ids=("",),
+        worktree_pool_enabled=False,
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/ref-040")
+    (repo / "base.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate ref-040")
+    commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    request, queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=producer._load_tasks()[0],
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    assert queued["queued"] is True
+    assert dummy._consume_one_merge_candidate() is None
+    deferred = dummy.merge_queue.get(request.request_id)
+    assert deferred is not None
+    assert deferred.status == "pending"
+    assert deferred.failure_count == 0
+
+    result = dummy._consume_any_pending_merge_candidate()
+
+    assert result is not None
+    assert result["status"] in {"merged", "already_merged"}
+    completed = dummy.merge_queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
 def test_database_portal_projection_continues_into_shared_board(
     tmp_path: Path,
 ) -> None:

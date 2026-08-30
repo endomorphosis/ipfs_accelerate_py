@@ -41410,6 +41410,133 @@ class PortalImplementationDaemon:
             request_filter=self._database_portal_merge_request_filter()
         )
 
+    def _portal_consumer_for_pending_merge(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> "PortalImplementationDaemon" | None:
+        """Rebuild the projection portal that authored one pending merge row.
+
+        Database-lane recovery uses a dummy consumer projection, so isolation
+        and lane filters hide the real pending row.  Reconstructing the
+        request's original portal keeps merge authority on that projection
+        instead of widening the dummy consumer.
+        """
+
+        raw_todo = metadata.get("todo_path")
+        if not isinstance(raw_todo, str) or not raw_todo.strip():
+            return None
+        request_todo_path = Path(raw_todo)
+        try:
+            if request_todo_path.resolve(strict=False) == self.todo_path.resolve(
+                strict=False
+            ):
+                return self
+        except OSError:
+            return None
+        if not request_todo_path.is_file() or request_todo_path.is_symlink():
+            return None
+        raw_state = metadata.get("state_path")
+        if not isinstance(raw_state, str) or not raw_state.strip():
+            return None
+        request_state_path = Path(raw_state)
+        raw_task = metadata.get("task")
+        task_id = (
+            str(raw_task.get("task_id") or "").strip()
+            if isinstance(raw_task, Mapping)
+            else ""
+        )
+        protected = metadata.get("implementation_protected_paths")
+        protected_paths = (
+            tuple(str(path) for path in protected)
+            if isinstance(protected, Sequence)
+            and not isinstance(protected, (str, bytes, bytearray))
+            else self.implementation_protected_paths
+        )
+        try:
+            return PortalImplementationDaemon(
+                todo_path=request_todo_path,
+                state_path=request_state_path,
+                strategy_path=Path(
+                    str(
+                        metadata.get("strategy_path")
+                        or request_state_path.parent / "portal-strategy.json"
+                    )
+                ),
+                events_path=Path(
+                    str(
+                        metadata.get("events_path")
+                        or request_state_path.parent / "portal-events.jsonl"
+                    )
+                ),
+                repo_root=self.repo_root,
+                board_namespace=infer_board_namespace(
+                    todo_path=request_todo_path
+                ),
+                task_header_prefix=str(
+                    metadata.get("task_header_prefix")
+                    or self.task_header_prefix
+                ),
+                implement=False,
+                use_ephemeral_worktree=self.use_ephemeral_worktree,
+                worktree_root=self.worktree_root,
+                merge_target_branch=self.resolved_merge_target_branch,
+                worktree_submodule_paths=self.worktree_submodule_paths,
+                implementation_protected_paths=protected_paths,
+                manual_completion_authority_task_ids=(),
+                manual_completion_authority_required_task_ids=(),
+                merge_queue=self.merge_queue,
+                merge_queue_dir=self.merge_queue_dir,
+                isolate_merge_queue_to_task_projection=True,
+                execution_slice_task_ids=(task_id,) if task_id else (),
+                llm_merge_resolver_command=self.llm_merge_resolver_command,
+                llm_merge_resolver_timeout_seconds=(
+                    self.llm_merge_resolver_timeout_seconds
+                ),
+                worktree_pool_enabled=False,
+                implementation_log_dir=(
+                    request_state_path.parent / "implementation-logs"
+                ),
+            )
+        except Exception:
+            return None
+
+    def _consume_any_pending_merge_candidate(self) -> dict[str, Any] | None:
+        """Advance one pending merge without this portal's projection filter.
+
+        Database lanes own merge-train recovery after a Portal attempt exits.
+        The bound consumer is a dummy projection, so
+        :meth:`_consume_one_merge_candidate` cannot see another attempt's
+        pending row.  Peek the shared queue and consume through the row's
+        original projection portal.
+        """
+
+        pending_fn = getattr(self.merge_queue, "pending_requests", None)
+        if not callable(pending_fn):
+            return None
+        pending = pending_fn(limit=32)
+        for request in pending:
+            metadata = (
+                request.metadata
+                if isinstance(getattr(request, "metadata", None), dict)
+                else {}
+            )
+            consumer = self._portal_consumer_for_pending_merge(metadata)
+            if consumer is None:
+                continue
+            closer = None
+            if consumer is not self:
+                closer = getattr(
+                    consumer, "close_event_runtime", None
+                ) or getattr(consumer, "close", None)
+            try:
+                result = consumer._consume_one_merge_candidate()
+            finally:
+                if callable(closer):
+                    closer()
+            if result is not None:
+                return result
+        return None
+
     @staticmethod
     def _merge_train_result_is_integrated(result: dict[str, Any]) -> bool:
         status = str(result.get("status") or result.get("reason") or "").strip().lower()

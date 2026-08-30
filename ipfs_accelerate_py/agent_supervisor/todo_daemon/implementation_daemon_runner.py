@@ -2223,10 +2223,12 @@ def bind_database_portal_execution_from_args(
                 portal, "close", None
             )
             try:
-                consume = getattr(portal, "_consume_one_merge_candidate", None)
+                consume = getattr(
+                    portal, "_consume_any_pending_merge_candidate", None
+                )
                 if not callable(consume):
                     raise RuntimeError(
-                        "Portal merge consumer lacks merge-train consume"
+                        "Portal merge consumer lacks pending merge-train consume"
                     )
                 return consume()
             finally:
