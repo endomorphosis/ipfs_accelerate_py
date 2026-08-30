@@ -2110,6 +2110,14 @@ class CrashFenceReconciler:
         }
 IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS = 30.0
 IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_POLL_SECONDS = 0.05
+# A provider-completed candidate must remain in its exact worktree while a
+# sibling merge owns the shared checkout lease.  Re-entering the provider on a
+# fresh attempt would both discard that candidate and misstate the already
+# observed dispatch.  Each acquisition below is itself bounded by
+# ``IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS``; this limit
+# therefore bounds the complete in-process reconciliation window without
+# turning ordinary cross-lane merge contention into a terminal task failure.
+IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_ACQUIRE_ATTEMPTS = 3
 EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
     "asi-117:event-driven-delta-checkpoint-runtime"
 )
@@ -11438,13 +11446,29 @@ class PortalImplementationDaemon:
                 )
             except (OSError, RuntimeError):
                 execution_scope = "workspace"
-        lock_result = (
-            self._acquire_implementation_protected_verification_lock(
-                task_id=resolved_task_id,
-                attempt=attempt,
-                workspace_path=workspace_path,
+        lock_result: dict[str, Any] = {}
+        for acquisition_attempt in range(
+            IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_ACQUIRE_ATTEMPTS
+        ):
+            lock_result = (
+                self._acquire_implementation_protected_verification_lock(
+                    task_id=resolved_task_id,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                )
             )
-        )
+            if lock_result.get("acquired", False):
+                break
+            if lock_result.get("reason") != "lock_exists":
+                break
+            if (
+                acquisition_attempt + 1
+                >= IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_ACQUIRE_ATTEMPTS
+            ):
+                break
+            # The bounded acquisition above already waited for the peer lease.
+            # Keep the exact provider-produced worktree in this stack frame and
+            # retry only verification; never return to provider dispatch.
         if not lock_result.get("acquired", False):
             unfenced_after = self._implementation_protected_path_snapshot(
                 comparison_workspace
