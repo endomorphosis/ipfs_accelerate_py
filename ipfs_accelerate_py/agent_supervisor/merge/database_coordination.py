@@ -1752,22 +1752,19 @@ class DatabaseCoordinator:
             pass
 
     def _commit_if_idle(self, connection: Any) -> None:
-        try:
-            if getattr(connection, "in_transaction", False):
-                commit = getattr(connection, "commit", None)
-                if callable(commit):
-                    commit()
-                    return
-            raw = getattr(connection, "_connection", None)
-            raw_commit = getattr(raw, "commit", None) if raw is not None else None
-            if callable(raw_commit):
-                raw_commit()
-                return
+        if getattr(connection, "in_transaction", False):
             commit = getattr(connection, "commit", None)
             if callable(commit):
                 commit()
-        except Exception:
-            pass
+                return
+        raw = getattr(connection, "_connection", None)
+        raw_commit = getattr(raw, "commit", None) if raw is not None else None
+        if callable(raw_commit):
+            raw_commit()
+            return
+        commit = getattr(connection, "commit", None)
+        if callable(commit):
+            commit()
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())

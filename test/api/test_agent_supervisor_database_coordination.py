@@ -810,6 +810,23 @@ def test_coordination_registry_projection_makes_dependency_tamper_visible(
         coordinator.close()
 
 
+def test_commit_failure_is_never_reported_as_success(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+
+    class FailingCommitConnection:
+        in_transaction = True
+
+        @staticmethod
+        def commit() -> None:
+            raise RuntimeError("injected DuckDB commit failure")
+
+    try:
+        with pytest.raises(RuntimeError, match="injected DuckDB commit failure"):
+            coordinator._commit_if_idle(FailingCommitConnection())
+    finally:
+        coordinator.close()
+
+
 def test_read_only_projection_preserves_database_bytes_and_exposes_histories(
     tmp_path: Path,
 ) -> None:
