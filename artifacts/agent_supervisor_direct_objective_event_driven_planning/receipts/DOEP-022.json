@@ -1,0 +1,22 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-022",
+  "task_cid": "sha256:5422b21bd2848b09884adfa8204f170313ac5bc484bee0dd0e758d8f943f36a0",
+  "title": "Add repository/capability analysis",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "changed_paths": ["ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py", "test/api/doep/test_doep_022_add_repository_capability_analysis.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-022.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-022.json"],
+  "expected_outputs": ["ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py", "test/api/doep/test_doep_022_add_repository_capability_analysis.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-022.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-022.json"],
+  "write_scope": ["ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py", "test/api/doep/test_doep_022_add_repository_capability_analysis.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-022.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-022.json"],
+  "outputs_present": {"ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py": true, "test/api/doep/test_doep_022_add_repository_capability_analysis.py": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-022.json": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-022.json": true},
+  "path_digests": {"ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py": "sha256:f8b781ef847cf748c12c172abf23de0e2a4b9bf15b01fa266e267462545446f4", "test/api/doep/test_doep_022_add_repository_capability_analysis.py": "sha256:0178df221b06ea88f92cb88cf83a29b7735766c2d5fef9e46e650997e2bb23ef", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-022.json": "sha256:589f285892a8c51f4d0b3bb870417b7547df7ac109f4119b4682aa4e4e2a9811"},
+  "required_evidence": {"test_proof_results": {"validation_command": ["python3", "-m", "pytest", "test/api/doep/test_doep_022_add_repository_capability_analysis.py", "-q"], "proof_selection": "verified_empty", "proof_reason": "The deterministic capability carrier is checked by focused Python assertions and makes no proof claim."}, "limitations": ["Candidate receipt only; independent fenced supervisor admission is required for completion.", "Worker or model assertion alone is insufficient.", "Capability availability is advisory only and cannot satisfy admission, safety, or completion authority."], "verifier_admission": "pending_independent_fenced_supervisor"},
+  "validation": {"commands": [{"argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_022_add_repository_capability_analysis.py", "-q"], "cwd": "external/ipfs_accelerate", "status": "candidate_local"}]},
+  "supervisor_acceptance": {"completion_authoritative": false, "state": "pending_independent_fenced_supervisor"}
+}

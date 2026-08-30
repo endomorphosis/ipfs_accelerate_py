@@ -57,6 +57,9 @@ FORMAL_PLAN_MODEL_RESPONSE_SCHEMA: Final = (
 FORMAL_PLAN_CONTEXT_MEASUREMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-context-measurement@1"
 )
+REPOSITORY_CAPABILITY_ANALYSIS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/repository-capability-analysis@1"
+)
 IMPLEMENTATION_OUTCOME_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/implementation-outcome@1"
 )
@@ -74,6 +77,7 @@ DEFAULT_MAX_FORMAL_PLAN_COUNTEREXAMPLES: Final = 8
 DEFAULT_MAX_FORMAL_PLAN_OBLIGATIONS: Final = 32
 DEFAULT_MAX_FORMAL_PLAN_ALLOWED_PATHS: Final = 32
 DEFAULT_MAX_FORMAL_PLAN_TESTS: Final = 32
+DEFAULT_MAX_FORMAL_PLAN_CAPABILITIES: Final = 32
 
 
 class FormalPlanContextError(ValueError):
@@ -99,6 +103,14 @@ class ImplementationOutcomeStatus(str, Enum):
     FAILED = "failed"
     INCOMPLETE = "incomplete"
     NOT_RUN = "not_run"
+
+
+class RepositoryCapabilityStatus(str, Enum):
+    """Observed availability; this is advisory context, never admission."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
 
 
 def _text(value: Any, *, label: str, required: bool = False) -> str:
@@ -236,6 +248,7 @@ class FormalPlanContextLimits:
     max_unresolved_obligations: int = DEFAULT_MAX_FORMAL_PLAN_OBLIGATIONS
     max_allowed_paths: int = DEFAULT_MAX_FORMAL_PLAN_ALLOWED_PATHS
     max_tests: int = DEFAULT_MAX_FORMAL_PLAN_TESTS
+    max_capabilities: int = DEFAULT_MAX_FORMAL_PLAN_CAPABILITIES
 
     def __post_init__(self) -> None:
         for name in (
@@ -255,6 +268,7 @@ class FormalPlanContextLimits:
             "max_unresolved_obligations",
             "max_allowed_paths",
             "max_tests",
+            "max_capabilities",
         ):
             object.__setattr__(
                 self,
@@ -283,6 +297,7 @@ class FormalPlanContextLimits:
                     "max_unresolved_obligations",
                     "max_allowed_paths",
                     "max_tests",
+                    "max_capabilities",
                 )
             },
         }
@@ -310,6 +325,7 @@ class FormalPlanContextLimits:
                     "max_unresolved_obligations",
                     "max_allowed_paths",
                     "max_tests",
+                    "max_capabilities",
                 )
             }
         )
@@ -404,6 +420,175 @@ class FormalPlanSourceExcerpt:
         if "byte_count" in payload and int(payload["byte_count"]) != result.byte_count:
             raise FormalPlanContextError("source excerpt byte count does not match")
         return result
+
+
+@dataclass(frozen=True)
+class RepositoryCapability:
+    """One bounded, evidence-linked repository capability observation."""
+
+    capability_id: str
+    status: RepositoryCapabilityStatus | str = RepositoryCapabilityStatus.UNKNOWN
+    path: str = ""
+    evidence_cid: str = ""
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "capability_id", _text(self.capability_id, label="capability_id", required=True)
+        )
+        try:
+            status = (
+                self.status
+                if isinstance(self.status, RepositoryCapabilityStatus)
+                else RepositoryCapabilityStatus(str(self.status))
+            )
+        except ValueError as exc:
+            raise FormalPlanContextError("unsupported repository capability status") from exc
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "path", _path(self.path))
+        object.__setattr__(self, "evidence_cid", _text(self.evidence_cid, label="evidence_cid"))
+        details = _public_mapping(self.details)
+        if any(
+            bool(details.get(name))
+            for name in ("completion_authoritative", "admission_authoritative", "safety_proven")
+        ):
+            raise FormalPlanContextError(
+                "repository capability observations cannot claim admission or proof authority"
+            )
+        object.__setattr__(self, "details", details)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capability_id": self.capability_id,
+            "status": self.status.value,
+            "path": self.path,
+            "evidence_cid": self.evidence_cid,
+            "details": dict(self.details),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RepositoryCapability":
+        if not isinstance(payload, Mapping):
+            raise FormalPlanContextError("repository capability must be a mapping")
+        status: Any = payload.get("status")
+        if status is None and "available" in payload:
+            status = "available" if payload["available"] is True else "unavailable"
+        return cls(
+            capability_id=payload.get("capability_id") or payload.get("id") or "",
+            status=status or RepositoryCapabilityStatus.UNKNOWN,
+            path=payload.get("path") or payload.get("file_path") or "",
+            evidence_cid=payload.get("evidence_cid") or payload.get("receipt_cid") or "",
+            details=payload.get("details") or payload.get("metadata") or {},
+        )
+
+
+@dataclass(frozen=True)
+class RepositoryCapabilityAnalysis:
+    """Canonical, fail-closed repository analysis carried in a context capsule.
+
+    Analysis is explicitly advisory: only independently admitted evidence may
+    satisfy an implementation obligation or authorize a state transition.
+    """
+
+    repository_tree_cid: str
+    capabilities: tuple[RepositoryCapability, ...] = ()
+    repository_id: str = ""
+    source_cid: str = ""
+    truncated: bool = False
+    omitted_capabilities: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "repository_tree_cid",
+            _text(self.repository_tree_cid, label="repository_tree_cid", required=True),
+        )
+        object.__setattr__(self, "repository_id", _text(self.repository_id, label="repository_id"))
+        object.__setattr__(self, "source_cid", _text(self.source_cid, label="source_cid"))
+        if not all(isinstance(item, RepositoryCapability) for item in self.capabilities):
+            raise FormalPlanContextError("capabilities contains an invalid record")
+        capabilities = tuple(sorted(self.capabilities, key=lambda item: item.capability_id))
+        if len({item.capability_id for item in capabilities}) != len(capabilities):
+            raise FormalPlanContextError("repository capability ids must be unique")
+        object.__setattr__(self, "capabilities", capabilities)
+        if not isinstance(self.truncated, bool):
+            raise FormalPlanContextError("repository analysis truncated must be boolean")
+        object.__setattr__(
+            self,
+            "omitted_capabilities",
+            _positive(self.omitted_capabilities, label="omitted_capabilities", allow_zero=True),
+        )
+        if self.omitted_capabilities and not self.truncated:
+            raise FormalPlanContextError("omitted capabilities require a truncated analysis")
+
+    @property
+    def analysis_cid(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": REPOSITORY_CAPABILITY_ANALYSIS_SCHEMA,
+            "repository_tree_cid": self.repository_tree_cid,
+            "repository_id": self.repository_id,
+            "source_cid": self.source_cid,
+            "capabilities": [item.to_dict() for item in self.capabilities],
+            "available_capability_ids": [
+                item.capability_id
+                for item in self.capabilities
+                if item.status is RepositoryCapabilityStatus.AVAILABLE
+            ],
+            "truncated": self.truncated,
+            "omitted_capabilities": self.omitted_capabilities,
+            "authority": "advisory_only",
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RepositoryCapabilityAnalysis":
+        if payload.get("schema", REPOSITORY_CAPABILITY_ANALYSIS_SCHEMA) != REPOSITORY_CAPABILITY_ANALYSIS_SCHEMA:
+            raise FormalPlanContextError("unsupported repository capability analysis schema")
+        records = payload.get("capabilities") or ()
+        if not isinstance(records, Sequence) or isinstance(records, (str, bytes, bytearray)):
+            raise FormalPlanContextError("repository capabilities must be a sequence")
+        result = cls(
+            repository_tree_cid=payload.get("repository_tree_cid", ""),
+            repository_id=payload.get("repository_id", ""),
+            source_cid=payload.get("source_cid", ""),
+            capabilities=tuple(RepositoryCapability.from_dict(item) for item in records),
+            truncated=bool(payload.get("truncated", False)),
+            omitted_capabilities=int(payload.get("omitted_capabilities") or 0),
+        )
+        if payload.get("authority", "advisory_only") != "advisory_only":
+            raise FormalPlanContextError("repository analysis cannot claim authority")
+        claimed = payload.get("analysis_cid") or payload.get("analysis_id")
+        if claimed and claimed != result.analysis_cid:
+            raise FormalPlanContextError("repository analysis identity does not match payload")
+        return result
+
+
+def analyze_repository_capabilities(
+    repository_tree_cid: str,
+    capability_records: Sequence[Mapping[str, Any]],
+    *,
+    repository_id: str = "",
+    source_cid: str = "",
+    max_capabilities: int = DEFAULT_MAX_FORMAL_PLAN_CAPABILITIES,
+) -> RepositoryCapabilityAnalysis:
+    """Normalize supplied repository observations without probing or importing targets."""
+
+    maximum = _positive(max_capabilities, label="max_capabilities", allow_zero=True)
+    capabilities = tuple(RepositoryCapability.from_dict(item) for item in capability_records)
+    ordered = tuple(sorted(capabilities, key=lambda item: item.capability_id))
+    if len({item.capability_id for item in ordered}) != len(ordered):
+        raise FormalPlanContextError("repository capability ids must be unique")
+    selected = ordered[:maximum]
+    return RepositoryCapabilityAnalysis(
+        repository_tree_cid=repository_tree_cid,
+        repository_id=repository_id,
+        source_cid=source_cid,
+        capabilities=selected,
+        truncated=len(selected) != len(ordered),
+        omitted_capabilities=len(ordered) - len(selected),
+    )
 
 
 @dataclass(frozen=True)
@@ -635,6 +820,7 @@ class FormalPlanContextCapsule:
     transition: FormalTaskTransition
     theorem: Mapping[str, Any]
     acceptance_policy: Mapping[str, Any]
+    repository_analysis: RepositoryCapabilityAnalysis | None = None
     assumptions: tuple[Mapping[str, Any], ...] = ()
     required_preconditions: tuple[Mapping[str, Any], ...] = ()
     required_effects: tuple[Mapping[str, Any], ...] = ()
@@ -684,6 +870,16 @@ class FormalPlanContextCapsule:
             )
         if self.task_cid != self.transition.task_cid:
             raise FormalPlanContextError("transition does not bind the capsule task")
+        analysis = self.repository_analysis
+        if analysis is None:
+            analysis = RepositoryCapabilityAnalysis(repository_tree_cid=self.repository_tree_cid)
+        elif not isinstance(analysis, RepositoryCapabilityAnalysis):
+            raise FormalPlanContextError("repository_analysis must be RepositoryCapabilityAnalysis")
+        if analysis.repository_tree_cid != self.repository_tree_cid:
+            raise FormalPlanContextError("repository analysis does not bind the capsule tree")
+        if len(analysis.capabilities) > self.limits.max_capabilities:
+            raise FormalPlanContextBudgetError("repository capability limit exceeded")
+        object.__setattr__(self, "repository_analysis", analysis)
         object.__setattr__(self, "theorem", _canonical_mapping(self.theorem))
         object.__setattr__(self, "acceptance_policy", _canonical_mapping(self.acceptance_policy))
         for name in (
@@ -773,6 +969,7 @@ class FormalPlanContextCapsule:
             "task_cid": self.task_cid,
             "validation_cid": self.validation_cid,
             "repository_tree_cid": self.repository_tree_cid,
+            "repository_analysis": self.repository_analysis.to_dict(),
             "transition": self.transition.to_dict(),
             "theorem": dict(self.theorem),
             "acceptance_policy": dict(self.acceptance_policy),
@@ -799,6 +996,7 @@ class FormalPlanContextCapsule:
                     "theorem",
                     "acceptance_policy",
                     "trusted_evidence",
+                    "repository_analysis",
                 ],
                 "instruction": (
                     "Propose implementation work only. Echo every binding exactly; "
@@ -894,6 +1092,10 @@ class FormalPlanContextCapsule:
                 "allowed-path limit exceeded",
             ),
             (len(self.tests) <= self.limits.max_tests, "test limit exceeded"),
+            (
+                len(self.repository_analysis.capabilities) <= self.limits.max_capabilities,
+                "repository capability limit exceeded",
+            ),
         )
         for passed, message in checks:
             if not passed:
@@ -919,6 +1121,11 @@ class FormalPlanContextCapsule:
             task_cid=payload.get("task_cid", ""),
             validation_cid=payload.get("validation_cid", ""),
             repository_tree_cid=payload.get("repository_tree_cid", ""),
+            repository_analysis=(
+                RepositoryCapabilityAnalysis.from_dict(payload["repository_analysis"])
+                if isinstance(payload.get("repository_analysis"), Mapping)
+                else None
+            ),
             transition=FormalTaskTransition.from_dict(payload["transition"]),
             theorem=payload.get("theorem") or {},
             acceptance_policy=payload.get("acceptance_policy") or {},
@@ -1512,6 +1719,9 @@ class FormalPlanContextBuilder:
         allowed_paths: Sequence[str] = (),
         tests: Sequence[str] = (),
         unresolved_obligations: Sequence[Mapping[str, Any] | str] = (),
+        repository_capabilities: Sequence[Mapping[str, Any]] = (),
+        repository_id: str = "",
+        repository_analysis_source_cid: str = "",
         theorem: Mapping[str, Any] | None = None,
         acceptance_policy: Mapping[str, Any] | None = None,
     ) -> FormalPlanContextCapsule:
@@ -1549,6 +1759,22 @@ class FormalPlanContextBuilder:
         selected_paths.update(item["path"] for item in symbols if item.get("path"))
         paths_all = tuple(sorted(selected_paths))
         paths = paths_all[: budget.max_allowed_paths]
+
+        capability_records = repository_capabilities
+        if not capability_records:
+            declared_capabilities = task.metadata.get("repository_capabilities")
+            if isinstance(declared_capabilities, Sequence) and not isinstance(
+                declared_capabilities, (str, bytes, bytearray)
+            ):
+                capability_records = tuple(declared_capabilities)
+        repository_analysis = analyze_repository_capabilities(
+            plan.repository_tree_id,
+            capability_records,
+            repository_id=repository_id or _text(task.metadata.get("repository_id"), label="repository_id"),
+            source_cid=repository_analysis_source_cid
+            or _text(task.metadata.get("repository_analysis_source_cid"), label="source_cid"),
+            max_capabilities=budget.max_capabilities,
+        )
 
         evidence_all = _validation_evidence(self.validation)
         evidence_all.extend(_public_mapping(item) for item in trusted_evidence)
@@ -1620,6 +1846,7 @@ class FormalPlanContextBuilder:
             "unresolved_obligations": max(0, len(obligations_all) - len(obligations)),
             "allowed_paths": max(0, len(paths_all) - len(paths)),
             "tests": max(0, len(derived_tests) - len(selected_tests)),
+            "repository_capabilities": repository_analysis.omitted_capabilities,
             "source_excerpts": max(
                 0,
                 relevant_source_count - len(excerpts),
@@ -1643,6 +1870,7 @@ class FormalPlanContextBuilder:
             task_cid=task.task_id,
             validation_cid=self.validation.validation_id,
             repository_tree_cid=plan.repository_tree_id,
+            repository_analysis=repository_analysis,
             transition=transition,
             theorem=_relevant_theorem(self.compilation, task, preconditions, theorem),
             acceptance_policy=_acceptance_policy(plan, task, selected_tests, acceptance_policy),
@@ -2186,6 +2414,7 @@ ModelResponseBinding = FormalPlanResponseBinding
 __all__ = [
     "DEFAULT_MAX_FORMAL_PLAN_ALLOWED_PATHS",
     "DEFAULT_MAX_FORMAL_PLAN_AST_SYMBOLS",
+    "DEFAULT_MAX_FORMAL_PLAN_CAPABILITIES",
     "DEFAULT_MAX_FORMAL_PLAN_CONTEXT_BYTES",
     "DEFAULT_MAX_FORMAL_PLAN_CONTEXT_TOKENS",
     "DEFAULT_MAX_FORMAL_PLAN_COUNTEREXAMPLES",
@@ -2204,6 +2433,7 @@ __all__ = [
     "FORMAL_PLAN_CONTEXT_VERSION",
     "FORMAL_PLAN_GRAPH_SLICE_SCHEMA",
     "FORMAL_PLAN_MODEL_RESPONSE_SCHEMA",
+    "REPOSITORY_CAPABILITY_ANALYSIS_SCHEMA",
     "FormalPlanCapsule",
     "FormalPlanCapsuleLimits",
     "FormalPlanCapsuleQuery",
@@ -2225,6 +2455,10 @@ __all__ = [
     "ImplementationOutcome",
     "ImplementationOutcomeStatus",
     "ModelResponseBinding",
+    "RepositoryCapability",
+    "RepositoryCapabilityAnalysis",
+    "RepositoryCapabilityStatus",
+    "analyze_repository_capabilities",
     "build_formal_plan_capsule",
     "build_formal_plan_context_capsule",
     "compare_formal_plan_context",
