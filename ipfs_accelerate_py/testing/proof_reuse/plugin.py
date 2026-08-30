@@ -668,6 +668,17 @@ def _install_runtime_plugin(config: Any) -> None:
                 metrics = getattr(config, METRICS_ATTRIBUTE, None)
                 if metrics is not None:
                     metrics.degraded(reason_code="runtime_trace_start_failed")
+            # PCTDD-029: whole-item reuse is decided before current setup and
+            # only for explicitly pure or replay-safe teardown-compatible
+            # populations.  Reuse is never pytest skip.
+            try:
+                from .pre_setup_item_reuse import evaluate_pre_setup_item_reuse
+
+                evaluate_pre_setup_item_reuse(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="pre_setup_item_reuse_failed")
             outcome = yield
             try:
                 composition = getattr(config, COMPOSITION_ATTRIBUTE, None)
@@ -681,6 +692,28 @@ def _install_runtime_plugin(config: Any) -> None:
 
         @pytest.hookimpl(hookwrapper=True, tryfirst=True)
         def pytest_runtest_setup(self, item: Any) -> Any:
+            # PCTDD-029: if whole-item reuse was admitted before setup, suppress
+            # the function body and do not assemble a post-setup V2 key.
+            item_restore = None
+            try:
+                from .pre_setup_item_reuse import prepare_runtest_setup
+
+                item_restore = prepare_runtest_setup(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="pre_setup_item_reuse_prepare_failed")
+                item_restore = None
+            if item_restore is not None:
+                try:
+                    outcome = yield
+                finally:
+                    try:
+                        item_restore()
+                    except Exception:
+                        pass
+                return outcome
+
             # PCTDD-027: exact TestExecutionKeyV2 is assembled after current
             # setup and before call.  Opaque or incomplete identities force
             # normal execution.  Assembly never authorizes skip.
@@ -713,6 +746,20 @@ def _install_runtime_plugin(config: Any) -> None:
 
         @pytest.hookimpl(hookwrapper=True, tryfirst=True)
         def pytest_runtest_call(self, item: Any) -> Any:
+            # PCTDD-029: whole-item reuse already replaced call; do not enter
+            # the post-setup call-only path.
+            try:
+                from .pre_setup_item_reuse import item_reuses_whole_item
+
+                if item_reuses_whole_item(item):
+                    outcome = yield
+                    return outcome
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(
+                        reason_code="pre_setup_item_reuse_call_gate_failed"
+                    )
             # PCTDD-027: verify the post-setup V2 key exists before call and
             # fall back to normal execution when assembly is incomplete.
             # PCTDD-028: an admitted call certificate reuses only call while
@@ -749,6 +796,29 @@ def _install_runtime_plugin(config: Any) -> None:
 
         @pytest.hookimpl(hookwrapper=True, tryfirst=True)
         def pytest_runtest_teardown(self, item: Any, nextitem: Any) -> Any:
+            # PCTDD-029: admitted whole-item reuse omits current teardown.
+            try:
+                from .pre_setup_item_reuse import item_reuses_whole_item
+
+                if item_reuses_whole_item(item):
+                    outcome = yield
+                    try:
+                        from .pre_setup_item_reuse import after_runtest_teardown as after_item_teardown
+
+                        after_item_teardown(item)
+                    except Exception:
+                        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                        if metrics is not None:
+                            metrics.degraded(
+                                reason_code="pre_setup_item_teardown_record_failed"
+                            )
+                    return outcome
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(
+                        reason_code="pre_setup_item_reuse_teardown_gate_failed"
+                    )
             # PCTDD-028: current teardown always executes; reuse never
             # substitutes teardown or finalizers.
             try:
