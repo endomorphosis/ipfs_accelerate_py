@@ -9050,29 +9050,45 @@ class _DockerContainerLease:
             authorized_image = self._authorized_image_id
             self._create_started = True
         if self.cleanup_binding_record is None:
+            create_cwd = cwd.resolve(strict=True)
+            environment_id, _environment_payload, _create_environment = (
+                _docker_create_environment_payload(env)
+            )
+            try:
+                command_id, command_body = _docker_create_command_identity(
+                    provider=self.provider,
+                    docker_bin=self.docker_bin,
+                    docker_config=self.docker_config,
+                    container_name=self.container_name,
+                    cidfile=self.cidfile,
+                    cwd=create_cwd,
+                    environment_id=environment_id,
+                    expected_image=authorized_image,
+                    argv=command,
+                )
+            except ValueError as exc:
+                expected_prefix = [
+                    self.docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(self.docker_config),
+                    "create",
+                ]
+                raise ValueError(
+                    "unsupervised Docker create journal could not bind: "
+                    f"{exc}; argv_prefix={list(command)[:5]!r} "
+                    f"expected_prefix={expected_prefix!r} "
+                    f"cwd={str(create_cwd)!r} env_id={environment_id!r}"
+                ) from exc
             created = subprocess.run(
                 list(command),
-                cwd=cwd,
+                cwd=create_cwd,
                 env=dict(env),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
                 check=False,
-            )
-            environment_id, _environment_payload, _create_environment = (
-                _docker_create_environment_payload(env)
-            )
-            command_id, command_body = _docker_create_command_identity(
-                provider=self.provider,
-                docker_bin=self.docker_bin,
-                docker_config=self.docker_config,
-                container_name=self.container_name,
-                cidfile=self.cidfile,
-                cwd=cwd,
-                environment_id=environment_id,
-                expected_image=authorized_image,
-                argv=command,
             )
             boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
                 encoding="ascii"
