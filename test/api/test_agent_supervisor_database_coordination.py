@@ -15,6 +15,9 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    database_coordination as coordination_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     COORDINATION_STORAGE_REPAIR_SCHEMA,
@@ -896,10 +899,15 @@ def test_art_storage_rebuild_preserves_exact_logical_projection_and_source(
     receipt = repair_coordination_art_index_storage(database_path)
 
     assert receipt["schema"] == COORDINATION_STORAGE_REPAIR_SCHEMA
-    assert receipt["pre_projection_root"] == before["projection_root"]
-    assert receipt["post_projection_root"] == before["projection_root"]
+    assert receipt["pre_projection_root"] == receipt["post_projection_root"]
+    assert receipt["pre_registry_projection_root"] == before["projection_root"]
+    assert receipt["post_registry_projection_root"] == before["projection_root"]
     assert receipt["logical_projection_equal"] is True
-    assert receipt["interrupted_transaction_accepted"] is False
+    assert receipt["interrupted_transaction_outcome"] == (
+        "not_inferred_reconcile_exact_operation"
+    )
+    assert receipt["repair_accepted_interrupted_transaction"] is False
+    assert receipt["reconciliation_required"] is True
     assert receipt["retry_required"] is True
     assert Path(receipt["quarantined_source_path"]).is_file()
     assert Path(receipt["quarantined_empty_wal_path"]).is_file()
@@ -913,6 +921,238 @@ def test_art_storage_rebuild_preserves_exact_logical_projection_and_source(
         )
         assert claim is not None
         assert claim.task_cid in {"task:done", "task:ready"}
+
+
+def test_storage_projection_includes_metadata_timestamps_and_histories(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:history", task_id="HISTORY")
+        coordinator.acquire(
+            lease_kind=LeaseKind.RESOURCE,
+            scope="resource:history",
+            owner_session_id="session:history",
+            resource_kind="file",
+            resource_id="history",
+        )
+        connection = coordinator._require()
+        registry_before = coordinator.coordination_registry_projection()
+        storage_before = (
+            coordination_module._coordination_storage_projection_from_connection(
+                connection,
+                validate_authority=True,
+            )
+        )
+        coordinator._begin(connection)
+        connection.execute(
+            "INSERT INTO coordination_metadata(key, value) VALUES (?, ?)",
+            ["repair-projection-test", "changed"],
+        )
+        connection.execute(
+            "UPDATE lease_events SET observed_at_ms = observed_at_ms + 777"
+        )
+        connection.execute(
+            "UPDATE token_history SET recorded_at_ms = recorded_at_ms + 888"
+        )
+        coordinator._commit_if_idle(connection)
+        registry_after = coordinator.coordination_registry_projection()
+        storage_after = (
+            coordination_module._coordination_storage_projection_from_connection(
+                connection,
+                validate_authority=True,
+            )
+        )
+    finally:
+        coordinator.close()
+
+    # The scheduling identity deliberately omits these values. Physical repair
+    # evidence must not.
+    assert registry_after["projection_root"] == registry_before["projection_root"]
+    assert storage_after["projection_root"] != storage_before["projection_root"]
+    before_tables = {
+        item["table"]: item for item in storage_before["tables"]
+    }
+    after_tables = {item["table"]: item for item in storage_after["tables"]}
+    assert (
+        before_tables["coordination_metadata"]["rows_root"]
+        != after_tables["coordination_metadata"]["rows_root"]
+    )
+    assert (
+        before_tables["lease_events"]["rows_root"]
+        != after_tables["lease_events"]["rows_root"]
+    )
+    assert (
+        before_tables["token_history"]["rows_root"]
+        != after_tables["token_history"]["rows_root"]
+    )
+
+
+def _seed_art_repair_failure_case(tmp_path: Path) -> tuple[Path, dict[str, object], str]:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        coordinator.register_task(task_cid="task:preserve", task_id="PRESERVE")
+        before = coordinator.coordination_registry_projection()
+    finally:
+        coordinator.close()
+    digest = "sha256:" + hashlib.sha256(database_path.read_bytes()).hexdigest()
+    return database_path, before, digest
+
+
+def _assert_repair_failure_preserved_authority(
+    database_path: Path,
+    before: dict[str, object],
+    source_digest: str,
+) -> None:
+    assert database_path.is_file()
+    with open_database_coordinator(database_path) as coordinator:
+        assert coordinator.coordination_registry_projection() == before
+    quarantine = database_path.parent / ".coordination-art-repair-quarantine"
+    assert tuple(quarantine.glob(f"{database_path.name}.{source_digest[7:]}.*.duckdb"))
+
+
+def test_art_repair_install_rename_failure_keeps_original_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, before, source_digest = _seed_art_repair_failure_case(tmp_path)
+    real_replace = coordination_module.os.replace
+
+    def fail_candidate_install(source: object, target: object) -> None:
+        source_path = Path(source)
+        if (
+            Path(target) == database_path
+            and ".art-repair-" in source_path.name
+            and ".art-repair-rollback-" not in source_path.name
+        ):
+            raise OSError("injected candidate install rename failure")
+        real_replace(source, target)
+
+    monkeypatch.setattr(coordination_module.os, "replace", fail_candidate_install)
+    with pytest.raises(
+        coordination_module.DatabaseCoordinationStorageRepairError,
+        match="candidate was not installed",
+    ):
+        repair_coordination_art_index_storage(database_path)
+
+    assert (
+        "sha256:" + hashlib.sha256(database_path.read_bytes()).hexdigest()
+        == source_digest
+    )
+    _assert_repair_failure_preserved_authority(
+        database_path, before, source_digest
+    )
+
+
+def test_art_repair_post_install_fsync_failure_rolls_back_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, before, source_digest = _seed_art_repair_failure_case(tmp_path)
+    real_fsync_directory = coordination_module._fsync_coordination_directory
+    parent_calls = 0
+
+    def fail_first_post_install_fsync(path: Path) -> None:
+        nonlocal parent_calls
+        if path == database_path.parent:
+            parent_calls += 1
+            if parent_calls == 2:
+                raise OSError("injected post-install directory fsync failure")
+        real_fsync_directory(path)
+
+    monkeypatch.setattr(
+        coordination_module,
+        "_fsync_coordination_directory",
+        fail_first_post_install_fsync,
+    )
+    with pytest.raises(
+        coordination_module.DatabaseCoordinationStorageRepairError,
+        match="candidate was not installed",
+    ):
+        repair_coordination_art_index_storage(database_path)
+
+    assert (
+        "sha256:" + hashlib.sha256(database_path.read_bytes()).hexdigest()
+        == source_digest
+    )
+    _assert_repair_failure_preserved_authority(
+        database_path, before, source_digest
+    )
+    assert tuple(
+        (database_path.parent / ".coordination-art-repair-quarantine").glob(
+            "*.failed-replacement.duckdb"
+        )
+    )
+
+
+def test_art_repair_verifier_failure_rolls_back_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, before, source_digest = _seed_art_repair_failure_case(tmp_path)
+    real_connect = coordination_module.connect_duckdb_with_policy
+    source_read_count = 0
+
+    def fail_independent_verifier(
+        duckdb_module: object,
+        database: Path | str,
+        *,
+        read_only: bool = False,
+        configuration: dict[str, object] | None = None,
+    ) -> object:
+        nonlocal source_read_count
+        if Path(database) == database_path and read_only:
+            source_read_count += 1
+            if source_read_count == 2:
+                raise RuntimeError("injected independent verifier failure")
+        return real_connect(
+            duckdb_module,
+            database,
+            read_only=read_only,
+            configuration=configuration,
+        )
+
+    monkeypatch.setattr(
+        coordination_module,
+        "connect_duckdb_with_policy",
+        fail_independent_verifier,
+    )
+    with pytest.raises(
+        coordination_module.DatabaseCoordinationStorageRepairError,
+        match="candidate was not installed",
+    ):
+        repair_coordination_art_index_storage(database_path)
+
+    assert (
+        "sha256:" + hashlib.sha256(database_path.read_bytes()).hexdigest()
+        == source_digest
+    )
+    _assert_repair_failure_preserved_authority(
+        database_path, before, source_digest
+    )
+
+
+def test_art_repair_refuses_nonempty_wal_without_touching_authority(
+    tmp_path: Path,
+) -> None:
+    database_path, before, source_digest = _seed_art_repair_failure_case(tmp_path)
+    wal_path = database_path.with_name(database_path.name + ".wal")
+    wal_path.write_bytes(b"uncheckpointed-authority")
+
+    with pytest.raises(
+        coordination_module.DatabaseCoordinationStorageRepairError,
+        match="refuses an uncheckpointed WAL",
+    ):
+        repair_coordination_art_index_storage(database_path)
+
+    assert wal_path.read_bytes() == b"uncheckpointed-authority"
+    assert (
+        "sha256:" + hashlib.sha256(database_path.read_bytes()).hexdigest()
+        == source_digest
+    )
+    with open_database_coordinator(database_path) as coordinator:
+        assert coordinator.coordination_registry_projection() == before
 
 
 def test_read_only_projection_preserves_database_bytes_and_exposes_histories(

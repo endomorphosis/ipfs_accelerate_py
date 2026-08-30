@@ -77,6 +77,9 @@ DATABASE_COORDINATION_SCHEMA: Final[str] = (
 COORDINATION_REGISTRY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/coordination-registry-projection@1"
 )
+COORDINATION_STORAGE_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/coordination-storage-projection@1"
+)
 COORDINATION_STORAGE_REPAIR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/coordination-storage-repair@1"
 )
@@ -179,11 +182,12 @@ class DatabaseCoordinationBoundsError(DatabaseCoordinationError, ValueError):
 
 
 class DatabaseCoordinationStorageRepairedError(DatabaseCoordinationError):
-    """A failed transaction was not accepted and its physical store was repaired.
+    """A commit outcome needs reconciliation after physical store repair.
 
-    Callers must retry the complete fenced operation.  The repair receipt proves
-    that the replacement retained the exact pre-failure logical projection; it
-    does not claim that the interrupted transaction committed.
+    The receipt proves that the replacement retained the exact post-close
+    coordination authority.  It does not decide whether the interrupted commit
+    became visible.  Callers must reconcile the exact fenced operation and only
+    retry it when its intended mutation is absent.
     """
 
     code = "DQP_STORAGE_REPAIRED_RETRY_REQUIRED"
@@ -1637,6 +1641,91 @@ def _coordination_registry_projection_from_connection(
     return projection
 
 
+def _coordination_storage_projection_from_connection(
+    connection: Any,
+    *,
+    validate_authority: bool,
+) -> dict[str, Any]:
+    """Commit to every typed value in every coordination authority table.
+
+    The ordinary registry projection intentionally omits observational times
+    and summarizes the append-only token/event histories.  That is useful for
+    scheduling identity but is not sufficient evidence for a physical store
+    replacement.  This projection streams every required column in a stable
+    SQL order and length-prefixes every canonical row, preserving NULL versus
+    empty/zero and the closed VARCHAR/BIGINT/BOOLEAN types.
+    """
+
+    if validate_authority:
+        _validate_coordination_authority(connection)
+
+    table_projections: list[dict[str, Any]] = []
+    for table in sorted(_COORDINATION_REQUIRED_COLUMNS):
+        columns_and_types = _COORDINATION_REQUIRED_COLUMNS[table]
+        columns = tuple(name for name, _kind in columns_and_types)
+        quoted_columns = ", ".join(f'"{name}"' for name in columns)
+        cursor = connection.execute(
+            f'SELECT {quoted_columns} FROM "{table}" ORDER BY ALL'
+        )
+        rows_digest = hashlib.sha256()
+        row_count = 0
+        fetchmany = getattr(cursor, "fetchmany", None)
+        buffered_rows = None if callable(fetchmany) else iter(cursor.fetchall())
+        while True:
+            if callable(fetchmany):
+                rows = fetchmany(COORDINATION_STORAGE_REPAIR_BATCH_ROWS)
+            else:
+                assert buffered_rows is not None
+                rows = []
+                for _offset in range(COORDINATION_STORAGE_REPAIR_BATCH_ROWS):
+                    try:
+                        rows.append(next(buffered_rows))
+                    except StopIteration:
+                        break
+            if not rows:
+                break
+            for row in rows:
+                values: list[Any] = []
+                for index, (column, kind) in enumerate(columns_and_types):
+                    value = _coordination_row_value(row, index, column)
+                    if value is None:
+                        values.append(None)
+                    elif kind == "VARCHAR" and type(value) is str:
+                        values.append(value)
+                    elif kind == "BIGINT" and type(value) is int:
+                        values.append(value)
+                    elif kind == "BOOLEAN" and type(value) is bool:
+                        values.append(value)
+                    else:
+                        raise DatabaseCoordinationStorageRepairError(
+                            "coordination storage projection encountered an "
+                            f"invalid {kind} value for {table}.{column}"
+                        )
+                encoded = canonical_json_bytes(values)
+                rows_digest.update(len(encoded).to_bytes(8, "big"))
+                rows_digest.update(encoded)
+                row_count += 1
+        table_projections.append(
+            {
+                "table": table,
+                "columns": [
+                    {"name": name, "type": kind}
+                    for name, kind in columns_and_types
+                ],
+                "row_count": row_count,
+                "rows_root": "sha256:" + rows_digest.hexdigest(),
+            }
+        )
+
+    projection: dict[str, Any] = {
+        "schema": COORDINATION_STORAGE_PROJECTION_SCHEMA,
+        "authority_schema": DATABASE_COORDINATION_SCHEMA,
+        "tables": table_projections,
+    }
+    projection["projection_root"] = _sha256_hex(canonical_json_bytes(projection))
+    return projection
+
+
 def _is_duckdb_art_delete_failure(exc: BaseException) -> bool:
     """Recognize only DuckDB's observed explicit-ART invalidation failure."""
 
@@ -1723,9 +1812,9 @@ def repair_coordination_art_index_storage(
     projection equal the source.  The physical source is retained in a
     quarantine directory and the verified candidate is installed atomically.
 
-    This function never accepts or replays the transaction that observed the
-    fatal error.  Its caller must terminate that operation and retry it under a
-    fresh fence.
+    This function does not infer whether the transaction that observed the
+    fatal error became visible.  Its caller must reconcile that exact fenced
+    operation against the preserved logical authority before retrying it.
     """
 
     if is_quack_transport_target(database_path):
@@ -1738,7 +1827,6 @@ def repair_coordination_art_index_storage(
     wal_path = path.with_name(path.name + ".wal")
     lock_path = path.with_name(f".{path.name}.lock")
     candidate: Path | None = None
-    backup: Path | None = None
     with exclusive_file_lock(lock_path):
         try:
             metadata = path.lstat()
@@ -1751,13 +1839,16 @@ def repair_coordination_art_index_storage(
                 "coordination storage repair requires a regular non-symlink file"
             )
         empty_wal = False
-        if wal_path.exists():
+        if wal_path.exists() or wal_path.is_symlink():
             wal_metadata = wal_path.lstat()
             if (
                 stat.S_ISLNK(wal_metadata.st_mode)
                 or not stat.S_ISREG(wal_metadata.st_mode)
                 or wal_metadata.st_size != 0
             ):
+                # A non-empty WAL may contain accepted logical state that is
+                # absent from the main file.  Physical index repair never
+                # guesses whether it may be discarded or replayed.
                 raise DatabaseCoordinationStorageRepairError(
                     "coordination storage repair refuses an uncheckpointed WAL"
                 )
@@ -1772,7 +1863,11 @@ def repair_coordination_art_index_storage(
             configuration={"threads": 1, "memory_limit": "256MB"},
         )
         try:
-            before = _coordination_registry_projection_from_connection(
+            before_registry = _coordination_registry_projection_from_connection(
+                source,
+                validate_authority=True,
+            )
+            before_storage = _coordination_storage_projection_from_connection(
                 source,
                 validate_authority=True,
             )
@@ -1843,7 +1938,7 @@ def repair_coordination_art_index_storage(
                 for statement in index_statements:
                     target.execute(statement)
                 target.execute("CHECKPOINT")
-                after = _coordination_registry_projection_from_connection(
+                after_storage = _coordination_storage_projection_from_connection(
                     target,
                     validate_authority=True,
                 )
@@ -1852,9 +1947,12 @@ def repair_coordination_art_index_storage(
                     raise DatabaseCoordinationStorageRepairError(
                         "rebuilt coordination schema/index catalog differs"
                     )
-                if after["projection_root"] != before["projection_root"]:
+                if (
+                    after_storage["projection_root"]
+                    != before_storage["projection_root"]
+                ):
                     raise DatabaseCoordinationStorageRepairError(
-                        "rebuilt coordination logical projection differs"
+                        "rebuilt coordination storage projection differs"
                     )
             finally:
                 target.close()
@@ -1870,7 +1968,7 @@ def repair_coordination_art_index_storage(
         candidate_digest, candidate_size = _coordination_file_digest(candidate)
 
         quarantine = path.parent / ".coordination-art-repair-quarantine"
-        if quarantine.exists():
+        if quarantine.exists() or quarantine.is_symlink():
             quarantine_metadata = quarantine.lstat()
             if stat.S_ISLNK(quarantine_metadata.st_mode) or not stat.S_ISDIR(
                 quarantine_metadata.st_mode
@@ -1880,52 +1978,119 @@ def repair_coordination_art_index_storage(
                 )
         else:
             quarantine.mkdir(mode=0o700)
+        if quarantine.stat().st_dev != path.parent.stat().st_dev:
+            raise DatabaseCoordinationStorageRepairError(
+                "coordination repair quarantine must share the authority filesystem"
+            )
+
+        repair_id = uuid.uuid4().hex
         backup = quarantine / (
             f"{path.name}.{source_digest.removeprefix('sha256:')}."
-            f"{uuid.uuid4().hex}.duckdb"
+            f"{repair_id}.duckdb"
         )
-        os.replace(path, backup)
+        rollback_link = path.parent / (
+            f".{path.name}.art-repair-rollback-{repair_id}.duckdb"
+        )
         quarantined_wal: Path | None = None
-        if empty_wal:
-            quarantined_wal = backup.with_name(backup.name + ".wal")
-            os.replace(wal_path, quarantined_wal)
+        try:
+            # Preserve two hard links before the one authoritative rename. The
+            # quarantine link is immutable evidence; the second is a private
+            # rollback source. At no point does the authority pathname vanish.
+            os.link(path, backup, follow_symlinks=False)
+            os.link(path, rollback_link, follow_symlinks=False)
+            if empty_wal:
+                quarantined_wal = backup.with_name(backup.name + ".wal")
+                os.link(wal_path, quarantined_wal, follow_symlinks=False)
+            _fsync_coordination_directory(quarantine)
+            _fsync_coordination_directory(path.parent)
+        except BaseException as exc:
+            raise DatabaseCoordinationStorageRepairError(
+                "coordination repair could not preserve the original authority"
+            ) from exc
+
+        installed = False
+        verified_registry: dict[str, Any] | None = None
+        verified_storage: dict[str, Any] | None = None
+        failed_replacement: Path | None = None
         try:
             os.replace(candidate, path)
-        except BaseException:
-            os.replace(backup, path)
-            if quarantined_wal is not None:
-                os.replace(quarantined_wal, wal_path)
-            raise
-        _fsync_coordination_directory(path.parent)
-
-        verifier = connect_duckdb_with_policy(
-            duckdb,
-            path,
-            read_only=True,
-            configuration={"threads": 1, "memory_limit": "256MB"},
-        )
-        try:
-            verified = _coordination_registry_projection_from_connection(
-                verifier,
-                validate_authority=True,
-            )
-            verified_catalog = _coordination_storage_catalog(verifier)
-        finally:
-            verifier.close()
-        if (
-            verified["projection_root"] != before["projection_root"]
-            or verified_catalog != source_catalog
-        ):
-            failed = backup.with_name(backup.name + ".failed-replacement")
-            os.replace(path, failed)
-            os.replace(backup, path)
-            if quarantined_wal is not None:
-                os.replace(quarantined_wal, wal_path)
+            candidate = None
+            installed = True
             _fsync_coordination_directory(path.parent)
-            raise DatabaseCoordinationStorageRepairError(
-                "installed coordination repair failed independent verification"
-            )
 
+            verifier = connect_duckdb_with_policy(
+                duckdb,
+                path,
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+            try:
+                verified_registry = (
+                    _coordination_registry_projection_from_connection(
+                        verifier,
+                        validate_authority=True,
+                    )
+                )
+                verified_storage = (
+                    _coordination_storage_projection_from_connection(
+                        verifier,
+                        validate_authority=True,
+                    )
+                )
+                verified_catalog = _coordination_storage_catalog(verifier)
+            finally:
+                verifier.close()
+            installed_digest, installed_size = _coordination_file_digest(path)
+            if (
+                installed_digest != candidate_digest
+                or installed_size != candidate_size
+                or verified_storage["projection_root"]
+                != before_storage["projection_root"]
+                or verified_catalog != source_catalog
+            ):
+                raise DatabaseCoordinationStorageRepairError(
+                    "installed coordination repair failed independent verification"
+                )
+        except BaseException as install_exc:
+            if installed:
+                failed_replacement = quarantine / (
+                    f"{path.name}.{candidate_digest.removeprefix('sha256:')}."
+                    f"{repair_id}.failed-replacement.duckdb"
+                )
+                try:
+                    # Preserve the failed candidate without first removing the
+                    # authority pathname. Failure to create this diagnostic
+                    # link must not prevent restoration of the source.
+                    os.link(path, failed_replacement, follow_symlinks=False)
+                except OSError:
+                    failed_replacement = None
+                try:
+                    os.replace(rollback_link, path)
+                    _fsync_coordination_directory(quarantine)
+                    _fsync_coordination_directory(path.parent)
+                    restored_digest, restored_size = _coordination_file_digest(path)
+                    if (
+                        restored_digest != source_digest
+                        or restored_size != source_size
+                    ):
+                        raise DatabaseCoordinationStorageRepairError(
+                            "coordination repair rollback digest differs"
+                        )
+                except BaseException as rollback_exc:
+                    raise DatabaseCoordinationStorageRepairError(
+                        "coordination repair install failed and exact rollback failed; "
+                        f"preserved source remains at {backup}"
+                    ) from rollback_exc
+            raise DatabaseCoordinationStorageRepairError(
+                "coordination repair candidate was not installed"
+            ) from install_exc
+
+        try:
+            rollback_link.unlink()
+        except FileNotFoundError:
+            pass
+        assert verified_registry is not None
+        assert verified_storage is not None
         receipt: dict[str, Any] = {
             "schema": COORDINATION_STORAGE_REPAIR_SCHEMA,
             "reason": "duckdb_art_index_physical_rebuild",
@@ -1939,14 +2104,19 @@ def repair_coordination_art_index_storage(
             "source_size_bytes": source_size,
             "replacement_sha256": candidate_digest,
             "replacement_size_bytes": candidate_size,
-            "pre_projection_root": before["projection_root"],
-            "post_projection_root": verified["projection_root"],
+            "pre_projection_root": before_storage["projection_root"],
+            "post_projection_root": verified_storage["projection_root"],
+            "pre_registry_projection_root": before_registry["projection_root"],
+            "post_registry_projection_root": verified_registry["projection_root"],
+            "catalog_root": _sha256_hex(canonical_json_bytes(source_catalog)),
             "table_count": len(source_catalog["tables"]),
             "index_count": len(source_catalog["indexes"]),
             "row_counts": dict(sorted(row_counts.items())),
-            "source_preserved": True,
+            "source_preserved": backup.is_file(),
             "logical_projection_equal": True,
-            "interrupted_transaction_accepted": False,
+            "interrupted_transaction_outcome": "not_inferred_reconcile_exact_operation",
+            "repair_accepted_interrupted_transaction": False,
+            "reconciliation_required": True,
             "retry_required": True,
         }
         receipt["receipt_cid"] = _sha256_hex(canonical_json_bytes(receipt))
@@ -2142,7 +2312,7 @@ class DatabaseCoordinator:
                 ) from repair_exc
             raise DatabaseCoordinationStorageRepairedError(
                 "DuckDB ART storage was rebuilt with equal logical projection; "
-                "the interrupted fenced operation must be retried",
+                "the interrupted fenced operation must be reconciled before retry",
                 receipt=receipt,
             ) from exc
 
@@ -6746,6 +6916,7 @@ __all__ = [
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
+    "COORDINATION_STORAGE_PROJECTION_SCHEMA",
     "COORDINATION_STORAGE_REPAIR_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
