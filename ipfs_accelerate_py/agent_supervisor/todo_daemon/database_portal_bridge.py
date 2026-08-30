@@ -97,6 +97,12 @@ DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON: Final[str] = (
     "Portal retry seed state conflicts with its source receipt"
 )
+DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON: Final[str] = (
+    "database claim validation retry seed failed verification"
+)
+DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON: Final[str] = (
+    "Portal completion lacks a verified task_completed event"
+)
 DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-pooled-worktree-create-recovery@1"
@@ -5251,7 +5257,7 @@ class DatabasePortalExecutionBridge:
             )
             if terminal_limit < 0:
                 raise DatabasePortalBridgeError(
-                    "Portal completion lacks a verified task_completed event"
+                    DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON
                 )
         implementation_event = next(
             (
@@ -7577,7 +7583,7 @@ class DatabasePortalExecutionBridge:
             )
         ):
             raise DatabasePortalBridgeError(
-                "database claim validation retry seed failed verification"
+                DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON
             )
         return dict(seed)
 
@@ -9745,6 +9751,8 @@ __all__ = (
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON",
     "DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
+    "DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON",
+    "DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
