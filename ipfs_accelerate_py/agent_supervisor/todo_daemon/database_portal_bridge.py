@@ -17726,6 +17726,55 @@ class DatabasePortalExecutionBridge:
             )
         return _sha256_bytes(_canonical_json(list(events[: matches[0] + 1])))
 
+    def _callback_no_effect_reconciliation_suffix(
+        self,
+        *,
+        attempt: Any,
+        events: Sequence[Mapping[str, Any]],
+        observation: Mapping[str, Any],
+        required: bool,
+    ) -> Mapping[str, Any] | None:
+        """Admit only the intent prefix and one terminal cleanup event."""
+
+        kernel_id = str(
+            observation.get("pre_implementation_kernel_event_id") or ""
+        )
+        matches = [
+            index
+            for index, event in enumerate(events)
+            if str(event.get("event_id") or "") == kernel_id
+        ]
+        if (
+            len(matches) != 1
+            or self._event_prefix_digest(events, kernel_id)
+            != observation.get("events_prefix_digest")
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery intent event prefix changed"
+            )
+        suffix = tuple(events[matches[0] + 1 :])
+        if not suffix and not required:
+            return None
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        if (
+            len(suffix) != 1
+            or suffix[0].get("type")
+            != "implementation_shutdown_reconciled"
+            or suffix[0].get("task_id") != alias
+            or suffix[0].get("canonical_task_cid")
+            != str(attempt.task_cid)
+            or suffix[0].get("attempt") != observation.get("portal_attempt")
+            or suffix[0].get("stream_id")
+            != observation.get("event_stream_id")
+            or not isinstance(
+                suffix[0].get("clean_restart_evidence"), Mapping
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery event suffix is not terminal"
+            )
+        return suffix[0]
+
     @staticmethod
     def _callback_no_effect_git(
         workspace: Path,
@@ -18160,18 +18209,12 @@ class DatabasePortalExecutionBridge:
                 "callback no-effect recovery intent protected content changed"
             )
         events = self._verified_event_chain(paths)
-        if self._event_prefix_digest(
-            events,
-            str(
-                observation.get(
-                    "pre_implementation_kernel_event_id"
-                )
-                or ""
-            ),
-        ) != observation.get("events_prefix_digest"):
-            raise DatabasePortalBridgeError(
-                "callback no-effect recovery intent event prefix changed"
-            )
+        self._callback_no_effect_reconciliation_suffix(
+            attempt=attempt,
+            events=events,
+            observation=observation,
+            required=False,
+        )
         return dict(observation)
 
     def _callback_no_effect_recovery_receipt(
@@ -18185,20 +18228,16 @@ class DatabasePortalExecutionBridge:
 
         alias = str(getattr(attempt, "task_alias", "") or "")
         prior_events = self._verified_event_chain(paths)
-        prior_reconciliations = [
-            event
-            for event in prior_events
-            if event.get("type") == "implementation_shutdown_reconciled"
-            and event.get("task_id") == alias
-            and event.get("attempt") == observation.get("portal_attempt")
-            and isinstance(event.get("clean_restart_evidence"), Mapping)
-        ]
-        if len(prior_reconciliations) > 1:
-            raise DatabasePortalBridgeError(
-                "callback no-effect cleanup event is ambiguous"
+        prior_reconciliation = (
+            self._callback_no_effect_reconciliation_suffix(
+                attempt=attempt,
+                events=prior_events,
+                observation=observation,
+                required=False,
             )
-        if prior_reconciliations:
-            reconciliation: Mapping[str, Any] = prior_reconciliations[0]
+        )
+        if prior_reconciliation is not None:
+            reconciliation: Mapping[str, Any] = prior_reconciliation
         else:
             daemon = self.portal_factory(paths, alias)
             if daemon is None:
@@ -18277,15 +18316,16 @@ class DatabasePortalExecutionBridge:
                 "callback no-effect workspace changed during reconciliation"
             )
         events = self._verified_event_chain(paths)
-        reconciled = [
-            event
-            for event in events
-            if event.get("type") == "implementation_shutdown_reconciled"
-            and event.get("task_id") == alias
-            and event.get("attempt") == observation.get("portal_attempt")
-            and event.get("clean_restart_evidence") == clean_restart
-        ]
-        if len(reconciled) != 1:
+        reconciled = self._callback_no_effect_reconciliation_suffix(
+            attempt=attempt,
+            events=events,
+            observation=observation,
+            required=True,
+        )
+        if (
+            reconciled is None
+            or reconciled.get("clean_restart_evidence") != clean_restart
+        ):
             raise DatabasePortalBridgeError(
                 "callback no-effect cleanup has no unique durable event"
             )
@@ -18303,11 +18343,11 @@ class DatabasePortalExecutionBridge:
             "fence_epoch": int(attempt.fence_epoch),
             **dict(observation),
             "reconciliation_event_id": str(
-                reconciled[0].get("event_id") or ""
+                reconciled.get("event_id") or ""
             ),
             "reconciled_events_prefix_digest": self._event_prefix_digest(
                 events,
-                str(reconciled[0].get("event_id") or ""),
+                str(reconciled.get("event_id") or ""),
             ),
             "portal_reconciliation_reason": str(
                 reconciliation.get("reason") or ""
@@ -18397,12 +18437,16 @@ class DatabasePortalExecutionBridge:
                 "callback no-effect recovery protected content changed"
             )
         events = self._verified_event_chain(paths)
+        reconciled = self._callback_no_effect_reconciliation_suffix(
+            attempt=attempt,
+            events=events,
+            observation=body,
+            required=True,
+        )
         if (
-            self._event_prefix_digest(
-                events,
-                str(body.get("pre_implementation_kernel_event_id") or ""),
-            )
-            != body.get("events_prefix_digest")
+            reconciled is None
+            or reconciled.get("event_id")
+            != body.get("reconciliation_event_id")
             or self._event_prefix_digest(
                 events,
                 str(body.get("reconciliation_event_id") or ""),
