@@ -1602,6 +1602,73 @@ def _contained_path(repo_root: Path, relative: str) -> Path:
     return candidate
 
 
+def _validate_managed_quack_owner_confinement(
+    repo_root: Path,
+    program: DatabaseProgramConfig,
+) -> None:
+    """Bind an explicit managed-local owner to this exact repository.
+
+    The reusable database contract cannot know a repository root.  The board
+    loader can, so it rejects absolute paths outside the accepted checkout and
+    linked existing path components before any owner process is started.
+    """
+
+    policy = program.owner_management
+    if policy is None:
+        return
+    owner_state_dir = Path(policy.owner_state_dir)
+    try:
+        owner_state_dir.relative_to(repo_root)
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "owner_management.owner_state_dir is outside the repository"
+        ) from exc
+    if owner_state_dir == repo_root:
+        raise ConfiguredBoardError(
+            "owner_management.owner_state_dir cannot be the repository root"
+        )
+    current = repo_root
+    for component in owner_state_dir.relative_to(repo_root).parts:
+        current /= component
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            break
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                "cannot inspect owner_management.owner_state_dir"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ConfiguredBoardError(
+                "owner_management.owner_state_dir has a linked component"
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ConfiguredBoardError(
+                "owner_management.owner_state_dir parent is not a directory"
+            )
+
+    store_id = Path(program.store_id)
+    if store_id.is_absolute() or ".." in store_id.parts or store_id.as_posix() in {
+        ".",
+        "..",
+    }:
+        raise ConfiguredBoardError(
+            "managed-local Quack store_id must be repository-relative"
+        )
+    database_path = repo_root / store_id
+    try:
+        database_path.relative_to(repo_root)
+    except ValueError as exc:
+        raise ConfiguredBoardError(
+            "managed-local Quack store_id escapes the repository"
+        ) from exc
+    if owner_state_dir != database_path.parent / "quack-owner":
+        raise ConfiguredBoardError(
+            "owner_management.owner_state_dir must equal the current "
+            "store-scoped Quack handle resolver directory"
+        )
+
+
 def _task_header_prefix(task_prefix: str) -> str:
     stripped = task_prefix.strip()
     return stripped if stripped.startswith("## ") else f"## {stripped}"
@@ -2015,6 +2082,11 @@ def load_configured_board(
             if not program_payload.get("worktree_root"):
                 program_payload["worktree_root"] = runtime_paths["worktrees"]
             database_program = parse_database_program_config(program_payload)
+            if database_program is not None:
+                _validate_managed_quack_owner_confinement(
+                    root,
+                    database_program,
+                )
         except DatabaseProgramConfigError as exc:
             raise ConfiguredBoardError(str(exc)) from exc
 

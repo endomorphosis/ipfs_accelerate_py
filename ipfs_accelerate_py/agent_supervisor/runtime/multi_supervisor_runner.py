@@ -6,8 +6,10 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -73,6 +75,20 @@ from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 
 OutputFn = Callable[[str], None]
+
+
+class ManagedQuackOwnerLifecycle(Protocol):
+    """Narrow runner port for an explicitly managed local Quack owner."""
+
+    health_check_interval_seconds: float
+
+    def ensure_before_tracks(self) -> Mapping[str, object]: ...
+
+    def health(self) -> Mapping[str, object]: ...
+
+    def recover_after_fence(self) -> Mapping[str, object]: ...
+
+    def shutdown(self) -> Mapping[str, object]: ...
 PLAN_BOUND_LAUNCH_GATE_MARKER = "--run-plan-bound-launch-gate"
 PLAN_BOUND_LAUNCH_GATE_MODULE = (
     "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner"
@@ -459,6 +475,21 @@ FORBIDDEN_QUACK_FAILOVER_TARGETS = frozenset(
     }
 )
 
+QUACK_OWNER_MANAGEMENT_MANAGED_LOCAL = "managed_local"
+QUACK_OWNER_MANAGEMENT_EXTERNAL = "external"
+_QUACK_OWNER_MANAGEMENT_FIELDS = frozenset(
+    {
+        "mode",
+        "owner_state_dir",
+        "startup_timeout_seconds",
+        "health_check_interval_seconds",
+        "max_restart_attempts",
+        "initial_backoff_seconds",
+        "max_backoff_seconds",
+        "termination_grace_seconds",
+    }
+)
+
 STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
 STATE_QUACK_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT"
 STATE_ENDPOINT_SECRET_HANDLE_ENV = (
@@ -524,6 +555,128 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:@+-]{0,255}$")
 
 class DatabaseProgramConfigError(ValueError):
     """Raised when a database program selection is missing, unsafe, or incomplete."""
+
+
+@dataclass(frozen=True)
+class QuackOwnerManagementConfig:
+    """Closed opt-in policy for a runner-managed local Quack owner.
+
+    Quack remains externally managed when this object is absent.  Merely
+    selecting Quack authority never gives a runner permission to start or
+    terminate an owner.  The absolute state directory is checked again for
+    repository confinement by the configured-board loader.
+    """
+
+    mode: str
+    owner_state_dir: str
+    startup_timeout_seconds: float
+    health_check_interval_seconds: float
+    max_restart_attempts: int
+    initial_backoff_seconds: float
+    max_backoff_seconds: float
+    termination_grace_seconds: float
+
+    def __post_init__(self) -> None:
+        mode = str(self.mode or "").strip().lower().replace("-", "_")
+        if mode != QUACK_OWNER_MANAGEMENT_MANAGED_LOCAL:
+            raise DatabaseProgramConfigError(
+                "owner_management.mode must be 'managed_local'"
+            )
+        object.__setattr__(self, "mode", mode)
+
+        raw_state_dir = _require_nonempty_text(
+            self.owner_state_dir,
+            field="owner_management.owner_state_dir",
+        )
+        state_dir = Path(raw_state_dir)
+        if (
+            not state_dir.is_absolute()
+            or Path(os.path.abspath(state_dir)) != state_dir
+            or ".." in state_dir.parts
+        ):
+            raise DatabaseProgramConfigError(
+                "owner_management.owner_state_dir must be lexical absolute"
+            )
+        object.__setattr__(self, "owner_state_dir", state_dir.as_posix())
+
+        for name in (
+            "startup_timeout_seconds",
+            "health_check_interval_seconds",
+            "termination_grace_seconds",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise DatabaseProgramConfigError(
+                    f"owner_management.{name} must be a positive number"
+                )
+            normalized = float(value)
+            if not math.isfinite(normalized) or normalized <= 0:
+                raise DatabaseProgramConfigError(
+                    f"owner_management.{name} must be a positive finite number"
+                )
+            object.__setattr__(self, name, normalized)
+
+        for name in ("initial_backoff_seconds", "max_backoff_seconds"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise DatabaseProgramConfigError(
+                    f"owner_management.{name} must be a non-negative number"
+                )
+            normalized = float(value)
+            if not math.isfinite(normalized) or normalized < 0:
+                raise DatabaseProgramConfigError(
+                    f"owner_management.{name} must be a non-negative finite number"
+                )
+            object.__setattr__(self, name, normalized)
+        if self.max_backoff_seconds < self.initial_backoff_seconds:
+            raise DatabaseProgramConfigError(
+                "owner_management.max_backoff_seconds must be at least "
+                "initial_backoff_seconds"
+            )
+
+        if (
+            isinstance(self.max_restart_attempts, bool)
+            or not isinstance(self.max_restart_attempts, int)
+            or self.max_restart_attempts < 1
+        ):
+            raise DatabaseProgramConfigError(
+                "owner_management.max_restart_attempts must be a positive integer"
+            )
+
+    @classmethod
+    def from_mapping(
+        cls,
+        payload: Mapping[str, Any],
+    ) -> QuackOwnerManagementConfig:
+        if type(payload) is not dict or set(payload) != _QUACK_OWNER_MANAGEMENT_FIELDS:
+            raise DatabaseProgramConfigError(
+                "owner_management must be a closed object with exactly: "
+                + ", ".join(sorted(_QUACK_OWNER_MANAGEMENT_FIELDS))
+            )
+        return cls(
+            mode=payload["mode"],
+            owner_state_dir=payload["owner_state_dir"],
+            startup_timeout_seconds=payload["startup_timeout_seconds"],
+            health_check_interval_seconds=payload[
+                "health_check_interval_seconds"
+            ],
+            max_restart_attempts=payload["max_restart_attempts"],
+            initial_backoff_seconds=payload["initial_backoff_seconds"],
+            max_backoff_seconds=payload["max_backoff_seconds"],
+            termination_grace_seconds=payload["termination_grace_seconds"],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "owner_state_dir": self.owner_state_dir,
+            "startup_timeout_seconds": self.startup_timeout_seconds,
+            "health_check_interval_seconds": self.health_check_interval_seconds,
+            "max_restart_attempts": self.max_restart_attempts,
+            "initial_backoff_seconds": self.initial_backoff_seconds,
+            "max_backoff_seconds": self.max_backoff_seconds,
+            "termination_grace_seconds": self.termination_grace_seconds,
+        }
 
 
 class _SupportsFileno(Protocol):
@@ -631,6 +784,7 @@ class DatabaseProgramConfig:
     export_profile: str = ""
     failover_policy: str = FAILOVER_FAIL_CLOSED
     explicit_legacy: bool = False
+    owner_management: QuackOwnerManagementConfig | None = None
 
     def __post_init__(self) -> None:
         mode = str(self.authority_mode or "").strip().lower().replace("-", "_")
@@ -724,6 +878,20 @@ class DatabaseProgramConfig:
         object.__setattr__(self, "export_profile", export_profile)
         object.__setattr__(self, "explicit_legacy", bool(self.explicit_legacy))
 
+        owner_management = self.owner_management
+        if owner_management is not None and not isinstance(
+            owner_management,
+            QuackOwnerManagementConfig,
+        ):
+            if not isinstance(owner_management, Mapping):
+                raise DatabaseProgramConfigError(
+                    "owner_management must be a closed object"
+                )
+            owner_management = QuackOwnerManagementConfig.from_mapping(
+                dict(owner_management)
+            )
+        object.__setattr__(self, "owner_management", owner_management)
+
         if mode == AUTHORITY_MODE_LEGACY_MARKDOWN:
             if kind not in {
                 TASK_SOURCE_LEGACY_MARKDOWN,
@@ -770,9 +938,13 @@ class DatabaseProgramConfig:
                     "quack authority requires failover_policy='fail_closed'; "
                     "silent local DuckDB/file fallback is forbidden"
                 )
+        elif owner_management is not None:
+            raise DatabaseProgramConfigError(
+                "owner_management is permitted only for quack authority"
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema": DATABASE_PROGRAM_CONFIG_SCHEMA,
             "interface": DATABASE_PROGRAM_CONFIG_INTERFACE,
             "authority_mode": self.authority_mode,
@@ -789,6 +961,9 @@ class DatabaseProgramConfig:
             "failover_policy": self.failover_policy,
             "explicit_legacy": self.explicit_legacy,
         }
+        if self.owner_management is not None:
+            payload["owner_management"] = self.owner_management.to_dict()
+        return payload
 
     def redacted_dict(self) -> dict[str, Any]:
         """Return a public projection that never exposes raw secret material."""
@@ -928,6 +1103,14 @@ class DatabaseProgramConfig:
                 payload.get("failover_policy") or FAILOVER_FAIL_CLOSED
             ),
             explicit_legacy=bool(payload.get("explicit_legacy", False)),
+            owner_management=(
+                QuackOwnerManagementConfig.from_mapping(
+                    dict(payload["owner_management"])
+                )
+                if "owner_management" in payload
+                and payload.get("owner_management") is not None
+                else None
+            ),
         )
 
     @classmethod
@@ -954,6 +1137,856 @@ def parse_database_program_config(
     if not payload:
         return None
     return DatabaseProgramConfig.from_mapping(payload)
+
+
+def parse_managed_database_program_json(value: str) -> DatabaseProgramConfig:
+    """Decode the private runner pin for one explicitly managed owner."""
+
+    try:
+        payload = json.loads(
+            value,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (TypeError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DatabaseProgramConfigError(
+            "managed database program is invalid JSON"
+        ) from exc
+    program = parse_database_program_config(payload)
+    if program is None or program.owner_management is None:
+        raise DatabaseProgramConfigError(
+            "managed database program requires owner_management"
+        )
+    return program
+
+
+class ManagedLocalQuackOwnerLifecycle:
+    """Concrete managed-local lifecycle backed by the existing state owner.
+
+    This adapter never opens the authoritative DuckDB file.  It starts the
+    reviewed Quack owner facade and authenticates the live transport through
+    the current opaque-handle resolver.  The file identity is observed only
+    with ``stat`` so a recovery cannot silently replace the configured store.
+    """
+
+    def __init__(
+        self,
+        *,
+        program: DatabaseProgramConfig,
+        repo_root: Path,
+        python_executable: str,
+        owner_entry_path: Path | None = None,
+    ) -> None:
+        from .quack_owner_watchdog import (
+            DesiredOwnerState,
+            QuackOwnerBinding,
+            QuackOwnerWatchdog,
+            QuackOwnerWatchdogPolicy,
+        )
+
+        policy = program.owner_management
+        if (
+            program.authority_mode != AUTHORITY_MODE_QUACK
+            or policy is None
+            or policy.mode != QUACK_OWNER_MANAGEMENT_MANAGED_LOCAL
+        ):
+            raise DatabaseProgramConfigError(
+                "managed owner lifecycle requires explicit managed_local Quack"
+            )
+        self.program = program
+        self.policy = policy
+        self.repo_root = Path(repo_root)
+        if (
+            not self.repo_root.is_absolute()
+            or self.repo_root.resolve(strict=True) != self.repo_root
+        ):
+            raise DatabaseProgramConfigError(
+                "managed owner repository root must be canonical absolute"
+            )
+        self.database_path = self.repo_root / Path(program.store_id)
+        try:
+            self.database_path.relative_to(self.repo_root)
+        except ValueError as exc:
+            raise DatabaseProgramConfigError(
+                "managed owner database escapes the repository"
+            ) from exc
+        self.owner_state_dir = Path(policy.owner_state_dir)
+        expected_owner_state = self.database_path.parent / "quack-owner"
+        if self.owner_state_dir != expected_owner_state:
+            raise DatabaseProgramConfigError(
+                "owner_management.owner_state_dir must equal the current "
+                "handle resolver's store-scoped quack-owner directory"
+            )
+        self._ensure_private_owner_directory()
+        self._database_identity = self._database_stat_identity()
+        self.python_executable = str(python_executable or sys.executable)
+        package_root = Path(__file__).resolve().parents[3]
+        self.owner_entry_path = Path(
+            owner_entry_path
+            or package_root
+            / "scripts"
+            / "ops"
+            / "agent_supervisor"
+            / "quack_state_server.py"
+        )
+        if not self.owner_entry_path.is_file():
+            raise DatabaseProgramConfigError(
+                "managed Quack owner entry script is unavailable"
+            )
+        self.health_check_interval_seconds = float(
+            policy.health_check_interval_seconds
+        )
+        _baseline_status, baseline_identity = self._status_identity()
+        self._repository_id = str(
+            baseline_identity.get("repository_id") or ""
+        ).strip()
+        if not self._repository_id:
+            raise DatabaseProgramConfigError(
+                "managed Quack recovery requires an exact repository identity"
+            )
+        baseline = self._read_owner_observation(authenticate_alive=False)
+        if baseline.binding is None:
+            raise DatabaseProgramConfigError(
+                "managed Quack recovery requires a prior exact store identity"
+            )
+        self._watchdog = QuackOwnerWatchdog(
+            lock_path=self.owner_state_dir / ".managed-owner-recovery.lock",
+            start_owner=self._start_owner,
+            readiness_probe=self._readiness_probe,
+            expected_binding=QuackOwnerBinding(
+                **baseline.binding.to_dict()
+            ),
+            observe_owner=lambda: self._read_owner_observation(
+                authenticate_alive=True
+            ),
+            policy=QuackOwnerWatchdogPolicy(
+                max_restart_attempts=policy.max_restart_attempts,
+                initial_backoff_seconds=policy.initial_backoff_seconds,
+                maximum_backoff_seconds=policy.max_backoff_seconds,
+                backoff_multiplier=2.0,
+                termination_grace_seconds=policy.termination_grace_seconds,
+                termination_kill_wait_seconds=min(
+                    2.0,
+                    policy.termination_grace_seconds,
+                ),
+            ),
+            desired_state=DesiredOwnerState.RUNNING,
+        )
+
+    def _ensure_private_owner_directory(self) -> None:
+        current = self.repo_root
+        for part in self.owner_state_dir.relative_to(self.repo_root).parts:
+            current /= part
+            try:
+                info = os.lstat(current)
+            except FileNotFoundError:
+                os.mkdir(current, 0o700)
+                info = os.lstat(current)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+                raise DatabaseProgramConfigError(
+                    "managed owner state has a non-directory component"
+                )
+        os.chmod(self.owner_state_dir, 0o700)
+
+    def _database_stat_identity(self) -> tuple[int, int]:
+        try:
+            observed = os.lstat(self.database_path)
+        except OSError as exc:
+            raise DatabaseProgramConfigError(
+                "managed owner database is unavailable"
+            ) from exc
+        if (
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+        ):
+            raise DatabaseProgramConfigError(
+                "managed owner database must be one unlinked regular file"
+            )
+        return int(observed.st_dev), int(observed.st_ino)
+
+    def _assert_database_unchanged(self) -> None:
+        if self._database_stat_identity() != self._database_identity:
+            raise DatabaseProgramConfigError(
+                "managed Quack recovery changed the authoritative database file"
+            )
+
+    def _activate_handle_environment(self) -> None:
+        # These bindings are all public IDs/opaque handles.  No raw token is
+        # placed in the runner environment; the existing resolver reads its
+        # mode-0600 owner-state token only after validating the live status.
+        os.environ.update(self.program.environment())
+        os.environ[REPOSITORY_ROOT_ENV] = str(self.repo_root)
+        for name in STATE_CREDENTIAL_ENV_NAMES:
+            os.environ.pop(name, None)
+        handle = self.program.endpoint_secret_handle
+        if handle.startswith("env://"):
+            os.environ.pop(handle[len("env://") :], None)
+
+    def _status_identity(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        status_path = self.owner_state_dir / "quack-state-server.status.json"
+        status, _evidence = _read_stable_regular_json(
+            status_path,
+            max_bytes=2_097_152,
+        )
+        if status is None:
+            raise _StableArtifactReadError("managed owner status is absent")
+        identity = status.get("identity")
+        if not isinstance(identity, dict):
+            raise _StableArtifactReadError(
+                "managed owner status has no exact identity"
+            )
+        expected_repository_id = getattr(self, "_repository_id", "")
+        if (
+            status.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
+            or status.get("interface") != "QuackStateServer@1"
+            or str(status.get("database_path") or "")
+            != str(self.database_path)
+            or str(status.get("state_dir") or "")
+            != str(self.owner_state_dir)
+            or status.get("store_id") != self.program.store_id
+            or status.get("secret_handle")
+            != self.program.endpoint_secret_handle
+            or identity.get("store_id") != self.program.store_id
+            or str(identity.get("schema_revision") or "")
+            != self.program.schema_revision
+            or identity.get("listen_uri") != self.program.quack_endpoint
+            or identity.get("secret_handle")
+            != self.program.endpoint_secret_handle
+            or (
+                expected_repository_id
+                and identity.get("repository_id") != expected_repository_id
+            )
+        ):
+            raise _StableArtifactReadError(
+                "managed owner status differs from the configured authority"
+            )
+        return status, identity
+
+    @staticmethod
+    def _birth_from_identity(identity: Mapping[str, Any]):
+        from ..merge.worktree_lifecycle import ProcessBirthIdentity
+
+        raw = identity.get("process_birth")
+        if not isinstance(raw, Mapping):
+            raise _StableArtifactReadError(
+                "managed owner identity has no process birth"
+            )
+        birth = ProcessBirthIdentity.from_dict(raw)
+        if birth.pid <= 0 or birth.start_time_ticks <= 0:
+            raise _StableArtifactReadError(
+                "managed owner process birth is incomplete"
+            )
+        return birth
+
+    @staticmethod
+    def _binding_from_identity(identity: Mapping[str, Any]):
+        from .quack_owner_watchdog import QuackOwnerBinding
+
+        try:
+            return QuackOwnerBinding(
+                store_id=str(identity.get("store_id") or ""),
+                schema_revision=str(identity.get("schema_revision") or ""),
+                database_uuid=str(identity.get("database_uuid") or ""),
+                schema_fingerprint=str(
+                    identity.get("schema_fingerprint") or ""
+                ),
+                generation=int(identity.get("generation") or 0),
+                server_id=str(identity.get("server_id") or ""),
+            )
+        except (TypeError, ValueError) as exc:
+            raise _StableArtifactReadError(
+                "managed owner store binding is incomplete"
+            ) from exc
+
+    def _authenticated_readiness_once(self, owner):
+        from ..task_sources.duckdb_state import open_quack_transport_connection
+        from .quack_owner_watchdog import (
+            AuthenticatedReadiness,
+            process_birth_id,
+            process_births_match,
+        )
+
+        self._assert_database_unchanged()
+        self._activate_handle_environment()
+        connection = open_quack_transport_connection(
+            self.program.quack_endpoint
+        )
+        try:
+            raw_binding = getattr(connection, "_quack_mutation_binding", None)
+            if not isinstance(raw_binding, Mapping):
+                raise _StableArtifactReadError(
+                    "authenticated Quack transport returned no live binding"
+                )
+            binding = self._binding_from_identity(raw_binding)
+        finally:
+            connection.close()
+        _status, identity = self._status_identity()
+        status_birth = self._birth_from_identity(identity)
+        if (
+            not process_births_match(owner.process_birth, status_birth)
+            or str(identity.get("process_birth_id") or "") != owner.birth_id
+            or self._binding_from_identity(identity) != binding
+            or identity.get("status") != "ready"
+        ):
+            raise _StableArtifactReadError(
+                "authenticated Quack transport and owner status differ"
+            )
+        self._assert_database_unchanged()
+        return AuthenticatedReadiness(
+            authenticated=True,
+            ready=True,
+            process_birth_id=process_birth_id(owner.process_birth),
+            binding=binding,
+        )
+
+    def _readiness_probe(self, owner):
+        deadline = time.monotonic() + float(
+            self.policy.startup_timeout_seconds
+        )
+        while True:
+            if owner.process is not None and owner.process.poll() is not None:
+                raise _StableArtifactReadError(
+                    "managed owner exited before authenticated readiness"
+                )
+            try:
+                return self._authenticated_readiness_once(owner)
+            except Exception:  # noqa: BLE001 - bounded readiness retry
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+
+    def _read_owner_observation(self, *, authenticate_alive: bool):
+        from ..merge.worktree_lifecycle import OwnerLiveness, read_process_birth
+        from .quack_owner_watchdog import (
+            OwnerHealth,
+            QuackOwnerObservation,
+            SpawnedQuackOwner,
+            process_births_match,
+        )
+
+        try:
+            _status, identity = self._status_identity()
+            birth = self._birth_from_identity(identity)
+            binding = self._binding_from_identity(identity)
+        except Exception:  # malformed/absent status is not proof of death
+            return QuackOwnerObservation(
+                process_birth=None,
+                liveness=OwnerLiveness.UNKNOWN,
+                health=OwnerHealth.UNKNOWN,
+            )
+        try:
+            current = read_process_birth(birth.pid)
+        except OSError:
+            return QuackOwnerObservation(
+                process_birth=birth,
+                liveness=OwnerLiveness.UNKNOWN,
+                health=OwnerHealth.UNKNOWN,
+                binding=binding,
+            )
+        if current is None or not process_births_match(birth, current):
+            return QuackOwnerObservation(
+                process_birth=birth,
+                liveness=OwnerLiveness.DEAD,
+                health=OwnerHealth.UNKNOWN,
+                absence_proven=True,
+                binding=binding,
+            )
+        if not authenticate_alive:
+            return QuackOwnerObservation(
+                process_birth=birth,
+                liveness=OwnerLiveness.ALIVE,
+                health=OwnerHealth.UNKNOWN,
+                binding=binding,
+            )
+        try:
+            owner = SpawnedQuackOwner(
+                process=None,
+                process_birth=birth,
+                isolated_process_group=True,
+                adopted=True,
+            )
+            readiness = self._authenticated_readiness_once(owner)
+        except Exception:
+            return QuackOwnerObservation(
+                process_birth=birth,
+                liveness=OwnerLiveness.ALIVE,
+                health=OwnerHealth.UNHEALTHY,
+                binding=binding,
+            )
+        return QuackOwnerObservation(
+            process_birth=birth,
+            liveness=OwnerLiveness.ALIVE,
+            health=OwnerHealth.HEALTHY,
+            authenticated_ready=True,
+            binding=readiness.binding,
+        )
+
+    def _clear_stale_stop_control(self) -> None:
+        path = self.owner_state_dir / "quack-state-server.stop"
+        try:
+            observed = os.lstat(path)
+        except FileNotFoundError:
+            return
+        if (
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid != os.geteuid()
+        ):
+            raise DatabaseProgramConfigError(
+                "managed owner stale stop control is unsafe"
+            )
+        path.unlink()
+
+    def _start_owner(self):
+        from ..merge.worktree_lifecycle import read_process_birth
+        from ..task_sources.duckdb_state import quack_transport_uri
+        from .quack_owner_watchdog import (
+            QuackOwnerStartAbsentError,
+            SpawnedQuackOwner,
+        )
+        from .quack_state_server import reclaim_stale_owner_marker
+
+        self._assert_database_unchanged()
+        self._clear_stale_stop_control()
+        marker = self.database_path.with_name(
+            f".{self.database_path.name}.state-owner.json"
+        )
+        reclaimed = reclaim_stale_owner_marker(
+            marker_path=marker,
+            lock_path=self.database_path.with_name(
+                f".{self.database_path.name}.state-owner.lock"
+            ),
+        )
+        if not (
+            reclaimed.get("reclaimed") is True
+            or reclaimed.get("reason") == "no_marker"
+        ):
+            raise DatabaseProgramConfigError(
+                "managed owner stale lease could not be reclaimed safely"
+            )
+        uri = quack_transport_uri(self.program.quack_endpoint)
+        match = re.fullmatch(
+            r"quack:(?://)?(127\.0\.0\.1|localhost):(\d{1,5})",
+            uri,
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            raise DatabaseProgramConfigError(
+                "managed owner endpoint is not a supported local Quack URI"
+            )
+        host, port = match.group(1), int(match.group(2))
+        command = [
+            self.python_executable,
+            str(self.owner_entry_path),
+            "--database",
+            str(self.database_path),
+            "--state-dir",
+            str(self.owner_state_dir),
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--store-id",
+            self.program.store_id,
+            "--repository-id",
+            self._repository_id,
+            "--secret-handle",
+            self.program.endpoint_secret_handle,
+            "--json",
+            "start",
+        ]
+        log_path = self.owner_state_dir / "managed-quack-owner.log"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(log_path, flags, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise DatabaseProgramConfigError(
+                    "managed owner log is not a private regular file"
+                )
+            os.fchmod(descriptor, 0o600)
+            owner_environment_names = {
+                "PATH",
+                "HOME",
+                "LANG",
+                "LC_ALL",
+                "LC_CTYPE",
+                "TZ",
+                "XDG_CACHE_HOME",
+                "DUCKDB_EXTENSION_DIRECTORY",
+                "DUCKDB_EXTENSIONS_PATH",
+            }
+            environment = {
+                name: value
+                for name, value in os.environ.items()
+                if name in owner_environment_names
+            }
+            environment.update(self.program.environment())
+            environment[REPOSITORY_ROOT_ENV] = str(self.repo_root)
+            with os.fdopen(descriptor, "ab", buffering=0) as output:
+                descriptor = -1
+                process = subprocess.Popen(
+                    command,
+                    cwd=self.repo_root,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        deadline = time.monotonic() + min(
+            2.0,
+            float(self.policy.startup_timeout_seconds),
+        )
+        birth = None
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise QuackOwnerStartAbsentError(
+                    "managed owner exited before process-birth capture"
+                )
+            try:
+                birth = read_process_birth(process.pid)
+            except OSError:
+                birth = None
+            if birth is not None and birth.start_time_ticks > 0:
+                break
+            time.sleep(0.01)
+        if birth is None or birth.start_time_ticks <= 0:
+            if not self._terminate_uncaptured_owner(process):
+                raise DatabaseProgramConfigError(
+                    "managed owner process birth and termination are unknown"
+                )
+            raise QuackOwnerStartAbsentError(
+                "managed owner process birth could not be captured"
+            )
+        return SpawnedQuackOwner(
+            process=process,
+            process_birth=birth,
+            isolated_process_group=True,
+        )
+
+    def _terminate_uncaptured_owner(
+        self,
+        process: subprocess.Popen[bytes],
+    ) -> bool:
+        """Fence an exact unreaped child after process-birth capture failed.
+
+        An unreaped ``Popen`` child cannot have its PID reused.  Because the
+        child was born as a new session, an equal PID and process-group ID is
+        the exact tree boundary.  Unknown group identity or unconfirmed exit
+        is terminal so a later retry cannot spawn a contender.
+        """
+
+        def group_absent() -> bool:
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return True
+            except OSError:
+                return False
+            return False
+
+        if process.poll() is not None:
+            return True
+        try:
+            if os.getpgid(process.pid) != process.pid:
+                return False
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        try:
+            process.wait(timeout=float(self.policy.termination_grace_seconds))
+            if group_absent():
+                return True
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            if process.poll() is None and os.getpgid(process.pid) != process.pid:
+                return False
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            return False
+        try:
+            process.wait(
+                timeout=min(
+                    2.0,
+                    float(self.policy.termination_grace_seconds),
+                )
+            )
+        except subprocess.TimeoutExpired:
+            return False
+        deadline = time.monotonic() + min(
+            2.0,
+            float(self.policy.termination_grace_seconds),
+        )
+        while time.monotonic() < deadline:
+            if group_absent():
+                return True
+            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        return group_absent()
+
+    def ensure_before_tracks(self) -> Mapping[str, object]:
+        from ..merge.worktree_lifecycle import OwnerLiveness
+        from .quack_owner_watchdog import (
+            AuthenticatedReadiness,
+            OwnerHealth,
+            SpawnedQuackOwner,
+            process_birth_id,
+        )
+
+        observation = self._read_owner_observation(authenticate_alive=True)
+        if (
+            observation.liveness is OwnerLiveness.ALIVE
+            and observation.health is OwnerHealth.HEALTHY
+            and observation.authenticated_ready
+            and observation.process_birth is not None
+            and observation.binding is not None
+        ):
+            try:
+                isolated = (
+                    os.getpgid(observation.process_birth.pid)
+                    == observation.process_birth.pid
+                )
+            except OSError:
+                isolated = False
+            if not isolated:
+                return {
+                    "ready": False,
+                    "health": "unknown",
+                    "reason": "live_owner_process_group_not_exact",
+                }
+            owner = SpawnedQuackOwner(
+                process=None,
+                process_birth=observation.process_birth,
+                isolated_process_group=True,
+                adopted=True,
+            )
+            receipt = self._watchdog.adopt_owner(
+                owner,
+                observation,
+                AuthenticatedReadiness(
+                    authenticated=True,
+                    ready=True,
+                    process_birth_id=process_birth_id(
+                        observation.process_birth
+                    ),
+                    binding=observation.binding,
+                ),
+            )
+        elif observation.liveness is OwnerLiveness.DEAD:
+            payload = dict(self.recover_after_fence())
+            payload["ready"] = bool(payload.get("recovered"))
+            return payload
+        else:
+            receipt = self._watchdog.ensure(observation)
+        payload = receipt.to_dict()
+        payload["ready"] = bool(receipt.operational_ready)
+        return payload
+
+    def health(self) -> Mapping[str, object]:
+        from ..merge.worktree_lifecycle import OwnerLiveness
+        from .quack_owner_watchdog import OwnerHealth
+
+        observation = self._read_owner_observation(authenticate_alive=True)
+        if (
+            observation.liveness is OwnerLiveness.ALIVE
+            and observation.health is OwnerHealth.HEALTHY
+            and observation.authenticated_ready
+        ):
+            health = "healthy"
+        elif observation.liveness is OwnerLiveness.DEAD:
+            health = "dead"
+        elif observation.liveness is OwnerLiveness.ALIVE:
+            health = "unhealthy"
+        else:
+            health = "unknown"
+        return {
+            "health": health,
+            "liveness": observation.liveness.value,
+            "authenticated_ready": bool(observation.authenticated_ready),
+            "binding": (
+                None
+                if observation.binding is None
+                else observation.binding.to_dict()
+            ),
+        }
+
+    def recover_after_fence(self) -> Mapping[str, object]:
+        from ..merge.worktree_lifecycle import OwnerLiveness
+        from .quack_owner_watchdog import (
+            AuthenticatedReadiness,
+            OwnerHealth,
+            SpawnedQuackOwner,
+            WatchdogDisposition,
+            process_birth_id,
+        )
+
+        prior_binding = None
+        waiting_for_concurrent_winner = False
+        contention_deadline = (
+            time.monotonic() + float(self.policy.startup_timeout_seconds)
+        )
+        while True:
+            observation = self._read_owner_observation(
+                authenticate_alive=True
+            )
+            if observation.liveness is OwnerLiveness.DEAD:
+                if prior_binding is None:
+                    prior_binding = observation.binding
+                receipt = self._watchdog.ensure(observation)
+            elif (
+                observation.liveness is OwnerLiveness.ALIVE
+                and observation.health is OwnerHealth.HEALTHY
+                and observation.authenticated_ready
+                and observation.process_birth is not None
+                and observation.binding is not None
+                and prior_binding is not None
+                and observation.binding.store_id == prior_binding.store_id
+                and observation.binding.schema_revision
+                == prior_binding.schema_revision
+                and observation.binding.database_uuid
+                == prior_binding.database_uuid
+                and observation.binding.schema_fingerprint
+                == prior_binding.schema_fingerprint
+                and int(observation.binding.generation)
+                > int(prior_binding.generation)
+            ):
+                try:
+                    isolated = (
+                        os.getpgid(observation.process_birth.pid)
+                        == observation.process_birth.pid
+                    )
+                except OSError:
+                    isolated = False
+                if not isolated:
+                    return {
+                        "recovered": False,
+                        "health": "unknown",
+                        "reason": "concurrent_owner_process_group_not_exact",
+                    }
+                owner = SpawnedQuackOwner(
+                    process=None,
+                    process_birth=observation.process_birth,
+                    isolated_process_group=True,
+                    adopted=True,
+                )
+                adopted = self._watchdog.adopt_owner(
+                    owner,
+                    observation,
+                    AuthenticatedReadiness(
+                        authenticated=True,
+                        ready=True,
+                        process_birth_id=process_birth_id(
+                            observation.process_birth
+                        ),
+                        binding=observation.binding,
+                    ),
+                )
+                if adopted.operational_ready:
+                    payload = adopted.to_dict()
+                    payload["recovered"] = True
+                    payload["recovery_source"] = "concurrent_exact_winner"
+                    return payload
+                return {
+                    "recovered": False,
+                    "health": "unhealthy",
+                    "reason": "concurrent_owner_adoption_not_admitted",
+                }
+            elif (
+                waiting_for_concurrent_winner
+                and time.monotonic() < contention_deadline
+                and (
+                    observation.liveness is OwnerLiveness.UNKNOWN
+                    or observation.liveness is OwnerLiveness.ALIVE
+                )
+            ):
+                # The elected winner removes stale status before publishing
+                # authenticated readiness.  Treat that bounded gap as neither
+                # death authority nor permission to launch a contender.
+                time.sleep(
+                    min(
+                        0.05,
+                        max(0.0, contention_deadline - time.monotonic()),
+                    )
+                )
+                continue
+            else:
+                return {
+                    "recovered": False,
+                    "health": "unknown",
+                    "reason": "owner_not_proven_dead_after_track_fence",
+                }
+            if receipt.recovered and receipt.operational_ready:
+                payload = receipt.to_dict()
+                payload["recovered"] = True
+                return payload
+            if receipt.disposition in {
+                WatchdogDisposition.RETRY_EXHAUSTED,
+                WatchdogDisposition.ABSTAIN_UNKNOWN,
+                WatchdogDisposition.ABSTAIN_ALIVE_UNHEALTHY,
+                WatchdogDisposition.ABSTAIN_NOT_PROVABLY_DEAD,
+            }:
+                payload = receipt.to_dict()
+                payload["recovered"] = False
+                return payload
+            if receipt.disposition is WatchdogDisposition.LOCK_CONTENDED:
+                waiting_for_concurrent_winner = True
+                if time.monotonic() >= contention_deadline:
+                    payload = receipt.to_dict()
+                    payload["recovered"] = False
+                    return payload
+                time.sleep(
+                    min(
+                        0.05,
+                        max(0.0, contention_deadline - time.monotonic()),
+                    )
+                )
+                continue
+            retry = self._watchdog.retry_state
+            if retry.exhausted:
+                payload = receipt.to_dict()
+                payload["recovered"] = False
+                return payload
+            delay = max(0.0, retry.retry_not_before - time.monotonic())
+            if delay:
+                time.sleep(delay)
+
+    def shutdown(self) -> Mapping[str, object]:
+        receipt = self._watchdog.stop()
+        payload = receipt.to_dict()
+        termination = receipt.termination
+        payload["stopped"] = bool(
+            termination is None or termination.termination_confirmed
+        )
+        return payload
+
+
+def build_managed_quack_owner_lifecycle(
+    *,
+    program: DatabaseProgramConfig | None,
+    repo_root: Path,
+    python_executable: str,
+) -> ManagedLocalQuackOwnerLifecycle | None:
+    """Build a lifecycle only for an explicit managed-local policy."""
+
+    if program is None or program.owner_management is None:
+        return None
+    return ManagedLocalQuackOwnerLifecycle(
+        program=program,
+        repo_root=repo_root,
+        python_executable=python_executable,
+    )
 
 
 def redact_database_program_argv(argv: Sequence[str]) -> list[str]:
@@ -3433,9 +4466,6 @@ def build_configured_multi_supervisor_cli_runner(
 ) -> ConfiguredMultiSupervisorCliRunner:
     """Build reusable multi-supervisor CLI argv from project-specific tracks."""
 
-    _ = database_program  # optional pin; track configs may carry per-track program
-
-
     effective_duration_seconds = (
         env_str(duration_seconds_env_var, str(duration_seconds))
         if duration_seconds_env_var
@@ -3461,6 +4491,20 @@ def build_configured_multi_supervisor_cli_runner(
         "--python-executable",
         python_executable,
     ]
+    if (
+        database_program is not None
+        and database_program.owner_management is not None
+    ):
+        argv.extend(
+            [
+                "--database-program-json",
+                json.dumps(
+                    database_program.to_dict(),
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            ]
+        )
     if heartbeat_interval_seconds is not None:
         argv.extend(["--heartbeat-interval-seconds", str(heartbeat_interval_seconds)])
     if supervisor_status_stale_seconds is not None:
@@ -4836,6 +5880,15 @@ def start_track(
             )
         raise
     launch_environment = profile.launch_environment(0)
+    if resolved.database_program is not None:
+        # Every lane birth resolves the current owner token through its opaque
+        # handle.  A master may have inherited a token for an older Quack
+        # generation; never propagate those raw bytes across owner recovery.
+        launch_environment = scrub_state_credentials_from_environment(
+            launch_environment,
+            secret_handle=resolved.database_program.endpoint_secret_handle,
+        )
+        launch_environment.update(resolved.database_program.environment())
     if plan_bound_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
         # repository root.  Build a positive environment in the parent before
@@ -6804,6 +7857,7 @@ def run_supervisor_tracks(
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
     require_configured_board_live_seal: str = "",
+    managed_quack_owner: ManagedQuackOwnerLifecycle | None = None,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
@@ -6900,6 +7954,15 @@ def run_supervisor_tracks(
     scope_drift_receipts: list[dict[str, Any]] = []
     replan_required = False
     run_started_at = time.time()
+    owner_lifecycle: dict[str, object] = {
+        "managed": managed_quack_owner is not None,
+        "startup": None,
+        "last_health": None,
+        "health_check_count": 0,
+        "recoveries": [],
+        "shutdown": None,
+    }
+    next_owner_health_check = time.monotonic()
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -7020,6 +8083,33 @@ def run_supervisor_tracks(
 
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
+        if managed_quack_owner is not None:
+            try:
+                startup = dict(managed_quack_owner.ensure_before_tracks())
+            except Exception as exc:  # noqa: BLE001 - fail-closed owner boundary
+                blocked = (
+                    "managed Quack owner startup failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                _emit(output, f"blocked: {blocked}")
+            else:
+                owner_lifecycle["startup"] = startup
+                if startup.get("ready") is not True:
+                    blocked = "managed Quack owner did not authenticate as ready"
+                    _emit(output, f"blocked: {blocked}")
+                else:
+                    _emit(
+                        output,
+                        "managed Quack owner authenticated before track launch",
+                    )
+                next_owner_health_check = (
+                    time.monotonic()
+                    + float(
+                        managed_quack_owner.health_check_interval_seconds
+                    )
+                )
+        if blocked:
+            raise SupervisorRunInterrupted(blocked)
         for track in managed_tracks:
             processes[track.name] = start_track(
                 track,
@@ -7036,11 +8126,114 @@ def run_supervisor_tracks(
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
             terminal_tracks: set[str] = set(bounded_finished_tracks)
-            sleep_for = min(
+            now = time.monotonic()
+            wait_candidates = [
                 max(0.05, heartbeat_interval_seconds),
-                max(0.0, deadline - time.monotonic()),
-            )
-            time.sleep(sleep_for)
+                max(0.0, deadline - now),
+            ]
+            if managed_quack_owner is not None:
+                wait_candidates.append(
+                    max(0.0, next_owner_health_check - now)
+                )
+            sleep_for = min(wait_candidates)
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            if (
+                managed_quack_owner is not None
+                and time.monotonic() >= next_owner_health_check
+            ):
+                try:
+                    owner_health = dict(managed_quack_owner.health())
+                except Exception as exc:  # noqa: BLE001 - identity boundary
+                    owner_health = {
+                        "health": "unknown",
+                        "error_class": type(exc).__name__,
+                    }
+                owner_lifecycle["last_health"] = owner_health
+                owner_lifecycle["health_check_count"] = int(
+                    owner_lifecycle["health_check_count"]
+                ) + 1
+                next_owner_health_check = (
+                    time.monotonic()
+                    + float(
+                        managed_quack_owner.health_check_interval_seconds
+                    )
+                )
+                health = str(owner_health.get("health") or "unknown").lower()
+                if health != "healthy":
+                    _emit(
+                        output,
+                        f"managed Quack owner health={health}; fencing tracks",
+                    )
+                    fenced_tracks = stop_tracks(
+                        managed_tracks,
+                        processes,
+                        repo_root=resolved_repo_root,
+                        grace_seconds=stop_grace_seconds,
+                        output=output,
+                    )
+                    if fenced_tracks.get("all_trees_fenced") is not True:
+                        blocked = (
+                            "managed Quack owner changed state and not all "
+                            "track process trees could be fenced"
+                        )
+                        _emit(output, f"blocked: {blocked}")
+                        break
+                    processes.clear()
+                    if health != "dead":
+                        blocked = (
+                            "managed Quack owner identity/liveness is not "
+                            "proven dead; refusing a competing owner"
+                        )
+                        _emit(output, f"blocked: {blocked}")
+                        break
+                    try:
+                        recovery = dict(
+                            managed_quack_owner.recover_after_fence()
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        recovery = {
+                            "recovered": False,
+                            "error_class": type(exc).__name__,
+                        }
+                    recoveries = owner_lifecycle["recoveries"]
+                    assert isinstance(recoveries, list)
+                    recoveries.append(recovery)
+                    if recovery.get("recovered") is not True:
+                        blocked = (
+                            "managed Quack owner recovery did not produce an "
+                            "authenticated later generation"
+                        )
+                        _emit(output, f"blocked: {blocked}")
+                        break
+                    try:
+                        for restart_track in managed_tracks:
+                            if restart_track.name in bounded_finished_tracks:
+                                continue
+                            processes[restart_track.name] = start_track(
+                                restart_track,
+                                repo_root=resolved_repo_root,
+                                common_args=common_args,
+                                python_executable=python_executable,
+                                accepted_control_plane_pin=(
+                                    accepted_control_plane_pin
+                                ),
+                                accepted_control_plane_descriptor=(
+                                    accepted_control_plane_descriptor
+                                ),
+                                output=output,
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        blocked = (
+                            "managed Quack owner recovered but track restart "
+                            f"failed: {type(exc).__name__}: {exc}"
+                        )
+                        _emit(output, f"blocked: {blocked}")
+                        break
+                    _emit(
+                        output,
+                        "managed Quack owner recovered; fenced tracks restarted",
+                    )
             for track in tuple(managed_tracks):
                 if track.name in bounded_finished_tracks:
                     continue
@@ -7433,6 +8626,32 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
+        if managed_quack_owner is not None:
+            try:
+                owner_lifecycle["shutdown"] = dict(
+                    managed_quack_owner.shutdown()
+                )
+            except Exception as exc:  # noqa: BLE001 - shutdown stays fail closed
+                owner_lifecycle["shutdown"] = {
+                    "stopped": False,
+                    "error_class": type(exc).__name__,
+                }
+                if not blocked:
+                    blocked = (
+                        "managed Quack owner intentional shutdown could not be "
+                        "verified"
+                    )
+                _emit(output, f"blocked: {blocked}")
+            else:
+                shutdown = owner_lifecycle["shutdown"]
+                assert isinstance(shutdown, Mapping)
+                if shutdown.get("stopped") is not True:
+                    if not blocked:
+                        blocked = (
+                            "managed Quack owner intentional shutdown could not "
+                            "be verified"
+                        )
+                    _emit(output, f"blocked: {blocked}")
         master_pid_removed = bool(
             resolved_master_pid is not None
             and stop_payload["all_trees_fenced"]
@@ -7453,6 +8672,7 @@ def run_supervisor_tracks(
         "terminal_quiescent": terminal_quiescent,
         "replan_required": replan_required,
         "scope_drift_receipts": scope_drift_receipts,
+        "managed_quack_owner": owner_lifecycle,
     }
 
 
@@ -7477,6 +8697,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--python-executable", default="python3")
+    parser.add_argument(
+        "--database-program-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--track", action="append", default=[])
     parser.add_argument(
         "--implementation-track",
@@ -7641,10 +8866,22 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         *_without_detach(argv),
     ]
     out_handle = master_log.open("ab")
+    launch_environment: dict[str, str] | None = None
+    if str(getattr(args, "database_program_json", "") or ""):
+        program = parse_managed_database_program_json(
+            str(args.database_program_json)
+        )
+        launch_environment = scrub_state_credentials_from_environment(
+            os.environ,
+            secret_handle=program.endpoint_secret_handle,
+        )
+        launch_environment.update(program.environment())
+        launch_environment[REPOSITORY_ROOT_ENV] = str(args.repo_root.resolve())
     try:
         process = subprocess.Popen(
             command,
             cwd=args.repo_root,
+            env=launch_environment,
             stdin=subprocess.DEVNULL,
             stdout=out_handle,
             stderr=subprocess.STDOUT,
@@ -7734,20 +8971,37 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
     return common_args
 
 
-def tracks_from_parsed_args(args: argparse.Namespace) -> list[SupervisorTrack]:
+def tracks_from_parsed_args(
+    args: argparse.Namespace,
+    *,
+    database_program: DatabaseProgramConfig | None = None,
+) -> list[SupervisorTrack]:
     """Return supervisor tracks from raw and compact parsed track specs."""
 
-    tracks = [parse_track_spec(track, stamp=args.stamp) for track in args.track]
+    tracks = [
+        replace(
+            parse_track_spec(track, stamp=args.stamp),
+            database_program=database_program,
+        )
+        for track in args.track
+    ]
     for track in args.implementation_track:
-        tracks.extend(
-            expand_implementation_track_lanes(
-                track,
-                stamp=args.stamp,
-                lanes_per_track=args.implementation_supervisor_lanes_per_track,
+        expanded = expand_implementation_track_lanes(
+            track,
+            stamp=args.stamp,
+            lanes_per_track=args.implementation_supervisor_lanes_per_track,
+            database_program=database_program,
+        )
+        tracks.extend(expanded)
+    for record in getattr(args, "implementation_plan_bound_track", ()):
+        tracks.append(
+            replace(
+                PlanBoundSupervisorChild.from_cli_record(record).track(
+                    stamp=args.stamp
+                ),
+                database_program=database_program,
             )
         )
-    for record in getattr(args, "implementation_plan_bound_track", ()):
-        tracks.append(PlanBoundSupervisorChild.from_cli_record(record).track(stamp=args.stamp))
     return tracks
 
 
@@ -7986,6 +9240,14 @@ def main(argv: list[str] | None = None) -> int:
         return _run_plan_bound_launch_gate(args_list[1:])
     parser = build_arg_parser()
     args = parser.parse_args(args_list)
+    managed_database_program: DatabaseProgramConfig | None = None
+    if str(args.database_program_json or ""):
+        try:
+            managed_database_program = parse_managed_database_program_json(
+                str(args.database_program_json)
+            )
+        except DatabaseProgramConfigError as exc:
+            parser.error(str(exc))
     if (
         not args.track
         and not args.implementation_track
@@ -8065,7 +9327,21 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(
                 "plan-bound slices differ from the accepted control-plane generation"
             )
-    tracks = tracks_from_parsed_args(args)
+    tracks = tracks_from_parsed_args(
+        args,
+        database_program=managed_database_program,
+    )
+    try:
+        managed_quack_owner = build_managed_quack_owner_lifecycle(
+            program=managed_database_program,
+            repo_root=args.repo_root.resolve(),
+            python_executable=args.python_executable,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        parser.error(
+            "managed Quack owner lifecycle is invalid: "
+            f"{type(exc).__name__}: {exc}"
+        )
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
         stdout_is_master_log = _stream_targets_path(sys.stdout, master_log)
@@ -8093,6 +9369,7 @@ def main(argv: list[str] | None = None) -> int:
             plan_bound_children=plan_bound_children,
             accepted_control_plane_pin=accepted_control_plane_pin,
             accepted_control_plane_descriptor=args.accepted_control_plane_fd,
+            managed_quack_owner=managed_quack_owner,
             output=output,
         )
     if (
@@ -8102,6 +9379,11 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return PLAN_BOUND_REPLAN_RETURN_CODE
     if args.plan_bound_wave and (
+        run_result.get("completed") is not True
+        or run_result.get("all_trees_fenced") is not True
+    ):
+        return 2
+    if managed_quack_owner is not None and (
         run_result.get("completed") is not True
         or run_result.get("all_trees_fenced") is not True
     ):
