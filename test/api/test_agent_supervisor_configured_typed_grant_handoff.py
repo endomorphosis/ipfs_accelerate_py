@@ -36027,6 +36027,11 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
     ) < run_supervisor.index(
         "launch_git_guard_scope = _prepared_candidate_git_guard"
     )
+    assert run_supervisor.index(
+        "_strip_control_plane_group_other_write(ROOT)"
+    ) < run_supervisor.index(
+        "pin = materialize_agent_implementation_control_plane_capsule"
+    )
     assert aseh_operator.ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS == 1800.0
 
 
@@ -36077,3 +36082,15 @@ def test_aseh_r15_through_r38_sealed_contracts_and_r18_chain_are_memoized() -> N
     launch = inspect.getsource(aseh_operator._admit_materialized_launch)
     assert launch.count('admission_mode=') >= 2
     assert launch.count('"sealed_line_descendant"') >= 2
+
+
+def test_aseh_strip_control_plane_group_other_write_drops_umask_bits(
+    tmp_path: Path,
+) -> None:
+    supervisor = tmp_path / "ipfs_accelerate_py" / "agent_supervisor"
+    supervisor.mkdir(parents=True)
+    owned = supervisor / "owned.py"
+    owned.write_text("print(1)\n", encoding="utf-8")
+    owned.chmod(0o664)
+    aseh_operator._strip_control_plane_group_other_write(tmp_path)
+    assert owned.stat().st_mode & 0o777 == 0o644
