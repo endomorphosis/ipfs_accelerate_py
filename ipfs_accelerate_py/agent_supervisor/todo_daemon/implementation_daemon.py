@@ -1332,6 +1332,16 @@ MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 MAX_DECLARED_IGNORED_OUTPUT_FILES = 256
 MAX_DECLARED_OUTPUT_SCAN_FILES = 4_096
+MAX_RETAINED_WORKSPACE_FINGERPRINT_ENTRIES = 200_000
+MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES = 512 * 1024 * 1024
+VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verification-deferred-retained-candidate@1"
+)
+VERIFICATION_DEFERRED_RETAINED_WORKSPACE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verification-deferred-retained-workspace@1"
+)
 RECONCILIATION_VALIDATION_LOG_TAIL_BYTES = 128 * 1024
 PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER = (
     "Playwright host dependency preflight failed on Linux."
@@ -41681,6 +41691,227 @@ class PortalImplementationDaemon:
             f"{candidate_commit[:12]}-{invocation_id}.log"
         )
 
+    def recover_retained_verification_deferred_candidate(
+        self,
+        *,
+        task: PortalTask,
+        retained_candidate_receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Materialize one fingerprint-bound retained candidate, once.
+
+        The original provider already ran.  This entry point never launches a
+        provider and never refunds or consumes an attempt.  It reacquires the
+        repository checkout transaction, reproduces the complete workspace
+        fingerprint and exact terminal lifecycle CAS, then uses the ordinary
+        candidate commit/rescue cleanup path.  The returned clean commit is an
+        input to ``reconcile_validated_worktree_candidate`` on a fresh claim;
+        it is not itself completion or validation authority.
+        """
+
+        receipt = dict(retained_candidate_receipt)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        try:
+            expected_receipt_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    receipt,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8", errors="surrogatepass")
+            ).hexdigest()
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise RuntimeError(
+                "retained candidate receipt is not canonical JSON"
+            ) from exc
+        receipt["receipt_id"] = receipt_id
+        workspace_identity = receipt.get("retained_workspace")
+        lifecycle = receipt.get("lifecycle")
+        identity = self._identity_for_task(task)
+        workspace_path_text = str(receipt.get("workspace_path") or "")
+        branch_name = str(receipt.get("branch") or "")
+        baseline_commit = str(receipt.get("baseline_commit") or "")
+        portal_attempt = receipt.get("portal_attempt")
+        if (
+            set(receipt)
+            != {
+                "schema",
+                "disposition",
+                "reason",
+                "task_id",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "portal_attempt",
+                "branch",
+                "workspace_path",
+                "baseline_commit",
+                "retained_workspace",
+                "lifecycle",
+                "protected_path_violation_digest",
+                "attempt_consumed",
+                "provider_dispatched",
+                "completion_authoritative",
+                "recovery_required",
+                "receipt_id",
+            }
+            or receipt.get("schema")
+            != VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA
+            or receipt.get("disposition") != "retained_for_exact_recovery"
+            or receipt.get("reason")
+            != "implementation_protected_path_verification_lock_timeout"
+            or receipt.get("task_id") != task.task_id
+            or receipt.get("canonical_task_cid")
+            != identity.canonical_task_cid
+            or receipt.get("canonical_task_key")
+            != identity.canonical_task_key
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or not workspace_path_text
+            or not Path(workspace_path_text).is_absolute()
+            or not branch_name.startswith("implementation/")
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or not isinstance(workspace_identity, Mapping)
+            or not isinstance(lifecycle, Mapping)
+            or receipt.get("attempt_consumed") is not False
+            or receipt.get("provider_dispatched") is not True
+            or receipt.get("completion_authoritative") is not False
+            or receipt.get("recovery_required") is not True
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get("protected_path_violation_digest") or ""),
+            )
+            is None
+            or receipt_id != expected_receipt_id
+        ):
+            raise RuntimeError("retained candidate receipt failed verification")
+
+        workspace_path = Path(workspace_path_text)
+        try:
+            worktree_root = self.worktree_root.resolve(strict=True)
+            resolved_workspace = workspace_path.resolve(strict=True)
+            resolved_workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise RuntimeError(
+                "retained candidate workspace is outside the worktree authority"
+            ) from exc
+        if str(resolved_workspace) != workspace_path_text:
+            raise RuntimeError("retained candidate workspace identity changed")
+
+        def materialize() -> dict[str, Any]:
+            reproduced = self._retained_workspace_content_fingerprint(
+                resolved_workspace,
+                baseline_ref=baseline_commit,
+            )
+            if dict(reproduced) != dict(workspace_identity):
+                raise RuntimeError("retained candidate fingerprint changed")
+            current_lifecycle = self.worktree_lifecycle.load_workspace(
+                resolved_workspace
+            )
+            if (
+                current_lifecycle is None
+                or not current_lifecycle.is_terminal
+                or current_lifecycle.terminal_reason
+                != "verification_deferred_checkout_lease_unavailable"
+                or current_lifecycle.task_id != task.task_id
+                or current_lifecycle.canonical_task_cid
+                != identity.canonical_task_cid
+                or int(current_lifecycle.attempt) != int(portal_attempt)
+                or current_lifecycle.branch != branch_name
+                or normalize_workspace_path(current_lifecycle.workspace_path)
+                != workspace_path_text
+                or int(current_lifecycle.fence)
+                != int(lifecycle.get("fence") or -1)
+                or current_lifecycle.lease_id
+                != str(lifecycle.get("lease_id") or "")
+                or lifecycle.get("state") != current_lifecycle.state.value
+                or lifecycle.get("reason")
+                != current_lifecycle.terminal_reason
+            ):
+                raise RuntimeError(
+                    "retained candidate lifecycle identity or fence changed"
+                )
+            released_lifecycle = self.worktree_lifecycle.mark_terminal(
+                resolved_workspace,
+                lease_id=current_lifecycle.lease_id,
+                expected_fence=current_lifecycle.fence,
+                reason="verification_deferred_candidate_recovery_authorized",
+            )
+            preservation = self._preserve_interrupted_worktree(
+                resolved_workspace,
+                branch_name,
+                task,
+                int(portal_attempt),
+                evidence={
+                    "retained_candidate_receipt_id": receipt_id,
+                    "retained_workspace_fingerprint_id": str(
+                        workspace_identity.get("fingerprint_id") or ""
+                    ),
+                },
+                rescue_suffix="verification-deferred",
+                event_type=(
+                    "verification_deferred_retained_candidate_preserved"
+                ),
+                evidence_field="retained_candidate_recovery",
+                baseline_ref=baseline_commit,
+            )
+            preserved_commit = str(
+                preservation.get("preserved_commit") or ""
+            )
+            rescue_branch = str(preservation.get("rescue_branch") or "")
+            if (
+                preservation.get("preserved") is not True
+                or re.fullmatch(r"[0-9a-f]{40}", preserved_commit) is None
+                or not rescue_branch.endswith("-verification-deferred")
+                or preservation.get("cleanup_result", {}).get("cleaned")
+                is not True
+            ):
+                raise RuntimeError(
+                    "retained candidate materialization did not produce a clean rescue"
+                )
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "verification-deferred-candidate-materialization@1"
+                ),
+                "recovered": True,
+                "reason": "verification_deferred_candidate_materialized",
+                "task_id": task.task_id,
+                "portal_attempt": int(portal_attempt),
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "source_receipt_id": receipt_id,
+                "source_fingerprint_id": str(
+                    workspace_identity.get("fingerprint_id") or ""
+                ),
+                "baseline_commit": baseline_commit,
+                "preserved_commit": preserved_commit,
+                "implementation_commit": preserved_commit,
+                "rescue_branch": rescue_branch,
+                "original_branch": branch_name,
+                "original_worktree_path": workspace_path_text,
+                "released_lifecycle": released_lifecycle.to_dict(),
+                "preservation": preservation,
+            }
+
+        return self._run_checkout_mutation_transaction(
+            task_id=task.task_id,
+            attempt=int(portal_attempt),
+            branch=branch_name,
+            operation="recover_verification_deferred_retained_candidate",
+            callback=materialize,
+            failure_fields={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "verification-deferred-candidate-materialization@1"
+                ),
+                "recovered": False,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "source_receipt_id": receipt_id,
+            },
+        )
+
     def reconcile_validated_worktree_candidate(
         self,
         *,
@@ -51411,6 +51642,7 @@ class PortalImplementationDaemon:
                 task,
                 attempt,
                 protected_path_violation,
+                baseline_ref=baseline_ref,
             )
         workspace_mutated = any(
             str(item.get("scope") or "") == "workspace"
@@ -51475,6 +51707,167 @@ class PortalImplementationDaemon:
             baseline_ref=baseline_ref,
         )
 
+    @staticmethod
+    def _retained_workspace_content_fingerprint(
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Return one bounded, exact, read-only retained-workspace identity.
+
+        Porcelain status alone names dirty paths but does not bind their bytes,
+        ignored declared outputs, file modes, or symlink targets.  Recovery of
+        a provider-dispatched workspace therefore binds the complete private
+        checkout plus the Git index/status/HEAD/branch identities.  The walk
+        never follows symlinks and is bounded so a hostile candidate cannot
+        turn receipt publication into unbounded I/O.
+        """
+
+        try:
+            workspace = workspace_path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError("retained workspace is unavailable") from exc
+        if not workspace.is_dir() or workspace.is_symlink():
+            raise RuntimeError("retained workspace is not a directory")
+
+        digest = hashlib.sha256()
+        entry_count = 0
+        content_bytes = 0
+        try:
+            for root, directories, files in os.walk(
+                workspace,
+                topdown=True,
+                followlinks=False,
+            ):
+                directories.sort()
+                files.sort()
+                root_path = Path(root)
+                for name in (*directories, *files):
+                    candidate = root_path / name
+                    relative = candidate.relative_to(workspace).as_posix()
+                    item_stat = candidate.lstat()
+                    entry_count += 1
+                    if entry_count > MAX_RETAINED_WORKSPACE_FINGERPRINT_ENTRIES:
+                        raise RuntimeError(
+                            "retained workspace exceeds fingerprint entry budget"
+                        )
+                    digest.update(
+                        relative.encode("utf-8", errors="surrogateescape")
+                    )
+                    digest.update(b"\0")
+                    digest.update(str(item_stat.st_mode).encode("ascii"))
+                    digest.update(b"\0")
+                    if candidate.is_symlink():
+                        target = os.readlink(candidate).encode(
+                            "utf-8", errors="surrogateescape"
+                        )
+                        content_bytes += len(target)
+                        digest.update(b"L")
+                        digest.update(target)
+                    elif candidate.is_dir():
+                        digest.update(b"D")
+                    elif candidate.is_file():
+                        content_bytes += int(item_stat.st_size)
+                        if (
+                            content_bytes
+                            > MAX_RETAINED_WORKSPACE_FINGERPRINT_BYTES
+                        ):
+                            raise RuntimeError(
+                                "retained workspace exceeds fingerprint byte budget"
+                            )
+                        digest.update(b"F")
+                        with candidate.open("rb") as handle:
+                            while chunk := handle.read(1024 * 1024):
+                                digest.update(chunk)
+                    else:
+                        raise RuntimeError(
+                            "retained workspace contains an unsupported special file"
+                        )
+                    digest.update(b"\0")
+        except (OSError, UnicodeError) as exc:
+            raise RuntimeError("retained workspace fingerprint failed") from exc
+
+        def git_bytes(arguments: Sequence[str]) -> bytes:
+            try:
+                completed = subprocess.run(
+                    ["git", *arguments],
+                    cwd=workspace,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                    timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise RuntimeError(
+                    "retained workspace Git identity is unavailable"
+                ) from exc
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    "retained workspace Git identity is unavailable"
+                )
+            return bytes(completed.stdout or b"")
+
+        head = git_bytes(
+            ["rev-parse", "--verify", "HEAD^{commit}"]
+        ).decode("ascii", errors="strict").strip()
+        baseline = git_bytes(
+            ["rev-parse", "--verify", f"{baseline_ref}^{{commit}}"]
+        ).decode("ascii", errors="strict").strip()
+        branch = git_bytes(
+            ["symbolic-ref", "--quiet", "--short", "HEAD"]
+        ).decode("utf-8", errors="surrogateescape").strip()
+        common_dir_raw = git_bytes(["rev-parse", "--git-common-dir"])
+        common_dir_text = common_dir_raw.decode(
+            "utf-8", errors="surrogateescape"
+        ).strip()
+        common_dir = Path(common_dir_text)
+        if not common_dir.is_absolute():
+            common_dir = workspace / common_dir
+        common_dir_identity = normalize_workspace_path(common_dir)
+        index = git_bytes(["ls-files", "--stage", "-z"])
+        status = git_bytes(
+            [
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ]
+        )
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
+            or not branch
+        ):
+            raise RuntimeError("retained workspace Git identity is malformed")
+        body: dict[str, Any] = {
+            "schema": VERIFICATION_DEFERRED_RETAINED_WORKSPACE_SCHEMA,
+            "workspace_path": str(workspace),
+            "git_common_dir": common_dir_identity,
+            "head": head,
+            "baseline_commit": baseline,
+            "branch": branch,
+            "entry_count": entry_count,
+            "content_bytes": content_bytes,
+            "content_digest": "sha256:" + digest.hexdigest(),
+            "index_digest": "sha256:" + hashlib.sha256(index).hexdigest(),
+            "index_bytes": len(index),
+            "status_digest": "sha256:" + hashlib.sha256(status).hexdigest(),
+            "status_bytes": len(status),
+        }
+        encoded = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8", errors="surrogatepass")
+        body["fingerprint_id"] = (
+            "sha256:" + hashlib.sha256(encoded).hexdigest()
+        )
+        return body
+
     def _retain_verification_deferred_worktree(
         self,
         worktree_path: Path,
@@ -51482,6 +51875,8 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         protected_path_violation: Mapping[str, Any],
+        *,
+        baseline_ref: str = "",
     ) -> dict[str, Any]:
         """Park an inconclusive attempt without mutating shared Git state.
 
@@ -51495,6 +51890,16 @@ class PortalImplementationDaemon:
         """
 
         lifecycle_record = self._active_worktree_lifecycle
+        retained_workspace: dict[str, Any] | None
+        retained_workspace_error = ""
+        try:
+            retained_workspace = self._retained_workspace_content_fingerprint(
+                worktree_path,
+                baseline_ref=baseline_ref,
+            )
+        except (OSError, RuntimeError, UnicodeError, ValueError) as exc:
+            retained_workspace = None
+            retained_workspace_error = type(exc).__name__
         try:
             loaded_record = self.worktree_lifecycle.load_workspace(
                 worktree_path
@@ -51570,6 +51975,75 @@ class PortalImplementationDaemon:
                 }
         self._active_worktree_lifecycle = None
         retained = worktree_path.exists()
+        if retained and retained_workspace is not None:
+            try:
+                reproduced_workspace = (
+                    self._retained_workspace_content_fingerprint(
+                        worktree_path,
+                        baseline_ref=baseline_ref,
+                    )
+                )
+            except (OSError, RuntimeError, UnicodeError, ValueError) as exc:
+                retained_workspace = None
+                retained_workspace_error = type(exc).__name__
+            else:
+                if reproduced_workspace != retained_workspace:
+                    retained_workspace = None
+                    retained_workspace_error = (
+                        "workspace_changed_during_receipt"
+                    )
+        retained_candidate_receipt: dict[str, Any] | None = None
+        if (
+            retained
+            and retained_workspace is not None
+            and lifecycle_result.get("terminal") is True
+        ):
+            identity = self._identity_for_task(task)
+            retained_candidate_receipt = {
+                "schema": VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA,
+                "disposition": "retained_for_exact_recovery",
+                "reason": (
+                    "implementation_protected_path_verification_lock_timeout"
+                ),
+                "task_id": task.task_id,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "canonical_task_key": identity.canonical_task_key,
+                "portal_attempt": int(attempt),
+                "branch": branch_name,
+                "workspace_path": normalize_workspace_path(worktree_path),
+                "baseline_commit": str(
+                    retained_workspace.get("baseline_commit") or ""
+                ),
+                "retained_workspace": retained_workspace,
+                "lifecycle": dict(lifecycle_result),
+                "protected_path_violation_digest": (
+                    "sha256:"
+                    + hashlib.sha256(
+                        json.dumps(
+                            dict(protected_path_violation),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                            default=str,
+                        ).encode("utf-8", errors="surrogatepass")
+                    ).hexdigest()
+                ),
+                "attempt_consumed": False,
+                "provider_dispatched": True,
+                "completion_authoritative": False,
+                "recovery_required": True,
+            }
+            encoded_receipt = json.dumps(
+                retained_candidate_receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8", errors="surrogatepass")
+            retained_candidate_receipt["receipt_id"] = (
+                "sha256:" + hashlib.sha256(encoded_receipt).hexdigest()
+            )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -51590,6 +52064,10 @@ class PortalImplementationDaemon:
                 "retained": retained,
             },
             "lifecycle": lifecycle_result,
+            "retained_candidate_receipt": retained_candidate_receipt,
+            "retained_workspace_fingerprint_error": (
+                retained_workspace_error
+            ),
             "protected_path_violation": dict(protected_path_violation),
         }
         self._record_event(
@@ -100968,6 +101446,7 @@ class DatabaseImplementationDaemon:
 
         from .database_portal_bridge import (
             DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+            DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
         )
 
         if not isinstance(raw, Mapping):
@@ -101011,6 +101490,17 @@ class DatabaseImplementationDaemon:
             "preservation_digest",
             "receipt_id",
         }
+        verification_deferred = (
+            raw.get("schema")
+            == DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA
+        )
+        if verification_deferred:
+            expected_fields.update(
+                {
+                    "source_retained_receipt_id",
+                    "source_fingerprint_id",
+                }
+            )
         body = dict(raw)
         receipt_id = body.pop("receipt_id", None)
         source_task_revision = raw.get("source_task_revision")
@@ -101028,7 +101518,11 @@ class DatabaseImplementationDaemon:
                 .replace(" ", "-")
                 or "implementation-attempt"
             )
-            + "-protected-path-interrupted"
+            + (
+                "-verification-deferred"
+                if verification_deferred
+                else "-protected-path-interrupted"
+            )
         )
         digest_fields = (
             "binding_id",
@@ -101057,9 +101551,17 @@ class DatabaseImplementationDaemon:
         if (
             set(raw) != expected_fields
             or raw.get("schema")
-            != DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA
+            not in {
+                DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+                DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
+            }
             or raw.get("disposition") != "protected_candidate_preserved"
-            or raw.get("reason") != "implementation_protected_path_mutated"
+            or raw.get("reason")
+            != (
+                "implementation_protected_path_verification_lock_timeout"
+                if verification_deferred
+                else "implementation_protected_path_mutated"
+            )
             or raw.get("task_cid") != attempt.task_cid
             or raw.get("task_alias") != attempt.task_alias
             or raw.get("attempt_id") != attempt.attempt_id
@@ -101109,6 +101611,20 @@ class DatabaseImplementationDaemon:
                 re.fullmatch(r"sha256:[0-9a-f]{64}", str(raw.get(field) or ""))
                 is None
                 for field in digest_fields
+            )
+            or (
+                verification_deferred
+                and any(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(raw.get(field) or ""),
+                    )
+                    is None
+                    for field in (
+                        "source_retained_receipt_id",
+                        "source_fingerprint_id",
+                    )
+                )
             )
             or receipt_id != protected_receipt_id
         ):
@@ -117259,6 +117775,8 @@ class DatabaseImplementationDaemon:
                     DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS,
                     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
                     DatabasePortalBridgeError,
+                    DatabasePortalHistoricalFingerprintUnavailable,
+                    DatabasePortalVerificationRecoveryDeferred,
                 )
 
                 if reason == "not_attempted":
@@ -117308,12 +117826,47 @@ class DatabaseImplementationDaemon:
                     continue
                 if (
                     reason.casefold()
-                    == _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold()
+                    in {
+                        _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold(),
+                        (
+                            "implementation_protected_path_"
+                            "verification_lock_timeout"
+                        ),
+                    }
                     and callable(self._protected_preservation_recovery_fn)
                 ):
-                    retry_evidence = self._protected_preservation_recovery_fn(
-                        attempt
-                    )
+                    try:
+                        retry_evidence = (
+                            self._protected_preservation_recovery_fn(attempt)
+                        )
+                    except DatabasePortalHistoricalFingerprintUnavailable:
+                        outcomes.append(
+                            {
+                                "task_cid": attempt.task_cid,
+                                "attempt_id": attempt.attempt_id,
+                                "status": "blocked",
+                                "changed": False,
+                                "reason": "historical_fingerprint_unavailable",
+                                "operator_review_required": True,
+                                "provider_dispatched": True,
+                                "attempt_consumed": False,
+                            }
+                        )
+                        continue
+                    except DatabasePortalVerificationRecoveryDeferred as exc:
+                        outcomes.append(
+                            {
+                                "task_cid": attempt.task_cid,
+                                "attempt_id": attempt.attempt_id,
+                                "status": "blocked",
+                                "changed": False,
+                                "reason": exc.reason,
+                                "recovery_deferred": True,
+                                "provider_dispatched": True,
+                                "attempt_consumed": False,
+                            }
+                        )
+                        continue
                     outcomes.append(
                         self.recover_blocked_portal_protected_preservation(
                             attempt,

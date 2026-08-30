@@ -111,6 +111,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+    DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
@@ -120,6 +121,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalCapacityRetry,
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
+    DatabasePortalHistoricalFingerprintUnavailable,
     DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
     database_portal_consumed_no_progress_fingerprint,
@@ -6659,6 +6661,56 @@ def test_protected_preservation_rejects_rehashed_foreign_evidence(
         daemon.close()
 
 
+def test_verification_deferred_preservation_keeps_provider_truth(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:verification-deferred-preservation",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        receipt = _protected_preservation_receipt(
+            daemon,
+            attempt,
+            source_task_revision=task.revision,
+        )
+        receipt.update(
+            {
+                "schema": (
+                    DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA
+                ),
+                "reason": (
+                    "implementation_protected_path_verification_lock_timeout"
+                ),
+                "rescue_branch": (
+                    "rescue/dqp-t001-attempt-2-verification-deferred"
+                ),
+                "source_retained_receipt_id": "sha256:" + "a" * 64,
+                "source_fingerprint_id": "sha256:" + "b" * 64,
+            }
+        )
+        receipt.pop("receipt_id")
+        receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+            receipt
+        )
+
+        typed = DatabasePortalProtectedPathPreserved(receipt)
+        assert typed.provider_dispatched is True
+        assert typed.attempt_consumed is False
+        assert daemon._verified_protected_preservation_receipt(
+            attempt,
+            receipt,
+        ) == receipt
+    finally:
+        daemon.close()
+
+
 def test_exact_legacy_protected_preservation_block_recovers_once(
     tmp_path: Path,
 ) -> None:
@@ -6704,6 +6756,54 @@ def test_exact_legacy_protected_preservation_block_recovers_once(
         )
         assert receipt["protected_preservation_seed"] == seed
         assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_historical_verification_timeout_without_fingerprint_stays_blocked(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError(
+            "implementation_protected_path_verification_lock_timeout"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:historical-verification-timeout",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        source = daemon.get_attempt(failed["attempt_id"])
+        assert source is not None
+        assert daemon.task_source.get(source.task_cid).status == "blocked"
+        daemon.bind_protected_preservation_recovery(
+            lambda _attempt: (_ for _ in ()).throw(
+                DatabasePortalHistoricalFingerprintUnavailable()
+            )
+        )
+
+        outcome = daemon.reconcile_terminal_portal_failures()
+        assert outcome == [
+            {
+                "task_cid": source.task_cid,
+                "attempt_id": source.attempt_id,
+                "status": "blocked",
+                "changed": False,
+                "reason": "historical_fingerprint_unavailable",
+                "operator_review_required": True,
+                "provider_dispatched": True,
+                "attempt_consumed": False,
+            }
+        ]
+        assert daemon.task_source.get(source.task_cid).status == "blocked"
+        assert provider_calls == [source.attempt_id]
     finally:
         daemon.close()
 
