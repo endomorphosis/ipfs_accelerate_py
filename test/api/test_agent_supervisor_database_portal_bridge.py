@@ -59,8 +59,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as database_portal_bridge_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
-    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
