@@ -54792,6 +54792,22 @@ class PortalImplementationDaemon:
                 Mapping,
             ):
                 fresh.append(event)
+            elif (
+                isinstance(
+                    event.get(
+                        "integrated_authority_quarantine_reconciliation"
+                    ),
+                    Mapping,
+                )
+                and event[
+                    "integrated_authority_quarantine_reconciliation"
+                ].get("passed")
+                is True
+            ):
+                # The exact queue request and current target ancestry were
+                # re-proved in this pass. Wall-clock age cannot make that
+                # immutable completion-recovery candidate stale.
+                fresh.append(event)
             elif not str(event.get("timestamp") or ""):
                 fresh.append(event)
             elif self._event_age_seconds(event) > max_age_seconds:
@@ -55002,13 +55018,28 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict):
                 continue
+            integrated_authority_quarantine = (
+                self._integrated_authority_quarantine_reconciliation_receipt(
+                    event,
+                    merge_result=merge_result,
+                    target_branch=target_branch,
+                )
+            )
             cleanup = event.get("cleanup_result") or {}
             cleanup_failed = isinstance(cleanup, dict) and bool(cleanup) and not cleanup.get("cleaned", False)
-            if not cleanup_failed and not self._merge_result_needs_reconciliation(merge_result):
+            if (
+                not cleanup_failed
+                and not self._merge_result_needs_reconciliation(merge_result)
+                and not integrated_authority_quarantine
+            ):
                 continue
             key = candidate_key
             candidate_event = dict(event)
             candidate_event.pop("completion_persistence_recovery", None)
+            if integrated_authority_quarantine:
+                candidate_event[
+                    "integrated_authority_quarantine_reconciliation"
+                ] = integrated_authority_quarantine
             recovery_event = persistence_recovery_candidates.get(key)
             if recovery_event is not None:
                 recovery_proof = recovery_event.get(
@@ -55111,6 +55142,15 @@ class PortalImplementationDaemon:
             if candidate_key in persistence_recovery_candidate_keys:
                 unresolved.append(event)
                 continue
+            integrated_authority_quarantine = event.get(
+                "integrated_authority_quarantine_reconciliation"
+            )
+            if (
+                isinstance(integrated_authority_quarantine, Mapping)
+                and integrated_authority_quarantine.get("passed") is True
+            ):
+                unresolved.append(event)
+                continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 unresolved.append(event)
                 continue
@@ -55118,6 +55158,148 @@ class PortalImplementationDaemon:
             if isinstance(cleanup, dict) and not cleanup.get("cleaned", False):
                 unresolved.append(event)
         return unresolved
+
+    def _integrated_authority_quarantine_reconciliation_receipt(
+        self,
+        event: Mapping[str, Any],
+        *,
+        merge_result: Mapping[str, Any],
+        target_branch: str,
+    ) -> dict[str, Any]:
+        """Prove one authority-quarantined queue handoff already integrated.
+
+        A different lane can consume a shared request after the producer has
+        stopped. If the target mutation subsequently lands but that consumer
+        cannot use the producer board's completion authority, the immutable
+        candidate must be reconciled by its producer daemon. This receipt
+        nominates only that exact case; it does not make completion
+        authoritative. The ordinary reconciliation path still verifies the
+        current task revision, nested handoff, declared outputs, validation
+        evidence, cleanup, and durable completion publication.
+        """
+
+        request_id = str(merge_result.get("request_id") or "").strip()
+        if (
+            merge_result.get("queued") is not True
+            or not request_id
+            or not hasattr(self.merge_queue, "get")
+        ):
+            return {}
+        try:
+            request = self.merge_queue.get(request_id)
+        except Exception:
+            return {}
+        if request is None:
+            return {}
+
+        # Reuse the merge train's closed reason vocabulary instead of creating
+        # a second authority classification in the daemon.
+        from ..merge.merge_train import AUTHORITY_QUARANTINE_REASONS
+
+        failure_reason = str(
+            getattr(request, "failure_reason", "") or ""
+        ).strip()
+        if (
+            str(getattr(request, "status", "") or "") != "quarantined"
+            or failure_reason not in AUTHORITY_QUARANTINE_REASONS
+        ):
+            return {}
+
+        task_id = str(event.get("task_id") or "").strip()
+        task_cid = self._event_primary_task_cid(event)
+        task_key = str(event.get("canonical_task_key") or "").strip()
+        implementation_commit = str(
+            event.get("implementation_commit") or ""
+        ).strip()
+        metadata = (
+            request.metadata
+            if isinstance(getattr(request, "metadata", None), Mapping)
+            else {}
+        )
+        event_completion_cids = merge_result.get("completion_task_cids")
+        request_completion_cids = metadata.get("completion_task_cids")
+        normalized_event_completion_cids = (
+            {
+                str(member_id): str(member_cid)
+                for member_id, member_cid in event_completion_cids.items()
+                if str(member_id) and str(member_cid)
+            }
+            if isinstance(event_completion_cids, Mapping)
+            else {}
+        )
+        normalized_request_completion_cids = (
+            {
+                str(member_id): str(member_cid)
+                for member_id, member_cid in request_completion_cids.items()
+                if str(member_id) and str(member_cid)
+            }
+            if isinstance(request_completion_cids, Mapping)
+            else {}
+        )
+        try:
+            request_todo_path = Path(
+                str(metadata.get("todo_path") or "")
+            ).resolve(strict=False)
+            current_todo_path = self.todo_path.resolve(strict=False)
+        except (OSError, RuntimeError):
+            return {}
+
+        bindings_match = bool(
+            metadata.get("schema")
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            and getattr(request, "request_id", "") == request_id
+            and getattr(request, "task_id", "") == task_id
+            and getattr(request, "branch_name", "")
+            == str(event.get("branch") or "")
+            and int(getattr(request, "attempt", 0) or 0)
+            == int(event.get("attempt") or 0)
+            and getattr(request, "commit_sha", "")
+            == implementation_commit
+            and str(metadata.get("implementation_commit") or "")
+            == implementation_commit
+            and getattr(request, "canonical_task_id", "") == task_cid
+            and task_cid
+            and (
+                not task_key
+                or getattr(request, "canonical_task_key", "") == task_key
+            )
+            and getattr(request, "has_target_binding", False)
+            and getattr(request, "target_repository_id", "")
+            == self.merge_target_repository_id
+            and getattr(request, "target_branch", "") == target_branch
+            and request_todo_path == current_todo_path
+            and normalized_event_completion_cids
+            == normalized_request_completion_cids
+            and normalized_request_completion_cids.get(task_id) == task_cid
+        )
+        if (
+            not bindings_match
+            or not implementation_commit
+            or not self._git_ref_is_ancestor(
+                implementation_commit,
+                target_branch,
+            )
+        ):
+            return {}
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "integrated-authority-quarantine-reconciliation@1"
+            ),
+            "passed": True,
+            "reason": "authority_quarantined_candidate_already_integrated",
+            "request_id": request_id,
+            "failure_reason": failure_reason,
+            "task_id": task_id,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": str(
+                getattr(request, "canonical_task_key", "") or ""
+            ),
+            "implementation_commit": implementation_commit,
+            "target_repository_id": self.merge_target_repository_id,
+            "target_branch": target_branch,
+            "completion_task_cids": normalized_request_completion_cids,
+        }
 
     def _current_todo_tasks_by_id_for_reconciliation(
         self,
