@@ -74977,6 +74977,7 @@ def _r24_capsule_schema_data_evidence(
     pin = None
     sealed = None
     try:
+        _strip_control_plane_group_other_write(ROOT)
         pin = materialize_agent_implementation_control_plane_capsule(
             source_root=ROOT,
             capsule_parent=capsule_parent,
@@ -88798,6 +88799,36 @@ def _best_effort_publish_sealed_owner_terminal_observation(
         pass
 
 
+def _strip_control_plane_group_other_write(root: Path) -> None:
+    """Drop umask-002 group/other write before the capsule immutability gate."""
+
+    targets = [
+        root / "ipfs_accelerate_py" / "llm_router.py",
+        root / "ipfs_accelerate_py" / "agent_implementation_route.py",
+        root / "scripts" / "run_agent_supervisor_efficiency_state_hardening.py",
+    ]
+    supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
+    if supervisor_root.is_dir():
+        targets.extend(supervisor_root.rglob("*.py"))
+    for path in targets:
+        try:
+            metadata = os.lstat(path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise OperatorError(
+                "control-plane source file is unavailable"
+            ) from exc
+        mode = stat.S_IMODE(metadata.st_mode)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or not (mode & 0o022)
+        ):
+            continue
+        os.chmod(path, mode & ~0o022)
+
+
 def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
     """Delegate owner authority to exact code in one retained sealed capsule."""
 
@@ -88984,6 +89015,7 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                 ),
             )
         retire_launch_admission_bound()
+        _strip_control_plane_group_other_write(ROOT)
         pin = materialize_agent_implementation_control_plane_capsule(
             source_root=ROOT,
             capsule_parent=capsule_parent,
