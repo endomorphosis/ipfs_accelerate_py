@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
+    COORDINATION_STORAGE_REPAIR_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
@@ -27,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationNotReadyError,
     DatabaseCoordinationStaleFenceError,
+    DatabaseCoordinationStorageRepairedError,
     DatabaseCoordinator,
     LeaseKind,
     LeaseMode,
@@ -37,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     exclusive_scope_key,
     open_database_coordinator,
     read_coordination_registry_projection,
+    repair_coordination_art_index_storage,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -825,6 +828,91 @@ def test_commit_failure_is_never_reported_as_success(tmp_path: Path) -> None:
             coordinator._commit_if_idle(FailingCommitConnection())
     finally:
         coordinator.close()
+
+
+def test_exact_art_commit_failure_repairs_storage_but_requires_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    actual = coordinator._require()
+    actual.close()
+
+    class FatalException(RuntimeError):
+        pass
+
+    class FailedConnection:
+        in_transaction = True
+        closed = False
+
+        def commit(self) -> None:
+            raise FatalException(
+                "FATAL Error: Invalid Input Error: Failed to delete all rows "
+                "from index. Only deleted 0 out of 1 rows."
+            )
+
+        def rollback(self) -> None:
+            self.in_transaction = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    failed = FailedConnection()
+    coordinator._connection = failed
+    coordinator._closed = False
+    expected_receipt = {
+        "schema": COORDINATION_STORAGE_REPAIR_SCHEMA,
+        "receipt_cid": "sha256:repair",
+        "logical_projection_equal": True,
+        "retry_required": True,
+    }
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.database_coordination."
+        "repair_coordination_art_index_storage",
+        lambda _path: expected_receipt,
+    )
+
+    with pytest.raises(DatabaseCoordinationStorageRepairedError) as captured:
+        coordinator._commit_if_idle(failed)
+
+    assert dict(captured.value.receipt) == expected_receipt
+    assert failed.closed is True
+    assert coordinator.is_open is False
+
+
+def test_art_storage_rebuild_preserves_exact_logical_projection_and_source(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        coordinator.register_task(task_cid="task:done", task_id="DONE")
+        coordinator.register_task(task_cid="task:ready", task_id="READY")
+        before = coordinator.coordination_registry_projection()
+    finally:
+        coordinator.close()
+    database_path.with_name(database_path.name + ".wal").touch()
+
+    receipt = repair_coordination_art_index_storage(database_path)
+
+    assert receipt["schema"] == COORDINATION_STORAGE_REPAIR_SCHEMA
+    assert receipt["pre_projection_root"] == before["projection_root"]
+    assert receipt["post_projection_root"] == before["projection_root"]
+    assert receipt["logical_projection_equal"] is True
+    assert receipt["interrupted_transaction_accepted"] is False
+    assert receipt["retry_required"] is True
+    assert Path(receipt["quarantined_source_path"]).is_file()
+    assert Path(receipt["quarantined_empty_wal_path"]).is_file()
+    assert receipt["source_sha256"].startswith("sha256:")
+    assert receipt["replacement_sha256"].startswith("sha256:")
+
+    with open_database_coordinator(database_path) as rebuilt:
+        assert rebuilt.coordination_registry_projection() == before
+        claim = rebuilt.claim_ready_task(
+            owner_session_id="session:after-repair",
+        )
+        assert claim is not None
+        assert claim.task_cid in {"task:done", "task:ready"}
 
 
 def test_read_only_projection_preserves_database_bytes_and_exposes_histories(

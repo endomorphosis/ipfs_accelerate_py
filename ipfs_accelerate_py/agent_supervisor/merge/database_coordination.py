@@ -31,6 +31,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
+import tempfile
 import threading
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -43,6 +46,7 @@ from typing import Any, ClassVar, Final
 
 from ..task_sources.duckdb_state import (
     connect_duckdb_with_policy,
+    exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
 )
@@ -72,6 +76,9 @@ DATABASE_COORDINATION_SCHEMA: Final[str] = (
 )
 COORDINATION_REGISTRY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/coordination-registry-projection@1"
+)
+COORDINATION_STORAGE_REPAIR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/coordination-storage-repair@1"
 )
 FENCED_LEASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/fenced-lease@1"
@@ -108,6 +115,10 @@ CROSS_STORE_FENCE_GUARD_EVENT: Final[str] = "cross_store_fence_guard_succeeded"
 CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD: Final[str] = (
     "requires_cross_store_fence_guard"
 )
+DUCKDB_ART_DELETE_FAILURE_SIGNATURE: Final[str] = (
+    "Failed to delete all rows from index. Only deleted"
+)
+COORDINATION_STORAGE_REPAIR_BATCH_ROWS: Final[int] = 4_096
 
 # ---------------------------------------------------------------------------
 # Errors (reuse LeaseCoordinator vocabulary; extend only when needed)
@@ -165,6 +176,27 @@ class DatabaseCoordinationBoundsError(DatabaseCoordinationError, ValueError):
     """Payload or lease duration bound exceeded."""
 
     code = "DQP_BOUNDS"
+
+
+class DatabaseCoordinationStorageRepairedError(DatabaseCoordinationError):
+    """A failed transaction was not accepted and its physical store was repaired.
+
+    Callers must retry the complete fenced operation.  The repair receipt proves
+    that the replacement retained the exact pre-failure logical projection; it
+    does not claim that the interrupted transaction committed.
+    """
+
+    code = "DQP_STORAGE_REPAIRED_RETRY_REQUIRED"
+
+    def __init__(self, message: str, *, receipt: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.receipt = MappingProxyType(dict(receipt))
+
+
+class DatabaseCoordinationStorageRepairError(DatabaseCoordinationError):
+    """Exact ART corruption was observed but safe physical repair failed."""
+
+    code = "DQP_STORAGE_REPAIR_FAILED"
 
 
 class DuckDBUnavailableError(DatabaseCoordinationError):
@@ -1605,6 +1637,322 @@ def _coordination_registry_projection_from_connection(
     return projection
 
 
+def _is_duckdb_art_delete_failure(exc: BaseException) -> bool:
+    """Recognize only DuckDB's observed explicit-ART invalidation failure."""
+
+    return (
+        type(exc).__name__ == "FatalException"
+        and DUCKDB_ART_DELETE_FAILURE_SIGNATURE in str(exc)
+    )
+
+
+def _coordination_storage_catalog(connection: Any) -> dict[str, Any]:
+    tables = [
+        [str(name), str(sql)]
+        for name, sql in connection.execute(
+            "SELECT table_name, sql FROM duckdb_tables() "
+            "WHERE database_name=current_database() AND schema_name='main' "
+            "ORDER BY table_name"
+        ).fetchall()
+    ]
+    indexes = [
+        [str(name), str(table), str(sql)]
+        for name, table, sql in connection.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE database_name=current_database() AND schema_name='main' "
+            "ORDER BY index_name"
+        ).fetchall()
+    ]
+    views = connection.execute(
+        "SELECT view_name FROM duckdb_views() "
+        "WHERE database_name=current_database() AND schema_name='main' "
+        "AND NOT internal ORDER BY view_name"
+    ).fetchall()
+    if views:
+        raise DatabaseCoordinationStorageRepairError(
+            "coordination storage repair rejects non-canonical views"
+        )
+    return {"tables": tables, "indexes": indexes}
+
+
+def _coordination_file_digest(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        while True:
+            chunk = stream.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest(), size
+
+
+def _fsync_coordination_path(path: Path) -> None:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _fsync_coordination_directory(path: Path) -> None:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def repair_coordination_art_index_storage(
+    database_path: Path | str,
+) -> dict[str, Any]:
+    """Rebuild one local coordinator after the exact DuckDB ART fatal.
+
+    The existing database is read under its ordinary process-wide exclusive
+    lock.  A fresh candidate is populated from bounded logical row batches,
+    then accepted only when its schema/index catalog and complete logical
+    projection equal the source.  The physical source is retained in a
+    quarantine directory and the verified candidate is installed atomically.
+
+    This function never accepts or replays the transaction that observed the
+    fatal error.  Its caller must terminate that operation and retry it under a
+    fresh fence.
+    """
+
+    if is_quack_transport_target(database_path):
+        raise DatabaseCoordinationStorageRepairError(
+            "ART storage repair requires a private local coordination file"
+        )
+    path = Path(database_path)
+    if not path.is_absolute():
+        path = path.resolve()
+    wal_path = path.with_name(path.name + ".wal")
+    lock_path = path.with_name(f".{path.name}.lock")
+    candidate: Path | None = None
+    backup: Path | None = None
+    with exclusive_file_lock(lock_path):
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError as exc:
+            raise DatabaseCoordinationStorageRepairError(
+                f"coordination storage does not exist: {path}"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise DatabaseCoordinationStorageRepairError(
+                "coordination storage repair requires a regular non-symlink file"
+            )
+        empty_wal = False
+        if wal_path.exists():
+            wal_metadata = wal_path.lstat()
+            if (
+                stat.S_ISLNK(wal_metadata.st_mode)
+                or not stat.S_ISREG(wal_metadata.st_mode)
+                or wal_metadata.st_size != 0
+            ):
+                raise DatabaseCoordinationStorageRepairError(
+                    "coordination storage repair refuses an uncheckpointed WAL"
+                )
+            empty_wal = True
+        source_digest, source_size = _coordination_file_digest(path)
+        import duckdb  # type: ignore
+
+        source = connect_duckdb_with_policy(
+            duckdb,
+            path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+        try:
+            before = _coordination_registry_projection_from_connection(
+                source,
+                validate_authority=True,
+            )
+            source_catalog = _coordination_storage_catalog(source)
+            descriptor, candidate_name = tempfile.mkstemp(
+                prefix=f".{path.name}.art-repair-",
+                suffix=".duckdb",
+                dir=path.parent,
+            )
+            os.close(descriptor)
+            candidate = Path(candidate_name)
+            candidate.unlink()
+            target = connect_duckdb_with_policy(
+                duckdb,
+                candidate,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+            row_counts: dict[str, int] = {}
+            try:
+                statements = _split_sql_statements(_BOOKKEEPING_SQL)
+                table_statements = [
+                    statement
+                    for statement in statements
+                    if statement.lstrip().upper().startswith("CREATE TABLE")
+                ]
+                index_statements = [
+                    statement
+                    for statement in statements
+                    if statement.lstrip().upper().startswith("CREATE INDEX")
+                    or statement.lstrip().upper().startswith("CREATE UNIQUE INDEX")
+                ]
+                if len(table_statements) != len(_COORDINATION_REQUIRED_COLUMNS):
+                    raise DatabaseCoordinationStorageRepairError(
+                        "coordination repair DDL table set is incomplete"
+                    )
+                for statement in table_statements:
+                    target.execute(statement)
+                target.execute("BEGIN TRANSACTION")
+                try:
+                    for table, columns_and_types in _COORDINATION_REQUIRED_COLUMNS.items():
+                        columns = tuple(name for name, _kind in columns_and_types)
+                        quoted_columns = ", ".join(f'"{name}"' for name in columns)
+                        placeholders = ", ".join("?" for _ in columns)
+                        insert_sql = (
+                            f'INSERT INTO "{table}" ({quoted_columns}) '
+                            f"VALUES ({placeholders})"
+                        )
+                        cursor = source.execute(
+                            f'SELECT {quoted_columns} FROM "{table}" ORDER BY ALL'
+                        )
+                        count = 0
+                        while True:
+                            rows = cursor.fetchmany(
+                                COORDINATION_STORAGE_REPAIR_BATCH_ROWS
+                            )
+                            if not rows:
+                                break
+                            target.executemany(insert_sql, rows)
+                            count += len(rows)
+                        row_counts[table] = count
+                    target.execute("COMMIT")
+                except BaseException:
+                    try:
+                        target.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+                for statement in index_statements:
+                    target.execute(statement)
+                target.execute("CHECKPOINT")
+                after = _coordination_registry_projection_from_connection(
+                    target,
+                    validate_authority=True,
+                )
+                target_catalog = _coordination_storage_catalog(target)
+                if target_catalog != source_catalog:
+                    raise DatabaseCoordinationStorageRepairError(
+                        "rebuilt coordination schema/index catalog differs"
+                    )
+                if after["projection_root"] != before["projection_root"]:
+                    raise DatabaseCoordinationStorageRepairError(
+                        "rebuilt coordination logical projection differs"
+                    )
+            finally:
+                target.close()
+        finally:
+            source.close()
+
+        if candidate is None or not candidate.is_file():
+            raise DatabaseCoordinationStorageRepairError(
+                "coordination storage repair did not produce a candidate"
+            )
+        os.chmod(candidate, 0o600)
+        _fsync_coordination_path(candidate)
+        candidate_digest, candidate_size = _coordination_file_digest(candidate)
+
+        quarantine = path.parent / ".coordination-art-repair-quarantine"
+        if quarantine.exists():
+            quarantine_metadata = quarantine.lstat()
+            if stat.S_ISLNK(quarantine_metadata.st_mode) or not stat.S_ISDIR(
+                quarantine_metadata.st_mode
+            ):
+                raise DatabaseCoordinationStorageRepairError(
+                    "coordination repair quarantine is not a real directory"
+                )
+        else:
+            quarantine.mkdir(mode=0o700)
+        backup = quarantine / (
+            f"{path.name}.{source_digest.removeprefix('sha256:')}."
+            f"{uuid.uuid4().hex}.duckdb"
+        )
+        os.replace(path, backup)
+        quarantined_wal: Path | None = None
+        if empty_wal:
+            quarantined_wal = backup.with_name(backup.name + ".wal")
+            os.replace(wal_path, quarantined_wal)
+        try:
+            os.replace(candidate, path)
+        except BaseException:
+            os.replace(backup, path)
+            if quarantined_wal is not None:
+                os.replace(quarantined_wal, wal_path)
+            raise
+        _fsync_coordination_directory(path.parent)
+
+        verifier = connect_duckdb_with_policy(
+            duckdb,
+            path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+        try:
+            verified = _coordination_registry_projection_from_connection(
+                verifier,
+                validate_authority=True,
+            )
+            verified_catalog = _coordination_storage_catalog(verifier)
+        finally:
+            verifier.close()
+        if (
+            verified["projection_root"] != before["projection_root"]
+            or verified_catalog != source_catalog
+        ):
+            failed = backup.with_name(backup.name + ".failed-replacement")
+            os.replace(path, failed)
+            os.replace(backup, path)
+            if quarantined_wal is not None:
+                os.replace(quarantined_wal, wal_path)
+            _fsync_coordination_directory(path.parent)
+            raise DatabaseCoordinationStorageRepairError(
+                "installed coordination repair failed independent verification"
+            )
+
+        receipt: dict[str, Any] = {
+            "schema": COORDINATION_STORAGE_REPAIR_SCHEMA,
+            "reason": "duckdb_art_index_physical_rebuild",
+            "trigger_signature": DUCKDB_ART_DELETE_FAILURE_SIGNATURE,
+            "database_path": str(path),
+            "quarantined_source_path": str(backup),
+            "quarantined_empty_wal_path": (
+                str(quarantined_wal) if quarantined_wal is not None else ""
+            ),
+            "source_sha256": source_digest,
+            "source_size_bytes": source_size,
+            "replacement_sha256": candidate_digest,
+            "replacement_size_bytes": candidate_size,
+            "pre_projection_root": before["projection_root"],
+            "post_projection_root": verified["projection_root"],
+            "table_count": len(source_catalog["tables"]),
+            "index_count": len(source_catalog["indexes"]),
+            "row_counts": dict(sorted(row_counts.items())),
+            "source_preserved": True,
+            "logical_projection_equal": True,
+            "interrupted_transaction_accepted": False,
+            "retry_required": True,
+        }
+        receipt["receipt_cid"] = _sha256_hex(canonical_json_bytes(receipt))
+        return receipt
+
+
 # ---------------------------------------------------------------------------
 # Coordinator
 # ---------------------------------------------------------------------------
@@ -1752,19 +2100,51 @@ class DatabaseCoordinator:
             pass
 
     def _commit_if_idle(self, connection: Any) -> None:
-        if getattr(connection, "in_transaction", False):
+        try:
+            if getattr(connection, "in_transaction", False):
+                commit = getattr(connection, "commit", None)
+                if callable(commit):
+                    commit()
+                    return
+            raw = getattr(connection, "_connection", None)
+            raw_commit = getattr(raw, "commit", None) if raw is not None else None
+            if callable(raw_commit):
+                raw_commit()
+                return
             commit = getattr(connection, "commit", None)
             if callable(commit):
                 commit()
-                return
-        raw = getattr(connection, "_connection", None)
-        raw_commit = getattr(raw, "commit", None) if raw is not None else None
-        if callable(raw_commit):
-            raw_commit()
-            return
-        commit = getattr(connection, "commit", None)
-        if callable(commit):
-            commit()
+        except Exception as exc:
+            if (
+                not _is_duckdb_art_delete_failure(exc)
+                or self._quack_transport
+                or self._closed
+                or connection is not self._connection
+            ):
+                raise
+            # DuckDB invalidates the connection after this fatal.  Close it to
+            # release the ordinary per-file writer lock, rebuild the private
+            # physical store under that same lock, and require the caller to
+            # retry its entire fenced operation.  No failed commit is ever
+            # converted into success.
+            self._rollback_if_open(connection)
+            self._connection = None
+            self._closed = True
+            try:
+                connection.close()
+            except Exception:
+                pass
+            try:
+                receipt = repair_coordination_art_index_storage(self._path)
+            except Exception as repair_exc:
+                raise DatabaseCoordinationStorageRepairError(
+                    "DuckDB ART failure was detected but exact logical rebuild failed"
+                ) from repair_exc
+            raise DatabaseCoordinationStorageRepairedError(
+                "DuckDB ART storage was rebuilt with equal logical projection; "
+                "the interrupted fenced operation must be retried",
+                receipt=receipt,
+            ) from exc
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())
@@ -6366,6 +6746,7 @@ __all__ = [
     "MAINTENANCE_LEASE_INTERFACE",
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
+    "COORDINATION_STORAGE_REPAIR_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
@@ -6394,9 +6775,12 @@ __all__ = [
     "DatabaseCoordinationNotReadyError",
     "DatabaseCoordinationNotOpenError",
     "DatabaseCoordinationBoundsError",
+    "DatabaseCoordinationStorageRepairedError",
+    "DatabaseCoordinationStorageRepairError",
     "DuckDBUnavailableError",
     "duckdb_available",
     "exclusive_scope_key",
     "open_database_coordinator",
     "read_coordination_registry_projection",
+    "repair_coordination_art_index_storage",
 ]
