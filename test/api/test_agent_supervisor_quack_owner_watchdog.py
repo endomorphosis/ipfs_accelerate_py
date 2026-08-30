@@ -28,6 +28,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_owner_watchdog import (
     process_birth_id,
     terminate_spawned_owner,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    StateServerIdentity,
+)
 
 
 class FakeClock:
@@ -62,6 +65,27 @@ def _birth(pid: int = 421, *, ticks: int = 9001) -> ProcessBirthIdentity:
         boot_id="boot-a",
         parent_pid=37,
     )
+
+
+def test_process_birth_id_matches_state_server_identity_authority() -> None:
+    birth = _birth()
+    identity = StateServerIdentity(
+        server_id="server:test",
+        store_id="control.duckdb",
+        database_uuid="database:test",
+        schema_revision=1,
+        schema_fingerprint="sha256:schema",
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=birth,
+        listen_uri="quack:127.0.0.1:45123",
+        extension_fingerprint="sha256:extension",
+        credential_generation=1,
+        secret_handle="handle:test",
+    )
+
+    assert process_birth_id(birth) == identity.process_birth_id
 
 
 def _binding(*, generation: int = 7, database_uuid: str = "db-a") -> QuackOwnerBinding:

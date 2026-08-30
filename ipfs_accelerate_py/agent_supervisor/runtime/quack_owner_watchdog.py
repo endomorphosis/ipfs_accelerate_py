@@ -129,7 +129,9 @@ def process_birth_id(birth: ProcessBirthIdentity) -> str:
         f"{str(birth.boot_id or '')}:{int(birth.parent_pid or 0)}"
     )
     digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
-    return f"birth:{digest[7:39]}"
+    # StateServerIdentity@1 slices characters 7:39 from a ``sha256:<hex>``
+    # string, which is exactly the first 32 hexadecimal digest characters.
+    return f"birth:{digest[:32]}"
 
 
 def process_births_match(
