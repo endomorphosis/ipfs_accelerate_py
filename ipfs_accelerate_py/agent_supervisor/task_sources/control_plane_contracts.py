@@ -47,12 +47,14 @@ CONTROL_PLANE_BOUNDS_SCHEMA: Final[str] = (
     f"{SCHEMA_PREFIX}/control-plane-bounds@1"
 )
 SECRET_HANDLE_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/secret-handle@1"
+TASK_STATE_SNAPSHOT_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/task-state-snapshot@1"
 
 CONTROL_PLANE_STORE_IDENTITY_INTERFACE: Final[str] = "ControlPlaneStoreIdentity@1"
 STORE_GENERATION_INTERFACE: Final[str] = "StoreGeneration@1"
 STATE_COMMAND_INTERFACE: Final[str] = "StateCommand@1"
 STATE_SNAPSHOT_INTERFACE: Final[str] = "StateSnapshot@1"
 STATE_EXPORT_RECEIPT_INTERFACE: Final[str] = "StateExportReceipt@1"
+CANONICAL_TASK_STATE_MACHINE_INTERFACE: Final[str] = "CanonicalTaskStateMachine@1"
 
 # Hard bounds (integer-only; non-finite values are rejected).
 MAX_RECORD_BYTES: Final[int] = 262_144
@@ -265,6 +267,174 @@ class CommandOutcome(str, Enum):
     CONFLICT = "conflict"
     STALE = "stale"
     IDEMPOTENT_REPLAY = "idempotent_replay"
+
+
+class TaskState(str, Enum):
+    """Closed lifecycle vocabulary for one canonical task.
+
+    The state is intentionally distinct from a worker's progress report.  In
+    particular, ``completed`` is only a lifecycle state; callers must still
+    supply the current authority bindings before it can be admitted.
+    """
+
+    PROPOSED = "proposed"
+    ADMITTED = "admitted"
+    READY = "ready"
+    CLAIMED = "claimed"
+    IN_PROGRESS = "in_progress"
+    RETRYING = "retrying"
+    BLOCKED = "blocked"
+    PROVIDER_OUTCOME_UNKNOWN = "provider_outcome_unknown"
+    RECONCILING = "reconciling"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    QUARANTINED = "quarantined"
+    REJECTED = "rejected"
+
+
+# A status used by older task projections is normalized at the boundary rather
+# than permitted to create a second state machine in each caller.
+_TASK_STATE_ALIASES: Final[TypingMapping[str, TaskState]] = MappingProxyType(
+    {
+        "todo": TaskState.READY,
+        "queued": TaskState.READY,
+        "pending": TaskState.READY,
+        "running": TaskState.IN_PROGRESS,
+        "complete": TaskState.COMPLETED,
+        "done": TaskState.COMPLETED,
+        "skipped": TaskState.COMPLETED,
+        "canceled": TaskState.CANCELLED,
+    }
+)
+
+_TERMINAL_TASK_STATES: Final[frozenset[TaskState]] = frozenset(
+    {
+        TaskState.COMPLETED,
+        TaskState.CANCELLED,
+        TaskState.FAILED,
+        TaskState.QUARANTINED,
+        TaskState.REJECTED,
+    }
+)
+
+# This is the sole lifecycle graph.  Later CAS, receipt, and reconciliation
+# work consumes this contract rather than defining a parallel transition map.
+_TASK_STATE_TRANSITIONS: Final[TypingMapping[TaskState, frozenset[TaskState]]] = (
+    MappingProxyType(
+        {
+            TaskState.PROPOSED: frozenset(
+                {TaskState.ADMITTED, TaskState.REJECTED, TaskState.CANCELLED}
+            ),
+            TaskState.ADMITTED: frozenset(
+                {TaskState.READY, TaskState.BLOCKED, TaskState.REJECTED, TaskState.CANCELLED}
+            ),
+            TaskState.READY: frozenset(
+                {TaskState.CLAIMED, TaskState.BLOCKED, TaskState.CANCELLED}
+            ),
+            TaskState.CLAIMED: frozenset(
+                {
+                    TaskState.IN_PROGRESS,
+                    TaskState.READY,
+                    TaskState.RETRYING,
+                    TaskState.BLOCKED,
+                    TaskState.PROVIDER_OUTCOME_UNKNOWN,
+                    TaskState.CANCELLED,
+                }
+            ),
+            TaskState.IN_PROGRESS: frozenset(
+                {
+                    TaskState.COMPLETED,
+                    TaskState.RETRYING,
+                    TaskState.BLOCKED,
+                    TaskState.PROVIDER_OUTCOME_UNKNOWN,
+                    TaskState.FAILED,
+                    TaskState.QUARANTINED,
+                    TaskState.CANCELLED,
+                }
+            ),
+            TaskState.RETRYING: frozenset(
+                {
+                    TaskState.CLAIMED,
+                    TaskState.READY,
+                    TaskState.BLOCKED,
+                    TaskState.PROVIDER_OUTCOME_UNKNOWN,
+                    TaskState.FAILED,
+                    TaskState.CANCELLED,
+                }
+            ),
+            TaskState.BLOCKED: frozenset(
+                {TaskState.READY, TaskState.REJECTED, TaskState.CANCELLED, TaskState.QUARANTINED}
+            ),
+            # Unknown provider effects must reconcile first; they can never
+            # jump directly to retrying or a terminal success.
+            TaskState.PROVIDER_OUTCOME_UNKNOWN: frozenset({TaskState.RECONCILING}),
+            TaskState.RECONCILING: frozenset(
+                {
+                    TaskState.COMPLETED,
+                    TaskState.RETRYING,
+                    TaskState.FAILED,
+                    TaskState.QUARANTINED,
+                    TaskState.BLOCKED,
+                    TaskState.CANCELLED,
+                }
+            ),
+            TaskState.COMPLETED: frozenset(),
+            TaskState.CANCELLED: frozenset(),
+            TaskState.FAILED: frozenset(),
+            TaskState.QUARANTINED: frozenset(),
+            TaskState.REJECTED: frozenset(),
+        }
+    )
+)
+
+
+def canonical_task_state(value: TaskState | str) -> TaskState:
+    """Normalize a closed task state, including documented legacy aliases."""
+
+    if isinstance(value, TaskState):
+        return value
+    if not isinstance(value, str):
+        raise ControlPlaneContractError("task state must be a closed TaskState value")
+    normalized = value.strip()
+    if normalized != value or not normalized:
+        raise ControlPlaneContractError("task state must be non-empty and trimmed")
+    try:
+        return TaskState(normalized)
+    except ValueError:
+        alias = _TASK_STATE_ALIASES.get(normalized)
+        if alias is None:
+            raise ControlPlaneContractError("task state is outside the canonical vocabulary") from None
+        return alias
+
+
+def is_terminal_task_state(value: TaskState | str) -> bool:
+    """Return whether a canonical lifecycle state has no further transitions."""
+
+    return canonical_task_state(value) in _TERMINAL_TASK_STATES
+
+
+def allowed_task_transitions(value: TaskState | str) -> tuple[TaskState, ...]:
+    """Return the deterministic, closed successors of ``value``."""
+
+    return tuple(sorted(_TASK_STATE_TRANSITIONS[canonical_task_state(value)], key=lambda item: item.value))
+
+
+def task_transition_allowed(source: TaskState | str, target: TaskState | str) -> bool:
+    """Return whether a non-noop lifecycle transition is in the canonical graph."""
+
+    current = canonical_task_state(source)
+    proposed = canonical_task_state(target)
+    return current == proposed or proposed in _TASK_STATE_TRANSITIONS[current]
+
+
+def assert_task_transition(source: TaskState | str, target: TaskState | str) -> None:
+    """Fail closed when a requested task lifecycle edge is not canonical."""
+
+    if not task_transition_allowed(source, target):
+        raise ControlPlaneContractError(
+            f"canonical task transition is not allowed: {canonical_task_state(source).value} -> {canonical_task_state(target).value}"
+        )
 
 
 # Authority classes that may never be used for identity keys themselves.
@@ -1320,6 +1490,138 @@ class StateCommand:
 
 
 @dataclass(frozen=True)
+class TaskStateSnapshot:
+    """Canonical task lifecycle state bound to its completion authorities.
+
+    This is a pure contract record.  It does not mutate task storage or admit
+    completion; it gives the state owner one exact set of values that must be
+    current when a terminal success is requested.
+    """
+
+    SCHEMA: ClassVar[str] = TASK_STATE_SNAPSHOT_SCHEMA
+    INTERFACE: ClassVar[str] = CANONICAL_TASK_STATE_MACHINE_INTERFACE
+
+    task_cid: str
+    state: TaskState
+    revision: int
+    lease_id: str
+    fence_epoch: int
+    policy_cid: str
+    repository_tree_id: str
+    plan_cid: str
+    plan_epoch: int
+    authority_class: StateAuthorityClass = StateAuthorityClass.AUTHORITATIVE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "task_cid", _digest(self.task_cid, "task_cid"))
+        object.__setattr__(self, "state", canonical_task_state(self.state))
+        object.__setattr__(
+            self, "revision", _bounded_int(self.revision, "revision", minimum=MIN_REVISION)
+        )
+        object.__setattr__(self, "lease_id", _compact_id(self.lease_id, "lease_id"))
+        object.__setattr__(
+            self, "fence_epoch", _bounded_int(self.fence_epoch, "fence_epoch", minimum=MIN_FENCE_EPOCH)
+        )
+        object.__setattr__(self, "policy_cid", _compact_id(self.policy_cid, "policy_cid"))
+        object.__setattr__(
+            self, "repository_tree_id", _compact_id(self.repository_tree_id, "repository_tree_id")
+        )
+        object.__setattr__(self, "plan_cid", _digest(self.plan_cid, "plan_cid"))
+        object.__setattr__(
+            self, "plan_epoch", _bounded_int(self.plan_epoch, "plan_epoch", minimum=1)
+        )
+        authority = _enum(
+            self.authority_class, StateAuthorityClass, field_name="authority_class"
+        )
+        if authority is not StateAuthorityClass.AUTHORITATIVE:
+            raise ControlPlaneAuthorityError(
+                "task lifecycle snapshots must be authoritative"
+            )
+        object.__setattr__(self, "authority_class", authority)
+
+    def completion_bindings_match(self, current: "TaskStateSnapshot") -> bool:
+        """Return whether the values that authorize completion are current."""
+
+        return (
+            self.task_cid == current.task_cid
+            and self.revision == current.revision
+            and self.lease_id == current.lease_id
+            and self.fence_epoch == current.fence_epoch
+            and self.policy_cid == current.policy_cid
+            and self.repository_tree_id == current.repository_tree_id
+            and self.plan_cid == current.plan_cid
+            and self.plan_epoch == current.plan_epoch
+        )
+
+    def may_complete_against(self, current: "TaskStateSnapshot") -> bool:
+        """Return whether a current binding may admit terminal success.
+
+        A stale state, or a task that has not executed/reconciled, cannot
+        complete even if a worker supplied a success assertion.
+        """
+
+        return (
+            self.state in {TaskState.IN_PROGRESS, TaskState.RECONCILING}
+            and self.completion_bindings_match(current)
+            and current.state is self.state
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "contract_version": CONTRACT_VERSION,
+            "task_cid": self.task_cid,
+            "state": self.state.value,
+            "revision": self.revision,
+            "lease_id": self.lease_id,
+            "fence_epoch": self.fence_epoch,
+            "policy_cid": self.policy_cid,
+            "repository_tree_id": self.repository_tree_id,
+            "plan_cid": self.plan_cid,
+            "plan_epoch": self.plan_epoch,
+            "authority_class": self.authority_class.value,
+        }
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self.to_dict(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TaskStateSnapshot":
+        if not isinstance(payload, Mapping):
+            raise ControlPlaneContractError("task state snapshot payload must be an object")
+        _schema(payload, cls.SCHEMA)
+        _contract_version(payload)
+        allowed = {
+            "schema", "contract_version", "content_id", "task_cid", "state",
+            "revision", "lease_id", "fence_epoch", "policy_cid",
+            "repository_tree_id", "plan_cid", "plan_epoch", "authority_class",
+        }
+        _reject_unknown_fields(payload, allowed, artifact_name="task state snapshot")
+        record = cls(
+            task_cid=payload.get("task_cid", ""),
+            state=payload.get("state", TaskState.PROPOSED),
+            revision=payload.get("revision", 0),
+            lease_id=payload.get("lease_id", ""),
+            fence_epoch=payload.get("fence_epoch", 0),
+            policy_cid=payload.get("policy_cid", ""),
+            repository_tree_id=payload.get("repository_tree_id", ""),
+            plan_cid=payload.get("plan_cid", ""),
+            plan_epoch=payload.get("plan_epoch", 1),
+            authority_class=payload.get("authority_class", StateAuthorityClass.AUTHORITATIVE),
+        )
+        claimed = payload.get("content_id")
+        if claimed not in (None, "") and _content_id(claimed, "content_id") != record.content_id:
+            raise ControlPlaneIdentityError(
+                "forged or inconsistent task state snapshot content_id"
+            )
+        return record
+
+
+@dataclass(frozen=True)
 class StateSnapshot:
     """Point-in-time snapshot bound to store generation and watermark.
 
@@ -1729,11 +2031,20 @@ __all__ = (
     "StateExportReceipt",
     "StateSnapshot",
     "StoreGeneration",
+    "TASK_STATE_SNAPSHOT_SCHEMA",
+    "TaskState",
+    "TaskStateSnapshot",
+    "CANONICAL_TASK_STATE_MACHINE_INTERFACE",
+    "allowed_task_transitions",
+    "assert_task_transition",
     "canonical_json_bytes",
+    "canonical_task_state",
     "closed_authority_classes",
     "closed_command_kinds",
     "closed_identity_kinds",
     "content_identity",
+    "is_terminal_task_state",
     "is_secret_handle",
     "redact_mapping",
+    "task_transition_allowed",
 )
