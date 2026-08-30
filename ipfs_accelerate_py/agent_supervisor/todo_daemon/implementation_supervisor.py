@@ -13214,8 +13214,12 @@ class PortalImplementationSupervisor:
         wrapper has no root active-task projection in that interval.  Preserve
         only the exact live daemon whose immutable database projection derives
         the Portal identity carried by an unchanged implementation lock and
-        nested state record.  Missing, stale, foreign, or multiple candidates
-        fail closed for callback-deferral authority and return no deferral.
+        nested state record.  Immediately after ``implementation_finished``,
+        the lock is intentionally gone while the outer DuckDB callback still
+        has to terminalize; a fresh, successful, inactive state with the same
+        exact identities receives one bounded settlement grace.  Missing,
+        stale, foreign, or multiple candidates fail closed for callback-
+        deferral authority and return no deferral.
         """
 
         worktree_root = self.config.worktree_root
@@ -13290,11 +13294,6 @@ class PortalImplementationSupervisor:
             binding_path = attempt_dir / "database-attempt-binding.json"
             implementation_lock_path = attempt_dir / "implementation.lock"
             nested_state_path = attempt_dir / "portal-task-state.json"
-            implementation_lock_snapshot = self._stable_single_link_json_snapshot(
-                implementation_lock_path
-            )
-            if implementation_lock_snapshot is None:
-                continue
             binding_snapshot = self._stable_single_link_json_snapshot(binding_path)
             nested_state_snapshot = self._stable_single_link_json_snapshot(
                 nested_state_path
@@ -13306,10 +13305,47 @@ class PortalImplementationSupervisor:
             ):
                 continue
             binding, binding_signature = binding_snapshot
-            implementation_lock, implementation_lock_signature = (
-                implementation_lock_snapshot
-            )
             nested_state, nested_state_signature = nested_state_snapshot
+            implementation_lock_snapshot = self._stable_single_link_json_snapshot(
+                implementation_lock_path
+            )
+            callback_in_progress = (
+                nested_state.get("implementation_in_progress") is True
+            )
+            callback_finished_at = nested_state.get(
+                "last_implementation_finished_at"
+            )
+            callback_recently_finished = bool(
+                nested_state.get("implementation_in_progress") is False
+                and fresh_timestamp(
+                    callback_finished_at,
+                    max_age=grace_seconds,
+                )
+            )
+            if not callback_in_progress and not callback_recently_finished:
+                continue
+            if callback_in_progress:
+                if implementation_lock_snapshot is None:
+                    continue
+                implementation_lock, implementation_lock_signature = (
+                    implementation_lock_snapshot
+                )
+            else:
+                # Portal removes the implementation lock immediately after
+                # publishing ``implementation_finished``.  The outer
+                # database daemon still has to admit the provider result,
+                # effect, validation, and terminal task CAS.  That is the
+                # exact sub-second gap in which a source reload previously
+                # killed the callback.  An extant (including dangling)
+                # implementation lock is not post-finish evidence.
+                if (
+                    implementation_lock_snapshot is not None
+                    or implementation_lock_path.exists()
+                    or implementation_lock_path.is_symlink()
+                ):
+                    continue
+                implementation_lock = {}
+                implementation_lock_signature = None
             task_alias = binding.get("task_alias")
             database_task_cid = binding.get("task_cid")
             if (
@@ -13371,72 +13407,108 @@ class PortalImplementationSupervisor:
             ):
                 continue
 
-            lock_pid = implementation_lock.get("pid")
-            lock_attempt = implementation_lock.get("attempt")
-            lock_started_at = implementation_lock.get("started_at")
-            if (
-                set(implementation_lock)
-                != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
-                or implementation_lock.get("kind") != "implementation"
-                or isinstance(lock_pid, bool)
-                or type(lock_pid) is not int
-                or lock_pid != child_pid
-                or type(implementation_lock.get("lease_id")) is not str
-                or re.fullmatch(
-                    r"[0-9a-f]{40}",
-                    str(implementation_lock.get("lease_id") or ""),
-                )
-                is None
-                or type(implementation_lock.get("owner_script")) is not str
-                or implementation_lock.get("owner_script")
-                != "implementation_daemon.py"
-                or type(implementation_lock.get("board_namespace")) is not str
-                or not implementation_lock.get("board_namespace")
-                or implementation_lock.get("task_id") != task_alias
-                or implementation_lock.get("canonical_task_key")
-                != portal_task_key
-                or implementation_lock.get("canonical_task_cid")
-                != portal_task_cid
-                or implementation_lock.get("board_namespace")
-                != portal_identity.get("board_namespace")
-                or isinstance(lock_attempt, bool)
-                or type(lock_attempt) is not int
-                or lock_attempt < 1
-                or not fresh_timestamp(
-                    lock_started_at,
-                    max_age=max_age_seconds,
-                )
-            ):
-                continue
-            try:
-                raw_lock_repo_root = Path(
-                    str(implementation_lock.get("repo_root") or "")
-                )
-                raw_lock_state_dir = Path(
-                    str(implementation_lock.get("state_dir") or "")
-                )
+            if callback_in_progress:
+                lock_pid = implementation_lock.get("pid")
+                lock_attempt = implementation_lock.get("attempt")
+                lock_started_at = implementation_lock.get("started_at")
                 if (
-                    not raw_lock_repo_root.is_absolute()
-                    or raw_lock_repo_root.is_symlink()
-                    or raw_lock_repo_root != repo_root
-                    or raw_lock_repo_root.resolve(strict=True) != repo_root
-                    or not raw_lock_state_dir.is_absolute()
-                    or raw_lock_state_dir.is_symlink()
-                    or raw_lock_state_dir != attempt_dir
-                    or raw_lock_state_dir.resolve(strict=True) != attempt_dir
+                    set(implementation_lock)
+                    != _DATABASE_PORTAL_CALLBACK_IMPLEMENTATION_LOCK_FIELDS
+                    or implementation_lock.get("kind") != "implementation"
+                    or isinstance(lock_pid, bool)
+                    or type(lock_pid) is not int
+                    or lock_pid != child_pid
+                    or type(implementation_lock.get("lease_id")) is not str
+                    or re.fullmatch(
+                        r"[0-9a-f]{40}",
+                        str(implementation_lock.get("lease_id") or ""),
+                    )
+                    is None
+                    or type(implementation_lock.get("owner_script")) is not str
+                    or implementation_lock.get("owner_script")
+                    != "implementation_daemon.py"
+                    or type(implementation_lock.get("board_namespace")) is not str
+                    or not implementation_lock.get("board_namespace")
+                    or implementation_lock.get("task_id") != task_alias
+                    or implementation_lock.get("canonical_task_key")
+                    != portal_task_key
+                    or implementation_lock.get("canonical_task_cid")
+                    != portal_task_cid
+                    or implementation_lock.get("board_namespace")
+                    != portal_identity.get("board_namespace")
+                    or isinstance(lock_attempt, bool)
+                    or type(lock_attempt) is not int
+                    or lock_attempt < 1
+                    or not fresh_timestamp(
+                        lock_started_at,
+                        max_age=max_age_seconds,
+                    )
                 ):
                     continue
-            except (OSError, RuntimeError):
-                continue
+                try:
+                    raw_lock_repo_root = Path(
+                        str(implementation_lock.get("repo_root") or "")
+                    )
+                    raw_lock_state_dir = Path(
+                        str(implementation_lock.get("state_dir") or "")
+                    )
+                    if (
+                        not raw_lock_repo_root.is_absolute()
+                        or raw_lock_repo_root.is_symlink()
+                        or raw_lock_repo_root != repo_root
+                        or raw_lock_repo_root.resolve(strict=True) != repo_root
+                        or not raw_lock_state_dir.is_absolute()
+                        or raw_lock_state_dir.is_symlink()
+                        or raw_lock_state_dir != attempt_dir
+                        or raw_lock_state_dir.resolve(strict=True) != attempt_dir
+                    ):
+                        continue
+                except (OSError, RuntimeError):
+                    continue
+            else:
+                display_attempts = nested_state.get("implementation_attempts")
+                cid_attempts = nested_state.get("implementation_attempts_by_cid")
+                lock_attempt = (
+                    display_attempts.get(task_alias)
+                    if isinstance(display_attempts, Mapping)
+                    else None
+                )
+                cid_attempt = (
+                    cid_attempts.get(portal_task_cid)
+                    if isinstance(cid_attempts, Mapping)
+                    else None
+                )
+                lock_started_at = nested_state.get(
+                    "last_implementation_started_at"
+                )
+                if (
+                    isinstance(lock_attempt, bool)
+                    or type(lock_attempt) is not int
+                    or lock_attempt < 1
+                    or cid_attempt != lock_attempt
+                    or not fresh_timestamp(
+                        lock_started_at,
+                        max_age=max_age_seconds,
+                    )
+                ):
+                    continue
 
             active_phase = nested_state.get("active_phase")
-            active_worktree_text = nested_state.get("active_worktree_path")
-            active_branch = nested_state.get("active_branch")
+            active_worktree_text = nested_state.get(
+                "active_worktree_path"
+                if callback_in_progress
+                else "last_implementation_worktree_path"
+            )
+            active_branch = nested_state.get(
+                "active_branch"
+                if callback_in_progress
+                else "last_implementation_branch"
+            )
             expected_execution_id = (
                 f"{task_alias.lower().replace('/', '-')}-"
                 f"{portal_semantic_fingerprint[:12]}"
             )
-            if (
+            if callback_in_progress and (
                 nested_state.get("implementation_in_progress") is not True
                 or nested_state.get("active_task_id") != task_alias
                 or nested_state.get("active_task_key") != portal_task_key
@@ -13483,6 +13555,54 @@ class PortalImplementationSupervisor:
                 )
             ):
                 continue
+            if callback_recently_finished and (
+                nested_state.get("active_task_id") not in (None, "")
+                or nested_state.get("active_task_key") not in (None, "")
+                or nested_state.get("active_task_cid") not in (None, "")
+                or nested_state.get("active_attempt") not in (None, 0)
+                or nested_state.get("active_phase") not in (None, "")
+                or nested_state.get("active_phase_detail") not in (None, "")
+                or nested_state.get("active_worktree_path") not in (None, "")
+                or nested_state.get("active_branch") not in (None, "")
+                or nested_state.get("last_implementation_task_id")
+                != task_alias
+                or nested_state.get("last_implementation_task_key")
+                != portal_task_key
+                or nested_state.get("last_implementation_task_cid")
+                != portal_task_cid
+                or nested_state.get("last_implementation_started_at")
+                != lock_started_at
+                or type(callback_finished_at) is not str
+                or parse_timestamp(callback_finished_at) is None
+                or parse_timestamp(lock_started_at) is None
+                or parse_timestamp(callback_finished_at)
+                < parse_timestamp(lock_started_at)
+                or nested_state.get("last_implementation_returncode") != 0
+                or re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(nested_state.get("last_implementation_commit") or ""),
+                )
+                is None
+                or type(active_worktree_text) is not str
+                or not active_worktree_text
+                or type(active_branch) is not str
+                or not active_branch
+                or re.fullmatch(
+                    rf"implementation/{re.escape(expected_execution_id)}-"
+                    rf"attempt-{lock_attempt}-[1-9][0-9]*",
+                    active_branch.removeprefix("refs/heads/"),
+                )
+                is None
+                or not fresh_timestamp(
+                    nested_state.get("heartbeat_at"),
+                    max_age=grace_seconds,
+                )
+                or not fresh_timestamp(
+                    nested_state.get("last_progress_at"),
+                    max_age=grace_seconds,
+                )
+            ):
+                continue
             try:
                 raw_workspace = Path(active_worktree_text)
                 if not raw_workspace.is_absolute() or raw_workspace.is_symlink():
@@ -13507,8 +13627,16 @@ class PortalImplementationSupervisor:
                 continue
             if (
                 binding_after != (binding, binding_signature)
-                or implementation_lock_after
-                != (implementation_lock, implementation_lock_signature)
+                or (
+                    implementation_lock_after
+                    != (implementation_lock, implementation_lock_signature)
+                    if callback_in_progress
+                    else (
+                        implementation_lock_after is not None
+                        or implementation_lock_path.exists()
+                        or implementation_lock_path.is_symlink()
+                    )
+                )
                 or nested_state_after != (nested_state, nested_state_signature)
                 or self._stable_process_birth_identity(current_birth)
                 != self._stable_process_birth_identity(child_birth)
@@ -13524,7 +13652,11 @@ class PortalImplementationSupervisor:
                         verified_identity.get("attempt_number") or ""
                     ),
                     "attempt": str(lock_attempt),
-                    "phase": str(active_phase),
+                    "phase": (
+                        str(active_phase)
+                        if callback_in_progress
+                        else "callback_settlement_grace"
+                    ),
                     "worktree_path": str(resolved_workspace),
                     "branch": active_branch,
                     "lease_pid": str(child_pid),
