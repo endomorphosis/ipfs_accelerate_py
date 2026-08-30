@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/runtime/schemas/paired_benchmark_manifest.schema.json",
+  "title": "ASEH paired benchmark manifest",
+  "description": "Closed pairing contract for direct, sealed-current, and candidate arms. Schema admission does not attest measurements or task completion. Missing population counts remain unavailable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "contract_version",
+    "authority",
+    "attests_measurements",
+    "attests_task_completion",
+    "program_id",
+    "goal_id",
+    "objective_id",
+    "objective_revision",
+    "repository_commit",
+    "repository_tree",
+    "policy_identity",
+    "sealed_input_manifest_identity",
+    "price_snapshot_identity",
+    "environment_identity",
+    "provider_model_config_identity",
+    "arms",
+    "equal_controls",
+    "populations",
+    "historical_required_outcomes",
+    "statistics",
+    "promotion_without_paired_campaign",
+    "pairing_rejects_unequal_controls",
+    "evidence_state"
+  ],
+  "properties": {
+    "schema": { "const": "aseh/paired-benchmark-manifest@1" },
+    "contract_version": { "const": 1 },
+    "authority": { "const": false },
+    "attests_measurements": { "const": false },
+    "attests_task_completion": { "const": false },
+    "content_id": { "$ref": "#/$defs/Cid" },
+    "program_id": { "const": "agent-supervisor-efficiency-and-state-hardening-v1" },
+    "goal_id": { "const": "ASEH-G020" },
+    "objective_id": { "$ref": "#/$defs/BoundedId" },
+    "objective_revision": { "$ref": "#/$defs/BoundedText" },
+    "repository_commit": { "$ref": "#/$defs/GitObjectId" },
+    "repository_tree": { "$ref": "#/$defs/GitObjectId" },
+    "policy_identity": { "$ref": "#/$defs/BoundedText" },
+    "sealed_input_manifest_identity": { "$ref": "#/$defs/IdentityEvidence" },
+    "price_snapshot_identity": { "$ref": "#/$defs/IdentityEvidence" },
+    "environment_identity": { "$ref": "#/$defs/IdentityEvidence" },
+    "provider_model_config_identity": { "$ref": "#/$defs/IdentityEvidence" },
+    "arms": { "$ref": "#/$defs/Arms" },
+    "equal_controls": { "$ref": "#/$defs/EqualControls" },
+    "populations": { "$ref": "#/$defs/Populations" },
+    "historical_required_outcomes": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "prefixItems": [
+        { "const": "successful" },
+        { "const": "failed" },
+        { "const": "retried" },
+        { "const": "rescued" },
+        { "const": "conflicted" },
+        { "const": "human_escalated" }
+      ],
+      "items": false
+    },
+    "statistics": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "prefixItems": [
+        { "const": "median_difference" },
+        { "const": "mean_difference" },
+        { "const": "per_task_ratios" },
+        { "const": "bootstrap_confidence_intervals" },
+        { "const": "distribution_by_task_class" },
+        { "const": "outlier_analysis" },
+        { "const": "quality_adjusted_cost" },
+        { "const": "accepted_patch_rate" },
+        { "const": "time_to_terminal_outcome" }
+      ],
+      "items": false
+    },
+    "promotion_without_paired_campaign": { "const": false },
+    "pairing_rejects_unequal_controls": { "const": true },
+    "evidence_state": { "$ref": "#/$defs/EvidenceStateIndex" }
+  },
+  "$defs": {
+    "Cid": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 128,
+      "pattern": "^b[a-z2-7]{20,}$"
+    },
+    "GitObjectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "BoundedId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$"
+    },
+    "BoundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "SensorId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "UnavailableReason": {
+      "type": "string",
+      "enum": [
+        "sensor-absent",
+        "permission-denied",
+        "hardware-absent",
+        "provider-omitted",
+        "collection-failed",
+        "not-reported",
+        "not-applicable",
+        "not-sealed",
+        "deadline-elapsed",
+        "identity-missing"
+      ]
+    },
+    "NonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000000000000
+    },
+    "Unit": {
+      "type": "string",
+      "enum": ["count"]
+    },
+    "FieldPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    },
+    "QuantitativeEvidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unit", "sensor_id"],
+          "properties": {
+            "status": { "const": "measured" },
+            "value": { "$ref": "#/$defs/NonNegativeInteger" },
+            "unit": { "$ref": "#/$defs/Unit" },
+            "sensor_id": { "$ref": "#/$defs/SensorId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unit", "estimate_method"],
+          "properties": {
+            "status": { "const": "estimated" },
+            "value": { "$ref": "#/$defs/NonNegativeInteger" },
+            "unit": { "$ref": "#/$defs/Unit" },
+            "estimate_method": { "$ref": "#/$defs/BoundedId" },
+            "price_snapshot_identity": { "$ref": "#/$defs/BoundedText" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason_code", "sensor_id"],
+          "properties": {
+            "status": { "const": "unavailable" },
+            "reason_code": { "$ref": "#/$defs/UnavailableReason" },
+            "sensor_id": { "$ref": "#/$defs/SensorId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "operation", "attempt_id"],
+          "properties": {
+            "status": { "const": "attempted" },
+            "operation": { "$ref": "#/$defs/BoundedId" },
+            "attempt_id": { "$ref": "#/$defs/BoundedText" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unit", "sensor_id"],
+          "properties": {
+            "status": { "const": "observed" },
+            "value": { "$ref": "#/$defs/NonNegativeInteger" },
+            "unit": { "$ref": "#/$defs/Unit" },
+            "sensor_id": { "$ref": "#/$defs/SensorId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "value",
+            "unit",
+            "verifier_identity",
+            "verifier_receipt_cid"
+          ],
+          "properties": {
+            "status": { "const": "verified" },
+            "value": { "$ref": "#/$defs/NonNegativeInteger" },
+            "unit": { "$ref": "#/$defs/Unit" },
+            "verifier_identity": { "$ref": "#/$defs/BoundedId" },
+            "verifier_receipt_cid": { "$ref": "#/$defs/Cid" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unit", "fixture_identity"],
+          "properties": {
+            "status": { "const": "simulated" },
+            "value": { "$ref": "#/$defs/NonNegativeInteger" },
+            "unit": { "$ref": "#/$defs/Unit" },
+            "fixture_identity": { "$ref": "#/$defs/BoundedText" }
+          }
+        }
+      ]
+    },
+    "IdentityEvidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "identity", "sensor_id"],
+          "properties": {
+            "status": { "const": "observed" },
+            "identity": { "$ref": "#/$defs/BoundedText" },
+            "sensor_id": { "$ref": "#/$defs/SensorId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "identity",
+            "verifier_identity",
+            "verifier_receipt_cid"
+          ],
+          "properties": {
+            "status": { "const": "verified" },
+            "identity": { "$ref": "#/$defs/BoundedText" },
+            "verifier_identity": { "$ref": "#/$defs/BoundedId" },
+            "verifier_receipt_cid": { "$ref": "#/$defs/Cid" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason_code", "sensor_id"],
+          "properties": {
+            "status": { "const": "unavailable" },
+            "reason_code": { "$ref": "#/$defs/UnavailableReason" },
+            "sensor_id": { "$ref": "#/$defs/SensorId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "operation", "attempt_id"],
+          "properties": {
+            "status": { "const": "attempted" },
+            "operation": { "$ref": "#/$defs/BoundedId" },
+            "attempt_id": { "$ref": "#/$defs/BoundedText" }
+          }
+        }
+      ]
+    },
+    "Arms": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/DirectArm" },
+        { "$ref": "#/$defs/SealedCurrentArm" },
+        { "$ref": "#/$defs/CandidateArm" }
+      ],
+      "items": false
+    },
+    "DirectArm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arm_id", "constraints"],
+      "properties": {
+        "arm_id": { "const": "direct_minimal_orchestration_baseline" },
+        "constraints": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "prefixItems": [
+            { "const": "same_safe_isolation_and_acceptance_tests" },
+            { "const": "no_candidate_context_pack_optimization" },
+            { "const": "no_candidate_proof_or_test_reuse_optimization" },
+            { "const": "same_available_model_and_provider_set" },
+            { "const": "no_unsafe_direct_mutation" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "SealedCurrentArm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arm_id", "constraints"],
+      "properties": {
+        "arm_id": { "const": "sealed_current_supervisor_baseline" },
+        "constraints": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "prefixItems": [
+            { "const": "exact_pre_campaign_policy" },
+            { "const": "exact_pre_campaign_routing_behavior" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "CandidateArm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arm_id", "constraints", "shadow_before_mutation"],
+      "properties": {
+        "arm_id": { "const": "candidate_optimized_supervisor" },
+        "constraints": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "prefixItems": [
+            { "const": "campaign_changes_only" },
+            { "const": "shadow_before_mutation" }
+          ],
+          "items": false
+        },
+        "shadow_before_mutation": { "const": true }
+      }
+    },
+    "EqualControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_revision",
+        "objective",
+        "task_inputs",
+        "acceptance_tests",
+        "available_providers_and_models",
+        "price_accounting",
+        "resource_limits",
+        "maximum_retries",
+        "human_intervention_policy"
+      ],
+      "properties": {
+        "repository_revision": { "$ref": "#/$defs/IdentityEvidence" },
+        "objective": { "$ref": "#/$defs/IdentityEvidence" },
+        "task_inputs": { "$ref": "#/$defs/IdentityEvidence" },
+        "acceptance_tests": { "$ref": "#/$defs/IdentityEvidence" },
+        "available_providers_and_models": { "$ref": "#/$defs/IdentityEvidence" },
+        "price_accounting": { "$ref": "#/$defs/IdentityEvidence" },
+        "resource_limits": { "$ref": "#/$defs/IdentityEvidence" },
+        "maximum_retries": { "$ref": "#/$defs/QuantitativeEvidence" },
+        "human_intervention_policy": { "$ref": "#/$defs/IdentityEvidence" }
+      }
+    },
+    "Populations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hermetic_development",
+        "historical_exact_tree_replay",
+        "new_live_shadow_canary"
+      ],
+      "properties": {
+        "hermetic_development": { "$ref": "#/$defs/HermeticPopulation" },
+        "historical_exact_tree_replay": { "$ref": "#/$defs/ReplayPopulation" },
+        "new_live_shadow_canary": { "$ref": "#/$defs/LivePopulation" }
+      }
+    },
+    "HermeticPopulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum",
+        "sufficient_for_production_promotion",
+        "sealed_count"
+      ],
+      "properties": {
+        "minimum": { "const": 60 },
+        "sufficient_for_production_promotion": { "const": false },
+        "sealed_count": { "$ref": "#/$defs/QuantitativeEvidence" }
+      }
+    },
+    "ReplayPopulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "sealed_count"],
+      "properties": {
+        "minimum": { "const": 20 },
+        "sealed_count": { "$ref": "#/$defs/QuantitativeEvidence" }
+      }
+    },
+    "LivePopulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum",
+        "enrollment_deadline_maximum_days",
+        "enrolled_count"
+      ],
+      "properties": {
+        "minimum": { "const": 10 },
+        "enrollment_deadline_maximum_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "enrolled_count": { "$ref": "#/$defs/QuantitativeEvidence" }
+      }
+    },
+    "EvidenceStateIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measured",
+        "estimated",
+        "unavailable",
+        "attempted",
+        "observed",
+        "verified",
+        "simulated"
+      ],
+      "properties": {
+        "measured": { "$ref": "#/$defs/FieldPathList" },
+        "estimated": { "$ref": "#/$defs/FieldPathList" },
+        "unavailable": { "$ref": "#/$defs/FieldPathList" },
+        "attempted": { "$ref": "#/$defs/FieldPathList" },
+        "observed": { "$ref": "#/$defs/FieldPathList" },
+        "verified": { "$ref": "#/$defs/FieldPathList" },
+        "simulated": { "$ref": "#/$defs/FieldPathList" }
+      }
+    },
+    "FieldPathList": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/FieldPath" }
+    }
+  }
+}
