@@ -2179,6 +2179,9 @@ def bind_database_portal_execution_from_args(
         validation_retry_successor_recovery_fn=(
             bridge.verify_validation_retry_successor_recovery
         ),
+        post_commit_candidate_recovery_fn=(
+            bridge.recover_post_commit_candidate
+        ),
     )
     consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
     protected_recovery_binder(protected_recovery)

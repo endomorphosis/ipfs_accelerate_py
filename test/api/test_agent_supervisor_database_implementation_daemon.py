@@ -293,6 +293,10 @@ def _open_daemon(
         Mapping[str, object],
     ]
     | None = None,
+    post_commit_candidate_recovery_fn: Callable[
+        [DatabaseTaskAttempt], Mapping[str, object]
+    ]
+    | None = None,
     lane: str = "",
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
@@ -360,6 +364,9 @@ def _open_daemon(
         validation_fn=validation_fn or validation,
         validation_retry_successor_recovery_fn=(
             validation_retry_successor_recovery_fn
+        ),
+        post_commit_candidate_recovery_fn=(
+            post_commit_candidate_recovery_fn
         ),
         require_real_execution=True,
         clock_ms=clock_ms,
@@ -3200,7 +3207,7 @@ def _unknown_callback_quarantine_receipt() -> dict[str, object]:
     }
 
 
-def test_unknown_callback_without_landed_outputs_reopens(
+def test_unknown_callback_missing_outputs_without_adapter_stays_quarantined(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3221,12 +3228,11 @@ def test_unknown_callback_without_landed_outputs_reopens(
         )
         result = daemon.run_once()
         reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
-        assert reopened[0]["task_cid"] == "task:cid:001"
+        assert reopened == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert current.revision == task.revision + 1
     finally:
         daemon.close()
 
@@ -3272,12 +3278,10 @@ def test_unknown_callback_reopen_count_survives_later_claim_receipt(
         daemon.task_source.compare_and_set_status(
             "task:cid:001",
             int(task.revision),
-            "quarantined",
-            receipt=_unknown_callback_quarantine_receipt(),
+            "todo",
+            receipt={"operation": "reopen_unimplemented_unknown_callback_quarantine",
+                     "unknown_callback_reopen_count": 1},
         )
-        first = daemon.run_once()
-        assert first["unknown_callback_reopens"]
-        assert first["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 1
         task = daemon.task_source.get("task:cid:001")
         assert task is not None
         daemon.task_source.compare_and_set_status(
@@ -3304,18 +3308,17 @@ def test_unknown_callback_reopen_count_survives_later_claim_receipt(
             receipt=receipt,
         )
         second = daemon.run_once()
-        assert second["unknown_callback_reopens"]
-        assert second["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 2
+        assert second["unknown_callback_reopens"] == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
         current_receipt = current.body.get("completion_receipt")
         assert isinstance(current_receipt, dict)
-        assert current_receipt.get("unknown_callback_reopen_count") == 2
+        assert current_receipt.get("unknown_callback_reopen_count") == 1
     finally:
         daemon.close()
 
 
-def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
+def test_unknown_callback_reopen_count_does_not_authorize_missing_adapter(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3338,11 +3341,11 @@ def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
         )
         result = daemon.run_once()
         reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
+        assert reopened == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert current.revision == task.revision + 1
     finally:
         daemon.close()
 
@@ -3548,7 +3551,7 @@ def test_supervisor_recovery_journal_defers_before_callback_intent(
         daemon.close()
 
 
-def test_unknown_callback_reopen_continues_while_outputs_are_missing(
+def test_unknown_callback_missing_outputs_do_not_authorize_repeat_reopen(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3581,11 +3584,11 @@ def test_unknown_callback_reopen_continues_while_outputs_are_missing(
         )
         result = daemon.run_once()
         reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
+        assert reopened == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert current.revision == task.revision + 1
     finally:
         daemon.close()
 
@@ -4248,6 +4251,146 @@ def test_provider_callback_hard_crash_after_expiry_never_redispatches(
         assert second["expired_attempt_reconciliations"] == []
         assert second["selection_idle_reason"] == "no_ready_tasks"
         assert provider_calls == [attempt.attempt_id]
+    finally:
+        restarted.close()
+
+
+def test_expired_callback_rearms_only_exact_post_commit_candidate(
+    tmp_path: Path,
+) -> None:
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected post-commit crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:post-commit-recovery",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(attempt)
+    finally:
+        first.close()
+
+    def exact_post_commit_receipt(
+        source: DatabaseTaskAttempt,
+    ) -> Mapping[str, object]:
+        body: dict[str, object] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-post-commit-candidate-recovery@1"
+            ),
+            "disposition": "retry_exact_post_commit_candidate",
+            "reason": "process_lost_before_merge_queue_publication",
+            "task_cid": source.task_cid,
+            "task_alias": source.task_alias,
+            "attempt_id": source.attempt_id,
+            "claim_id": source.claim_id,
+            "lease_id": source.lease_id,
+            "attempt_number": int(source.attempt_number),
+            "fencing_token": int(source.fencing_token),
+            "fence_epoch": int(source.fence_epoch),
+            "source_task_revision": 2,
+            "portal_attempt": 1,
+            "baseline_commit": "a" * 40,
+            "implementation_commit": "b" * 40,
+            "preserved_commit": "b" * 40,
+            "rescue_branch": "implementation/dqp-t001-attempt-1",
+            "original_branch": "implementation/dqp-t001-attempt-1",
+            "original_worktree_path": str(tmp_path / "retained-worktree"),
+            "source_workspace_disposition": "candidate_head",
+            "source_workspace_observed_head": "b" * 40,
+            "source_workspace_observed_tree": "c" * 40,
+            "source_workspace_observed_branch": (
+                "implementation/dqp-t001-attempt-1"
+            ),
+            "final_tree": "c" * 40,
+            "candidate_fingerprint": "sha256:" + "1" * 64,
+            "binding_id": "sha256:" + "2" * 64,
+            "events_digest": "sha256:" + "3" * 64,
+            "event_stream_id": "stream:post-commit",
+            "implementation_started_event_id": "sha256:" + "4" * 64,
+            "pre_commit_handoff_event_id": "sha256:" + "5" * 64,
+            "post_commit_handoff_event_id": "sha256:" + "6" * 64,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "completion_authoritative": False,
+            "merge_attempted": False,
+        }
+        body["receipt_id"] = (
+            implementation_daemon_module._database_daemon_evidence_digest(body)
+        )
+        return body
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        repo_root=tmp_path,
+        session="session:post-commit-recovery",
+        provider_fn=crash_after_callback_started,
+        post_commit_candidate_recovery_fn=exact_post_commit_receipt,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        expired = restarted.reconcile_expired_running_attempts()
+        assert any(item.get("disposition") == "quarantined" for item in expired)
+
+        outcomes = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["reason"] == "exact_post_commit_candidate_rearmed"
+        assert outcomes[0]["provider_dispatched"] is False
+        assert provider_calls == [attempt.attempt_id]
+        current = restarted.task_source.get(attempt.task_cid)
+        assert current is not None
+        assert current.status == "retrying"
+        carried = current.body["completion_receipt"]
+        assert carried["operation"] == (
+            "database_portal_post_commit_candidate_recovery"
+        )
+        assert carried["post_commit_candidate_recovery_seed"]["attempt_id"] == (
+            attempt.attempt_id
+        )
+        source = restarted.get_attempt(attempt.attempt_id)
+        assert source is not None and source.status == "failed"
+
+        successor = restarted.claim_next()
+        assert successor is not None
+        assert successor.attempt_id != attempt.attempt_id
+        assert provider_calls == [attempt.attempt_id]
+        claimed = restarted.task_source.get(attempt.task_cid)
+        assert claimed is not None and claimed.status == "in_progress"
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["operation"] == "database_claim"
+        assert claim_receipt["post_commit_candidate_source_attempt_id"] == (
+            attempt.attempt_id
+        )
+        assert claim_receipt["post_commit_candidate_recovery_seed"] == (
+            carried["post_commit_candidate_recovery_seed"]
+        )
     finally:
         restarted.close()
 
