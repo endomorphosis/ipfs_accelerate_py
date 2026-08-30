@@ -1,0 +1,127 @@
+{
+  "authority": {
+    "authorities_inventoried": [
+      "objective",
+      "planner",
+      "task",
+      "event",
+      "state"
+    ],
+    "canonical_semantic_identity": "ipfs_datasets_py",
+    "ducklake_authority": false,
+    "exact_bytes_cid_storage": "ipfs_kit_py",
+    "model_output_is_completion_authority": false,
+    "operational_admission": "ipfs_accelerate_py"
+  },
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "changed_paths": [
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md",
+    "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-000.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-000.json"
+  ],
+  "completion_authoritative": false,
+  "expected_outputs": [
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md",
+    "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-000.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-000.json"
+  ],
+  "goal_id": "DOEP-G010.S1",
+  "no_competing_subsystem_created": true,
+  "observed_at": "2026-08-30T02:31:24Z",
+  "outputs_present": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-000.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-000.json": true,
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md": true,
+    "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py": true
+  },
+  "parent_goal_id": "DOEP-G010",
+  "path_digests": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-000.json": "sha256:ad7ab16ac4f31e9624117ba9b8ff0feb09f59c4ce17be8b4cf414c0960ab931e",
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md": "sha256:c4c47c623556f365f951b2cccc0ca3c2135df20ef4f001588d82f4586c34914a",
+    "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py": "sha256:5a8375d846c083d80918eac8a3f9ae7be615e5ac91a5832fa9ffba2b15485370"
+  },
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "required_evidence": {
+    "changed_path_digest": "sha256:a3199459e9f182a46622b1453ed61fe64b79288383d4eb659a245227de8e7a23",
+    "limitations": [
+      "Candidate inventory receipt only; independent fenced supervisor admission is required.",
+      "Worker or model assertion alone is insufficient for task completion.",
+      "Deferred hazards are recorded and do not expand the sealed DOEP campaign.",
+      "Digests bind the exact declared non-receipt outputs at observation time."
+    ],
+    "receipt_cid": {
+      "reason": "ipfs CLI absent from sealed validation PATH; SHA-256 is not substituted for a CID.",
+      "status": "unavailable"
+    },
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "proof_reason": "Inventory-only task; no source mutation and no formal proof obligation selected.",
+      "proof_selection": "verified_empty",
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py",
+        "-q"
+      ]
+    },
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "rollback": {
+    "destructive_effects": false,
+    "procedure": "Revert the four declared DOEP-000 outputs and invalidate consumers of this inventory; do not alter inventoried authority modules or protected plan documents."
+  },
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  },
+  "task_cid": "sha256:e791d081493c181e67ef8f538b8b04d7f2f281301db3c355ba2803eb1c80d6ef",
+  "task_id": "DOEP-000",
+  "title": "Inventory current objective, planner, task, event, and state authorities",
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "worker_completion_insufficient": true,
+  "write_scope": [
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md",
+    "test/api/doep/test_doep_000_inventory_current_objective_planner_task_event_and_s.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-000.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-000.json"
+  ]
+}
