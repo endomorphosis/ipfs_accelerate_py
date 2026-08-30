@@ -9050,7 +9050,7 @@ class _DockerContainerLease:
             authorized_image = self._authorized_image_id
             self._create_started = True
         if self.cleanup_binding_record is None:
-            return subprocess.run(
+            created = subprocess.run(
                 list(command),
                 cwd=cwd,
                 env=dict(env),
@@ -9060,6 +9060,52 @@ class _DockerContainerLease:
                 timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
                 check=False,
             )
+            environment_id, _environment_payload, _create_environment = (
+                _docker_create_environment_payload(env)
+            )
+            command_id, command_body = _docker_create_command_identity(
+                provider=self.provider,
+                docker_bin=self.docker_bin,
+                docker_config=self.docker_config,
+                container_name=self.container_name,
+                cidfile=self.cidfile,
+                cwd=cwd,
+                environment_id=environment_id,
+                expected_image=authorized_image,
+                argv=command,
+            )
+            boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+                encoding="ascii"
+            ).strip()
+            issuer = {
+                "pid": os.getpid(),
+                "start_time_ticks": _runner_process_start_ticks(os.getpid()),
+                "boot_id": boot_id,
+                "parent_pid": os.getppid(),
+            }
+            observed_state = (
+                "create_observed"
+                if created.returncode == 0
+                else "create_failed_observed"
+            )
+            journal = _docker_create_journal_value(
+                command_body=command_body,
+                command_id=command_id,
+                state=observed_state,
+                issuer_process_birth=issuer,
+                returncode=int(created.returncode),
+                stdout=created.stdout or b"",
+                stderr=created.stderr or b"",
+            )
+            self._create_command_id = command_id
+            self._create_command_body = command_body
+            _write_private_control_record(
+                self.lease_root,
+                _DOCKER_CREATE_JOURNAL_NAME,
+                journal,
+                replace_existing=False,
+            )
+            return created
         environment_id, _environment_payload, create_environment = (
             _docker_create_environment_payload(env)
         )
