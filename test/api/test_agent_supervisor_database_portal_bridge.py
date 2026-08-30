@@ -93,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
     EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
@@ -13461,12 +13462,16 @@ def test_merge_train_recovery_is_inert_until_bound(tmp_path: Path) -> None:
     try:
         settlement = daemon._settle_invalid_metadata_portal_quarantines()
         recovery = daemon._run_post_merge_recovery()
+        consume = daemon._consume_pending_same_board_merges()
         assert settlement["attempted"] is False
         assert settlement["reason"] == "merge_train_recovery_not_configured"
         assert settlement["write_count"] == 0
         assert recovery["attempted"] is False
         assert recovery["reason"] == "post_merge_recovery_not_configured"
         assert recovery["write_count"] == 0
+        assert consume["attempted"] is False
+        assert consume["reason"] == "pending_merge_consume_not_configured"
+        assert consume["write_count"] == 0
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="bound queue and target branch",
@@ -13536,6 +13541,331 @@ def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
         settlement = daemon._settle_invalid_metadata_portal_quarantines()
         assert settlement["attempted"] is True
         assert settlement["settled"] == 0
+        consume = daemon._consume_pending_same_board_merges()
+        assert consume["attempted"] is False
+        assert consume["reason"] == "pending_merge_consume_not_configured"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_pending_merge_consume_bind_is_one_shot(tmp_path: Path) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:pending-merge-consume-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        daemon.bind_pending_merge_consume(lambda: None)
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="already bound",
+        ):
+            daemon.bind_pending_merge_consume(lambda: None)
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_idle_database_pass_consumes_pending_same_board_merge(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:pending-merge-consume-idle",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    calls: list[int] = []
+
+    def consume() -> dict[str, object]:
+        calls.append(1)
+        return {
+            "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+            "attempted": True,
+            "consumed": True,
+            "request_id": "req-014",
+            "task_id": "SPAR-014",
+            "status": "merged",
+            "reason": "merged",
+            "write_count": 1,
+        }
+
+    try:
+        daemon.bind_pending_merge_consume(consume)
+        result = daemon._run_once_impl()
+        assert calls == [1]
+        assert result["pending_merge_consume"]["consumed"] is True
+        assert result["pending_merge_consume"]["task_id"] == "SPAR-014"
+        assert result["write_count"] >= 1
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_pending_merge_consume_skips_false_positive_completion_reopen(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "consume@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Consume Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+
+    class _Queue:
+        def __init__(self, rows: tuple[object, ...]) -> None:
+            self.target_repository_id = checkout_repository_id(repo)
+            self.target_branch = "main"
+            self.require_target_binding = True
+            self._rows = rows
+
+        def pending_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return self._rows
+
+        def completed_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def processing_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def quarantined_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def get(self, request_id: str) -> object | None:
+            del request_id
+            return None
+
+    constructed: list[str] = []
+
+    def factory(paths: object, alias: str) -> object:
+        del paths
+        constructed.append(alias)
+        raise AssertionError("false-positive reopen must not construct Portal")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repo,
+        merge_queue=_Queue(
+            (
+                SimpleNamespace(
+                    request_id="req-false-positive",
+                    task_id="SPAR-014",
+                    canonical_task_id="cid:014",
+                    canonical_task_key="key:014",
+                    commit_sha="a" * 40,
+                    metadata={
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "merge-candidate@3"
+                        ),
+                        "false_positive_completion_reopen": {
+                            "schema": "x"
+                        },
+                    },
+                ),
+            )
+        ),
+        merge_target_branch="main",
+    )
+    assert bridge.consume_pending_same_board_merge() is None
+    assert constructed == []
+
+
+def test_pending_merge_consume_uses_owned_projection_portal(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "consume@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Consume Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    request = SimpleNamespace(
+        request_id="req-014",
+        task_id="SPAR-014",
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        },
+    )
+
+    class _Queue:
+        def __init__(self) -> None:
+            self.target_repository_id = checkout_repository_id(repo)
+            self.target_branch = "main"
+            self.require_target_binding = True
+
+        def pending_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return (request,)
+
+        def completed_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def processing_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def quarantined_requests(self, limit: int = 8) -> tuple[object, ...]:
+            del limit
+            return ()
+
+        def get(self, request_id: str) -> object | None:
+            return request if request_id == "req-014" else None
+
+    queue = _Queue()
+
+    class _Portal:
+        def __init__(self) -> None:
+            self.merge_queue = queue
+            self.repo_root = repo
+            self.resolved_merge_target_branch = "main"
+            self.closed = False
+
+        def _consume_one_merge_candidate(self) -> dict[str, object]:
+            return {
+                "status": "merged",
+                "merged": True,
+                "request_id": "req-014",
+                "reason": "merged",
+            }
+
+        def close(self) -> None:
+            self.closed = True
+
+    portal = _Portal()
+
+    def factory(paths: object, alias: str) -> object:
+        del paths
+        assert alias == "SPAR-014"
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repo,
+        merge_queue=queue,
+        merge_target_branch="main",
+    )
+    projection = SimpleNamespace(
+        paths=object(),
+        binding={},
+        task_status="retrying",
+    )
+    bridge._owned_post_merge_recovery_projection = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: projection
+    )
+    result = bridge.consume_pending_same_board_merge()
+    assert result is not None
+    assert result["consumed"] is True
+    assert result["task_id"] == "SPAR-014"
+    assert result["request_id"] == "req-014"
+    assert result["write_count"] == 1
+    assert portal.closed is True
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_on_head(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "landed@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Landed Test"],
+        cwd=repo,
+        check=True,
+    )
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir()
+    output.write_text('{"ok": true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "landed"], cwd=repo, check=True)
+
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:landed-retrying",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+        repo_root=repo,
+        merge_target_ref="HEAD",
+    )
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:landed-retrying",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:014",
+                        "task_id": "SPAR-014",
+                        "goal_cid": "goal:partition",
+                        "status": "retrying",
+                        "priority": "P0",
+                        "ordinal": 14,
+                        "title": "Partition policy",
+                        "outputs": [{"path": "inventory/result.json"}],
+                        "validations": [{"argv": ["true"]}],
+                        "acceptance": [{"criterion": "Outputs landed"}],
+                        "objective": "Land the partition policy",
+                        "completion": "auto",
+                        "track": "analysis",
+                        "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
+                        "write_scope": ["inventory/result.json"],
+                        "completion_contract": "Outputs landed",
+                    }
+                ],
+            }
+        )
+        outcomes = daemon.reconcile_landed_merged_tasks()
+        assert outcomes
+        assert outcomes[0]["completed"] is True
+        assert outcomes[0]["task_alias"] == "SPAR-014"
+        refreshed = daemon.task_source.get("task:cid:014")
+        assert refreshed is not None
+        assert str(refreshed.status).lower() == "completed"
     finally:
         daemon.close()
 

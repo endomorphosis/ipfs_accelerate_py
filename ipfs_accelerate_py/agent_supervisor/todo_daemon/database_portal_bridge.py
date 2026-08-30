@@ -744,6 +744,27 @@ _MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
 _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON: Final[str] = (
     "post_merge_declared_outputs_missing"
 )
+DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-pending-same-board-merge-consume@1"
+)
+_PENDING_SAME_BOARD_MERGE_CONSUME_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "blocked",
+        "in_progress",
+        "quarantined",
+        "retrying",
+        "todo",
+    }
+)
+_INTEGRATED_MERGE_TRAIN_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "already_merged",
+        "completed",
+        "deduplicated",
+        "merged",
+    }
+)
 _FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON: Final[str] = (
     "false_positive_completion_integration_lineage_unproven"
 )
@@ -3973,11 +3994,15 @@ class DatabasePortalExecutionBridge:
             {"blocked", "retrying"}
         ),
         allow_shared_lane_source: bool = False,
+        require_missing_output_lineage: bool = True,
     ) -> _DatabasePortalRecoveryProjection | None:
         """Prove that one eligible request came from this lane's sealed attempt."""
 
-        if self.merge_queue is None or not self._request_has_missing_output_recovery_lineage(
-            request
+        if self.merge_queue is None:
+            return None
+        if (
+            require_missing_output_lineage
+            and not self._request_has_missing_output_recovery_lineage(request)
         ):
             return None
         metadata = getattr(request, "metadata", None)
@@ -19197,6 +19222,119 @@ class DatabasePortalExecutionBridge:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
             if callable(close):
                 close()
+
+    def consume_pending_same_board_merge(self) -> Mapping[str, Any] | None:
+        """Advance one pending same-board merge without a fresh database claim.
+
+        Database idle ticks never enter Portal ``run_once``, so a retryable
+        merge leftover (for example a cleared checkout lock) would otherwise
+        sit forever while ``claim_next`` reports ``no_ready_tasks``.  The
+        Portal merge callback still owns git integration and projection
+        completion.  False-completion reopen rows stay on the dedicated
+        post-merge recovery path.
+        """
+
+        if self.merge_queue is None or self.repository_root is None:
+            return None
+        pending_fn = getattr(self.merge_queue, "pending_requests", None)
+        if not callable(pending_fn):
+            return None
+        try:
+            pending = tuple(pending_fn(limit=8) or ())
+        except Exception as exc:
+            raise DatabasePortalBridgeError(
+                "pending merge consume could not list queue rows"
+            ) from exc
+
+        selected: Any = None
+        projection: _DatabasePortalRecoveryProjection | None = None
+        for request in pending:
+            metadata = getattr(request, "metadata", None)
+            if not isinstance(metadata, Mapping):
+                continue
+            if "false_positive_completion_reopen" in metadata:
+                continue
+            candidate = self._owned_post_merge_recovery_projection(
+                request,
+                allowed_task_statuses=_PENDING_SAME_BOARD_MERGE_CONSUME_STATUSES,
+                allow_shared_lane_source=True,
+                require_missing_output_lineage=False,
+            )
+            if candidate is None:
+                continue
+            selected = request
+            projection = candidate
+            break
+        if selected is None or projection is None:
+            return None
+
+        alias = str(getattr(selected, "task_id", "") or "")
+        request_id = str(getattr(selected, "request_id", "") or "")
+        portal = self.portal_factory(projection.paths, alias)
+        if portal is None:
+            raise DatabasePortalBridgeError(
+                "portal_factory did not return a Portal-compatible daemon"
+            )
+        close = getattr(portal, "close_event_runtime", None) or getattr(
+            portal,
+            "close",
+            None,
+        )
+        try:
+            consume = getattr(portal, "_consume_one_merge_candidate", None)
+            portal_queue = getattr(portal, "merge_queue", None)
+            portal_repo_root = getattr(portal, "repo_root", None)
+            portal_target = str(
+                getattr(portal, "resolved_merge_target_branch", "") or ""
+            )
+            if (
+                not callable(consume)
+                or portal_queue is not self.merge_queue
+                or portal_repo_root is None
+                or Path(portal_repo_root).absolute() != self.repository_root
+                or portal_target != self.merge_target_branch
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal merge consumer is not bound to the selected target"
+                )
+            result = consume()
+        finally:
+            if callable(close):
+                close()
+        if not isinstance(result, Mapping):
+            return {
+                "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+                "attempted": True,
+                "consumed": False,
+                "reason": "merge_train_lease_or_empty",
+                "request_id": request_id,
+                "task_id": alias,
+                "write_count": 0,
+            }
+        status = str(result.get("status") or result.get("reason") or "").strip()
+        merge_result = result.get("merge_result")
+        consumed = bool(
+            status.lower() in _INTEGRATED_MERGE_TRAIN_STATUSES
+            or result.get("merged")
+            or result.get("already_merged")
+            or (
+                isinstance(merge_result, Mapping)
+                and (
+                    merge_result.get("merged")
+                    or merge_result.get("already_merged")
+                )
+            )
+        )
+        return {
+            "schema": DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA,
+            "attempted": True,
+            "consumed": consumed,
+            "request_id": str(result.get("request_id") or request_id),
+            "task_id": alias,
+            "status": status,
+            "reason": str(result.get("reason") or status),
+            "write_count": 1,
+        }
 
     def recover_post_merge_declared_outputs(
         self,

@@ -2212,6 +2212,13 @@ def bind_database_portal_execution_from_args(
             recovery_binder(
                 lambda: bridge.recover_post_merge_declared_outputs(daemon)
             )
+        consume_binder = getattr(daemon, "bind_pending_merge_consume", None)
+        if not callable(consume_binder):
+            raise RuntimeError(
+                "production database daemon does not expose pending merge "
+                "consume binding"
+            )
+        consume_binder(bridge.consume_pending_same_board_merge)
     return bridge
 
 
