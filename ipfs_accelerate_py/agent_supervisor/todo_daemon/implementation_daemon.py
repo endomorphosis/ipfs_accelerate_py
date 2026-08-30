@@ -72367,6 +72367,8 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "quack_attach_contended",
         "quack_transport_unavailable",
         "authentication_failed",
+        "database claim validation retry seed failed verification",
+        "Portal completion lacks a verified task_completed event",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72378,7 +72380,23 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "quack_attach_contended",
         "quack_transport_unavailable",
         "authentication_failed",
+        "database claim validation retry seed failed verification",
+        "Portal completion lacks a verified task_completed event",
     }
+)
+_FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
+    {
+        "database claim validation retry seed failed verification",
+        "Portal completion lacks a verified task_completed event",
+    }
+)
+_MERGE_QUEUE_LANDED_COMPLETION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-merge-queue-landed-completion@1"
+)
+_FALSE_TERMINAL_PORTAL_UNSTALL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-false-terminal-portal-unstall@1"
 )
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
 _MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS = 10
@@ -79731,6 +79749,15 @@ class DatabaseImplementationDaemon:
             or lowered.startswith("quack control-plane attach contended:")
         ):
             return "quack_attach_contended"
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON,
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON,
+        )
+
+        if DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON in reason:
+            return DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON
+        if DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON in reason:
+            return DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
@@ -79917,6 +79944,252 @@ class DatabaseImplementationDaemon:
                     "previous_status": "blocked",
                     "status": "retrying",
                     "reason": "inflight_process_deferral_budget_unstall",
+                }
+            )
+        return outcomes
+
+    @staticmethod
+    def _merge_queue_payload_task_identities(
+        payload: Mapping[str, Any],
+    ) -> set[str]:
+        """Collect alias and CID identities from one completed merge receipt."""
+
+        identities: set[str] = set()
+
+        def add(raw: Any) -> None:
+            value = str(raw or "").strip()
+            if value:
+                identities.add(value)
+
+        for key in ("task_id", "canonical_task_id", "canonical_task_key"):
+            add(payload.get(key))
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, Mapping):
+            return identities
+        completion_cids = metadata.get("completion_task_cids")
+        if isinstance(completion_cids, Mapping):
+            for key, value in completion_cids.items():
+                add(key)
+                add(value)
+        nested_task = metadata.get("task")
+        if isinstance(nested_task, Mapping):
+            for key in (
+                "task_id",
+                "canonical_task_cid",
+                "canonical_task_key",
+            ):
+                add(nested_task.get(key))
+        return identities
+
+    def _git_commit_is_on_target(self, commit: str) -> bool:
+        """True when ``commit`` is an ancestor of the configured merge target."""
+
+        if self.repo_root is None or not commit:
+            return False
+        if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+            return False
+        result = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                commit,
+                self.merge_target_ref,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def _completed_merge_queue_commits_by_task(self) -> dict[str, str]:
+        """Map task alias/CID to the newest completed merge-queue commit."""
+
+        mapping: dict[str, str] = {}
+        queue = getattr(self, "merge_queue", None)
+        completed_dir = getattr(queue, "completed_dir", None)
+        if not isinstance(completed_dir, Path) or not completed_dir.is_dir():
+            return mapping
+        files = sorted(
+            (
+                path
+                for path in completed_dir.glob("*.json")
+                if path.is_file() and not path.is_symlink()
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for path in files[:64]:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            status = str(payload.get("status") or "").strip().lower()
+            if status not in {"completed", "merged"}:
+                continue
+            metadata = payload.get("metadata")
+            metadata = metadata if isinstance(metadata, Mapping) else {}
+            commit = str(
+                payload.get("commit_sha")
+                or metadata.get("implementation_commit")
+                or ""
+            ).strip()
+            if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+                continue
+            for identity in self._merge_queue_payload_task_identities(payload):
+                mapping.setdefault(identity, commit)
+        return mapping
+
+    def reconcile_blocked_merge_queue_completions(self) -> list[dict[str, Any]]:
+        """Complete blocked/retrying tasks whose merge-queue commit is on HEAD.
+
+        ASEH-020 stayed ``blocked`` after its merge landed because Portal
+        never observed a ``task_completed`` event. File existence is not
+        proof (declared outputs are often pre-existing paths). The completed
+        merge-queue receipt plus an ancestor check is.
+        """
+
+        self._require_execution_authority("merge-queue landed completion")
+        if self.repo_root is None:
+            return []
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        commits = self._completed_merge_queue_commits_by_task()
+        if not commits:
+            return []
+        outcomes: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for status in ("blocked", "retrying"):
+            page = list_tasks(status=status, limit=TASK_SOURCE_QUERY_LIMIT)
+            for task in tuple(getattr(page, "tasks", ()) or ()):
+                task_cid = str(getattr(task, "task_cid", "") or "")
+                if not task_cid or task_cid in seen:
+                    continue
+                alias = str(getattr(task, "task_alias", "") or "")
+                commit = commits.get(task_cid) or commits.get(alias)
+                if not commit or not self._git_commit_is_on_target(commit):
+                    continue
+                seen.add(task_cid)
+                current = self.task_source.get(task_cid) or task
+                current_status = str(
+                    getattr(current, "status", "") or ""
+                ).strip().lower()
+                if current_status not in {"blocked", "retrying"}:
+                    continue
+                proof = {
+                    "schema": _MERGE_QUEUE_LANDED_COMPLETION_SCHEMA,
+                    "operation": "database_merge_queue_landed_completion",
+                    "reason": "merge_queue_completed_commit_on_target",
+                    "task_cid": task_cid,
+                    "task_alias": alias,
+                    "merge_target_ref": self.merge_target_ref,
+                    "merge_commit": commit,
+                }
+                digest = "sha256:" + hashlib.sha256(
+                    canonical_json(proof).encode("utf-8")
+                ).hexdigest()
+                try:
+                    record_validation = getattr(
+                        self.task_source, "record_validation_result", None
+                    )
+                    if callable(record_validation):
+                        record_validation(
+                            task_cid=task_cid,
+                            outcome="passed",
+                            evidence_digest=digest,
+                            argv=["database-merge-queue-landed-completion"],
+                            body=proof,
+                        )
+                    refreshed = self.task_source.get(task_cid)
+                    if refreshed is None:
+                        continue
+                    self._cas_task_status_database(
+                        refreshed.task_cid,
+                        expected_revision=int(refreshed.revision),
+                        new_status="completed",
+                        receipt={**proof, "evidence_digest": digest},
+                        evidence_digests=[digest],
+                    )
+                except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                    continue
+                except DatabaseImplementationAuthorityError:
+                    continue
+                outcomes.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": alias,
+                        "previous_status": current_status,
+                        "status": "completed",
+                        "completed": True,
+                        "reason": "merge_queue_completed_commit_on_target",
+                        "merge_commit": commit,
+                        "evidence_digest": digest,
+                    }
+                )
+        return outcomes
+
+    def reconcile_false_terminal_portal_blocks(self) -> list[dict[str, Any]]:
+        """Reopen leftover terminal blocks from killed claims and missing events.
+
+        ``database claim validation retry seed failed verification`` is a
+        stale leftover seed after a dead attempt, not a model failure.
+        ``Portal completion lacks a verified task_completed event`` is a
+        lost completion witness; if the merge already landed, the merge-queue
+        completion pass handles it first. Remaining rows go back to retrying
+        so claim_next can continue the board.
+        """
+
+        self._require_execution_authority("false terminal portal unstall")
+        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        outcomes: list[dict[str, Any]] = []
+        for task in page.tasks:
+            if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                continue
+            body = getattr(task, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if not isinstance(receipt, Mapping):
+                continue
+            if (
+                str(receipt.get("operation") or "")
+                != "database_portal_terminal_failure"
+            ):
+                continue
+            reason = self._database_portal_reason(receipt.get("reason"))
+            if reason not in _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS:
+                continue
+            try:
+                self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt={
+                        "schema": _FALSE_TERMINAL_PORTAL_UNSTALL_SCHEMA,
+                        "operation": "database_portal_false_terminal_unstall",
+                        "reason": "false_terminal_portal_unstall",
+                        "previous_operation": receipt.get("operation"),
+                        "previous_reason": reason,
+                    },
+                )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                continue
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(task.task_alias or ""),
+                    "previous_status": "blocked",
+                    "status": "retrying",
+                    "reason": "false_terminal_portal_unstall",
+                    "previous_reason": reason,
                 }
             )
         return outcomes
@@ -89862,6 +90135,9 @@ class DatabaseImplementationDaemon:
         landed_merge_reconciliations = self._run_reconciliation_step(
             self.reconcile_landed_merged_tasks
         )
+        merge_queue_landed_completions = self._run_reconciliation_step(
+            self.reconcile_blocked_merge_queue_completions
+        )
         unknown_callback_reopens = self._run_reconciliation_step(
             self.reconcile_unimplemented_unknown_callback_quarantines
         )
@@ -89897,6 +90173,9 @@ class DatabaseImplementationDaemon:
         )
         inflight_deferral_unstalls = self._run_reconciliation_step(
             self.reconcile_inflight_deferral_blocks
+        )
+        false_terminal_portal_unstalls = self._run_reconciliation_step(
+            self.reconcile_false_terminal_portal_blocks
         )
         reconciliation_write_count = (
             int(merge_quarantine_settlement.get("write_count") or 0)
@@ -89946,6 +90225,8 @@ class DatabaseImplementationDaemon:
             )
             + len(stale_in_progress_unstalls)
             + len(inflight_deferral_unstalls)
+            + len(merge_queue_landed_completions)
+            + len(false_terminal_portal_unstalls)
             + int(output_rearm.get("write_count") or 0)
         )
         # Prefer resume of this session's running attempts (crash recovery).
@@ -90038,6 +90319,12 @@ class DatabaseImplementationDaemon:
                     ),
                     "stale_in_progress_unstalls": stale_in_progress_unstalls,
                     "inflight_deferral_unstalls": inflight_deferral_unstalls,
+                    "merge_queue_landed_completions": (
+                        merge_queue_landed_completions
+                    ),
+                    "false_terminal_portal_unstalls": (
+                        false_terminal_portal_unstalls
+                    ),
                     "declared_output_rearm": output_rearm,
                     "merge_quarantine_settlement": merge_quarantine_settlement,
                     "post_merge_recovery": post_merge_recovery_reconciliation,
@@ -90097,6 +90384,8 @@ class DatabaseImplementationDaemon:
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
                 "inflight_deferral_unstalls": inflight_deferral_unstalls,
+                "merge_queue_landed_completions": merge_queue_landed_completions,
+                "false_terminal_portal_unstalls": false_terminal_portal_unstalls,
                 "declared_output_rearm": output_rearm,
                 "merge_quarantine_settlement": merge_quarantine_settlement,
                 "post_merge_recovery": post_merge_recovery_reconciliation,
@@ -90140,6 +90429,8 @@ class DatabaseImplementationDaemon:
             ),
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
             "inflight_deferral_unstalls": inflight_deferral_unstalls,
+            "merge_queue_landed_completions": merge_queue_landed_completions,
+            "false_terminal_portal_unstalls": false_terminal_portal_unstalls,
             "declared_output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "post_merge_recovery": post_merge_recovery_reconciliation,

@@ -32,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_mutation_lock_path,
     read_checkout_mutation_lease,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
@@ -212,6 +213,7 @@ def _open_daemon(
     control_path: Path | None = None,
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
+    merge_queue: MergeQueue | None = None,
     task_prefix: str = "",
     board_namespace: str = "",
     deterministic_reconciliation_fn: Callable[
@@ -280,6 +282,7 @@ def _open_daemon(
         clock_ms=clock_ms,
         repo_root=repo_root,
         merge_target_ref=merge_target_ref,
+        merge_queue=merge_queue,
         task_prefix=task_prefix,
         board_namespace=board_namespace,
     )
@@ -7392,6 +7395,163 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
         retried = daemon.task_source.get("task:cid:001")
         assert retried is not None
         assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def _block_task_terminal(
+    daemon: DatabaseImplementationDaemon,
+    task_cid: str,
+    *,
+    reason: str,
+) -> None:
+    task = daemon.task_source.get(task_cid)
+    assert task is not None
+    daemon.task_source.compare_and_set_status(
+        task.task_cid,
+        expected_revision=int(task.revision),
+        status="blocked",
+        receipt={
+            "operation": "database_portal_terminal_failure",
+            "reason": reason,
+            "retryable": False,
+        },
+    )
+
+
+def test_reconcile_reopens_false_terminal_seed_verification_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-seed-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="database claim validation retry seed failed verification",
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == "database_portal_false_terminal_unstall"
+        assert (
+            receipt["previous_reason"]
+            == "database claim validation retry seed failed verification"
+        )
+    finally:
+        daemon.close()
+
+
+def test_reconcile_reopens_missing_task_completed_block_without_merge(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-missing-event-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal completion lacks a verified task_completed event",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_does_not_reopen_unrelated_terminal_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-unrelated",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="implementation_protected_path_mutated",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes == []
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_completes_blocked_task_when_merge_queue_landed(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    queue_dir = tmp_path / "merge-queue"
+    merge_queue = MergeQueue(queue_dir)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:merge-queue-landed-completion",
+        repo_root=repo,
+        merge_queue=merge_queue,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal completion lacks a verified task_completed event",
+        )
+        completed_dir = Path(daemon.merge_queue.completed_dir)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        (completed_dir / "aseh-020-completed.json").write_text(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "task_id": "DQP-T001",
+                    "canonical_task_id": "task:cid:001",
+                    "commit_sha": commit,
+                    "metadata": {
+                        "implementation_commit": commit,
+                        "completion_task_cids": {"DQP-T001": "task:cid:001"},
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = daemon.run_once()
+        completed_rows = result["merge_queue_landed_completions"]
+        assert completed_rows
+        assert completed_rows[0]["task_cid"] == "task:cid:001"
+        assert completed_rows[0]["completed"] is True
+        assert result["false_terminal_portal_unstalls"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+        assert result["selection_idle_reason"] == "no_ready_tasks"
     finally:
         daemon.close()
 
