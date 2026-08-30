@@ -2712,6 +2712,9 @@ def configured_board_launch_plan(
             60.0,
             float(board.payload["stale_seconds"]),
         ),
+        supervisor_startup_grace_seconds=float(
+            board.payload["watchdog_startup_grace_seconds"]
+        ),
         stop_grace_seconds=max(
             30.0,
             float(board.payload["check_interval_seconds"]) * 2.0,

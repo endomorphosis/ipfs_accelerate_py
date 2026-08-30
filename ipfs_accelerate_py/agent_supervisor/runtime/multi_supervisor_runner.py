@@ -4471,6 +4471,7 @@ def build_configured_multi_supervisor_cli_runner(
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -4537,6 +4538,13 @@ def build_configured_multi_supervisor_cli_runner(
         argv.extend(["--heartbeat-interval-seconds", str(heartbeat_interval_seconds)])
     if supervisor_status_stale_seconds is not None:
         argv.extend(["--supervisor-status-stale-seconds", str(supervisor_status_stale_seconds)])
+    if supervisor_startup_grace_seconds is not None:
+        argv.extend(
+            [
+                "--supervisor-startup-grace-seconds",
+                str(supervisor_startup_grace_seconds),
+            ]
+        )
     if stop_grace_seconds is not None:
         argv.extend(["--stop-grace-seconds", str(stop_grace_seconds)])
     if master_log is not None:
@@ -4580,6 +4588,7 @@ def build_configured_multi_supervisor_launcher(
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -4611,6 +4620,7 @@ def build_configured_multi_supervisor_launcher(
             duration_seconds_env_var=duration_seconds_env_var,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             supervisor_status_stale_seconds=supervisor_status_stale_seconds,
+            supervisor_startup_grace_seconds=supervisor_startup_grace_seconds,
             stop_grace_seconds=stop_grace_seconds,
             stamp=stamp,
             stamp_env_var=stamp_env_var,
@@ -4649,6 +4659,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     duration_seconds_env_var: str = "DURATION_SECONDS",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "STAMP",
@@ -4720,6 +4731,7 @@ def build_repo_implementation_multi_supervisor_launcher(
         duration_seconds_env_var=duration_seconds_env_var,
         heartbeat_interval_seconds=heartbeat_interval_seconds,
         supervisor_status_stale_seconds=supervisor_status_stale_seconds,
+        supervisor_startup_grace_seconds=supervisor_startup_grace_seconds,
         stop_grace_seconds=stop_grace_seconds,
         stamp=stamp,
         stamp_env_var=stamp_env_var,
@@ -5214,24 +5226,85 @@ def supervisor_status_health_fields(
     *,
     repo_root: Path,
     stale_seconds: float,
+    expected_supervisor_pid: int | None = None,
+    fresh_after_epoch_seconds: float | None = None,
+    startup_grace_remaining_seconds: float = 0.0,
 ) -> dict[str, object]:
     """Return heartbeat fields for the wrapper supervisor status file."""
 
     status_path = _inferred_supervisor_status_path(track)
     if status_path is None:
         return {"supervisor_status": "untracked"}
+
+    generation_bound = (
+        expected_supervisor_pid is not None
+        or fresh_after_epoch_seconds is not None
+    )
+
+    def unready_projection(
+        status: str,
+        reason: str,
+        **fields: object,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "supervisor_status": status,
+            "supervisor_status_path": str(status_path),
+            **fields,
+        }
+        if not generation_bound:
+            return result
+        if expected_supervisor_pid is not None:
+            result["expected_supervisor_pid"] = expected_supervisor_pid
+        result["supervisor_status_reason"] = reason
+        remaining = max(0.0, float(startup_grace_remaining_seconds))
+        if remaining > 0:
+            result["supervisor_status"] = "starting"
+            result["startup_grace_remaining_seconds"] = round(remaining, 1)
+        else:
+            result["restart_supervisor"] = True
+        return result
+
     payload = _read_json_dict(status_path)
     if not payload:
-        return {
-            "supervisor_status": "missing",
-            "supervisor_status_path": str(status_path),
-        }
+        return unready_projection("missing", "status_projection_missing")
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
-        return {
-            "supervisor_status": "unknown",
-            "supervisor_status_path": str(status_path),
-        }
+        return unready_projection("unknown", "status_timestamp_invalid")
+
+    observed_supervisor_pid: int | None = None
+    raw_supervisor_pid = payload.get("supervisor_pid")
+    if isinstance(raw_supervisor_pid, int) and not isinstance(
+        raw_supervisor_pid,
+        bool,
+    ):
+        observed_supervisor_pid = raw_supervisor_pid
+    elif isinstance(raw_supervisor_pid, str) and raw_supervisor_pid.isascii():
+        normalized_pid = raw_supervisor_pid.strip()
+        if normalized_pid.isdigit():
+            observed_supervisor_pid = int(normalized_pid)
+    if observed_supervisor_pid is not None and observed_supervisor_pid <= 0:
+        observed_supervisor_pid = None
+    status_predates_birth = bool(
+        fresh_after_epoch_seconds is not None
+        and updated_at.timestamp() < float(fresh_after_epoch_seconds)
+    )
+    pid_mismatch = bool(
+        expected_supervisor_pid is not None
+        and observed_supervisor_pid != expected_supervisor_pid
+    )
+    if status_predates_birth or pid_mismatch:
+        reasons: list[str] = []
+        if status_predates_birth:
+            reasons.append("status_predates_process_birth")
+        if pid_mismatch:
+            reasons.append("supervisor_pid_mismatch")
+        return unready_projection(
+            "stale",
+            "+".join(reasons),
+            observed_supervisor_pid=observed_supervisor_pid,
+            supervisor_status_updated_at=updated_at.isoformat(),
+        )
+
     age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
@@ -5268,6 +5341,18 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
+    reason = fields.get("supervisor_status_reason")
+    if reason:
+        parts.append(f"supervisor_status_reason={reason}")
+    expected_pid = fields.get("expected_supervisor_pid")
+    if expected_pid is not None:
+        parts.append(f"expected_supervisor_pid={expected_pid}")
+    observed_pid = fields.get("observed_supervisor_pid")
+    if observed_pid is not None:
+        parts.append(f"observed_supervisor_pid={observed_pid}")
+    grace_remaining = fields.get("startup_grace_remaining_seconds")
+    if grace_remaining is not None:
+        parts.append(f"startup_grace_remaining_seconds={grace_remaining}")
     active_task_id = fields.get("supervisor_active_task_id")
     if active_task_id:
         parts.append(f"supervisor_active_task_id={active_task_id}")
@@ -7918,6 +8003,7 @@ def run_supervisor_tracks(
     duration_seconds: float,
     heartbeat_interval_seconds: float = 60.0,
     supervisor_status_stale_seconds: float = 600.0,
+    supervisor_startup_grace_seconds: float = 0.0,
     stop_grace_seconds: float = 10.0,
     python_executable: str = "python3",
     master_pid_path: Path | None = None,
@@ -7954,6 +8040,11 @@ def run_supervisor_tracks(
             )
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
     resolved_repo_root = repo_root.resolve()
+    startup_grace_seconds = float(supervisor_startup_grace_seconds)
+    if not math.isfinite(startup_grace_seconds) or startup_grace_seconds < 0:
+        raise ValueError(
+            "supervisor_startup_grace_seconds must be finite and nonnegative"
+        )
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
     }
@@ -8004,6 +8095,26 @@ def run_supervisor_tracks(
                 f"{os.getpid()}\n", encoding="utf-8"
             )
     processes: dict[str, subprocess.Popen[bytes]] = {}
+    track_launch_epoch_seconds: dict[str, float] = {}
+    track_launch_monotonic: dict[str, float] = {}
+
+    def launch_track(track: SupervisorTrack) -> subprocess.Popen[bytes]:
+        """Start one exact track birth and reset its projection freshness gate."""
+
+        launched_epoch = time.time()
+        launched_monotonic = time.monotonic()
+        process = start_track(
+            track,
+            repo_root=resolved_repo_root,
+            common_args=common_args,
+            python_executable=python_executable,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=accepted_control_plane_descriptor,
+            output=output,
+        )
+        track_launch_epoch_seconds[track.name] = launched_epoch
+        track_launch_monotonic[track.name] = launched_monotonic
+        return process
 
     def _handle_signal(signum: int, _frame: object) -> None:
         raise SupervisorRunInterrupted(f"received signal {signum}")
@@ -8090,17 +8201,7 @@ def run_supervisor_tracks(
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                processes[adopted_track.name] = start_track(
-                    adopted_track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[adopted_track.name] = launch_track(adopted_track)
                 reassignment_count += 1
                 _emit(
                     output,
@@ -8181,17 +8282,7 @@ def run_supervisor_tracks(
         if blocked:
             raise SupervisorRunInterrupted(blocked)
         for track in managed_tracks:
-            processes[track.name] = start_track(
-                track,
-                repo_root=resolved_repo_root,
-                common_args=common_args,
-                python_executable=python_executable,
-                accepted_control_plane_pin=accepted_control_plane_pin,
-                accepted_control_plane_descriptor=(
-                    accepted_control_plane_descriptor
-                ),
-                output=output,
-            )
+            processes[track.name] = launch_track(track)
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
@@ -8280,18 +8371,8 @@ def run_supervisor_tracks(
                         for restart_track in managed_tracks:
                             if restart_track.name in bounded_finished_tracks:
                                 continue
-                            processes[restart_track.name] = start_track(
-                                restart_track,
-                                repo_root=resolved_repo_root,
-                                common_args=common_args,
-                                python_executable=python_executable,
-                                accepted_control_plane_pin=(
-                                    accepted_control_plane_pin
-                                ),
-                                accepted_control_plane_descriptor=(
-                                    accepted_control_plane_descriptor
-                                ),
-                                output=output,
+                            processes[restart_track.name] = launch_track(
+                                restart_track
                             )
                     except Exception as exc:  # noqa: BLE001
                         blocked = (
@@ -8317,6 +8398,27 @@ def run_supervisor_tracks(
                     resolved,
                     repo_root=resolved_repo_root,
                     stale_seconds=float(supervisor_status_stale_seconds),
+                    expected_supervisor_pid=(
+                        process.pid
+                        if process is not None and startup_grace_seconds > 0
+                        else None
+                    ),
+                    fresh_after_epoch_seconds=(
+                        track_launch_epoch_seconds.get(track.name)
+                        if startup_grace_seconds > 0
+                        else None
+                    ),
+                    startup_grace_remaining_seconds=max(
+                        0.0,
+                        startup_grace_seconds
+                        - (
+                            time.monotonic()
+                            - track_launch_monotonic.get(
+                                track.name,
+                                time.monotonic(),
+                            )
+                        ),
+                    ),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
@@ -8353,22 +8455,15 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
-                        processes[track.name] = start_track(
-                            track,
-                            repo_root=resolved_repo_root,
-                            common_args=common_args,
-                            python_executable=python_executable,
-                            accepted_control_plane_pin=accepted_control_plane_pin,
-                            accepted_control_plane_descriptor=(
-                                accepted_control_plane_descriptor
-                            ),
-                            output=output,
-                        )
+                        processes[track.name] = launch_track(track)
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
                             repo_root=resolved_repo_root,
-                            fresh_after_epoch_seconds=run_started_at,
+                            fresh_after_epoch_seconds=track_launch_epoch_seconds.get(
+                                track.name,
+                                run_started_at,
+                            ),
                         )
                         if task_fields.get("terminal_quiescent"):
                             terminal_tracks.add(track.name)
@@ -8559,19 +8654,7 @@ def run_supervisor_tracks(
                                 blocked = blocker
                     if recover_execution and not blocked:
                         try:
-                            processes[track.name] = start_track(
-                                track,
-                                repo_root=resolved_repo_root,
-                                common_args=common_args,
-                                python_executable=python_executable,
-                                accepted_control_plane_pin=(
-                                    accepted_control_plane_pin
-                                ),
-                                accepted_control_plane_descriptor=(
-                                    accepted_control_plane_descriptor
-                                ),
-                                output=output,
-                            )
+                            processes[track.name] = launch_track(track)
                         except Exception as exc:  # noqa: BLE001
                             blocker = (
                                 "cannot restart recoverable plan-bound handoff: "
@@ -8612,17 +8695,7 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
-                processes[track.name] = start_track(
-                    track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[track.name] = launch_track(track)
             dispatch_pending_reassignments()
             if replan_required:
                 _emit(
@@ -8752,6 +8825,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-seconds", type=float, default=28800.0)
     parser.add_argument("--heartbeat-interval-seconds", type=float, default=60.0)
     parser.add_argument("--supervisor-status-stale-seconds", type=float, default=600.0)
+    parser.add_argument("--supervisor-startup-grace-seconds", type=float, default=0.0)
     parser.add_argument("--stop-grace-seconds", type=float, default=10.0)
     parser.add_argument("--stamp", default=utc_run_stamp())
     parser.add_argument("--master-dir", type=Path, default=Path("data/agent_supervisor"))
@@ -9470,6 +9544,9 @@ def main(argv: list[str] | None = None) -> int:
             duration_seconds=args.duration_seconds,
             heartbeat_interval_seconds=args.heartbeat_interval_seconds,
             supervisor_status_stale_seconds=args.supervisor_status_stale_seconds,
+            supervisor_startup_grace_seconds=(
+                args.supervisor_startup_grace_seconds
+            ),
             stop_grace_seconds=args.stop_grace_seconds,
             python_executable=args.python_executable,
             master_pid_path=master_pid,

@@ -636,6 +636,109 @@ def _track(tmp_path: Path) -> runner.SupervisorTrack:
     )
 
 
+def test_status_projection_is_bound_to_current_lane_birth(tmp_path: Path) -> None:
+    status_path = tmp_path / "lane-status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "supervisor_pid": 41,
+                "updated_at": "2000-01-01T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    track = runner.SupervisorTrack(
+        name="lane",
+        script_path=tmp_path / "lane.py",
+        log_path=tmp_path / "lane.log",
+        supervisor_pid_path=tmp_path / "lane.pid",
+        daemon_pid_path=tmp_path / "daemon.pid",
+        supervisor_status_path=status_path,
+    )
+
+    starting = runner.supervisor_status_health_fields(
+        track.resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=1,
+        expected_supervisor_pid=42,
+        fresh_after_epoch_seconds=1_800_000_000,
+        startup_grace_remaining_seconds=5,
+    )
+    assert starting["supervisor_status"] == "starting"
+    assert starting["expected_supervisor_pid"] == 42
+    assert starting["observed_supervisor_pid"] == 41
+    assert "restart_supervisor" not in starting
+
+    stalled = runner.supervisor_status_health_fields(
+        track.resolve(tmp_path),
+        repo_root=tmp_path,
+        stale_seconds=1,
+        expected_supervisor_pid=42,
+        fresh_after_epoch_seconds=1_800_000_000,
+        startup_grace_remaining_seconds=0,
+    )
+    assert stalled["supervisor_status"] == "stale"
+    assert stalled["restart_supervisor"] is True
+
+
+def test_live_lane_is_not_restarted_from_prior_birth_status_during_grace(
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "lane.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import signal",
+                "import sys",
+                "import time",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    status_path = tmp_path / "lane-status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "supervisor_pid": 999_999_999,
+                "status": "stopped",
+                "updated_at": "2000-01-01T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    track = runner.SupervisorTrack(
+        name="lane",
+        script_path=script,
+        log_path=tmp_path / "lane.log",
+        supervisor_pid_path=tmp_path / "lane.pid",
+        daemon_pid_path=tmp_path / "daemon.pid",
+        supervisor_status_path=status_path,
+    )
+    output: list[str] = []
+
+    result = runner.run_supervisor_tracks(
+        (track,),
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.2,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        supervisor_startup_grace_seconds=1,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        output=output.append,
+    )
+
+    assert result["completed"] is True
+    assert sum("started lane supervisor" in line for line in output) == 1
+    assert any("supervisor_status=starting" in line for line in output)
+    assert not any("restarting stale lane supervisor" in line for line in output)
+
+
 def _patch_track_runtime(
     monkeypatch: pytest.MonkeyPatch,
     events: list[str],

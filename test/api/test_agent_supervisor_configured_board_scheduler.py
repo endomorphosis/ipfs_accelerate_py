@@ -2662,6 +2662,11 @@ def test_v3_launch_uses_only_exact_plan_slices_and_empty_wave_has_no_child(
     assert "--implementation-supervisor-strict-task-sharding" not in argv
     assert "--detach" not in argv
     assert plan["effective_strict_task_sharding"] is False
+    startup_grace_flag = argv.index("--supervisor-startup-grace-seconds")
+    assert argv[startup_grace_flag + 1] == "300.0"
+    common = _common_args(plan)
+    child_grace_flag = common.index("--watchdog-startup-grace-seconds")
+    assert common[child_grace_flag + 1] == "300"
 
     empty = configured_board_launch_plan(
         board,
