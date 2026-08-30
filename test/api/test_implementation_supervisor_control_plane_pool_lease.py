@@ -273,6 +273,8 @@ def _seed_active_database_pool_lease(
             repo_root=repo,
             worktree_root=worktree_root,
             database_program=SimpleNamespace(
+                authority_mode="embedded",
+                task_source_kind="duckdb",
                 environment=lambda **_kwargs: {},
                 endpoint_secret_handle="",
             ),
@@ -437,6 +439,34 @@ def _seed_live_database_portal_callback_gap(
             "implementation_lock": implementation_lock,
         }
     )
+    return fixture
+
+
+def _finish_database_portal_callback_gap(
+    fixture: dict[str, Any],
+) -> dict[str, Any]:
+    """Publish the exact nested-finished/outer-callback settlement gap."""
+
+    now = datetime.now(UTC).isoformat()
+    state = PortalTaskState.load(fixture["nested_state_path"])
+    state.active_task_id = ""
+    state.active_task_key = ""
+    state.active_task_cid = ""
+    state.active_attempt = 0
+    state.active_phase = ""
+    state.active_phase_detail = ""
+    state.active_worktree_path = ""
+    state.active_branch = ""
+    state.implementation_in_progress = False
+    state.implementation_attempts[fixture["task_alias"]] = 1
+    state.implementation_attempts_by_cid[fixture["portal_task_cid"]] = 1
+    state.last_implementation_finished_at = now
+    state.last_implementation_returncode = 0
+    state.last_implementation_commit = "a" * 40
+    state.heartbeat_at = now
+    state.last_progress_at = now
+    state.save(fixture["nested_state_path"])
+    fixture["implementation_lock_path"].unlink()
     return fixture
 
 
@@ -946,6 +976,98 @@ def test_control_plane_reload_defers_for_exact_database_portal_callback_gap(
         == "PCSM-043"
     )
     assert fixture["state_path"].read_bytes() == original_state
+
+
+def test_control_plane_reload_defers_during_post_finish_callback_settlement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _finish_database_portal_callback_gap(
+        _seed_live_database_portal_callback_gap(tmp_path)
+    )
+    supervisor = fixture["supervisor"]
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    activity = supervisor._active_managed_database_portal_callback(
+        fixture["child"]
+    )
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert activity is not None
+    assert activity["task_id"] == "PCSM-043"
+    assert activity["phase"] == "callback_settlement_grace"
+    assert decision.action == "continue"
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_reason"]
+        == "active_managed_database_portal_callback"
+    )
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_task_id"]
+        == "PCSM-043"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "nonzero_returncode",
+        "stale_finish",
+        "active_identity_residue",
+        "attempt_identity_mismatch",
+        "dangling_lock",
+    ),
+)
+def test_post_finish_callback_settlement_requires_exact_fresh_evidence(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _finish_database_portal_callback_gap(
+        _seed_live_database_portal_callback_gap(tmp_path)
+    )
+    state = PortalTaskState.load(fixture["nested_state_path"])
+    if case == "nonzero_returncode":
+        state.last_implementation_returncode = 1
+    elif case == "stale_finish":
+        stale = "2000-01-01T00:00:00+00:00"
+        state.last_implementation_finished_at = stale
+        state.heartbeat_at = stale
+        state.last_progress_at = stale
+    elif case == "active_identity_residue":
+        state.active_task_id = fixture["task_alias"]
+    elif case == "attempt_identity_mismatch":
+        state.implementation_attempts_by_cid[fixture["portal_task_cid"]] = 2
+    elif case == "dangling_lock":
+        fixture["implementation_lock_path"].symlink_to("missing-lock-target")
+    state.save(fixture["nested_state_path"])
+
+    assert (
+        fixture["supervisor"]._active_managed_database_portal_callback(
+            fixture["child"]
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
