@@ -1011,9 +1011,10 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     ) == []
     assert board_validator._m8_migration_errors(config, seal, migration) == []
 
-    # Exercise the historical M8 selector in isolation. M18 through M9 keys
+    # Exercise the historical M8 selector in isolation. M19 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("live_catalog_inventory_successor_materialization")
     malformed_successor.pop("portal_completion_persistence_successor_materialization")
     malformed_successor.pop("source_binding_successor_materialization")
     malformed_successor.pop("accepted_source_retry_successor_materialization")
@@ -2097,6 +2098,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("live_catalog_inventory_successor_materialization")
     historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
@@ -2106,6 +2108,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("live_catalog_inventory_successor_materialization")
     historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
@@ -2115,6 +2118,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     historical_seal.pop(
         "portal_completion_persistence_successor_materialization_cid"
     )
@@ -2915,6 +2919,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("live_catalog_inventory_successor_materialization")
     historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
     historical_config.pop("accepted_source_retry_successor_materialization")
@@ -2923,6 +2928,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("live_catalog_inventory_successor_materialization")
     historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
     historical_migration.pop("accepted_source_retry_successor_materialization")
@@ -2931,6 +2937,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     historical_seal.pop(
         "portal_completion_persistence_successor_materialization_cid"
     )
@@ -4559,6 +4566,34 @@ def test_m18_live_marker_rejects_rehashed_fields_and_tail_tamper(
     )
     population = materializer.build_population(REPO_ROOT)
     authority = materializer._expected_m18_portal_completion_persistence_authority()
+    target_runtime_root = authority["target_runtime_root"]
+    config.pop("live_catalog_inventory_successor_materialization")
+    config["database_program"].update(
+        {
+            "quack_endpoint": "quack:127.0.0.1:24061",
+            "store_id": authority["target_store_id"],
+            "store_generation": "19",
+            "event_store_path": f"{target_runtime_root}/events",
+            "runtime_registry_path": f"{target_runtime_root}/registry",
+            "worktree_root": f"{target_runtime_root}/worktrees",
+        }
+    )
+    config["quack_owner"].update(
+        {
+            "database_path": authority["target_store_id"],
+            "state_dir": f"{target_runtime_root}/quack-owner",
+            "port": authority["target_quack_port"],
+            "store_id": authority["target_store_id"],
+        }
+    )
+    config["runtime_paths"] = {
+        "root": target_runtime_root,
+        "state": f"{target_runtime_root}/state",
+        "worktrees": f"{target_runtime_root}/worktrees",
+        "merge_queue": f"{target_runtime_root}/merge-queue",
+        "logs": f"{target_runtime_root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
     validation_digest = "sha256:" + "1" * 64
     target_root = tmp_path / authority["target_runtime_root"]
     target_root.mkdir(parents=True)
