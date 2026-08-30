@@ -6808,6 +6808,60 @@ def test_historical_verification_timeout_without_fingerprint_stays_blocked(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "retained candidate fingerprint changed",
+        "retained workspace exceeds fingerprint byte budget",
+    ],
+)
+def test_verification_recovery_runtime_failure_does_not_crash_maintenance(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError(
+            "implementation_protected_path_verification_lock_timeout"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:verification-recovery-runtime-failure",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        source = daemon.get_attempt(failed["attempt_id"])
+        assert source is not None
+        assert daemon.task_source.get(source.task_cid).status == "blocked"
+        daemon.bind_protected_preservation_recovery(
+            lambda _attempt: (_ for _ in ()).throw(RuntimeError(failure))
+        )
+
+        for _ in range(2):
+            [outcome] = daemon.reconcile_terminal_portal_failures()
+            assert outcome["status"] == "blocked"
+            assert outcome["changed"] is False
+            assert outcome["reason"] == (
+                "verification_recovery_callback_failed"
+            )
+            assert outcome["recovery_deferred"] is True
+            assert outcome["operator_review_required"] is True
+            assert outcome["provider_dispatched"] is True
+            assert outcome["attempt_consumed"] is False
+            assert outcome["error_type"] == "RuntimeError"
+            assert outcome["error_id"].startswith("sha256:")
+            assert daemon.task_source.get(source.task_cid).status == "blocked"
+            assert provider_calls == [source.attempt_id]
+    finally:
+        daemon.close()
+
+
 def test_protected_reconciliation_self_lock_rearms_original_seed_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

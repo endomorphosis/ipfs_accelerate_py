@@ -85,6 +85,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
     DatabasePortalProtectedPathPreserved,
+    DatabasePortalVerificationRecoveryDeferred,
     DatabasePortalValidationRetry,
     _is_implementation_conflict,
     _PostMergeRecoveryDisposition,
@@ -7949,6 +7950,64 @@ def test_bridge_zero_provider_reconciles_protected_preservation_seed(
     assert len(portal.reconcile_calls) == 1
     assert observed["portal"].reconcile_calls == []
     assert provider_hooks == []
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_reason"),
+    [
+        (
+            "retained candidate fingerprint changed",
+            "verification_recovery_fingerprint_changed",
+        ),
+        (
+            "retained workspace exceeds fingerprint byte budget",
+            "verification_recovery_fingerprint_budget_exceeded",
+        ),
+    ],
+)
+def test_retained_verification_recovery_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    expected_reason: str,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "typed retained recovery failure reached provider dispatch"
+        ),
+    )
+    marker_paths = SimpleNamespace()
+    monkeypatch.setattr(
+        bridge,
+        "_recovery_attempt_binding",
+        lambda _attempt, **_kwargs: (marker_paths, {}),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_protected_path_preservation_receipt",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_recover_verification_deferred_retained_candidate",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError(failure)),
+    )
+
+    with pytest.raises(
+        DatabasePortalVerificationRecoveryDeferred
+    ) as raised:
+        bridge.recover_protected_path_preservation(_attempt())
+
+    receipt = raised.value.recovery_receipt
+    assert raised.value.reason == expected_reason
+    assert receipt["disposition"] == "blocked"
+    assert receipt["operator_review_required"] is True
+    assert receipt["provider_dispatched"] is True
+    assert receipt["attempt_consumed"] is False
+    assert receipt["error_type"] == "RuntimeError"
+    assert receipt["error_id"].startswith("sha256:")
 
 
 @pytest.mark.parametrize(

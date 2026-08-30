@@ -1403,6 +1403,52 @@ class DatabasePortalVerificationRecoveryDeferred(DatabasePortalBridgeError):
         self.recovery_receipt = value
 
 
+def _verification_recovery_failure(
+    exc: BaseException,
+) -> dict[str, Any]:
+    """Return a bounded typed disposition for retained-candidate failures."""
+
+    message = str(exc or "")[:1024]
+    lowered = message.casefold()
+    if "fingerprint" in lowered and any(
+        marker in lowered
+        for marker in ("budget", "limit", "too large", "oversize")
+    ):
+        reason = "verification_recovery_fingerprint_budget_exceeded"
+    elif "fingerprint" in lowered:
+        reason = "verification_recovery_fingerprint_changed"
+    elif "lifecycle" in lowered or "fence" in lowered or "lease" in lowered:
+        reason = "verification_recovery_lifecycle_changed"
+    elif any(
+        marker in lowered
+        for marker in ("commit", "rescue", "materialization", "preserv")
+    ):
+        reason = "verification_recovery_materialization_failed"
+    elif isinstance(exc, DatabasePortalBridgeError):
+        reason = "verification_recovery_evidence_invalid"
+    else:
+        reason = "verification_recovery_internal_deferred"
+    error_identity = hashlib.sha256(
+        f"{type(exc).__name__}\0{message}".encode(
+            "utf-8", errors="surrogatepass"
+        )
+    ).hexdigest()
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "verification-deferred-recovery-failure@1"
+        ),
+        "disposition": "blocked",
+        "reason": reason,
+        "recovery_deferred": True,
+        "operator_review_required": True,
+        "provider_dispatched": True,
+        "attempt_consumed": False,
+        "error_type": type(exc).__name__,
+        "error_id": "sha256:" + error_identity,
+    }
+
+
 class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
     """Replay one exact post-dispatch protected-path preservation.
 
@@ -16042,11 +16088,31 @@ class DatabasePortalExecutionBridge:
         )
         if receipt is not None:
             return receipt
-        return self._recover_verification_deferred_retained_candidate(
-            attempt=attempt,
-            paths=paths,
-            binding=observed_binding,
-        )
+        try:
+            return self._recover_verification_deferred_retained_candidate(
+                attempt=attempt,
+                paths=paths,
+                binding=observed_binding,
+            )
+        except (
+            DatabasePortalHistoricalFingerprintUnavailable,
+            DatabasePortalVerificationRecoveryDeferred,
+        ):
+            raise
+        except (
+            DatabasePortalBridgeError,
+            OSError,
+            RuntimeError,
+            UnicodeError,
+            ValueError,
+        ) as exc:
+            # Maintenance owns this entry point.  A corrupt/tampered/oversize
+            # retained candidate or a partial commit/lifecycle failure must
+            # remain a typed blocked disposition, never terminate the owner
+            # process and trigger a restart/provider-dispatch loop.
+            raise DatabasePortalVerificationRecoveryDeferred(
+                _verification_recovery_failure(exc)
+            ) from exc
 
     def _recover_verification_deferred_retained_candidate(
         self,
@@ -16227,6 +16293,10 @@ class DatabasePortalExecutionBridge:
             != preserved_commit
             or not isinstance(preservation.get("cleanup_result"), Mapping)
             or preservation["cleanup_result"].get("cleaned") is not True
+            or preservation.get(
+                "recovery_cleanup_lifecycle_released"
+            )
+            is not True
             or not rescue_branch.endswith("-verification-deferred")
             or not isinstance(protected_paths, list)
             or not protected_paths

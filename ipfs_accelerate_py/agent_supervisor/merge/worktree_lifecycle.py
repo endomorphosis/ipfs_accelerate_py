@@ -1671,6 +1671,32 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
+        if (
+            record.is_terminal
+            and record.terminal_reason
+            == "verification_deferred_candidate_recovery_authorized"
+        ):
+            # Recovery may relax the retained-candidate fence only after its
+            # rescue ref is durable.  Even then, cleanup remains restricted
+            # to the exact lease which owned the fingerprint-bound terminal
+            # record; generic cleanup and peer lanes must stay fenced.
+            if caller_lease_id and caller_lease_id == record.lease_id:
+                return CleanupDecision(
+                    disposition=CleanupDisposition.ALLOW,
+                    reason="verification_deferred_recovery_owner_after_rescue",
+                    record=record,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
+            return CleanupDecision(
+                disposition=CleanupDisposition.DENY,
+                reason="verification_deferred_recovery_owner_required",
+                record=record,
+                failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                provider_call_allowed=False,
+                attempt_consumed=False,
+            )
+
         if record.is_terminal:
             return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,

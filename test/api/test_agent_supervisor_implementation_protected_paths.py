@@ -2686,6 +2686,89 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "retained_candidate = True\n",
         encoding="utf-8",
     )
+    original_commit = daemon._commit_worktree_changes
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("injected retained preservation failure")
+        ),
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="injected retained preservation failure",
+    ):
+        daemon.recover_retained_verification_deferred_candidate(
+            task=task,
+            retained_candidate_receipt=retained_receipt,
+        )
+    failed_preservation_lifecycle = (
+        daemon.worktree_lifecycle.load_workspace(retained_path)
+    )
+    assert failed_preservation_lifecycle is not None
+    assert failed_preservation_lifecycle.terminal_reason == (
+        "verification_deferred_checkout_lease_unavailable"
+    )
+    assert daemon.worktree_lifecycle.authorize_cleanup(
+        workspace_path=retained_path,
+        branch=result["branch"],
+    ).reason == "verification_deferred_candidate_recovery_required"
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        original_commit,
+    )
+
+    def exact_owner_cleanup(
+        worktree_path,
+        branch_name,
+        *,
+        reusable=True,
+        caller_lease_id="",
+    ):
+        rescue_branch = daemon._interrupted_worktree_rescue_branch_name(
+            branch_name,
+            "verification-deferred",
+        )
+        assert daemon._git_ref_exists(rescue_branch)
+        recovery_lifecycle = daemon.worktree_lifecycle.load_workspace(
+            worktree_path
+        )
+        assert recovery_lifecycle is not None
+        assert recovery_lifecycle.terminal_reason == (
+            "verification_deferred_candidate_recovery_authorized"
+        )
+        assert caller_lease_id == retained_receipt["lifecycle"]["lease_id"]
+        assert daemon.worktree_lifecycle.authorize_cleanup(
+            workspace_path=worktree_path,
+            branch=branch_name,
+        ).reason == "verification_deferred_recovery_owner_required"
+        assert daemon.worktree_lifecycle.authorize_cleanup(
+            workspace_path=worktree_path,
+            branch=branch_name,
+            caller_lease_id="foreign-recovery-owner",
+        ).reason == "verification_deferred_recovery_owner_required"
+        exact_owner = daemon.worktree_lifecycle.authorize_cleanup(
+            workspace_path=worktree_path,
+            branch=branch_name,
+            caller_lease_id=caller_lease_id,
+        )
+        assert exact_owner.allowed
+        assert exact_owner.reason == (
+            "verification_deferred_recovery_owner_after_rescue"
+        )
+        return original_cleanup(
+            worktree_path,
+            branch_name,
+            reusable=reusable,
+            caller_lease_id=caller_lease_id,
+        )
+
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        exact_owner_cleanup,
+    )
     recovery = daemon.recover_retained_verification_deferred_candidate(
         task=task,
         retained_candidate_receipt=retained_receipt,
