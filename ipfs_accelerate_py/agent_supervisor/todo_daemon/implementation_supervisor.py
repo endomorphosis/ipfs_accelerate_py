@@ -9381,14 +9381,18 @@ class PortalImplementationSupervisor:
             todo_path=todo_path,
             state_prefix=config.state_prefix,
         )
-        ingest_todo = todo_path.suffix.lower() in {".md", ".markdown"}
+        database_task_authority = self._uses_quack_duckdb_task_authority()
+        ingest_todo = not database_task_authority and todo_path.suffix.lower() in {
+            ".md",
+            ".markdown",
+        }
         isolated = isolate_board_runtime(
             repo_root=config.repo_root,
             board_namespace=self.board_namespace,
             merge_target_branch=config.merge_target_branch,
             todo_path=todo_path,
             state_prefix=config.state_prefix,
-            source_kind="" if ingest_todo else "duckdb",
+            source_kind=(TASK_SOURCE_DUCKDB if database_task_authority or not ingest_todo else ""),
             ensure_branch=True,
             ensure_worktree=False,
             ingest_todo=ingest_todo,
@@ -9413,16 +9417,23 @@ class PortalImplementationSupervisor:
         ):
             self.config.merge_target_branch = resolved_branch
 
-    def _uses_supervisor_state_owner_bootstrap(self) -> bool:
-        """Return whether this non-plan supervisor owns a typed Quack reader."""
+    def _uses_quack_duckdb_task_authority(self) -> bool:
+        """Return whether operational task state belongs to DuckDB via Quack."""
 
         program = self.config.database_program
         return bool(
-            not self.config.plan_bound_dispatch
-            and self.config.state_owner_bootstrap_fd >= 3
-            and program is not None
+            program is not None
             and program.authority_mode == AUTHORITY_MODE_QUACK
             and program.task_source_kind == TASK_SOURCE_DUCKDB
+        )
+
+    def _uses_supervisor_state_owner_bootstrap(self) -> bool:
+        """Return whether this non-plan supervisor owns a typed Quack reader."""
+
+        return bool(
+            not self.config.plan_bound_dispatch
+            and self.config.state_owner_bootstrap_fd >= 3
+            and self._uses_quack_duckdb_task_authority()
         )
 
     def _typed_supervisor_task_source(self) -> Any:
@@ -14279,11 +14290,36 @@ class PortalImplementationSupervisor:
         self._record_event("stale_active_execution_state_repaired", result)
         return result
 
-    def _board_task_is_completed(self, task_id: str) -> bool:
-        """Return whether the live board already marked this task completed."""
+    def _authoritative_task_completion_state(self, task_id: str) -> bool | None:
+        """Read completion from the configured authority without crossing it.
+
+        ``None`` means that the canonical database state is not safely readable
+        by this supervisor birth.  Callers must defer recovery in that case;
+        falling back to a Markdown projection would invert the authority
+        boundary.
+        """
 
         normalized = str(task_id or "").strip()
-        if not normalized or not self.config.todo_path.exists():
+        if not normalized:
+            return False
+        if self._uses_quack_duckdb_task_authority():
+            if not self._uses_supervisor_state_owner_bootstrap():
+                return None
+            try:
+                task = self._typed_supervisor_task_source().get_task(normalized)
+            except Exception as exc:
+                logger.warning(
+                    "Typed task completion lookup unavailable for %s (%s)",
+                    normalized,
+                    type(exc).__name__,
+                )
+                return None
+            if task is None:
+                return False
+            status = normalize_status(str(getattr(task, "status", "") or ""))
+            return status == "completed" or status == "skipped"
+
+        if not self.config.todo_path.exists():
             return False
         try:
             tasks = parse_task_file(self.config.todo_path, self.config.task_prefix)
@@ -14293,6 +14329,11 @@ class PortalImplementationSupervisor:
             task.task_id == normalized and normalize_status(task.status) == "completed"
             for task in tasks
         )
+
+    def _board_task_is_completed(self, task_id: str) -> bool:
+        """Return authoritative completion, never projection completion in DB mode."""
+
+        return self._authoritative_task_completion_state(task_id) is True
 
     def release_completed_leftover_execution(self) -> dict[str, Any]:
         """Stop a live attempt whose board task has already completed."""
@@ -14306,7 +14347,16 @@ class PortalImplementationSupervisor:
                 "reason": "no_active_implementation",
                 "active_task_id": task_id,
             }
-        if not self._board_task_is_completed(task_id):
+        completion_state = self._authoritative_task_completion_state(task_id)
+        if completion_state is None:
+            return {
+                "attempted": False,
+                "released": False,
+                "reason": "database_task_completion_recovery_unavailable",
+                "active_task_id": task_id,
+                "authority": TASK_SOURCE_DUCKDB,
+            }
+        if not completion_state:
             return {
                 "attempted": False,
                 "released": False,
