@@ -373,6 +373,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m20_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M20 post-materialization isolation contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m20_test_isolation_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M20 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m19_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -452,12 +476,59 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M19 before every historical successor.  Consequently
+    Key presence selects M20 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m20_key = "test_isolation_successor_materialization"
+    m20_seal_key = "test_isolation_successor_materialization_cid"
+    m20_presence = (
+        m20_key in scheduler,
+        m20_key in migration,
+        m20_seal_key in seal,
+    )
+    if any(m20_presence):
+        errors = _m20_migration_errors(scheduler, seal, migration)
+        if not all(m20_presence):
+            errors.append(
+                "M20 test-isolation successor authority is only partially declared"
+            )
+        errors.extend(
+            _m19_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m18_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m17_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m16_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        return errors
 
     m19_key = "live_catalog_inventory_successor_materialization"
     m19_seal_key = "live_catalog_inventory_successor_materialization_cid"
@@ -2158,8 +2229,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     }
     if type(config.get("provider")) is not dict or provider != expected_provider:
         config_errors.append("ordered provider route mismatch")
+    m20_key = "test_isolation_successor_materialization"
+    m20_selected = any(
+        (
+            m20_key in config,
+            m20_key in migration,
+            "test_isolation_successor_materialization_cid" in seal,
+        )
+    )
     m19_key = "live_catalog_inventory_successor_materialization"
-    m19_selected = any(
+    m19_selected = not m20_selected and any(
         (
             m19_key in config,
             m19_key in migration,
@@ -2167,7 +2246,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m18_key = "portal_completion_persistence_successor_materialization"
-    m18_selected = not m19_selected and any(
+    m18_selected = not m20_selected and not m19_selected and any(
         (
             m18_key in config,
             m18_key in migration,
@@ -2175,7 +2254,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m17_key = "source_binding_successor_materialization"
-    m17_selected = not m19_selected and not m18_selected and any(
+    m17_selected = not m20_selected and not m19_selected and not m18_selected and any(
         (
             m17_key in config,
             m17_key in migration,
@@ -2183,7 +2262,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m16_key = "accepted_source_retry_successor_materialization"
-    m16_selected = not m19_selected and not m18_selected and not m17_selected and any(
+    m16_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and any(
         (
             m16_key in config,
             m16_key in migration,
@@ -2191,7 +2270,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m15_key = "runtime_root_rebind_successor_materialization"
-    m15_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and any(
+    m15_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and any(
         (
             m15_key in config,
             m15_key in migration,
@@ -2199,7 +2278,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m14_key = "stale_owner_restart_successor_materialization"
-    m14_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and any(
+    m14_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and any(
         (
             m14_key in config,
             m14_key in migration,
@@ -2207,7 +2286,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m13_key = "quack_refresh_successor_materialization"
-    m13_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and any(
+    m13_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and any(
         (
             m13_key in config,
             m13_key in migration,
@@ -2215,7 +2294,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m12_key = "declared_output_retry_successor_materialization"
-    m12_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and any(
+    m12_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and any(
         (
             m12_key in config,
             m12_key in migration,
@@ -2223,7 +2302,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m11_key = "live_provider_retry_successor_materialization"
-    m11_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and any(
+    m11_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and any(
         (
             m11_key in config,
             m11_key in migration,
@@ -2231,7 +2310,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m10_key = "live_projection_successor_materialization"
-    m10_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
+    m10_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and any(
         (
             m10_key in config,
             m10_key in migration,
@@ -2239,7 +2318,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m9_key = "live_recovery_successor_materialization"
-    m9_selected = not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
+    m9_selected = not m20_selected and not m19_selected and not m18_selected and not m17_selected and not m16_selected and not m15_selected and not m14_selected and not m13_selected and not m12_selected and not m11_selected and not m10_selected and any(
         (
             m9_key in config,
             m9_key in migration,
@@ -2247,7 +2326,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m19"
+        "run-r2-m20"
+        if m20_selected
+        else "run-r2-m19"
         if m19_selected
         else "run-r2-m18"
         if m18_selected
@@ -2272,7 +2353,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "20"
+        "21"
+        if m20_selected
+        else "20"
         if m19_selected
         else "19"
         if m18_selected
@@ -2297,7 +2380,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24062
+        24063
+        if m20_selected
+        else 24062
         if m19_selected
         else 24061
         if m18_selected
@@ -2336,7 +2421,74 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m19_selected:
+    if m20_selected:
+        isolation = config.get(m20_key)
+        required_m20 = {
+            "schema": "sawm/post-materialization-test-isolation-repair-authorization@1",
+            "migration_revision": "SAWM-R2-M20",
+            "supersession_mode": (
+                "source_only_post_materialization_test_isolation_repair"
+            ),
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m20/control.coordination.duckdb"
+            ),
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m20"
+            ),
+            "target_generation": 21,
+            "target_quack_port": 24_063,
+            "target_plan_revision": 21,
+            "target_event_watermark": 229,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if (
+            not isinstance(isolation, Mapping)
+            or any(isolation.get(key) != value for key, value in required_m20.items())
+        ):
+            config_errors.append("M20 test-isolation authority is not exact")
+        try:
+            module = _dependency_validator_module(REPO_ROOT)
+            materializer_spec = importlib.util.spec_from_file_location(
+                "sawm_board_m20_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if materializer_spec is None or materializer_spec.loader is None:
+                raise RuntimeError("M20 materializer cannot be loaded")
+            materializer = importlib.util.module_from_spec(materializer_spec)
+            materializer_spec.loader.exec_module(materializer)
+            if (
+                isolation != migration.get(m20_key)
+                or seal.get("test_isolation_successor_materialization_cid")
+                != materializer._identity(isolation)
+                or module._m20_test_isolation_successor_errors(
+                    config, seal, migration, root=REPO_ROOT
+                )
+            ):
+                config_errors.append("M20 test-isolation authority/CID differs")
+        except Exception as exc:
+            config_errors.append(
+                f"M20 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        runtime_root = required_m20["target_runtime_root"]
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M20 active runtime paths are not exactly fresh")
+    elif m19_selected:
         catalog = config.get(m19_key)
         required_m19 = {
             "schema": "sawm/live-quack-catalog-inventory-repair-authorization@1",

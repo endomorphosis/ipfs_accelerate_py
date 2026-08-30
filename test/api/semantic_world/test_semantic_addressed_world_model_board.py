@@ -1014,6 +1014,7 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     # Exercise the historical M8 selector in isolation. M19 through M9 keys
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
+    malformed_successor.pop("test_isolation_successor_materialization")
     malformed_successor.pop("live_catalog_inventory_successor_materialization")
     malformed_successor.pop("portal_completion_persistence_successor_materialization")
     malformed_successor.pop("source_binding_successor_materialization")
@@ -2098,6 +2099,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("test_isolation_successor_materialization")
     historical_config.pop("live_catalog_inventory_successor_materialization")
     historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
@@ -2108,6 +2110,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("test_isolation_successor_materialization")
     historical_migration.pop("live_catalog_inventory_successor_materialization")
     historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
@@ -2118,6 +2121,7 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("test_isolation_successor_materialization_cid")
     historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     historical_seal.pop(
         "portal_completion_persistence_successor_materialization_cid"
@@ -2919,6 +2923,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
         migration,
     ) == []
     historical_config = copy.deepcopy(config)
+    historical_config.pop("test_isolation_successor_materialization")
     historical_config.pop("live_catalog_inventory_successor_materialization")
     historical_config.pop("portal_completion_persistence_successor_materialization")
     historical_config.pop("source_binding_successor_materialization")
@@ -2928,6 +2933,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop("test_isolation_successor_materialization")
     historical_migration.pop("live_catalog_inventory_successor_materialization")
     historical_migration.pop("portal_completion_persistence_successor_materialization")
     historical_migration.pop("source_binding_successor_materialization")
@@ -2937,6 +2943,7 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop("test_isolation_successor_materialization_cid")
     historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     historical_seal.pop(
         "portal_completion_persistence_successor_materialization_cid"
@@ -3773,6 +3780,9 @@ def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> N
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("test_isolation_successor_materialization")
+    inventory.pop("test_isolation_successor_materialization")
+    seal.pop("test_isolation_successor_materialization_cid")
     key = "live_catalog_inventory_successor_materialization"
     authority = materializer._expected_m19_live_catalog_inventory_authority()
     assert config[key] == inventory[key] == authority
@@ -3846,6 +3856,997 @@ def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> N
     )
 
 
+def test_m20_test_isolation_authority_is_presence_first_and_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "test_isolation_successor_materialization"
+    authority = materializer._expected_m20_test_isolation_authority()
+    assert config[key] == inventory[key] == authority
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert seal[f"{key}_cid"] == (
+        "sha256:24d19d647e4806dda56a8d76f8eaf60bb1329249e1ca340e5793a4181aee4a7c"
+    )
+    assert materializer._m20_successor_configured(config) is True
+    assert authority["prior_source_head"] == (
+        "d5275b900cd223643658afad19c643506d32a748"
+    )
+    assert authority["prior_source_binding_cid"] == (
+        "sha256:79b9fcb269ad29dd30d77084afeca33eab8b9cf8164a548748bf69a9908b298f"
+    )
+    assert authority["prior_validation_digest"] == (
+        "sha256:60cdc6646b46d52d5102ff7c82595fdaa95c0c4e632221e28fac9d126adc2873"
+    )
+    assert authority["prior_event_prefix_sha256"] == (
+        "45cccf8ea81087e168110d3e2abfd85c79656863519f632fcf0795a1d0208c80"
+    )
+    assert authority["repair_source_commit"] == (
+        "3e926a247acd5654887b276afa3d00b896c08a2d"
+    )
+    assert authority["accepted_source_repair"]["blob_oids"] == {
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "fea8d6784b697ce4430460446b42262577d092a5"
+        )
+    }
+    assert authority["target_generation"] == 21
+    assert authority["target_quack_port"] == 24_063
+    assert authority["target_plan_revision"] == 21
+    assert authority["target_event_watermark"] == 229
+    assert authority["task_revision_changes"] == 0
+    assert authority["task_status_changes"] == 0
+    assert authority["coordination_semantic_changes"] == 0
+    assert "target_projection_cid" not in authority
+    assert set(materializer._m20_migration_body(
+        {"source_binding": {"source_binding_cid": "sha256:" + "a" * 64}},
+        config,
+        "sha256:" + "b" * 64,
+    )["changes"]) >= {
+        "goal_changes",
+        "effect_claim_changes",
+        "implementation_commit_changes",
+        "merge_attempt_changes",
+    }
+    malformed = dict(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M20 test-isolation authority is invalid",
+    ):
+        materializer._m20_successor_configured(malformed)
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m20_presence_test",
+    )
+    assert dict(operator._active_source_repair_materialization(config)) == authority
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M20 test-isolation successor authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+
+
+def test_m20_only_presence_routes_operator_and_materializer_cli_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_only_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m20_only_presence_test",
+    )
+    authority = materializer._expected_m20_test_isolation_authority()
+    m19 = materializer._expected_m19_live_catalog_inventory_authority()
+    m20_only = {"test_isolation_successor_materialization": authority}
+    m19_only = {"live_catalog_inventory_successor_materialization": m19}
+    assert operator._successor_materialization_configured(m20_only) is True
+    assert operator._successor_materialization_configured(m19_only) is True
+    assert dict(operator._active_source_repair_materialization(m20_only)) == (
+        authority
+    )
+    assert dict(operator._active_source_repair_materialization(m19_only)) == m19
+
+    calls: list[tuple[Path, Path]] = []
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(materializer, "_load_json", lambda _path: m20_only)
+
+    def checked(root: Path, config_path: Path) -> dict[str, object]:
+        calls.append((root, config_path))
+        return {"valid": True, "action": "checked-m20-only"}
+
+    monkeypatch.setattr(materializer, "check_materialized", checked)
+    assert materializer.main(
+        [
+            "check",
+            "--repo-root",
+            str(tmp_path),
+            "--config",
+            "m20-only.json",
+        ]
+    ) == 0
+    assert calls == [(tmp_path.resolve(), Path("m20-only.json"))]
+    assert json.loads(capsys.readouterr().out) == {
+        "action": "checked-m20-only",
+        "valid": True,
+    }
+
+
+def test_m20_validator_selection_preserves_m19_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    board_validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_validator_m20_presence_test",
+    )
+    for name, result in (
+        ("_m20_migration_errors", ["M20 active"]),
+        ("_m19_migration_errors", ["M19 history"]),
+        ("_m18_migration_errors", ["M18 history"]),
+        ("_m17_migration_errors", ["M17 history"]),
+        ("_m16_migration_errors", ["M16 history"]),
+    ):
+        monkeypatch.setattr(
+            board_validator,
+            name,
+            lambda *_args, _result=result, **_kwargs: _result,
+        )
+    assert board_validator._active_successor_migration_errors(
+        config, seal, inventory
+    ) == [
+        "M20 active",
+        "M19 history",
+        "M18 history",
+        "M17 history",
+        "M16 history",
+    ]
+
+    partial = dict(config)
+    partial.pop("test_isolation_successor_materialization")
+    errors = board_validator._active_successor_migration_errors(
+        partial, seal, inventory
+    )
+    assert "M20 active" in errors
+    assert any("only partially declared" in error for error in errors)
+
+
+def test_m20_private_stage_is_an_exact_two_event_append(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_private_stage_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m20_test_isolation_authority()
+    validation_digest = materializer._identity(
+        {
+            "schema": "sawm/m20-private-stage-validation@1",
+            "source_binding_cid": population["source_binding"][
+                "source_binding_cid"
+            ],
+        }
+    )
+    assert validation_digest != authority["prior_validation_digest"]
+    assert (
+        population["source_binding"]["source_binding_cid"]
+        != authority["prior_source_binding_cid"]
+    )
+    prior_control = REPO_ROOT / authority["prior_store_id"]
+    prior_coordination = REPO_ROOT / authority["prior_coordination_store_id"]
+    prior_hashes = {
+        "control": materializer._stable_regular_sha256(
+            prior_control,
+            root=REPO_ROOT,
+            noun="M20 test predecessor control",
+            required_link_count=1,
+        ),
+        "coordination": materializer._stable_regular_sha256(
+            prior_coordination,
+            root=REPO_ROOT,
+            noun="M20 test predecessor coordination",
+            required_link_count=1,
+        ),
+    }
+    prior_entries = tuple(sorted(path.name for path in prior_control.parent.iterdir()))
+    stage_dir = tmp_path / "private-stage"
+    stage_dir.mkdir()
+    staged = materializer._stage_m20_store_pair(
+        REPO_ROOT,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    verified = staged["verified"]
+    assert materializer._stable_regular_sha256(
+        prior_control,
+        root=REPO_ROOT,
+        noun="M20 test predecessor control",
+        required_link_count=1,
+    ) == prior_hashes["control"]
+    assert materializer._stable_regular_sha256(
+        prior_coordination,
+        root=REPO_ROOT,
+        noun="M20 test predecessor coordination",
+        required_link_count=1,
+    ) == prior_hashes["coordination"]
+    assert tuple(sorted(path.name for path in prior_control.parent.iterdir())) == (
+        prior_entries
+    )
+    assert materializer._store_sha256(staged["stage_coordination"]) == (
+        authority["prior_coordination_store_sha256"]
+    )
+    assert verified["event_watermark"] == 229
+    assert verified["plan_revision_changes"] == 1
+    assert verified["evidence_node_changes"] == 1
+    for field in (
+        "task_revision_changes",
+        "task_status_changes",
+        "goal_changes",
+        "accepted_definition_changes",
+        "accepted_completion_changes",
+        "coordination_semantic_changes",
+    ):
+        assert verified[field] == 0
+    assert verified["semantic_authority_digest"] == (
+        authority["prior_semantic_authority_digest"]
+    )
+    assert verified["frozen_base_authority_digest"] == (
+        authority["prior_frozen_base_authority_digest"]
+    )
+    assert not tuple(stage_dir.glob("*.wal"))
+
+    import duckdb
+
+    connection = duckdb.connect(str(staged["stage_control"]), read_only=True)
+    try:
+        assert connection.execute(
+            "SELECT MIN(revision), MAX(revision), COUNT(*) FROM plan_revisions"
+        ).fetchone() == (1, 21, 21)
+        evidence_body = json.loads(
+            connection.execute(
+                "SELECT body_json FROM evidence_nodes "
+                "WHERE evidence_kind='operator_control_plane_source_migration' "
+                "ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()[0]
+        )
+        suffix = connection.execute(
+            "SELECT global_sequence, event_type FROM domain_events "
+            "WHERE global_sequence > 227 ORDER BY global_sequence"
+        ).fetchall()
+        assert materializer._event_prefix_digest(connection, 227) == (
+            authority["prior_event_prefix_sha256"],
+            227,
+        )
+    finally:
+        connection.close()
+    assert evidence_body["validation_digest"] == validation_digest
+    assert evidence_body["preserved_m19_acceptance"]["receipt_cid"] == (
+        authority["prior_migration_receipt_cid"]
+    )
+    assert suffix == [
+        (228, "intent.plan_revision_appended"),
+        (229, "intent.evidence_recorded"),
+    ]
+    with pytest.MonkeyPatch.context() as receipt_patch:
+        receipt_patch.setattr(
+            materializer,
+            "_m20_source_binding_authority",
+            lambda *_args, **_kwargs: authority,
+        )
+        receipt = materializer._expected_m20_migration_receipt(
+            tmp_path,
+            staged["stage_control"],
+            staged["stage_coordination"],
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    unhashed_receipt = dict(receipt)
+    claimed_receipt_cid = unhashed_receipt.pop("receipt_cid")
+    assert set(receipt) == materializer._M20_RECEIPT_KEYS
+    assert claimed_receipt_cid == materializer._identity(unhashed_receipt)
+    assert receipt["validation_digest"] != receipt["prior_validation_digest"]
+
+    tampered = tmp_path / "tampered-control.duckdb"
+    shutil.copyfile(staged["stage_control"], tampered)
+    connection = duckdb.connect(str(tampered))
+    try:
+        connection.execute(
+            "UPDATE tasks SET status='todo' WHERE task_alias='SAWM-007'"
+        )
+    finally:
+        connection.close()
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="frozen control authority",
+    ):
+        materializer._verify_m20_store_pair_copy(
+            tampered,
+            staged["stage_coordination"],
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+
+
+def test_m20_prior_anchor_is_exact_unlaunched_and_rechecked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_prior_anchor_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    population = materializer.build_population(REPO_ROOT)
+    authority = materializer._expected_m20_test_isolation_authority()
+    prior_control = REPO_ROOT / authority["prior_store_id"]
+    prior_coordination = REPO_ROOT / authority["prior_coordination_store_id"]
+    before = (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+    captured: dict[str, str] = {}
+    original_verify = materializer._verify_m19_store_pair_copy
+
+    def capture_frozen_m19(*args: object, **kwargs: object) -> object:
+        frozen_population = args[4]
+        assert isinstance(frozen_population, Mapping)
+        captured["source_binding_cid"] = str(
+            frozen_population["source_binding"]["source_binding_cid"]
+        )
+        captured["validation_digest"] = str(args[6])
+        return original_verify(*args, **kwargs)
+
+    monkeypatch.setattr(
+        materializer, "_verify_m19_store_pair_copy", capture_frozen_m19
+    )
+    assert materializer._assert_m20_prior_anchor(
+        REPO_ROOT, authority, population, config
+    ) == (prior_control, prior_coordination)
+    assert captured == {
+        "source_binding_cid": authority["prior_source_binding_cid"],
+        "validation_digest": authority["prior_validation_digest"],
+    }
+    assert (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    ) == before
+
+    with monkeypatch.context() as final_listener:
+        calls = 0
+
+        def listener_appears(port: int) -> bool:
+            nonlocal calls
+            if port == 24_062:
+                calls += 1
+                return calls > 1
+            return False
+
+        final_listener.setattr(
+            materializer, "_m18_prior_listener_is_active", listener_appears
+        )
+        final_listener.setattr(
+            materializer,
+            "_verify_m19_store_pair_copy",
+            lambda *_args, **_kwargs: {
+                "control_store_sha256": authority["prior_control_store_sha256"],
+                "coordination_store_sha256": authority[
+                    "prior_coordination_store_sha256"
+                ],
+                "projection_cid": authority["prior_projection_cid"],
+                "append_surface_digest": authority["prior_append_surface_digest"],
+                "semantic_authority_digest": authority[
+                    "prior_semantic_authority_digest"
+                ],
+                "frozen_base_authority_digest": authority[
+                    "prior_frozen_base_authority_digest"
+                ],
+                "catalog_digest": authority["prior_catalog_digest"],
+                "event_watermark": 227,
+            },
+        )
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="predecessor verification mutated authority",
+        ):
+            materializer._assert_m20_prior_anchor(
+                REPO_ROOT, authority, population, config
+            )
+
+    fake_control = tmp_path / "control.duckdb"
+    fake_coordination = tmp_path / "control.coordination.duckdb"
+    fake_receipt = tmp_path / "migration-receipt.json"
+    shutil.copyfile(prior_control, fake_control)
+    shutil.copyfile(prior_coordination, fake_coordination)
+    shutil.copyfile(REPO_ROOT / authority["prior_migration_receipt_path"], fake_receipt)
+    mapping = {
+        authority["prior_store_id"]: fake_control,
+        authority["prior_coordination_store_id"]: fake_coordination,
+        authority["prior_migration_receipt_path"]: fake_receipt,
+    }
+    monkeypatch.setattr(
+        materializer,
+        "_confined_leaf",
+        lambda _root, relative, **_kwargs: mapping[str(relative)],
+    )
+    execution = fake_control.with_name("control.execution.duckdb")
+    execution.write_bytes(b"forbidden")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="byte or lifecycle anchor differs",
+    ):
+        materializer._assert_m20_prior_anchor(
+            tmp_path, authority, population, config
+        )
+    execution.unlink()
+    fake_receipt.write_bytes(b"{}\n")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="byte or lifecycle anchor differs",
+    ):
+        materializer._assert_m20_prior_anchor(
+            tmp_path, authority, population, config
+        )
+
+
+def test_m20_receipt_publication_recovers_only_exact_hardlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_receipt_recovery_test",
+    )
+    expected = {key: "" for key in materializer._M20_RECEIPT_KEYS}
+    expected.update(
+        {
+            "schema": "sawm/non-authoritative-migration-receipt@18",
+            "authoritative": False,
+            "receipt_is_final_pair_commit_marker": True,
+            "current_source_binding_cid": "sha256:" + "1" * 64,
+            "validation_digest": "sha256:" + "2" * 64,
+            "prior_validation_digest": "sha256:" + "3" * 64,
+        }
+    )
+    unhashed = dict(expected)
+    unhashed.pop("receipt_cid")
+    expected["receipt_cid"] = materializer._identity(unhashed)
+    commit_checks = 0
+
+    def commit_inputs(*_args: object, **_kwargs: object) -> None:
+        nonlocal commit_checks
+        commit_checks += 1
+
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m20_migration_receipt",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    monkeypatch.setattr(
+        materializer, "_assert_m20_receipt_commit_inputs", commit_inputs
+    )
+
+    def case(name: str) -> tuple[Path, Path]:
+        root = tmp_path / name
+        root.mkdir()
+        control = root / "control.duckdb"
+        coordination = root / "control.coordination.duckdb"
+        control.write_bytes(b"control")
+        coordination.write_bytes(b"coordination")
+        return control, coordination
+
+    control, coordination = case("normal")
+    observed = materializer._ensure_m20_migration_receipt(
+        control.parent, control, coordination, {}, {}, {}, "unused"
+    )
+    assert observed == expected
+    assert os.lstat(control.parent / "migration-receipt.json").st_nlink == 1
+    assert commit_checks >= 4
+
+    control, coordination = case("pending-only")
+    pending = control.parent / ".migration-receipt.json.7.tmp"
+    pending.write_bytes(materializer._canonical(expected) + b"\n")
+    assert materializer._ensure_m20_migration_receipt(
+        control.parent, control, coordination, {}, {}, {}, "unused"
+    ) == expected
+    assert not pending.exists()
+    assert os.lstat(control.parent / "migration-receipt.json").st_nlink == 1
+
+    control, coordination = case("linked-crash")
+    receipt = control.parent / "migration-receipt.json"
+    receipt.write_bytes(materializer._canonical(expected) + b"\n")
+    pending = control.parent / ".migration-receipt.json.8.tmp"
+    os.link(receipt, pending)
+    assert os.lstat(receipt).st_nlink == 2
+    assert materializer._ensure_m20_migration_receipt(
+        control.parent, control, coordination, {}, {}, {}, "unused"
+    ) == expected
+    assert not pending.exists()
+    assert os.lstat(receipt).st_nlink == 1
+
+    control, coordination = case("tampered-pending")
+    (control.parent / ".migration-receipt.json.bad.tmp").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="pending M20 receipt differs",
+    ):
+        materializer._ensure_m20_migration_receipt(
+            control.parent, control, coordination, {}, {}, {}, "unused"
+        )
+
+    control, coordination = case("ambiguous")
+    for suffix in ("a", "b"):
+        (control.parent / f".migration-receipt.json.{suffix}.tmp").write_bytes(
+            materializer._canonical(expected) + b"\n"
+        )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="ambiguous pending receipts",
+    ):
+        materializer._ensure_m20_migration_receipt(
+            control.parent, control, coordination, {}, {}, {}, "unused"
+        )
+
+    control, coordination = case("hardlinked-lock")
+    lock = control.parent / ".m20-receipt.publish.lock"
+    lock.write_bytes(b"")
+    os.link(lock, control.parent / "lock-alias")
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="lock is not a regular leaf",
+    ):
+        materializer._ensure_m20_migration_receipt(
+            control.parent, control, coordination, {}, {}, {}, "unused"
+        )
+
+    control, coordination = case("contended-lock")
+    monotonic = iter((0.0, 11.0))
+
+    def contended_flock(_descriptor: int, operation: int) -> None:
+        if operation & materializer.fcntl.LOCK_NB:
+            raise BlockingIOError
+
+    with monkeypatch.context() as contention:
+        contention.setattr(materializer.fcntl, "flock", contended_flock)
+        contention.setattr(
+            materializer.time,
+            "monotonic",
+            lambda: next(monotonic, 11.0),
+        )
+        contention.setattr(materializer.time, "sleep", lambda _delay: None)
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="timed out acquiring the M20 receipt lock",
+        ):
+            materializer._ensure_m20_migration_receipt(
+                control.parent, control, coordination, {}, {}, {}, "unused"
+            )
+
+
+def test_m20_receipt_and_validation_bindings_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_receipt_tamper_test",
+    )
+    authority = materializer._expected_m20_test_isolation_authority()
+    config = {"test_isolation_successor_materialization": authority}
+    population = {
+        "source_binding": {"source_binding_cid": "sha256:" + "4" * 64}
+    }
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="current source and validation must differ",
+    ):
+        materializer._m20_migration_body(
+            population, config, authority["prior_validation_digest"]
+        )
+
+    expected = {key: "" for key in materializer._M20_RECEIPT_KEYS}
+    expected.update(
+        {
+            "schema": "sawm/non-authoritative-migration-receipt@18",
+            "authoritative": False,
+            "receipt_is_final_pair_commit_marker": True,
+            "current_source_binding_cid": population["source_binding"][
+                "source_binding_cid"
+            ],
+            "validation_digest": "sha256:" + "5" * 64,
+            "prior_validation_digest": authority["prior_validation_digest"],
+            "projection_cid": "projection:exact",
+            "prior_migration_receipt_cid": authority[
+                "prior_migration_receipt_cid"
+            ],
+        }
+    )
+    unhashed = dict(expected)
+    unhashed.pop("receipt_cid")
+    expected["receipt_cid"] = materializer._identity(unhashed)
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    control.write_bytes(b"control")
+    coordination.write_bytes(b"coordination")
+    receipt_path = tmp_path / "migration-receipt.json"
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m20_migration_receipt",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m20_receipt_commit_inputs",
+        lambda *_args, **_kwargs: None,
+    )
+    receipt_path.write_bytes(materializer._canonical(expected) + b"\n")
+    assert materializer._verify_existing_m20_migration_receipt(
+        tmp_path, control, coordination, population, config, {}, "unused"
+    ) == expected
+    mutations = (
+        lambda item: item.__setitem__("projection_cid", "projection:forged"),
+        lambda item: item.__setitem__(
+            "current_source_binding_cid", "sha256:" + "6" * 64
+        ),
+        lambda item: item.__setitem__(
+            "prior_migration_receipt_cid", "sha256:" + "7" * 64
+        ),
+        lambda item: item.pop("worker_self_approval"),
+        lambda item: item.__setitem__("unexpected", False),
+    )
+    for mutate in mutations:
+        forged = copy.deepcopy(expected)
+        mutate(forged)
+        unhashed = dict(forged)
+        unhashed.pop("receipt_cid")
+        forged["receipt_cid"] = materializer._identity(unhashed)
+        receipt_path.write_bytes(materializer._canonical(forged) + b"\n")
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="final pair marker differs",
+        ):
+            materializer._verify_existing_m20_migration_receipt(
+                tmp_path, control, coordination, population, config, {}, "unused"
+            )
+
+
+def test_m20_target_verification_rechecks_sidecars_listener_and_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_target_race_test",
+    )
+    control = tmp_path / "control.duckdb"
+    coordination = tmp_path / "control.coordination.duckdb"
+    prior_control = tmp_path / "prior-control.duckdb"
+    prior_coordination = tmp_path / "prior-coordination.duckdb"
+    for path, body in (
+        (control, b"target-control"),
+        (coordination, b"coordination"),
+        (prior_control, b"prior-control"),
+        (prior_coordination, b"prior-coordination"),
+    ):
+        path.write_bytes(body)
+    verified = {"valid": True}
+    monkeypatch.setattr(
+        materializer, "_m18_prior_listener_is_active", lambda _port: False
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m20_store_pair_copy",
+        lambda *_args, **_kwargs: verified,
+    )
+    assert materializer._verify_m20_store_pair(
+        tmp_path,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        {},
+        {},
+        "unused",
+    ) == verified
+
+    sidecar = tmp_path / "control.execution.duckdb"
+
+    def inject_sidecar(*_args: object, **_kwargs: object) -> object:
+        sidecar.write_bytes(b"appeared")
+        return verified
+
+    monkeypatch.setattr(
+        materializer, "_verify_m20_store_pair_copy", inject_sidecar
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="forbidden mutable sidecar",
+    ):
+        materializer._verify_m20_store_pair(
+            tmp_path,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            {},
+            {},
+            "unused",
+        )
+    sidecar.unlink()
+
+    calls = 0
+
+    def listener_appears(_port: int) -> bool:
+        nonlocal calls
+        calls += 1
+        return calls > 1
+
+    monkeypatch.setattr(
+        materializer, "_m18_prior_listener_is_active", listener_appears
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m20_store_pair_copy",
+        lambda *_args, **_kwargs: verified,
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="listener appeared during verification",
+    ):
+        materializer._verify_m20_store_pair(
+            tmp_path,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            {},
+            {},
+            "unused",
+        )
+
+    monkeypatch.setattr(
+        materializer, "_m18_prior_listener_is_active", lambda _port: False
+    )
+    original_copy = shutil.copyfile
+
+    def corrupt_copy(source: object, target: object, *args: object, **kwargs: object) -> object:
+        result = original_copy(source, target, *args, **kwargs)
+        if Path(source) == control:
+            with Path(target).open("ab") as stream:
+                stream.write(b"corrupt")
+        return result
+
+    monkeypatch.setattr(materializer.shutil, "copyfile", corrupt_copy)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="verification copy differs",
+    ):
+        materializer._verify_m20_store_pair(
+            tmp_path,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            {},
+            {},
+            "unused",
+        )
+
+
+def test_m20_live_projection_is_derived_from_and_bound_to_closed_marker() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_live_projection_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m20_live_projection_test",
+    )
+    authority = materializer._expected_m20_test_isolation_authority()
+    assert "target_projection_cid" not in authority
+    assert operator._expected_live_projection_cid(
+        authority, {"projection_cid": "projection:closed-marker"}
+    ) == "projection:closed-marker"
+    assert operator._expected_live_projection_cid(authority, {}) == ""
+    fake_materializer = SimpleNamespace(
+        MigrationRequired=materializer.MigrationRequired,
+        _inspect_m20_head_task_projection=lambda *_args: {
+            "event_watermark": 229,
+            "plan_revision": 21,
+            "projection_cid": "projection:closed-marker",
+        },
+    )
+    assert operator._verify_m20_live_head_task_projection(
+        object(),
+        {"taskboard": []},
+        fake_materializer,
+        expected_projection_cid="projection:closed-marker",
+    ) == ({}, {}, {})
+    for projection in ("", "projection:forged"):
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="live head projection differs",
+        ):
+            operator._verify_m20_live_head_task_projection(
+                object(),
+                {"taskboard": []},
+                fake_materializer,
+                expected_projection_cid=projection,
+            )
+
+
+def test_m20_source_scope_and_partial_declaration_are_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m20_source_scope_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_validator_m20_partial_test",
+    )
+    authority = materializer._expected_m20_test_isolation_authority()
+    final_head = "f" * 40
+    final_tree = "e" * 40
+    population = {
+        "source_binding": {
+            "head": final_head,
+            "tree": final_tree,
+            "datasets_gitlink": authority["prior_datasets_gitlink"],
+            "kit_gitlink": authority["prior_kit_gitlink"],
+        }
+    }
+    extra_path = "unexpected.py"
+    inject_extra = False
+
+    def fake_git(root: Path, *args: str) -> str:
+        if args[:3] == ("diff", "--name-status", "--no-renames"):
+            before, after = args[3], args[4]
+            if (before, after) == (
+                authority["prior_source_head"],
+                authority["repair_source_commit"],
+            ):
+                paths = sorted(materializer._M20_TEST_ISOLATION_REPAIR_BLOBS)
+            else:
+                paths = sorted(authority["operator_control_paths"])
+                if inject_extra and before == authority["repair_source_commit"]:
+                    paths.append(extra_path)
+            return "\n".join(f"M\t{path}" for path in paths)
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            return ""
+        if args[0] != "rev-parse":
+            raise AssertionError(args)
+        ref = args[1]
+        trees = {
+            f"{authority['prior_source_head']}^{{tree}}": authority[
+                "prior_source_tree"
+            ],
+            f"{authority['repair_source_commit']}^{{tree}}": authority[
+                "repair_source_tree"
+            ],
+            f"{final_head}^{{tree}}": final_tree,
+        }
+        if ref in trees:
+            return str(trees[ref])
+        for path, blob in materializer._M20_TEST_ISOLATION_REPAIR_BLOBS.items():
+            if ref == f"{authority['repair_source_commit']}:{path}":
+                return blob
+        for dependency_name, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "prior_datasets_gitlink", "prior_datasets_tree"),
+            ("ipfs_kit_py", "prior_kit_gitlink", "prior_kit_tree"),
+        ):
+            if ref in {
+                f"{head}:{dependency_name}"
+                for head in (
+                    authority["prior_source_head"],
+                    authority["repair_source_commit"],
+                    final_head,
+                )
+            }:
+                return str(authority[gitlink_key])
+            if root.name == dependency_name and ref == (
+                f"{authority[gitlink_key]}^{{tree}}"
+            ):
+                return str(authority[tree_key])
+        raise AssertionError((root, args))
+
+    monkeypatch.setattr(materializer, "_git", fake_git)
+    materializer._assert_m20_source_delta(REPO_ROOT, population, authority)
+    inject_extra = True
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="post-repair source delta differs",
+    ):
+        materializer._assert_m20_source_delta(REPO_ROOT, population, authority)
+
+    key = "test_isolation_successor_materialization"
+    assert dependency._m20_successor_declared({}, {}, {key: authority}) is True
+    assert dependency._m20_successor_declared(
+        {}, {f"{key}_cid": materializer._identity(authority)}, {}
+    ) is True
+    assert dependency._m20_successor_declared({}, {}, {}) is False
+    for scheduler, seal, migration in (
+        ({}, {}, {key: authority}),
+        ({}, {f"{key}_cid": materializer._identity(authority)}, {}),
+    ):
+        errors = dependency._m20_test_isolation_successor_errors(
+            scheduler,
+            seal,
+            migration,
+            root=REPO_ROOT,
+            require_active_runtime=False,
+        )
+        assert (
+            "M20 test-isolation successor authority is only partially declared"
+            in errors
+        )
+        assert "M20 test-isolation authority differs across controls" in errors
+
+
 def test_m19_operator_and_validators_are_presence_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3868,11 +4869,9 @@ def test_m19_operator_and_validators_are_presence_first(
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
-    materializer = _load(
-        "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_m19_board_presence_test",
-    )
-    key = "live_catalog_inventory_successor_materialization"
+    config.pop("test_isolation_successor_materialization")
+    inventory.pop("test_isolation_successor_materialization")
+    seal.pop("test_isolation_successor_materialization_cid")
     present = dict(config)
     board_validator = _load(
         "scripts/validate_semantic_addressed_world_model_board.py",
@@ -4009,23 +5008,23 @@ def test_m18_portal_completion_authority_is_presence_first_and_exact() -> None:
         materializer._m18_successor_configured(malformed)
 
 
-def test_m19_scheduler_uses_fresh_generation_20_runtime_namespace() -> None:
+def test_m20_scheduler_uses_fresh_generation_21_runtime_namespace() -> None:
     config = json.loads(
         (
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
+    root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m20"
     assert config["database_program"]["store_id"] == f"{root}/control.duckdb"
-    assert config["database_program"]["store_generation"] == "20"
+    assert config["database_program"]["store_generation"] == "21"
     assert config["database_program"]["quack_endpoint"] == (
-        "quack:127.0.0.1:24062"
+        "quack:127.0.0.1:24063"
     )
     assert config["quack_owner"]["database_path"] == f"{root}/control.duckdb"
     assert config["quack_owner"]["store_id"] == f"{root}/control.duckdb"
     assert config["quack_owner"]["state_dir"] == f"{root}/quack-owner"
-    assert config["quack_owner"]["port"] == 24_062
+    assert config["quack_owner"]["port"] == 24_063
     assert config["runtime_paths"] == {
         "root": root,
         "state": f"{root}/state",
@@ -4064,6 +5063,7 @@ def test_m18_operator_and_validators_are_presence_first(
         "sawm_operator_m18_presence_test",
     )
     historical = dict(config)
+    historical.pop("test_isolation_successor_materialization")
     historical.pop("live_catalog_inventory_successor_materialization")
     assert dict(operator._active_source_repair_materialization(historical)) == config[key]
     malformed = copy.deepcopy(historical)
@@ -4108,8 +5108,10 @@ def test_m18_operator_and_validators_are_presence_first(
         lambda *_args, **_kwargs: ["M16 history checked"],
     )
     historical_inventory = dict(inventory)
+    historical_inventory.pop("test_isolation_successor_materialization")
     historical_inventory.pop("live_catalog_inventory_successor_materialization")
     historical_seal = dict(seal)
+    historical_seal.pop("test_isolation_successor_materialization_cid")
     historical_seal.pop("live_catalog_inventory_successor_materialization_cid")
     assert board_validator._active_successor_migration_errors(
         malformed,
@@ -4567,6 +5569,7 @@ def test_m18_live_marker_rejects_rehashed_fields_and_tail_tamper(
     population = materializer.build_population(REPO_ROOT)
     authority = materializer._expected_m18_portal_completion_persistence_authority()
     target_runtime_root = authority["target_runtime_root"]
+    config.pop("test_isolation_successor_materialization")
     config.pop("live_catalog_inventory_successor_materialization")
     config["database_program"].update(
         {
@@ -5327,8 +6330,8 @@ def test_m17_namespace_is_preserved_as_historical_under_m18() -> None:
     assert authority["target_store_id"] == f"{root}/control.duckdb"
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
-    assert config["runtime_paths"]["root"].endswith("run-r2-m19")
-    assert config["database_program"]["store_generation"] == "20"
+    assert config["runtime_paths"]["root"].endswith("run-r2-m20")
+    assert config["database_program"]["store_generation"] == "21"
 
 
 def test_m18_validators_keep_m17_and_m16_historical_authority() -> None:
@@ -6444,11 +7447,11 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m16() -> None:
     }
     assert historical_runtime["root"] == authority["target_runtime_root"]
     assert config["runtime_paths"]["root"] == (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m20"
     )
     assert config["runtime_paths"] != historical_runtime
-    assert config["database_program"]["store_generation"] == "20"
-    assert config["quack_owner"]["port"] == 24_062
+    assert config["database_program"]["store_generation"] == "21"
+    assert config["quack_owner"]["port"] == 24_063
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 

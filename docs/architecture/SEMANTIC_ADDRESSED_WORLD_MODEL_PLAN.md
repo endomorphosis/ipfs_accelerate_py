@@ -1133,7 +1133,60 @@ dependencies and board; materialize once; preflight; dry-run implementation
 launch; then launch generation 20.  This control commit performs none of
 the last four runtime operations.
 
-## 28. Current limitations at seal time
+## 28. M20 post-materialization test-isolation successor
+
+M19 was materialized under source commit `d5275b900cd223643658afad19c643506d32a748`
+(tree `9b6bf64f1bbca282c977ac9acfd9e204b4385da2`, source binding
+`sha256:79b9fcb269ad29dd30d77084afeca33eab8b9cf8164a548748bf69a9908b298f`).
+The later commit `3e926a247acd5654887b276afa3d00b896c08a2d` only corrected
+historical-control isolation in the protected board tests.  Presence of that
+test fix is useful current evidence, but it cannot silently replace M19's
+already published source binding.
+
+M20 therefore freezes the never-launched M19 pair and receipt exactly, admits
+the one test-only repair, and appends only plan revision 21, one operator
+evidence node, and intent events 228--229.  No task revision, task status,
+accepted definition, accepted completion, provider invocation, effect claim,
+implementation commit, merge attempt, goal, or coordination record changes.
+The M19 anchors are control SHA-256
+`0a505aae2923b21c445e019da803a97ae3bf168ec6c26cb45b419bed49d0df5d`,
+coordination SHA-256
+`4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41`,
+receipt SHA-256
+`cd62f5e9b597147633b4caef6157ddeccd648a6f5326bedc5ac7a92889a391d6`,
+receipt CID
+`sha256:c89f0ba8fc663ac57d39d162fe7e283f606f556f37b38cb5ee71c83b274318c0`,
+event-prefix SHA-256
+`45cccf8ea81087e168110d3e2abfd85c79656863519f632fcf0795a1d0208c80`,
+and event cursor 227.  M19 never launched: there is no generation-20 owner,
+status projection, read replica, execution sidecar, WAL, listener, PID, or
+runtime directory to inherit.
+
+M20's fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m20/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m20/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m20
+Quack port    24063
+generation    21
+plan revision 21
+event cursor  229
+coord events  1125
+coord root    sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1
+semantic      sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f
+frozen base   sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b
+```
+
+Key presence selects `test_isolation_successor_materialization` before M19
+and every historical successor.  M19 is reverified using its sealed source
+binding and validation digest on disposable exact copies; current M20 source
+and validation identities remain distinct.  Publication is store-pair first
+and receipt last.  The nine controls are committed before materialization;
+preflight, dry-run, and generation-21 launch occur only after every static,
+source, predecessor, receipt, and target-freshness gate passes.
+
+## 29. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

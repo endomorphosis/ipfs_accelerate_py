@@ -945,6 +945,27 @@ _M19_LIVE_CATALOG_REPAIR_BLOBS = MappingProxyType(
         ),
     }
 )
+_M20_MIGRATION_REVISION = "SAWM-R2-M20"
+_M20_SUPERSESSION_MODE = "source_only_post_materialization_test_isolation_repair"
+_M20_SUPERSESSION_REASON = "post_materialization_test_isolation_repair"
+_M20_CONTROL_RECORDED_AT = "2026-08-30T01:15:00Z"
+_M20_TARGET_EVENT_WATERMARK = 229
+_M20_TARGET_PLAN_REVISION = 21
+_M20_TARGET_GENERATION = 21
+_M20_TARGET_QUACK_PORT = 24_063
+_M20_PRIOR_VALIDATION_DIGEST = (
+    "sha256:60cdc6646b46d52d5102ff7c82595fdaa95c0c4e632221e28fac9d126adc2873"
+)
+_M20_PRIOR_EVENT_PREFIX_SHA256 = (
+    "45cccf8ea81087e168110d3e2abfd85c79656863519f632fcf0795a1d0208c80"
+)
+_M20_TEST_ISOLATION_REPAIR_BLOBS = MappingProxyType(
+    {
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "fea8d6784b697ce4430460446b42262577d092a5"
+        )
+    }
+)
 _M18_REARM_TASK_ALIASES = ("SAWM-007",)
 _M18_PORTAL_COMPLETION_REPAIR_BLOBS = MappingProxyType(
     {
@@ -3641,6 +3662,147 @@ def _m19_successor_configured(config: Mapping[str, Any]) -> bool:
         raise MaterializationError(
             "M19 live-catalog-inventory authority is invalid"
         )
+    return True
+
+
+def _expected_m20_test_isolation_authority() -> dict[str, Any]:
+    """Return the closed M20 source-only test-isolation authority.
+
+    M19 was materialized at ``d5275b900``.  The sole later commit repaired
+    historical-control isolation in the board tests; it did not mutate the
+    materialized pair.  M20 binds that exact repair and appends only a new
+    plan/evidence suffix into a fresh generation.  Values that depend on the
+    eventual nine-control seal commit remain receipt-bound rather than being
+    guessed in this tracked authorization.
+    """
+
+    prior_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m19"
+    target_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m20"
+    repair_paths = sorted(_M20_TEST_ISOLATION_REPAIR_BLOBS)
+    control_paths = sorted(_M18_OPERATOR_CONTROL_PATHS)
+    return {
+        "schema": "sawm/post-materialization-test-isolation-repair-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M20_MIGRATION_REVISION,
+        "migration_kind": _M20_SUPERSESSION_REASON,
+        "supersession_mode": _M20_SUPERSESSION_MODE,
+        "prior_store_id": f"{prior_root}/control.duckdb",
+        "prior_coordination_store_id": f"{prior_root}/control.coordination.duckdb",
+        "prior_control_store_sha256": (
+            "0a505aae2923b21c445e019da803a97ae3bf168ec6c26cb45b419bed49d0df5d"
+        ),
+        "prior_control_store_size": 43_528_192,
+        "prior_coordination_store_sha256": (
+            "4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41"
+        ),
+        "prior_coordination_store_size": 14_168_064,
+        "prior_event_watermark": 227,
+        "prior_event_prefix_sha256": _M20_PRIOR_EVENT_PREFIX_SHA256,
+        "prior_projection_cid": (
+            "baguqeeravlrp2wmy7cbtuhoe2h6hs6tbphsunilvaufkktev6vv3ubl2nbia"
+        ),
+        "prior_semantic_authority_digest": (
+            "sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f"
+        ),
+        "prior_frozen_base_authority_digest": (
+            "sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b"
+        ),
+        "prior_append_surface_digest": (
+            "sha256:dbddbfb2460965cef3f49bbd49b7770f4221e8abd0ee10bac8feaba1b6474cf8"
+        ),
+        "prior_catalog_digest": (
+            "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7"
+        ),
+        "prior_coordination_projection_digest": (
+            "sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1"
+        ),
+        "prior_coordination_event_count": 1_125,
+        "prior_generation": 20,
+        "prior_plan_revision": 20,
+        "prior_validation_digest": _M20_PRIOR_VALIDATION_DIGEST,
+        "prior_migration_receipt_path": f"{prior_root}/migration-receipt.json",
+        "prior_migration_receipt_sha256": (
+            "cd62f5e9b597147633b4caef6157ddeccd648a6f5326bedc5ac7a92889a391d6"
+        ),
+        "prior_migration_receipt_size": 6_180,
+        "prior_migration_receipt_cid": (
+            "sha256:c89f0ba8fc663ac57d39d162fe7e283f606f556f37b38cb5ee71c83b274318c0"
+        ),
+        "prior_source_head": "d5275b900cd223643658afad19c643506d32a748",
+        "prior_source_tree": "9b6bf64f1bbca282c977ac9acfd9e204b4385da2",
+        "prior_source_binding_cid": (
+            "sha256:79b9fcb269ad29dd30d77084afeca33eab8b9cf8164a548748bf69a9908b298f"
+        ),
+        "repair_source_commit": "3e926a247acd5654887b276afa3d00b896c08a2d",
+        "repair_source_tree": "f3d89a58c8df8dc2dfd29a2b8422e4fd8ce683d2",
+        "accepted_source_repair": {
+            "changed_paths": repair_paths,
+            "blob_oids": {
+                path: _M20_TEST_ISOLATION_REPAIR_BLOBS[path]
+                for path in repair_paths
+            },
+            "source_only": True,
+        },
+        "operator_control_paths": control_paths,
+        "bounded_control_plane_repair_paths": control_paths,
+        "prior_datasets_gitlink": "dd3e36076c9a07ed367c399510001a602c39381a",
+        "prior_datasets_tree": "582bc6af5723d86806c6c6ca82c1669b2936493a",
+        "prior_kit_gitlink": "6196017ca3df016c7159dce43af60f2a0d96a9ae",
+        "prior_kit_tree": "93070c709af29095fdff11f3e2698543449c08ef",
+        "prior_owner_marker_present": False,
+        "prior_status_projection_present": False,
+        "prior_read_replica_present": False,
+        "prior_execution_sidecar_present": False,
+        "prior_runtime_directories_present": False,
+        "prior_listener_present": False,
+        "prior_pid_present": False,
+        "prior_wals_absent": True,
+        "prior_active_count": 0,
+        "target_store_id": f"{target_root}/control.duckdb",
+        "target_coordination_store_id": f"{target_root}/control.coordination.duckdb",
+        "target_runtime_root": target_root,
+        "target_generation": _M20_TARGET_GENERATION,
+        "target_quack_port": _M20_TARGET_QUACK_PORT,
+        "target_plan_revision": _M20_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M20_TARGET_EVENT_WATERMARK,
+        "target_coordination_projection_digest": (
+            "sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1"
+        ),
+        "target_coordination_event_count": 1_125,
+        "target_semantic_authority_digest": (
+            "sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f"
+        ),
+        "target_frozen_base_authority_digest": (
+            "sha256:b7e832646a9e8014f64f61c86530476d219ef10c25a467086cd73638cbbd034b"
+        ),
+        "event_suffix_length": 2,
+        "control_base_copied": True,
+        "coordination_base_copied": True,
+        "coordination_semantic_changes": 0,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _m20_successor_configured(config: Mapping[str, Any]) -> bool:
+    """Select a key-present M20 successor before every predecessor."""
+
+    key = "test_isolation_successor_materialization"
+    if key not in config:
+        return False
+    if config.get(key) != _expected_m20_test_isolation_authority():
+        raise MaterializationError("M20 test-isolation authority is invalid")
     return True
 
 
@@ -21585,6 +21747,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m20_successor_configured(config):
+        return _check_m20_materialized(root, config_file)
     if _m19_successor_configured(config):
         return _check_m19_materialized(root, config_file)
     if _m18_successor_configured(config):
@@ -32591,12 +32755,1882 @@ def _materialize_m19(
     }
 
 
+def _m20_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconcile M20's exact authority across scheduler, inventory and seal."""
+
+    expected = _expected_m20_test_isolation_authority()
+    key = "test_isolation_successor_materialization"
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if (
+        config.get(key) != expected
+        or not isinstance(inventory, Mapping)
+        or inventory.get(key) != expected
+        or seal.get(f"{key}_cid") != _identity(expected)
+    ):
+        raise MaterializationError(
+            "M20 test-isolation authority differs across controls"
+        )
+    return expected
+
+
+def _m20_name_status(root: Path, before: str, after: str) -> dict[str, str]:
+    """Return an exact modifications-only Git delta for one M20 boundary."""
+
+    changed: dict[str, str] = {}
+    for line in _git(
+        root,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        before,
+        after,
+        "--",
+    ).splitlines():
+        fields = line.split("\t")
+        if len(fields) != 2 or fields[0] != "M" or fields[1] in changed:
+            raise MaterializationError(
+                f"M20 source delta contains a non-modification entry: {line}"
+            )
+        changed[fields[1]] = fields[0]
+    return changed
+
+
+def _assert_m20_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Seal d527 -> 3e exactly, then require the nine-control M20 seal."""
+
+    prior_head = str(authority["prior_source_head"])
+    repair_head = str(authority["repair_source_commit"])
+    current_head = str(population["source_binding"]["head"])
+    if (
+        _git(root, "rev-parse", f"{prior_head}^{{tree}}")
+        != authority["prior_source_tree"]
+        or _git(root, "rev-parse", f"{repair_head}^{{tree}}")
+        != authority["repair_source_tree"]
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current_head}^{{tree}}")
+    ):
+        raise MaterializationError("M20 source tree binding differs")
+    _git(root, "merge-base", "--is-ancestor", prior_head, repair_head)
+    _git(root, "merge-base", "--is-ancestor", repair_head, current_head)
+
+    repair_paths = set(_M20_TEST_ISOLATION_REPAIR_BLOBS)
+    if _m20_name_status(root, prior_head, repair_head) != {
+        path: "M" for path in repair_paths
+    }:
+        raise MaterializationError("M20 exact test-isolation repair commit differs")
+    for path, expected_blob in _M20_TEST_ISOLATION_REPAIR_BLOBS.items():
+        if _git(root, "rev-parse", f"{repair_head}:{path}") != expected_blob:
+            raise MaterializationError(f"M20 sealed repair blob differs: {path}")
+
+    operator_paths = set(authority["operator_control_paths"])
+    if operator_paths != set(_M18_OPERATOR_CONTROL_PATHS):
+        raise MaterializationError("M20 authority does not name the nine controls")
+    successor = _m20_name_status(root, repair_head, current_head)
+    if successor != {path: "M" for path in operator_paths}:
+        raise MaterializationError(
+            "M20 post-repair source delta differs from the nine controls: "
+            + json.dumps(
+                {
+                    "missing": sorted(operator_paths - set(successor)),
+                    "unexpected": sorted(set(successor) - operator_paths),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    if _m20_name_status(root, prior_head, current_head) != {
+        path: "M" for path in operator_paths
+    }:
+        raise MaterializationError("M20 combined source delta is not control-only")
+
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py",
+            "prior_datasets_gitlink",
+            "prior_datasets_tree",
+            "datasets_gitlink",
+        ),
+        ("ipfs_kit_py", "prior_kit_gitlink", "prior_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (prior_head, repair_head, current_head)
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M20 {dependency} authority differs")
+
+
+def _m20_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Resolve only the fresh generation-21 M20 namespace."""
+
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    runtime = config.get("runtime_paths")
+    target_root = str(authority["target_runtime_root"])
+    expected_runtime = {
+        "root": target_root,
+        "state": f"{target_root}/state",
+        "worktrees": f"{target_root}/worktrees",
+        "merge_queue": f"{target_root}/merge-queue",
+        "logs": f"{target_root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != authority["target_store_id"]
+        or str(program.get("store_generation") or "") != "21"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:24063"
+        or program.get("event_store_path") != f"{target_root}/events"
+        or program.get("runtime_registry_path") != f"{target_root}/registry"
+        or program.get("worktree_root") != f"{target_root}/worktrees"
+        or owner.get("database_path") != authority["target_store_id"]
+        or owner.get("store_id") != authority["target_store_id"]
+        or owner.get("state_dir") != f"{target_root}/quack-owner"
+        or int(owner.get("port") or 0) != _M20_TARGET_QUACK_PORT
+        or runtime != expected_runtime
+    ):
+        raise MaterializationError("scheduler M20 target/runtime binding differs")
+    control = _confined_leaf(
+        root, str(authority["target_store_id"]), noun="M20 control store"
+    )
+    coordination = _confined_leaf(
+        root,
+        str(authority["target_coordination_store_id"]),
+        noun="M20 coordination store",
+    )
+    if (
+        control.parent != coordination.parent
+        or coordination != control.with_name("control.coordination.duckdb")
+        or str(control.parent.relative_to(root)) != target_root
+    ):
+        raise MaterializationError("scheduler M20 store pair is not confined")
+    return control, coordination
+
+
+def _m20_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Return M20's dynamic, content-addressed operator evidence."""
+
+    del config
+    authority = _expected_m20_test_isolation_authority()
+    if (
+        population["source_binding"]["source_binding_cid"]
+        == authority["prior_source_binding_cid"]
+        or validation_digest == authority["prior_validation_digest"]
+    ):
+        raise MaterializationError(
+            "M20 current source and validation must differ from M19"
+        )
+    return {
+        "schema": "sawm/operator-control-plane-source-migration@17",
+        "migration_revision": _M20_MIGRATION_REVISION,
+        "migration_kind": _M20_SUPERSESSION_REASON,
+        "supersession_mode": _M20_SUPERSESSION_MODE,
+        "authority": authority,
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_digest": validation_digest,
+        "preserved_m19_acceptance": {
+            "projection_cid": authority["prior_projection_cid"],
+            "event_watermark": authority["prior_event_watermark"],
+            "semantic_authority_digest": authority[
+                "prior_semantic_authority_digest"
+            ],
+            "frozen_base_authority_digest": authority[
+                "prior_frozen_base_authority_digest"
+            ],
+            "append_surface_digest": authority["prior_append_surface_digest"],
+            "receipt_cid": authority["prior_migration_receipt_cid"],
+        },
+        "repair_boundary": {
+            "prior_source_head": authority["prior_source_head"],
+            "repair_source_commit": authority["repair_source_commit"],
+            "accepted_source_repair": authority["accepted_source_repair"],
+        },
+        "changes": {
+            "plan_revision_changes": 1,
+            "evidence_node_changes": 1,
+            "event_suffix_length": 2,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "coordination_semantic_changes": 0,
+            "worker_self_approval": False,
+        },
+        "recorded_at": _M20_CONTROL_RECORDED_AT,
+    }
+
+
+def _m20_migration_plan_delta(
+    population: Mapping[str, Any], config: Mapping[str, Any]
+) -> dict[str, Any]:
+    del config
+    return {
+        "kind": _M20_SUPERSESSION_REASON,
+        "migration_revision": _M20_MIGRATION_REVISION,
+        "source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "repair_source_commit": _expected_m20_test_isolation_authority()[
+            "repair_source_commit"
+        ],
+        "target_event_watermark": _M20_TARGET_EVENT_WATERMARK,
+        "target_runtime_root": _expected_m20_test_isolation_authority()[
+            "target_runtime_root"
+        ],
+    }
+
+
+def _m20_predecessor_population(
+    population: Mapping[str, Any], authority: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Freeze only M19's source binding while retaining immutable definitions."""
+
+    frozen = dict(population)
+    frozen["source_binding"] = {
+        "source_binding_cid": authority["prior_source_binding_cid"]
+    }
+    frozen["repository_tree_id"] = authority["prior_source_binding_cid"]
+    return frozen
+
+
+def _assert_m20_prior_anchor(
+    root: Path,
+    authority: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Verify never-launched M19 on exact disposable copies."""
+
+    control = _confined_leaf(
+        root, str(authority["prior_store_id"]), noun="unlaunched M19 control store"
+    )
+    coordination = _confined_leaf(
+        root,
+        str(authority["prior_coordination_store_id"]),
+        noun="unlaunched M19 coordination store",
+    )
+    receipt_path = _confined_leaf(
+        root,
+        str(authority["prior_migration_receipt_path"]),
+        noun="historical M19 migration receipt",
+    )
+    anchors = {
+        "control": _stable_regular_sha256(
+            control,
+            root=root,
+            noun="unlaunched M19 control store",
+            required_link_count=1,
+        ),
+        "coordination": _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="unlaunched M19 coordination store",
+            required_link_count=1,
+        ),
+        "receipt": _stable_regular_sha256(
+            receipt_path,
+            root=root,
+            noun="historical M19 migration receipt",
+            required_link_count=1,
+        ),
+    }
+    expected_anchors = {
+        "control": (
+            authority["prior_control_store_sha256"],
+            int(authority["prior_control_store_size"]),
+        ),
+        "coordination": (
+            authority["prior_coordination_store_sha256"],
+            int(authority["prior_coordination_store_size"]),
+        ),
+        "receipt": (
+            authority["prior_migration_receipt_sha256"],
+            int(authority["prior_migration_receipt_size"]),
+        ),
+    }
+    forbidden = (
+        control.with_name(f".{control.name}.state-owner.json"),
+        control.with_name(control.name + ".wal"),
+        coordination.with_name(coordination.name + ".wal"),
+        control.with_name("control.execution.duckdb"),
+        control.with_name("control.execution.duckdb.wal"),
+        control.with_name("control.read-replica.duckdb"),
+        control.with_name("control.read-replica.duckdb.wal"),
+        control.parent / "state",
+        control.parent / "events",
+        control.parent / "registry",
+        control.parent / "worktrees",
+        control.parent / "merge-queue",
+        control.parent / "logs",
+        control.parent / "quack-owner",
+    )
+    if (
+        anchors != expected_anchors
+        or any(os.path.lexists(path) for path in forbidden)
+        or _m18_prior_listener_is_active(_M19_TARGET_QUACK_PORT)
+        or authority["prior_owner_marker_present"] is not False
+        or authority["prior_status_projection_present"] is not False
+        or authority["prior_read_replica_present"] is not False
+        or authority["prior_execution_sidecar_present"] is not False
+        or authority["prior_runtime_directories_present"] is not False
+        or authority["prior_listener_present"] is not False
+        or authority["prior_pid_present"] is not False
+        or authority["prior_wals_absent"] is not True
+        or int(authority["prior_active_count"]) != 0
+    ):
+        raise MigrationRequired("unlaunched M19 byte or lifecycle anchor differs")
+    _assert_offline(control)
+    _assert_m19_no_staging_artifacts(control)
+    _assert_m19_no_pending_receipts(control)
+
+    receipt, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="historical M19 migration receipt"
+    )
+    unhashed = dict(receipt)
+    receipt_cid = str(unhashed.pop("receipt_cid", ""))
+    if (
+        set(receipt) != _M19_RECEIPT_KEYS
+        or receipt.get("schema") != "sawm/non-authoritative-migration-receipt@17"
+        or receipt_cid != authority["prior_migration_receipt_cid"]
+        or receipt_cid != _identity(unhashed)
+        or receipt.get("database_path") != authority["prior_store_id"]
+        or receipt.get("coordination_path")
+        != authority["prior_coordination_store_id"]
+        or receipt.get("control_store_sha256")
+        != authority["prior_control_store_sha256"]
+        or int(receipt.get("control_store_size") or 0)
+        != int(authority["prior_control_store_size"])
+        or receipt.get("coordination_store_sha256")
+        != authority["prior_coordination_store_sha256"]
+        or int(receipt.get("coordination_store_size") or 0)
+        != int(authority["prior_coordination_store_size"])
+        or receipt.get("current_source_binding_cid")
+        != authority["prior_source_binding_cid"]
+        or receipt.get("validation_digest") != authority["prior_validation_digest"]
+        or receipt.get("projection_cid") != authority["prior_projection_cid"]
+        or receipt.get("semantic_authority_digest")
+        != authority["prior_semantic_authority_digest"]
+        or receipt.get("frozen_base_authority_digest")
+        != authority["prior_frozen_base_authority_digest"]
+        or receipt.get("append_surface_digest")
+        != authority["prior_append_surface_digest"]
+        or receipt.get("catalog_digest") != authority["prior_catalog_digest"]
+        or int(receipt.get("target_event_watermark") or 0) != 227
+        or int(receipt.get("target_generation") or 0) != 20
+        or receipt.get("target_runtime_root") != str(control.parent.relative_to(root))
+        or receipt.get("authoritative") is not False
+        or receipt.get("receipt_is_final_pair_commit_marker") is not True
+    ):
+        raise MigrationRequired("historical M19 migration receipt differs")
+
+    m19 = _expected_m19_live_catalog_inventory_authority()
+    m18_control = _confined_leaf(
+        root, str(m19["prior_store_id"]), noun="historical stopped M18 control"
+    )
+    m18_coordination = _confined_leaf(
+        root,
+        str(m19["prior_coordination_store_id"]),
+        noun="historical stopped M18 coordination",
+    )
+    frozen_population = _m20_predecessor_population(population, authority)
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m20-prior-", dir="/tmp") as td:
+        copy_root = Path(td)
+        m19_control_copy = copy_root / "m19-control.duckdb"
+        m19_coordination_copy = copy_root / "m19-coordination.duckdb"
+        m18_control_copy = copy_root / "m18-control.duckdb"
+        m18_coordination_copy = copy_root / "m18-coordination.duckdb"
+        for source, target in (
+            (control, m19_control_copy),
+            (coordination, m19_coordination_copy),
+            (m18_control, m18_control_copy),
+            (m18_coordination, m18_coordination_copy),
+        ):
+            shutil.copyfile(source, target)
+        verified = _verify_m19_store_pair_copy(
+            m19_control_copy,
+            m19_coordination_copy,
+            m18_control_copy,
+            m18_coordination_copy,
+            frozen_population,
+            config,
+            str(authority["prior_validation_digest"]),
+        )
+    if (
+        verified.get("control_store_sha256")
+        != authority["prior_control_store_sha256"]
+        or verified.get("coordination_store_sha256")
+        != authority["prior_coordination_store_sha256"]
+        or verified.get("projection_cid") != authority["prior_projection_cid"]
+        or verified.get("append_surface_digest")
+        != authority["prior_append_surface_digest"]
+        or verified.get("semantic_authority_digest")
+        != authority["prior_semantic_authority_digest"]
+        or verified.get("frozen_base_authority_digest")
+        != authority["prior_frozen_base_authority_digest"]
+        or verified.get("catalog_digest") != authority["prior_catalog_digest"]
+        or int(verified.get("event_watermark") or 0) != 227
+    ):
+        raise MigrationRequired("M19 disposable-copy verification differs")
+
+    final = {
+        "control": _stable_regular_sha256(
+            control,
+            root=root,
+            noun="unlaunched M19 control store",
+            required_link_count=1,
+        ),
+        "coordination": _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="unlaunched M19 coordination store",
+            required_link_count=1,
+        ),
+        "receipt": _stable_regular_sha256(
+            receipt_path,
+            root=root,
+            noun="historical M19 migration receipt",
+            required_link_count=1,
+        ),
+    }
+    if (
+        final != anchors
+        or any(os.path.lexists(path) for path in forbidden)
+        or _m18_prior_listener_is_active(_M19_TARGET_QUACK_PORT)
+        or authority["prior_owner_marker_present"] is not False
+        or authority["prior_status_projection_present"] is not False
+        or authority["prior_read_replica_present"] is not False
+        or authority["prior_execution_sidecar_present"] is not False
+        or authority["prior_runtime_directories_present"] is not False
+        or authority["prior_listener_present"] is not False
+        or authority["prior_pid_present"] is not False
+        or authority["prior_wals_absent"] is not True
+        or int(authority["prior_active_count"]) != 0
+    ):
+        raise MaterializationError("M20 predecessor verification mutated authority")
+    _assert_offline(control)
+    return control, coordination
+
+
+def _inspect_m20_head_task_projection(
+    source: Any, population: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Inspect M20's unchanged task head and its two-row plan suffix."""
+
+    snapshot = source.snapshot()
+    plan = source.get_plan(str(population["plan_root_cid"]))
+    tasks: dict[str, dict[str, Any]] = {}
+    for alias in _M18_REARM_TASK_ALIASES:
+        task = source.get_task(alias)
+        if (
+            task is None
+            or task.task_cid != _M18_FAILURE_RECEIPTS[alias]["task_cid"]
+            or task.status != "retrying"
+            or task.revision != 5
+            or dict(task.body).get("completion_receipt")
+            != _m18_task_rearm_receipt(alias)
+        ):
+            raise MigrationRequired(f"M20 head projection for {alias} differs")
+        tasks[alias] = {
+            "task_cid": task.task_cid,
+            "status": task.status,
+            "revision": task.revision,
+            "receipt": dict(task.body).get("completion_receipt"),
+        }
+    if (
+        snapshot.event_cursor != _M20_TARGET_EVENT_WATERMARK
+        or not str(snapshot.projection_cid or "")
+        or plan is None
+        or int(plan.get("revision") or 0) != _M20_TARGET_PLAN_REVISION
+    ):
+        raise MigrationRequired("M20 head projection differs")
+    return {
+        "event_watermark": snapshot.event_cursor,
+        "projection_cid": snapshot.projection_cid,
+        "plan_revision": int(plan["revision"]),
+        "tasks": tasks,
+    }
+
+
+def _stage_m20_store_pair(
+    root: Path,
+    stage_dir: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build the M20 append privately from exact M19 bytes."""
+
+    authority = _m20_source_binding_authority(root, population, config)
+    stage_control = stage_dir / "control.duckdb"
+    stage_coordination = stage_dir / "control.coordination.duckdb"
+    shutil.copy2(prior_control, stage_control)
+    shutil.copy2(prior_coordination, stage_coordination)
+    if (
+        _store_sha256(stage_control) != authority["prior_control_store_sha256"]
+        or _store_sha256(stage_coordination)
+        != authority["prior_coordination_store_sha256"]
+    ):
+        raise MaterializationError("M20 staged predecessor bytes differ")
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    original_clock = intent_repository._utc_iso
+
+    def fixed_m20_utc_iso(_moment: Any = None) -> str:
+        return _M20_CONTROL_RECORDED_AT
+
+    intent_repository._utc_iso = fixed_m20_utc_iso
+    clock_interference = False
+    try:
+        source = DatabaseTaskSource(
+            stage_control,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-test-isolation-repair-migrator",
+        )
+        try:
+            _inspect_m19_head_task_projection(source, population)
+            operator = source.get_task("SAWM-000")
+            if operator is None or operator.status != "completed" or operator.revision != 2:
+                raise MaterializationError("M20 staged operator authority differs")
+            migration_body = _m20_migration_body(
+                population, config, validation_digest
+            )
+            migration_digest = _identity(migration_body)
+            plan_receipt = source.plans.append_revision(
+                plan_cid=str(population["plan_root_cid"]),
+                expected_revision=int(authority["prior_plan_revision"]),
+                body={
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
+                    "source_migration_revision": _M20_MIGRATION_REVISION,
+                    "source_migration_digest": migration_digest,
+                    "supersession_mode": _M20_SUPERSESSION_MODE,
+                },
+                delta=_m20_migration_plan_delta(population, config),
+            )
+            evidence = source.record_evidence(
+                task_cid=operator.task_cid,
+                evidence_kind="operator_control_plane_source_migration",
+                digest=migration_digest,
+                body=migration_body,
+            )
+            _inspect_m20_head_task_projection(source, population)
+        finally:
+            source.close()
+    finally:
+        clock_interference = intent_repository._utc_iso is not fixed_m20_utc_iso
+        intent_repository._utc_iso = original_clock
+    if clock_interference or intent_repository._utc_iso is not original_clock:
+        raise MaterializationError("M20 deterministic control clock binding drifted")
+    if any(
+        os.path.lexists(path)
+        for path in (
+            stage_control.with_name(stage_control.name + ".wal"),
+            stage_coordination.with_name(stage_coordination.name + ".wal"),
+        )
+    ):
+        raise MaterializationError("M20 staged mutation retained a WAL")
+    verified = _verify_m20_store_pair_copy(
+        stage_control,
+        stage_coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    return {
+        "stage_control": stage_control,
+        "stage_coordination": stage_coordination,
+        "plan_receipt": plan_receipt,
+        "evidence": evidence,
+        "migration_digest": migration_digest,
+        "verified": verified,
+    }
+
+
+def _verify_m20_store_pair_copy(
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Prove that M20 changes only plan/evidence/events 228--229."""
+
+    authority = _expected_m20_test_isolation_authority()
+    hashes = {
+        "control": _store_sha256(control),
+        "coordination": _store_sha256(coordination),
+        "prior_control": _store_sha256(prior_control),
+        "prior_coordination": _store_sha256(prior_coordination),
+    }
+    if (
+        hashes["prior_control"] != authority["prior_control_store_sha256"]
+        or hashes["prior_coordination"]
+        != authority["prior_coordination_store_sha256"]
+        or hashes["coordination"] != hashes["prior_coordination"]
+        or any(
+            os.path.lexists(path)
+            for path in (
+                control.with_name(control.name + ".wal"),
+                coordination.with_name(coordination.name + ".wal"),
+                prior_control.with_name(prior_control.name + ".wal"),
+                prior_coordination.with_name(prior_coordination.name + ".wal"),
+            )
+        )
+    ):
+        raise MigrationRequired("M20 staged predecessor or sidecar differs")
+    expected_body = _m20_migration_body(population, config, validation_digest)
+    expected_digest = _identity(expected_body)
+    expected_delta = _m20_migration_plan_delta(population, config)
+
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        read_coordination_registry_projection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    prior = duckdb.connect(str(prior_control), read_only=True)
+    target = duckdb.connect(str(control), read_only=True)
+    try:
+        append_tables = {"plans", "plan_revisions", "evidence_nodes", "domain_events"}
+        prior_tables = _main_table_names(prior)
+        target_tables = _main_table_names(target)
+        stable = tuple(table for table in prior_tables if table not in append_tables)
+        if (
+            prior_tables != target_tables
+            or _event_prefix_digest(prior, 227)
+            != (authority["prior_event_prefix_sha256"], 227)
+            or _main_catalog_digest_on(prior) != authority["prior_catalog_digest"]
+            or _main_catalog_digest_on(target) != authority["prior_catalog_digest"]
+            or _authority_table_digest_on(prior, stable)
+            != _authority_table_digest_on(target, stable)
+        ):
+            raise MigrationRequired("M20 changed frozen control authority")
+        rows: dict[str, tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]] = {}
+        for table, width, order in (
+            ("plans", 8, "1,2"),
+            ("plan_revisions", 4, "1,2,3,4"),
+            ("evidence_nodes", 7, "1,2,3,4,5,6,7"),
+        ):
+            rows[table] = (
+                _positional_rows(
+                    prior.execute(f"SELECT * FROM {table} ORDER BY {order}").fetchall(),
+                    width,
+                ),
+                _positional_rows(
+                    target.execute(f"SELECT * FROM {table} ORDER BY {order}").fetchall(),
+                    width,
+                ),
+            )
+        event_sql = (
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,"
+            "task_cid,attempt_id,session_id,recorded_at,body_json "
+            "FROM domain_events ORDER BY global_sequence"
+        )
+        prior_events = _positional_rows(prior.execute(event_sql).fetchall(), 10)
+        target_events = _positional_rows(target.execute(event_sql).fetchall(), 10)
+        task_count = int(target.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
+        goal_count = int(target.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
+    finally:
+        target.close()
+        prior.close()
+    prior_plans, target_plans = rows["plans"]
+    prior_revisions, target_revisions = rows["plan_revisions"]
+    prior_evidence, target_evidence = rows["evidence_nodes"]
+    if (
+        len(prior_plans) != 1
+        or len(target_plans) != 1
+        or len(prior_revisions) != 20
+        or len(target_revisions) != 21
+        or target_revisions[:-1] != prior_revisions
+        or len(target_evidence) != len(prior_evidence) + 1
+        or len(prior_events) != 227
+        or len(target_events) != 229
+        or target_events[:-2] != prior_events
+        or task_count != 45
+        or goal_count != 29
+    ):
+        raise MigrationRequired("M20 append-only surface counts differ")
+
+    prior_plan, target_plan = prior_plans[0], target_plans[0]
+    expected_plan_body = {
+        **json.loads(str(prior_plan[7])),
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_migration_revision": _M20_MIGRATION_REVISION,
+        "source_migration_digest": expected_digest,
+        "supersession_mode": _M20_SUPERSESSION_MODE,
+        "last_delta": expected_delta,
+    }
+    operator_task_cid = str(
+        population["migration_inventory"]["prior_task_cids"]["SAWM-000"]
+    )
+    expected_evidence_id = content_identity(
+        {
+            "task_cid": operator_task_cid,
+            "evidence_kind": "operator_control_plane_source_migration",
+            "digest": expected_digest,
+            "body": expected_body,
+        }
+    )
+    prior_evidence_map = {str(row[0]): row for row in prior_evidence}
+    target_evidence_map = {str(row[0]): row for row in target_evidence}
+    new_evidence = target_evidence_map.get(expected_evidence_id)
+    if (
+        any(
+            target_evidence_map.get(key) != row
+            for key, row in prior_evidence_map.items()
+        )
+        or set(target_evidence_map) - set(prior_evidence_map)
+        != {expected_evidence_id}
+        or new_evidence is None
+        or prior_plan[:5] != target_plan[:5]
+        or int(prior_plan[6]) != 20
+        or int(target_plan[6]) != 21
+        or str(target_plan[5]) != _M20_CONTROL_RECORDED_AT
+        or json.loads(str(target_plan[7])) != expected_plan_body
+        or target_revisions[-1]
+        != (
+            str(population["plan_root_cid"]),
+            21,
+            _canonical(expected_plan_body).decode("utf-8"),
+            _M20_CONTROL_RECORDED_AT,
+        )
+        or str(new_evidence[1]) != ""
+        or str(new_evidence[2]) != operator_task_cid
+        or str(new_evidence[3]) != "operator_control_plane_source_migration"
+        or str(new_evidence[4]) != expected_digest
+        or str(new_evidence[5]) != _M20_CONTROL_RECORDED_AT
+        or json.loads(str(new_evidence[6])) != expected_body
+    ):
+        raise MigrationRequired("M20 plan/evidence append differs")
+
+    expected_plan_envelope = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.plan_revision_appended",
+        "owner_id": "sawm-r2-test-isolation-repair-migrator",
+        "recorded_at": _M20_CONTROL_RECORDED_AT,
+        "subject_id": str(population["plan_root_cid"]),
+        "body": {
+            "plan_cid": str(target_plan[0]),
+            "goal_cid": str(target_plan[1]),
+            "plan_alias": str(target_plan[2]),
+            "status": str(target_plan[3]),
+            "recorded_at": _M20_CONTROL_RECORDED_AT,
+            "revision": 21,
+            "body": expected_plan_body,
+            "delta": expected_delta,
+        },
+    }
+    expected_evidence_envelope = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "owner_id": "sawm-r2-test-isolation-repair-migrator",
+        "recorded_at": _M20_CONTROL_RECORDED_AT,
+        "subject_id": expected_evidence_id,
+        "body": {
+            "evidence_id": expected_evidence_id,
+            "parent_evidence_id": "",
+            "task_cid": operator_task_cid,
+            "evidence_kind": "operator_control_plane_source_migration",
+            "digest": expected_digest,
+            "created_at": _M20_CONTROL_RECORDED_AT,
+            "body": expected_body,
+            "revision": 0,
+        },
+    }
+    events: list[dict[str, Any]] = []
+    for row, expected_envelope in zip(
+        target_events[-2:],
+        (expected_plan_envelope, expected_evidence_envelope),
+        strict=True,
+    ):
+        envelope = json.loads(str(row[9]))
+        event = {
+            "id": str(row[0]),
+            "stream": str(row[1]),
+            "sequence": int(row[2]),
+            "global": int(row[3]),
+            "type": str(row[4]),
+            "task": str(row[5]),
+            "attempt": str(row[6]),
+            "session": str(row[7]),
+            "recorded_at": str(row[8]),
+            "body": envelope,
+        }
+        if (
+            content_identity(
+                {
+                    "stream_id": event["stream"],
+                    "sequence": event["sequence"],
+                    "global_sequence": event["global"],
+                    "event_type": event["type"],
+                    "body": envelope,
+                }
+            )
+            != event["id"]
+            or event["stream"] != "stream:intent"
+            or event["sequence"] != event["global"]
+            or event["attempt"]
+            or event["session"] != "session:intent"
+            or event["recorded_at"] != _M20_CONTROL_RECORDED_AT
+            or envelope != expected_envelope
+        ):
+            raise MigrationRequired("M20 event identity or envelope differs")
+        events.append(event)
+    if (
+        [event["type"] for event in events]
+        != ["intent.plan_revision_appended", "intent.evidence_recorded"]
+        or [event["global"] for event in events] != [228, 229]
+        or events[0]["task"] != ""
+        or events[1]["task"] != operator_task_cid
+    ):
+        raise MigrationRequired("M20 event suffix differs")
+
+    semantic = _semantic_authority_digest(control)
+    frozen = _frozen_base_authority_digest(control)
+    append = _append_surface_digest(control)
+    expected_append = _identity(
+        {
+            "plans": [list(row) for row in sorted(target_plans)],
+            "plan_revisions": [list(row) for row in sorted(target_revisions)],
+            "evidence_nodes": [list(row) for row in sorted(target_evidence)],
+            "domain_events": [list(row) for row in sorted(target_events)],
+        }
+    )
+    if (
+        _semantic_authority_digest(prior_control)
+        != authority["prior_semantic_authority_digest"]
+        or _frozen_base_authority_digest(prior_control)
+        != authority["prior_frozen_base_authority_digest"]
+        or _append_surface_digest(prior_control)
+        != authority["prior_append_surface_digest"]
+        or semantic != authority["target_semantic_authority_digest"]
+        or frozen != authority["target_frozen_base_authority_digest"]
+        or append != expected_append
+    ):
+        raise MigrationRequired("M20 semantic or append authority digest differs")
+
+    source = DatabaseTaskSource(control, install_schema=False)
+    try:
+        head = _inspect_m20_head_task_projection(source, population)
+    finally:
+        source.close()
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m20-replay-", dir="/tmp") as td:
+        replay_control = Path(td) / "control.duckdb"
+        shutil.copyfile(control, replay_control)
+        replay = DatabaseTaskSource(replay_control, install_schema=False)
+        try:
+            replay_head = _inspect_m20_head_task_projection(replay, population)
+            replay_matches = replay.projection_matches_events()
+        finally:
+            replay.close()
+    target_coord_projection = read_coordination_registry_projection(coordination)
+    coordination_db = duckdb.connect(str(coordination), read_only=True)
+    try:
+        coordination_event_count = int(
+            coordination_db.execute("SELECT COUNT(*) FROM lease_events").fetchone()[0]
+        )
+    finally:
+        coordination_db.close()
+    if (
+        head != replay_head
+        or not replay_matches
+        or target_coord_projection.get("projection_root")
+        != authority["target_coordination_projection_digest"]
+        or coordination_event_count != authority["target_coordination_event_count"]
+        or any(
+            _store_sha256(path) != hashes[key]
+            for key, path in (
+                ("control", control),
+                ("coordination", coordination),
+                ("prior_control", prior_control),
+                ("prior_coordination", prior_coordination),
+            )
+        )
+    ):
+        raise MigrationRequired("M20 replay, coordination, or immutable bytes differ")
+    return {
+        "valid": True,
+        "task_count": task_count,
+        "goal_count": goal_count,
+        "projection_cid": head["projection_cid"],
+        "event_watermark": _M20_TARGET_EVENT_WATERMARK,
+        "projection_matches_events": True,
+        "migration_digest": expected_digest,
+        "migration_evidence_id": expected_evidence_id,
+        "plan_migration_event_id": events[0]["id"],
+        "migration_evidence_event_id": events[1]["id"],
+        "semantic_authority_digest": semantic,
+        "frozen_base_authority_digest": frozen,
+        "append_surface_digest": append,
+        "catalog_digest": authority["prior_catalog_digest"],
+        "coordination_projection_digest": target_coord_projection[
+            "projection_root"
+        ],
+        "coordination_event_count": coordination_event_count,
+        "control_store_sha256": hashes["control"],
+        "control_store_size": control.stat().st_size,
+        "coordination_store_sha256": hashes["coordination"],
+        "coordination_store_size": coordination.stat().st_size,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "coordination_semantic_changes": 0,
+    }
+
+
+def _assert_m20_target_clean(control: Path, coordination: Path) -> None:
+    """Reject mutable runtime state at the generation-21 target."""
+
+    forbidden = (
+        control.with_name(control.name + ".wal"),
+        coordination.with_name(coordination.name + ".wal"),
+        control.with_name("control.execution.duckdb"),
+        control.with_name("control.execution.duckdb.wal"),
+        control.with_name("control.read-replica.duckdb"),
+        control.with_name("control.read-replica.duckdb.wal"),
+        control.with_name(f".{control.name}.state-owner.json"),
+        control.parent / "state",
+        control.parent / "events",
+        control.parent / "registry",
+        control.parent / "worktrees",
+        control.parent / "merge-queue",
+        control.parent / "logs",
+        control.parent / "quack-owner",
+    )
+    if any(os.path.lexists(path) for path in forbidden):
+        raise MigrationRequired("M20 target has a forbidden mutable sidecar")
+
+
+def _assert_m20_no_staging_or_pending(control: Path) -> None:
+    receipt = control.parent / "migration-receipt.json"
+    if tuple(control.parent.glob(".m20-installing.*")) or tuple(
+        control.parent.glob(f".{receipt.name}.*.tmp")
+    ):
+        raise MigrationRequired("M20 retained a staging or receipt temporary")
+
+
+def _assert_m20_no_staging(control: Path) -> None:
+    """Reject private stages while permitting exact receipt recovery."""
+
+    if tuple(control.parent.glob(".m20-installing.*")):
+        raise MigrationRequired("M20 retained a private staging artifact")
+
+
+def _verify_m20_store_pair(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify published M20 only through hash-checked disposable copies."""
+
+    _assert_m20_target_clean(control, coordination)
+    _assert_offline(control)
+    if _m18_prior_listener_is_active(_M20_TARGET_QUACK_PORT):
+        raise MigrationRequired("M20 target listener appeared before verification")
+    before = {
+        "control": _stable_regular_sha256(
+            control, root=root, noun="published M20 control", required_link_count=1
+        ),
+        "coordination": _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="published M20 coordination",
+            required_link_count=1,
+        ),
+        "prior_control": _stable_regular_sha256(
+            prior_control,
+            root=root,
+            noun="M19 predecessor control",
+            required_link_count=1,
+        ),
+        "prior_coordination": _stable_regular_sha256(
+            prior_coordination,
+            root=root,
+            noun="M19 predecessor coordination",
+            required_link_count=1,
+        ),
+    }
+    with tempfile.TemporaryDirectory(prefix="sawm-r2-m20-verify-", dir="/tmp") as td:
+        copy_root = Path(td)
+        copies: dict[str, Path] = {}
+        for key, source in (
+            ("control", control),
+            ("coordination", coordination),
+            ("prior_control", prior_control),
+            ("prior_coordination", prior_coordination),
+        ):
+            target = copy_root / f"{key}.duckdb"
+            shutil.copyfile(source, target)
+            if _stable_regular_sha256(
+                target,
+                root=copy_root,
+                noun=f"M20 {key} copy",
+                required_link_count=1,
+            ) != before[key]:
+                raise MaterializationError("M20 verification copy differs")
+            copies[key] = target
+        verified = _verify_m20_store_pair_copy(
+            copies["control"],
+            copies["coordination"],
+            copies["prior_control"],
+            copies["prior_coordination"],
+            population,
+            config,
+            validation_digest,
+        )
+    after = {
+        "control": _stable_regular_sha256(
+            control, root=root, noun="published M20 control", required_link_count=1
+        ),
+        "coordination": _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="published M20 coordination",
+            required_link_count=1,
+        ),
+        "prior_control": _stable_regular_sha256(
+            prior_control,
+            root=root,
+            noun="M19 predecessor control",
+            required_link_count=1,
+        ),
+        "prior_coordination": _stable_regular_sha256(
+            prior_coordination,
+            root=root,
+            noun="M19 predecessor coordination",
+            required_link_count=1,
+        ),
+    }
+    _assert_m20_target_clean(control, coordination)
+    if _m18_prior_listener_is_active(_M20_TARGET_QUACK_PORT):
+        raise MigrationRequired("M20 target listener appeared during verification")
+    if before != after:
+        raise MaterializationError("M20 verification changed published authority")
+    _assert_offline(control)
+    return verified
+
+
+_M20_RECEIPT_KEYS = frozenset(
+    {
+        "schema",
+        "authoritative",
+        "control_database_is_authority",
+        "coordination_database_is_authority",
+        "receipt_is_final_pair_commit_marker",
+        "migration_revision",
+        "program_definition_cid",
+        "current_source_binding_cid",
+        "validation_digest",
+        "migration_digest",
+        "migration_evidence_id",
+        "plan_migration_event_id",
+        "migration_evidence_event_id",
+        "test_isolation_successor_materialization_cid",
+        "database_path",
+        "coordination_path",
+        "projection_cid",
+        "event_watermark",
+        "control_store_sha256",
+        "control_store_size",
+        "coordination_store_sha256",
+        "coordination_store_size",
+        "semantic_authority_digest",
+        "frozen_base_authority_digest",
+        "append_surface_digest",
+        "catalog_digest",
+        "coordination_projection_digest",
+        "coordination_event_count",
+        "prior_database_path",
+        "prior_coordination_path",
+        "prior_control_store_sha256",
+        "prior_control_store_size",
+        "prior_coordination_store_sha256",
+        "prior_coordination_store_size",
+        "prior_event_watermark",
+        "prior_event_prefix_sha256",
+        "prior_projection_cid",
+        "prior_semantic_authority_digest",
+        "prior_frozen_base_authority_digest",
+        "prior_append_surface_digest",
+        "prior_catalog_digest",
+        "prior_validation_digest",
+        "prior_migration_receipt_path",
+        "prior_migration_receipt_sha256",
+        "prior_migration_receipt_size",
+        "prior_migration_receipt_cid",
+        "prior_source_binding_cid",
+        "repair_source_commit",
+        "accepted_source_repair",
+        "target_runtime_root",
+        "target_generation",
+        "target_quack_port",
+        "target_plan_revision",
+        "target_event_watermark",
+        "runtime_root_changed",
+        "source_binding_changed",
+        "control_and_coordination_bases_copied",
+        "prior_control_store_mutated",
+        "prior_coordination_store_mutated",
+        "prior_runtime_artifacts_absent",
+        "plan_revision_changes",
+        "evidence_node_changes",
+        "coordination_semantic_changes",
+        "task_revision_changes",
+        "task_status_changes",
+        "goal_changes",
+        "accepted_definition_changes",
+        "accepted_completion_changes",
+        "implementation_provider_invocations",
+        "effect_claim_changes",
+        "implementation_commit_changes",
+        "merge_attempt_changes",
+        "execution_sidecar_copied",
+        "read_replica_sidecar_copied",
+        "worker_self_approval",
+        "receipt_cid",
+    }
+)
+
+
+def _expected_m20_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M20's closed non-authoritative receipt-last marker."""
+
+    authority = _m20_source_binding_authority(root, population, config)
+    control_hash = _stable_regular_sha256(
+        control, root=root, noun="M20 receipt control", required_link_count=1
+    )
+    coordination_hash = _stable_regular_sha256(
+        coordination,
+        root=root,
+        noun="M20 receipt coordination",
+        required_link_count=1,
+    )
+    if (
+        control_hash
+        != (verified["control_store_sha256"], verified["control_store_size"])
+        or coordination_hash
+        != (
+            verified["coordination_store_sha256"],
+            verified["coordination_store_size"],
+        )
+        or population["source_binding"]["source_binding_cid"]
+        == authority["prior_source_binding_cid"]
+        or validation_digest == authority["prior_validation_digest"]
+    ):
+        raise MigrationRequired("M20 pair changed before receipt construction")
+    result: dict[str, Any] = {
+        "schema": "sawm/non-authoritative-migration-receipt@18",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "coordination_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": _M20_MIGRATION_REVISION,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_digest": validation_digest,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "plan_migration_event_id": verified["plan_migration_event_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "test_isolation_successor_materialization_cid": _identity(authority),
+        "database_path": str(control.relative_to(root)),
+        "coordination_path": str(coordination.relative_to(root)),
+        "projection_cid": verified["projection_cid"],
+        "event_watermark": verified["event_watermark"],
+        "control_store_sha256": control_hash[0],
+        "control_store_size": control_hash[1],
+        "coordination_store_sha256": coordination_hash[0],
+        "coordination_store_size": coordination_hash[1],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "frozen_base_authority_digest": verified["frozen_base_authority_digest"],
+        "append_surface_digest": verified["append_surface_digest"],
+        "catalog_digest": verified["catalog_digest"],
+        "coordination_projection_digest": verified[
+            "coordination_projection_digest"
+        ],
+        "coordination_event_count": verified["coordination_event_count"],
+        "prior_database_path": authority["prior_store_id"],
+        "prior_coordination_path": authority["prior_coordination_store_id"],
+        "prior_control_store_sha256": authority["prior_control_store_sha256"],
+        "prior_control_store_size": authority["prior_control_store_size"],
+        "prior_coordination_store_sha256": authority[
+            "prior_coordination_store_sha256"
+        ],
+        "prior_coordination_store_size": authority[
+            "prior_coordination_store_size"
+        ],
+        "prior_event_watermark": authority["prior_event_watermark"],
+        "prior_event_prefix_sha256": authority["prior_event_prefix_sha256"],
+        "prior_projection_cid": authority["prior_projection_cid"],
+        "prior_semantic_authority_digest": authority[
+            "prior_semantic_authority_digest"
+        ],
+        "prior_frozen_base_authority_digest": authority[
+            "prior_frozen_base_authority_digest"
+        ],
+        "prior_append_surface_digest": authority["prior_append_surface_digest"],
+        "prior_catalog_digest": authority["prior_catalog_digest"],
+        "prior_validation_digest": authority["prior_validation_digest"],
+        "prior_migration_receipt_path": authority["prior_migration_receipt_path"],
+        "prior_migration_receipt_sha256": authority[
+            "prior_migration_receipt_sha256"
+        ],
+        "prior_migration_receipt_size": authority["prior_migration_receipt_size"],
+        "prior_migration_receipt_cid": authority["prior_migration_receipt_cid"],
+        "prior_source_binding_cid": authority["prior_source_binding_cid"],
+        "repair_source_commit": authority["repair_source_commit"],
+        "accepted_source_repair": authority["accepted_source_repair"],
+        "target_runtime_root": authority["target_runtime_root"],
+        "target_generation": authority["target_generation"],
+        "target_quack_port": authority["target_quack_port"],
+        "target_plan_revision": authority["target_plan_revision"],
+        "target_event_watermark": authority["target_event_watermark"],
+        "runtime_root_changed": True,
+        "source_binding_changed": True,
+        "control_and_coordination_bases_copied": True,
+        "prior_control_store_mutated": False,
+        "prior_coordination_store_mutated": False,
+        "prior_runtime_artifacts_absent": True,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "coordination_semantic_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "execution_sidecar_copied": False,
+        "read_replica_sidecar_copied": False,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    if set(result) != _M20_RECEIPT_KEYS:
+        raise MaterializationError("M20 receipt key contract differs")
+    return result
+
+
+def _assert_m20_receipt_commit_inputs(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    expected: Mapping[str, Any],
+) -> None:
+    """Recheck exact source, pair, predecessor and lifecycle custody."""
+
+    authority = _m20_source_binding_authority(root, population, config)
+    _assert_committed_clean_source(root, population)
+    _assert_m20_source_delta(root, population, authority)
+    _assert_m20_target_clean(control, coordination)
+    _assert_offline(control)
+    if _m18_prior_listener_is_active(_M20_TARGET_QUACK_PORT):
+        raise MigrationRequired("M20 target listener appeared at receipt commit")
+    if (
+        _stable_regular_sha256(
+            control,
+            root=root,
+            noun="M20 receipt control",
+            required_link_count=1,
+        )
+        != (expected["control_store_sha256"], expected["control_store_size"])
+        or _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="M20 receipt coordination",
+            required_link_count=1,
+        )
+        != (
+            expected["coordination_store_sha256"],
+            expected["coordination_store_size"],
+        )
+    ):
+        raise MigrationRequired("M20 store pair changed at receipt commit")
+    prior_control = _confined_leaf(
+        root, str(authority["prior_store_id"]), noun="M20 receipt predecessor"
+    )
+    prior_coordination = _confined_leaf(
+        root,
+        str(authority["prior_coordination_store_id"]),
+        noun="M20 receipt predecessor coordination",
+    )
+    prior_receipt = _confined_leaf(
+        root,
+        str(authority["prior_migration_receipt_path"]),
+        noun="M20 receipt predecessor marker",
+    )
+    if (
+        _stable_regular_sha256(
+            prior_control,
+            root=root,
+            noun="M20 receipt predecessor",
+            required_link_count=1,
+        )
+        != (
+            authority["prior_control_store_sha256"],
+            authority["prior_control_store_size"],
+        )
+        or _stable_regular_sha256(
+            prior_coordination,
+            root=root,
+            noun="M20 receipt predecessor coordination",
+            required_link_count=1,
+        )
+        != (
+            authority["prior_coordination_store_sha256"],
+            authority["prior_coordination_store_size"],
+        )
+        or _stable_regular_sha256(
+            prior_receipt,
+            root=root,
+            noun="M20 receipt predecessor marker",
+            required_link_count=1,
+        )
+        != (
+            authority["prior_migration_receipt_sha256"],
+            authority["prior_migration_receipt_size"],
+        )
+        or _m18_prior_listener_is_active(_M19_TARGET_QUACK_PORT)
+    ):
+        raise MigrationRequired("M20 predecessor changed at receipt commit")
+    _assert_m19_target_clean(prior_control, prior_coordination)
+    _assert_offline(prior_control)
+    unhashed = dict(expected)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if set(expected) != _M20_RECEIPT_KEYS or claimed != _identity(unhashed):
+        raise MaterializationError("M20 expected receipt does not rehash")
+
+
+def _ensure_m20_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Publish/recover M20's receipt under bounded exact pair custody."""
+
+    receipt_path = control.parent / "migration-receipt.json"
+    lock_path = control.parent / ".m20-receipt.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        lock_stat = os.fstat(descriptor)
+        path_stat = os.lstat(lock_path)
+        if (
+            not stat.S_ISREG(lock_stat.st_mode)
+            or lock_stat.st_nlink != 1
+            or (lock_stat.st_dev, lock_stat.st_ino)
+            != (path_stat.st_dev, path_stat.st_ino)
+        ):
+            raise MaterializationError("M20 receipt lock is not a regular leaf")
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the M20 receipt lock"
+                    ) from exc
+                time.sleep(0.02)
+        expected = _expected_m20_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+        _assert_m20_receipt_commit_inputs(
+            root, control, coordination, population, config, expected
+        )
+        pending = sorted(receipt_path.parent.glob(f".{receipt_path.name}.*.tmp"))
+        if os.path.lexists(receipt_path):
+            receipt_stat = os.lstat(receipt_path)
+            observed, _ = _load_nofollow_json(
+                receipt_path,
+                root=root,
+                noun="M20 final pair marker",
+                required_link_count=2 if len(pending) == 1 else 1,
+            )
+            if observed != expected or set(observed) != _M20_RECEIPT_KEYS:
+                raise MigrationRequired("M20 final pair marker differs")
+            aliases = [
+                path
+                for path in pending
+                if os.lstat(path).st_dev == receipt_stat.st_dev
+                and os.lstat(path).st_ino == receipt_stat.st_ino
+            ]
+            if receipt_stat.st_nlink == 2 and len(aliases) == 1 and len(pending) == 1:
+                directory = os.open(
+                    receipt_path.parent,
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+                )
+                try:
+                    os.unlink(aliases[0])
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            elif receipt_stat.st_nlink != 1 or pending:
+                raise MigrationRequired("M20 receipt alias population differs")
+            _assert_m20_receipt_commit_inputs(
+                root, control, coordination, population, config, expected
+            )
+            return observed
+        if len(pending) > 1:
+            raise MigrationRequired("M20 has ambiguous pending receipts")
+        temporary = pending[0] if pending else receipt_path.with_name(
+            f".{receipt_path.name}.{os.getpid()}.tmp"
+        )
+        if pending:
+            observed, _ = _load_nofollow_json(
+                temporary, root=root, noun="pending M20 migration receipt"
+            )
+            if observed != expected:
+                raise MigrationRequired("pending M20 receipt differs")
+        else:
+            out = os.open(
+                temporary,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            try:
+                os.write(out, _canonical(expected) + b"\n")
+                os.fsync(out)
+            finally:
+                os.close(out)
+        _assert_m20_receipt_commit_inputs(
+            root, control, coordination, population, config, expected
+        )
+        directory = os.open(
+            receipt_path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.link(temporary, receipt_path, follow_symlinks=False)
+            os.fsync(directory)
+            _assert_m20_receipt_commit_inputs(
+                root, control, coordination, population, config, expected
+            )
+            os.unlink(temporary)
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        observed, _ = _load_nofollow_json(
+            receipt_path, root=root, noun="committed M20 migration receipt"
+        )
+        if observed != expected or set(observed) != _M20_RECEIPT_KEYS:
+            raise MigrationRequired("committed M20 receipt differs")
+        _assert_m20_receipt_commit_inputs(
+            root, control, coordination, population, config, expected
+        )
+        return observed
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+
+def _verify_existing_m20_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    expected = _expected_m20_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    _assert_m20_receipt_commit_inputs(
+        root, control, coordination, population, config, expected
+    )
+    observed, _ = _load_nofollow_json(
+        control.parent / "migration-receipt.json",
+        root=root,
+        noun="M20 final pair marker",
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        observed != expected
+        or set(observed) != _M20_RECEIPT_KEYS
+        or claimed != _identity(unhashed)
+    ):
+        raise MigrationRequired("M20 final pair marker differs")
+    _assert_m20_receipt_commit_inputs(
+        root, control, coordination, population, config, expected
+    )
+    return observed
+
+
+def _check_m20_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    """Verify M20 and its receipt without opening an active canonical store."""
+
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m20_source_binding_authority(root, population, config)
+    _assert_m20_source_delta(root, population, authority)
+    control, coordination = _m20_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    if not all(os.path.lexists(path) for path in (control, coordination, receipt_path)):
+        raise MigrationRequired("M20 materialized pair or final marker is missing")
+    _assert_m20_target_clean(control, coordination)
+    _assert_m20_no_staging_or_pending(control)
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination = _assert_m20_prior_anchor(
+        root, authority, population, config
+    )
+    verified = _verify_m20_store_pair(
+        root,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    receipt = _verify_existing_m20_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        config,
+        verified,
+        validation_digest,
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": receipt,
+        **verified,
+    }
+
+
+def _materialize_m20(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Publish the exact M20 pair, then its non-authoritative marker."""
+
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m20_source_binding_authority(root, population, config)
+    _assert_m20_source_delta(root, population, authority)
+    control, coordination = _m20_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination = _assert_m20_prior_anchor(
+        root, authority, population, config
+    )
+    control_present = os.path.lexists(control)
+    coordination_present = os.path.lexists(coordination)
+    receipt_present = os.path.lexists(receipt_path)
+    if control_present != coordination_present:
+        raise MigrationRequired("M20 has a partial published store pair")
+    if receipt_present and not control_present:
+        raise MigrationRequired("M20 has an orphaned final marker")
+    if control_present:
+        _assert_m20_target_clean(control, coordination)
+        _assert_m20_no_staging(control)
+        verified = _verify_m20_store_pair(
+            root,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+        receipt = _ensure_m20_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+        return {
+            "schema": SCHEMA,
+            "valid": True,
+            "action": "checked" if receipt_present else "recovered_final_pair_marker",
+            "migration_required": False,
+            "database_path": str(control),
+            "coordination_path": str(coordination),
+            "program_definition_cid": population["program_definition_cid"],
+            "validation_digest": validation_digest,
+            "prior_authority": authority,
+            "receipt": receipt,
+            **verified,
+        }
+
+    prohibited = (
+        control,
+        coordination,
+        receipt_path,
+        control.with_name("control.execution.duckdb"),
+        control.with_name("control.read-replica.duckdb"),
+        control.parent / "state",
+        control.parent / "events",
+        control.parent / "registry",
+        control.parent / "worktrees",
+        control.parent / "merge-queue",
+        control.parent / "logs",
+        control.parent / "quack-owner",
+    )
+    if any(os.path.lexists(path) for path in prohibited):
+        raise MaterializationError("M20 successor runtime root is not fresh")
+    control.parent.mkdir(parents=True, exist_ok=True)
+    _assert_m20_no_staging_or_pending(control)
+    stage_dir = control.parent / (
+        f".m20-installing.{os.getpid()}.{validation_digest[-12:]}"
+    )
+    os.mkdir(stage_dir, 0o700)
+    staged = _stage_m20_store_pair(
+        root,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    for path in (staged["stage_control"], staged["stage_coordination"]):
+        with path.open("rb") as stream:
+            os.fsync(stream.fileno())
+    _assert_committed_clean_source(root, population)
+    _assert_m20_source_delta(root, population, authority)
+    _assert_m20_prior_anchor(root, authority, population, config)
+
+    lock_path = control.parent / ".m20-store-pair.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    created: list[tuple[Path, int, int]] = []
+    try:
+        lock_stat = os.fstat(descriptor)
+        path_stat = os.lstat(lock_path)
+        if (
+            not stat.S_ISREG(lock_stat.st_mode)
+            or lock_stat.st_nlink != 1
+            or (lock_stat.st_dev, lock_stat.st_ino)
+            != (path_stat.st_dev, path_stat.st_ino)
+        ):
+            raise MaterializationError("M20 pair lock is not a regular leaf")
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise MaterializationError(
+                        "timed out acquiring the M20 pair publication lock"
+                    ) from exc
+                time.sleep(0.02)
+        if any(os.path.lexists(path) for path in (control, coordination, receipt_path)):
+            raise MigrationRequired("another writer published part of M20")
+        _assert_committed_clean_source(root, population)
+        _assert_m20_source_delta(root, population, authority)
+        _assert_m20_prior_anchor(root, authority, population, config)
+        directory = os.open(
+            control.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            for staged_path, published_path in (
+                (staged["stage_control"], control),
+                (staged["stage_coordination"], coordination),
+            ):
+                staged_stat = os.lstat(staged_path)
+                os.link(staged_path, published_path, follow_symlinks=False)
+                created.append(
+                    (published_path, staged_stat.st_dev, staged_stat.st_ino)
+                )
+                os.fsync(directory)
+            allowed = {
+                "control.duckdb",
+                "control.coordination.duckdb",
+                ".control.duckdb.intent.lock",
+                ".control.duckdb.lock",
+                ".control.coordination.duckdb.lock",
+            }
+            entries = tuple(stage_dir.iterdir())
+            if {path.name for path in entries} - allowed or any(
+                not stat.S_ISREG(os.lstat(path).st_mode) for path in entries
+            ):
+                raise MaterializationError("M20 staging leaves differ")
+            for path in entries:
+                os.unlink(path)
+            stage_dir.rmdir()
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        verified = _verify_m20_store_pair(
+            root,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+        if dict(verified) != dict(staged["verified"]):
+            raise MigrationRequired("published M20 pair differs from staging")
+        receipt = _ensure_m20_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            config,
+            verified,
+            validation_digest,
+        )
+    except Exception:
+        if not os.path.lexists(receipt_path):
+            for path, device, inode in reversed(created):
+                if os.path.lexists(path):
+                    observed = os.lstat(path)
+                    if (observed.st_dev, observed.st_ino) == (device, inode):
+                        os.unlink(path)
+        raise
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "migrated_append_only_control_and_unchanged_coordination",
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "plan_migration_event_id": staged["plan_receipt"].event_id,
+        "migration_evidence_event_id": staged["evidence"].event_id,
+        "migration_digest": staged["migration_digest"],
+        "stage_cleanup_complete": True,
+        "receipt": receipt,
+        **verified,
+    }
+
+
 def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CONFIG_PATH) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     config_file = Path(config_path)
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m20_successor_configured(config):
+        return _materialize_m20(root, config_file, config)
     if _m19_successor_configured(config):
         return _materialize_m19(root, config_file, config)
     if _m18_successor_configured(config):
@@ -32889,6 +34923,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "test_isolation_successor_materialization",
                         "live_catalog_inventory_successor_materialization",
                         "portal_completion_persistence_successor_materialization",
                         "source_binding_successor_materialization",

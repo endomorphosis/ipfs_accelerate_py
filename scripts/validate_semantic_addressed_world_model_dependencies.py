@@ -3181,6 +3181,216 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m20_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M20 on any declaration surface, including partial/tampered state."""
+
+    key = "test_isolation_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m20_test_isolation_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M20's exact never-launched-M19 source-only successor."""
+
+    key = "test_isolation_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m20_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M20 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m20_test_isolation_authority()
+        errors: list[str] = []
+        presence = (
+            key in scheduler,
+            key in migration,
+            f"{key}_cid" in seal,
+        )
+        if not all(presence):
+            errors.append(
+                "M20 test-isolation successor authority is only partially declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M20 test-isolation authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M20 test-isolation authority CID is not exact")
+        required = {
+            "schema": "sawm/post-materialization-test-isolation-repair-authorization@1",
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M20",
+            "migration_kind": "post_materialization_test_isolation_repair",
+            "supersession_mode": (
+                "source_only_post_materialization_test_isolation_repair"
+            ),
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m19/control.duckdb"
+            ),
+            "prior_control_store_sha256": (
+                "0a505aae2923b21c445e019da803a97ae3bf168ec6c26cb45b419bed49d0df5d"
+            ),
+            "prior_control_store_size": 43_528_192,
+            "prior_coordination_store_sha256": (
+                "4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41"
+            ),
+            "prior_coordination_store_size": 14_168_064,
+            "prior_event_watermark": 227,
+            "prior_event_prefix_sha256": (
+                "45cccf8ea81087e168110d3e2abfd85c79656863519f632fcf0795a1d0208c80"
+            ),
+            "prior_projection_cid": (
+                "baguqeeravlrp2wmy7cbtuhoe2h6hs6tbphsunilvaufkktev6vv3ubl2nbia"
+            ),
+            "prior_migration_receipt_sha256": (
+                "cd62f5e9b597147633b4caef6157ddeccd648a6f5326bedc5ac7a92889a391d6"
+            ),
+            "prior_migration_receipt_size": 6_180,
+            "prior_migration_receipt_cid": (
+                "sha256:c89f0ba8fc663ac57d39d162fe7e283f606f556f37b38cb5ee71c83b274318c0"
+            ),
+            "prior_validation_digest": (
+                "sha256:60cdc6646b46d52d5102ff7c82595fdaa95c0c4e632221e28fac9d126adc2873"
+            ),
+            "prior_source_head": "d5275b900cd223643658afad19c643506d32a748",
+            "prior_source_tree": "9b6bf64f1bbca282c977ac9acfd9e204b4385da2",
+            "prior_source_binding_cid": (
+                "sha256:79b9fcb269ad29dd30d77084afeca33eab8b9cf8164a548748bf69a9908b298f"
+            ),
+            "repair_source_commit": "3e926a247acd5654887b276afa3d00b896c08a2d",
+            "repair_source_tree": "f3d89a58c8df8dc2dfd29a2b8422e4fd8ce683d2",
+            "target_runtime_root": (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m20"
+            ),
+            "target_generation": 21,
+            "target_quack_port": 24_063,
+            "target_plan_revision": 21,
+            "target_event_watermark": 229,
+            "event_suffix_length": 2,
+            "coordination_semantic_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append("M20 test-isolation authority is not exact")
+        repair = expected.get("accepted_source_repair")
+        wanted = {
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+                "fea8d6784b697ce4430460446b42262577d092a5"
+            )
+        }
+        if (
+            not isinstance(repair, Mapping)
+            or repair.get("blob_oids") != wanted
+            or set(repair.get("changed_paths", ())) != set(wanted)
+            or repair.get("source_only") is not True
+        ):
+            errors.append("M20 exact test-isolation repair blob differs")
+        expected_paths = {
+            "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+            "config/semantic_addressed_world_model_dependencies.seal.json",
+            "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+            (
+                "docs/architecture/semantic_addressed_world_model_inventory/"
+                "prior_materialization_migration.json"
+            ),
+            "scripts/materialize_semantic_addressed_world_model_program.py",
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+            "scripts/validate_semantic_addressed_world_model_board.py",
+            "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        }
+        if set(expected.get("bounded_control_plane_repair_paths", ())) != expected_paths:
+            errors.append("M20 bounded source repair paths are not exact")
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m20_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M20 exact repair/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        target_root = str(expected["target_runtime_root"])
+        target_store = str(expected["target_store_id"])
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "21",
+                "quack:127.0.0.1:24063",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_063,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M20 target/runtime binding is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M20 test-isolation authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m19_live_catalog_inventory_successor_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -6659,7 +6869,52 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if "live_catalog_inventory_successor_materialization" in scheduler:
+        if _m20_successor_declared(scheduler, seal, migration):
+            protocol_errors.extend(
+                _m20_test_isolation_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif "live_catalog_inventory_successor_materialization" in scheduler:
             protocol_errors.extend(
                 _m19_live_catalog_inventory_successor_errors(
                     scheduler, seal, migration, root=root
