@@ -325,6 +325,7 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
 
 def test_proven_dead_owner_status_can_seed_a_new_sealed_endpoint(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path.resolve()
     database = repo / "state" / "control.duckdb"
@@ -355,11 +356,57 @@ def test_proven_dead_owner_status_can_seed_a_new_sealed_endpoint(
     )
 
     assert lifecycle.program.quack_endpoint == "quack:127.0.0.1:25124"
+    assert lifecycle._startup_endpoint_migration_pending is True
     with pytest.raises(
         runner._StableArtifactReadError,
         match="differs from the configured authority",
     ):
         lifecycle._status_identity()
+    assert lifecycle._read_owner_observation(
+        authenticate_alive=False
+    ).liveness is OwnerLiveness.UNKNOWN
+    dead = lifecycle._read_owner_observation(
+        authenticate_alive=False,
+        allow_proven_dead_endpoint_migration=True,
+    )
+    assert dead.provably_dead is True
+    assert dead.binding is not None
+
+    birth = ProcessBirthIdentity(
+        pid=65432,
+        start_time_ticks=2345,
+        boot_id="test-boot",
+    )
+    owner = SpawnedQuackOwner(
+        process=SimpleNamespace(pid=birth.pid, poll=lambda: None),
+        process_birth=birth,
+        isolated_process_group=True,
+    )
+    later = QuackOwnerBinding(
+        store_id=dead.binding.store_id,
+        schema_revision=dead.binding.schema_revision,
+        database_uuid=dead.binding.database_uuid,
+        schema_fingerprint=dead.binding.schema_fingerprint,
+        generation=dead.binding.generation + 1,
+        server_id="server-recovered-on-new-endpoint",
+    )
+    monkeypatch.setattr(lifecycle._watchdog, "_start_owner", lambda: owner)
+    monkeypatch.setattr(
+        lifecycle._watchdog,
+        "_readiness_probe",
+        lambda selected: AuthenticatedReadiness(
+            authenticated=True,
+            ready=True,
+            process_birth_id=selected.birth_id,
+            binding=later,
+        ),
+    )
+
+    startup = lifecycle.ensure_before_tracks()
+
+    assert startup["ready"] is True
+    assert startup["recovered"] is True
+    assert lifecycle._startup_endpoint_migration_pending is False
 
 
 def test_live_owner_status_cannot_migrate_to_another_endpoint(

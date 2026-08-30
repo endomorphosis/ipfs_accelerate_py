@@ -1242,6 +1242,10 @@ class ManagedLocalQuackOwnerLifecycle:
         _baseline_status, baseline_identity = self._status_identity(
             allow_proven_dead_endpoint_migration=True
         )
+        self._startup_endpoint_migration_pending = (
+            baseline_identity.get("listen_uri")
+            != self.program.quack_endpoint
+        )
         self._repository_id = str(
             baseline_identity.get("repository_id") or ""
         ).strip()
@@ -1259,7 +1263,10 @@ class ManagedLocalQuackOwnerLifecycle:
                 **baseline_binding.to_dict()
             ),
             observe_owner=lambda: self._read_owner_observation(
-                authenticate_alive=True
+                authenticate_alive=True,
+                allow_proven_dead_endpoint_migration=(
+                    self._startup_endpoint_migration_pending
+                ),
             ),
             policy=QuackOwnerWatchdogPolicy(
                 max_restart_attempts=policy.max_restart_attempts,
@@ -1524,7 +1531,12 @@ class ManagedLocalQuackOwnerLifecycle:
                     raise
                 time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
 
-    def _read_owner_observation(self, *, authenticate_alive: bool):
+    def _read_owner_observation(
+        self,
+        *,
+        authenticate_alive: bool,
+        allow_proven_dead_endpoint_migration: bool = False,
+    ):
         from ..merge.worktree_lifecycle import OwnerLiveness, read_process_birth
         from .quack_owner_watchdog import (
             OwnerHealth,
@@ -1534,7 +1546,11 @@ class ManagedLocalQuackOwnerLifecycle:
         )
 
         try:
-            _status, identity = self._status_identity()
+            _status, identity = self._status_identity(
+                allow_proven_dead_endpoint_migration=(
+                    allow_proven_dead_endpoint_migration
+                )
+            )
             birth = self._birth_from_identity(identity)
             binding = self._binding_from_identity(identity)
         except SupervisorRunInterrupted:
@@ -1883,7 +1899,12 @@ class ManagedLocalQuackOwnerLifecycle:
             process_birth_id,
         )
 
-        observation = self._read_owner_observation(authenticate_alive=True)
+        observation = self._read_owner_observation(
+            authenticate_alive=True,
+            allow_proven_dead_endpoint_migration=(
+                self._startup_endpoint_migration_pending
+            ),
+        )
         if (
             observation.liveness is OwnerLiveness.ALIVE
             and observation.health is OwnerHealth.HEALTHY
@@ -1924,6 +1945,8 @@ class ManagedLocalQuackOwnerLifecycle:
             )
         elif observation.liveness is OwnerLiveness.DEAD:
             payload = dict(self.recover_after_fence())
+            if payload.get("recovered") is True:
+                self._startup_endpoint_migration_pending = False
             payload["ready"] = bool(payload.get("recovered"))
             return payload
         else:
@@ -1977,7 +2000,10 @@ class ManagedLocalQuackOwnerLifecycle:
         )
         while True:
             observation = self._read_owner_observation(
-                authenticate_alive=True
+                authenticate_alive=True,
+                allow_proven_dead_endpoint_migration=(
+                    self._startup_endpoint_migration_pending
+                ),
             )
             if observation.liveness is OwnerLiveness.DEAD:
                 if prior_binding is None:
