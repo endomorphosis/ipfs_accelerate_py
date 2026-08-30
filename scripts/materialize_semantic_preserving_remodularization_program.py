@@ -1922,13 +1922,22 @@ def _recover_poisoned_owner_connection(
             return False
         if not force and getattr(current, "_poisoned", False) is not True:
             return False
-        close = getattr(current, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                pass
-        replacement = open_quack_state_owner_connection(current_path)
+        # Same-process reopen cannot take exclusive_file_lock again: the live
+        # handle still holds the path's thread RLock. Reconnect the native
+        # owner in place. Fall back to close+open only when reconnect is absent.
+        replacement: Any | None = None
+        reconnect = getattr(current, "reconnect_exclusive_owner", None)
+        if callable(reconnect) and getattr(current, "path", None) is not None:
+            reconnect()
+            replacement = current
+        else:
+            close = getattr(current, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+            replacement = open_quack_state_owner_connection(current_path)
         server._connection = replacement
         gateway = getattr(server, "_command_gateway", None)
         if gateway is not None:

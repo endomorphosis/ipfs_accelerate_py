@@ -645,6 +645,10 @@ class DuckDBConnection:
         self._pooled = False
         self._quack_uri = ""
         self._raw_wrapper_key = 0
+        self._threads = int(threads)
+        self._memory_limit = str(memory_limit)
+        self._quack_owner = bool(quack_owner)
+        self._preload_quack_for_state_owner = bool(_preload_quack_for_state_owner)
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -711,6 +715,10 @@ class DuckDBConnection:
         instance._pooled = False
         instance._quack_uri = ""
         instance._raw_wrapper_key = 0
+        instance._threads = 1
+        instance._memory_limit = DEFAULT_MEMORY_LIMIT
+        instance._quack_owner = False
+        instance._preload_quack_for_state_owner = False
         _register_duckdb_wrapper(instance, connection)
         return instance
 
@@ -1129,6 +1137,57 @@ class DuckDBConnection:
                     self._closed = True
                     self._closing_owner = 0
                     self._execution_condition.notify_all()
+
+    def reconnect_exclusive_owner(self) -> None:
+        """Replace the native handle without dropping the exclusive file lock.
+
+        Same-process recovery cannot open a second ``DuckDBConnection`` onto
+        this path: ``exclusive_file_lock`` uses a thread RLock keyed by the
+        lock file.  A peer that still owns a transaction makes ``close()``
+        raise, so the 30s thread-lock wait fails.  Reconnecting the native
+        owner keeps the already-held lock.
+        """
+
+        if self.path is None or self._lock_context is None:
+            raise DuckDBConnectionPolicyError(
+                "exclusive owner reconnect requires a file-owning handle"
+            )
+        import duckdb
+
+        if self._preload_quack_for_state_owner:
+            connector = connect_duckdb_quack_owner_with_policy
+        elif self._quack_owner:
+            connector = connect_duckdb_with_quack_owner_policy
+        else:
+            connector = connect_duckdb_with_policy
+        with self._execution_condition:
+            self._poison_locked()
+            self._closed = False
+            self._poisoned = False
+            self._closing_owner = 0
+            self._execution_condition.notify_all()
+        native = connector(
+            duckdb,
+            self.path,
+            configuration={
+                "threads": self._threads,
+                "memory_limit": self._memory_limit,
+            },
+        )
+        with self._execution_condition:
+            if self._connection is not None:
+                try:
+                    native.close()
+                except Exception:
+                    pass
+                raise DuckDBConnectionPolicyError(
+                    "exclusive owner reconnected concurrently"
+                )
+            self._connection = native
+            self._closed = False
+            self._poisoned = False
+            _register_duckdb_wrapper(self, native)
+            self._execution_condition.notify_all()
 
     def _release_quack_attach_session(self) -> None:
         raise DuckDBConnectionPolicyError(

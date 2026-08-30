@@ -1138,3 +1138,67 @@ def test_recover_poisoned_owner_connection_restarts_shared_transport(
     assert materializer._recover_poisoned_owner_connection(server) is True
     assert refreshed == [True]
     assert server._transport_connection is replacement
+
+
+def test_recover_poisoned_owner_connection_reconnects_without_second_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    opened: list[Path] = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+            self._poisoned = False
+
+        def close(self) -> None:
+            raise AssertionError("close must not drop the exclusive thread lock")
+
+    owner = _Owner()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=owner,
+        _refresh_read_replica=lambda: None,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
+        "open_quack_state_owner_connection",
+        lambda path: opened.append(Path(path)) or object(),
+    )
+
+    assert materializer._recover_poisoned_owner_connection(server, force=True) is True
+    assert owner.reconnected == 1
+    assert opened == []
+    assert server._connection is owner
+    assert server._command_gateway._connection is owner
+
+
+def test_reconnect_exclusive_owner_keeps_usable_handle(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBConnection,
+    )
+
+    path = tmp_path / "control.duckdb"
+    owner = DuckDBConnection(path)
+    try:
+        owner.execute("CREATE TABLE t(id INTEGER)")
+        owner.execute("INSERT INTO t VALUES (1)")
+        with owner._execution_condition:
+            owner._poison_locked()
+        assert owner._poisoned is True
+        owner.reconnect_exclusive_owner()
+        assert owner._poisoned is False
+        assert owner._closed is False
+        probe = owner.execute("SELECT COUNT(*) FROM t").fetchone()
+        assert probe is not None
+        assert int(probe[0]) == 1
+    finally:
+        owner.close()
