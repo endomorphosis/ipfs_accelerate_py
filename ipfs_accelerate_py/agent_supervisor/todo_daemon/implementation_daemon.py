@@ -79890,7 +79890,13 @@ class DatabaseImplementationDaemon:
                 if isinstance(item, Mapping)
             } if isinstance(matching, list) else set()
             if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
-                continue
+                # Typed-deferral exhaustion from mixed portal reasons still
+                # frozen the W1 frontier and tripped the 300s blocked-startup
+                # health gate.  Reopen only when declared outputs never landed.
+                if self.repo_root is None or self._task_outputs_landed_on_target(
+                    task
+                ):
+                    continue
             try:
                 self._cas_task_status_database(
                     task.task_cid,
