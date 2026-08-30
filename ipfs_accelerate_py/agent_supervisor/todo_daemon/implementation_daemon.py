@@ -68041,6 +68041,27 @@ class DatabaseImplementationDaemon:
                     ),
                 }
                 if self.task_shard_count > 1:
+                    existing_state_row = self._connection.execute(
+                        """
+                        SELECT (
+                            EXISTS(SELECT 1 FROM daemon_execution_metadata)
+                            OR EXISTS(SELECT 1 FROM database_task_attempts)
+                            OR EXISTS(SELECT 1 FROM attempt_phases)
+                            OR EXISTS(SELECT 1 FROM provider_invocations)
+                            OR EXISTS(SELECT 1 FROM effect_claims)
+                            OR EXISTS(SELECT 1 FROM daemon_execution_events)
+                        ) AS has_existing_state
+                        """
+                    ).fetchone()
+                    if (
+                        not isinstance(existing_state_row, Mapping)
+                        or set(existing_state_row) != {"has_existing_state"}
+                        or type(existing_state_row["has_existing_state"]) is not bool
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "execution sidecar state-presence row is malformed"
+                        )
+                    has_existing_state = existing_state_row["has_existing_state"]
                     existing_lane_metadata: dict[str, str] = {}
                     existing_lane_rows = self._connection.execute(
                         """
@@ -68079,7 +68100,7 @@ class DatabaseImplementationDaemon:
                             )
                         existing_lane_metadata[key] = value
                     if (
-                        existing_lane_metadata
+                        has_existing_state
                         and existing_lane_metadata != lane_metadata
                     ):
                         raise DatabaseImplementationAuthorityError(

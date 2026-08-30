@@ -702,6 +702,41 @@ def test_strict_lane_reopens_its_exact_execution_sidecar(tmp_path: Path) -> None
         replacement.close()
 
 
+def test_strict_lane_reopen_rejects_missing_binding_rows_with_evidence(
+    tmp_path: Path,
+) -> None:
+    first = _open_daemon(
+        tmp_path,
+        task_shard_count=4,
+        task_shard_index=2,
+        strict_task_sharding=True,
+    )
+    first._connection.execute(
+        """
+        DELETE FROM daemon_execution_metadata
+        WHERE key IN (
+            'execution_state_dir',
+            'execution_state_prefix',
+            'task_shard_count',
+            'task_shard_index',
+            'strict_task_sharding'
+        )
+        """
+    )
+    first.close()
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="execution sidecar lane metadata does not match",
+    ):
+        _open_daemon(
+            tmp_path,
+            task_shard_count=4,
+            task_shard_index=2,
+            strict_task_sharding=True,
+        )
+
+
 def test_process_serialized_coordinator_keeps_fenced_callback_atomic(
     tmp_path: Path,
 ) -> None:
