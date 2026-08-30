@@ -5210,6 +5210,66 @@ def test_callback_no_effect_budget_uses_portal_generation_not_outer_claim(
         restarted.close()
 
 
+def test_callback_no_effect_retry_cannot_cross_outer_successor_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A charged callback at outer attempt 2 cannot authorize attempt 3."""
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        control_path=tmp_path / "control.duckdb",
+        session="session:callback-no-effect-outer-budget",
+        strict_task_sharding=True,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        claimed = daemon.claim_next()
+        assert claimed is not None
+        source = replace(
+            claimed,
+            attempt_number=2,
+            status="blocked",
+        )
+        seed = _exact_callback_no_effect_receipt(
+            source,
+            workspace=tmp_path / "retained-outer-attempt-2",
+            portal_attempt=1,
+            max_task_attempts=2,
+        )
+        control = {
+            "operation": "database_portal_callback_no_effect_recovery",
+            "callback_no_effect_recovery_seed": seed,
+            "attempt_id": source.attempt_id,
+            "attempt_number": int(source.attempt_number),
+            "claim_id": source.claim_id,
+            "lease_id": source.lease_id,
+            "owner_session_id": source.owner_session_id,
+            "fencing_token": int(source.fencing_token),
+            "fence_epoch": int(source.fence_epoch),
+        }
+        retrying = SimpleNamespace(
+            status="retrying",
+            body={"completion_receipt": control},
+        )
+        monkeypatch.setattr(
+            daemon,
+            "get_attempt",
+            lambda attempt_id: (
+                source if attempt_id == source.attempt_id else None
+            ),
+        )
+        assert (
+            daemon._callback_no_effect_retry_claim_is_within_budget(
+                retrying
+            )
+            is False
+        )
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (
@@ -7192,6 +7252,40 @@ def test_protected_preservation_is_distinct_and_crosses_lanes(
         assert len(provider_calls) == 1
     finally:
         second.close()
+
+
+def test_protected_preservation_retry_ignores_provider_attempt_ceiling(
+    tmp_path: Path,
+) -> None:
+    """The charged-callback guard does not consume zero-provider handoffs."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:protected-preservation-at-provider-ceiling",
+        max_task_attempts=1,
+        lane="protected-at-ceiling",
+    )
+    try:
+        retrying = SimpleNamespace(
+            status="retrying",
+            body={
+                "completion_receipt": {
+                    "operation": (
+                        "database_portal_protected_preservation_retry"
+                    ),
+                    "attempt_number": 41,
+                    "protected_preservation_seed": {"attempt_consumed": False},
+                }
+            },
+        )
+        assert (
+            daemon._callback_no_effect_retry_claim_is_within_budget(
+                retrying
+            )
+            is True
+        )
+    finally:
+        daemon.close()
 
 
 @pytest.mark.parametrize(

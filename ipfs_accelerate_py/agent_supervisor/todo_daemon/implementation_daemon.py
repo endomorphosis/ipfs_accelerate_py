@@ -94918,6 +94918,67 @@ class DatabaseImplementationDaemon:
         )
         return int(identity["attempt_number"])
 
+    def _callback_no_effect_retry_claim_is_within_budget(
+        self,
+        task: Any,
+    ) -> bool:
+        """Admit only the exact bounded successor of a charged callback.
+
+        Protected-preservation and other zero-provider retries may legitimately
+        have an outer DuckDB attempt number at or above the provider ceiling.
+        A callback-no-effect recovery is different: its source receipt proves
+        that a provider was dispatched and the Portal generation was charged.
+        Fail closed unless that exact receipt leaves both a Portal generation
+        and its immediately adjacent outer successor within the configured
+        bound.
+        """
+
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        body = getattr(task, "body", None)
+        control = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        if (
+            status != "retrying"
+            or not isinstance(control, Mapping)
+            or control.get("operation")
+            != "database_portal_callback_no_effect_recovery"
+        ):
+            return True
+        seed = control.get("callback_no_effect_recovery_seed")
+        if not isinstance(seed, Mapping) or self.max_task_attempts <= 0:
+            return False
+        source = self.get_attempt(str(seed.get("attempt_id") or ""))
+        if source is None or source.status not in {"blocked", "failed"}:
+            return False
+        try:
+            verified = self._verified_callback_no_effect_recovery_receipt(
+                source,
+                seed,
+            )
+        except (DatabaseImplementationAuthorityError, TypeError, ValueError):
+            return False
+        source_identity = {
+            "attempt_id": source.attempt_id,
+            "attempt_number": int(source.attempt_number),
+            "claim_id": source.claim_id,
+            "lease_id": source.lease_id,
+            "owner_session_id": source.owner_session_id,
+            "fencing_token": int(source.fencing_token),
+            "fence_epoch": int(source.fence_epoch),
+        }
+        portal_attempt = int(verified["portal_attempt"])
+        return bool(
+            all(
+                control.get(name) == value
+                for name, value in source_identity.items()
+            )
+            and portal_attempt < self.max_task_attempts
+            and int(source.attempt_number) + 1 <= self.max_task_attempts
+        )
+
     def _recover_lost_typed_claim_reservations(
         self,
     ) -> list[Mapping[str, Any]]:
@@ -95922,12 +95983,20 @@ class DatabaseImplementationDaemon:
         if self.max_task_attempts > 0:
             for task_cid in canonical_ready_task_cids:
                 candidate = self.task_source.get(task_cid)
+                if candidate is None:
+                    continue
+                candidate_status = str(
+                    candidate.status or ""
+                ).strip().lower()
                 if (
-                    candidate is not None
-                    and str(candidate.status or "").strip().lower()
-                    in _DATABASE_READY_TASK_STATUSES
+                    candidate_status == "ready"
                     and self._typed_authoritative_attempt_floor(candidate)
                     >= self.max_task_attempts
+                ) or (
+                    candidate_status == "retrying"
+                    and not self._callback_no_effect_retry_claim_is_within_budget(
+                        candidate
+                    )
                 ):
                     excluded.add(task_cid)
         local_projection = self.coordinator.coordination_registry_projection()
