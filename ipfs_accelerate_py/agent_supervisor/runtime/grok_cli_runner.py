@@ -36,7 +36,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 # This file is launched by absolute path for scoped routes.  Put its accepted
@@ -354,6 +354,8 @@ CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG = (
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
+GROK_ISOLATION_WORKTREE = "worktree"
+GROK_ISOLATION_KUBERNETES = "kubernetes"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
 _SEALED_PROVIDER_ISOLATION_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
@@ -3114,26 +3116,69 @@ def _docker_runtime_receipt(docker_bin: str) -> dict[str, object]:
     }
 
 
-def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
-    """Select an enforceable kernel boundary, never an unsandboxed route."""
+def _publish_docker_cli_logs(
+    docker_lease: Any,
+    *,
+    provider: str,
+    returncode: int | None,
+    captured_output: str = "",
+) -> None:
+    """Copy Docker CLI output onto the supervisor-visible log volume."""
 
-    docker = _docker_isolation_binary()
-    if docker:
-        # Docker routes have a detached, lifecycle-bound cleanup owner before
-        # prompt/auth bytes are populated.  Prefer that recoverable boundary
-        # even when bubblewrap is available; a native temporary home cannot be
-        # reclaimed after an uncatchable runner death.
-        return GROK_ISOLATION_DOCKER
-    if require_container_boundary:
-        raise ValueError(
-            "Default Grok quota route requires the pinned local Docker "
-            "isolation image"
+    if docker_lease is None:
+        return
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
+            collect_container_cli_logs,
+            docker_logs_command,
         )
-    if _grok_custom_sandbox_available():
-        return GROK_ISOLATION_GROK_SANDBOX
-    raise ValueError(
-        "Grok provider isolation unavailable: bubblewrap cannot create its "
-        "namespace and the pinned local Docker image is unavailable"
+
+        container = str(getattr(docker_lease, "container_name", "") or "")
+        cidfile = getattr(docker_lease, "cidfile", None)
+        if isinstance(cidfile, Path) and cidfile.is_file():
+            try:
+                container = cidfile.read_text(encoding="utf-8").strip() or container
+            except OSError:
+                pass
+        docker_bin = str(getattr(docker_lease, "docker_bin", "") or "")
+        docker_config = str(getattr(docker_lease, "docker_config", "") or "")
+        identity = {
+            "container_name": str(getattr(docker_lease, "container_name", "") or ""),
+            "container_id": container,
+        }
+        log_command = None
+        if docker_bin and container:
+            log_command = docker_logs_command(
+                docker_bin=docker_bin,
+                docker_host=_docker_isolation_host(),
+                docker_config=docker_config,
+                container_id=container,
+            )
+        collect_container_cli_logs(
+            backend="docker",
+            provider=provider,
+            identity=identity,
+            returncode=returncode,
+            captured_output=captured_output,
+            log_command=log_command,
+        )
+    except Exception:
+        return
+
+
+def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
+    """Select CLI isolation. Worktree/sandbox is default; Docker is opt-in."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
+        kubernetes_runtime_available,
+        select_provider_isolation_backend,
+    )
+
+    return select_provider_isolation_backend(
+        docker_available=bool(_docker_isolation_binary()),
+        sandbox_available=_grok_custom_sandbox_available(),
+        kubernetes_available=kubernetes_runtime_available(),
+        require_container_boundary=require_container_boundary,
     )
 
 
@@ -10496,6 +10541,11 @@ def _run_codex_quota_fallback_in_docker(
             if effect_claim is not None:
                 docker_lease.mark_cas_terminal()
         docker_run_finished = True
+        _publish_docker_cli_logs(
+            docker_lease,
+            provider="grok",
+            returncode=returncode,
+        )
         return returncode
     finally:
         if docker_lease is not None:
@@ -14378,7 +14428,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 tools=_SEALED_GROK_TOOLS,
                 sandbox_profile=(
                     GROK_PRIMARY_SANDBOX_PROFILE
-                    if isolation_backend == GROK_ISOLATION_GROK_SANDBOX
+                    if isolation_backend
+                    in {
+                        GROK_ISOLATION_GROK_SANDBOX,
+                        GROK_ISOLATION_WORKTREE,
+                    }
                     else None
                 ),
                 deny_rules=GROK_ISOLATION_DENY_RULES,
@@ -14588,6 +14642,12 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                     return 125
             docker_run_finished = True
+            _publish_docker_cli_logs(
+                docker_lease,
+                provider="grok",
+                returncode=child_returncode,
+                captured_output=error_bytes.decode("utf-8", errors="replace"),
+            )
             if error_bytes:
                 sys.stderr.buffer.write(error_bytes)
                 if not error_bytes.endswith(b"\n"):
@@ -14652,6 +14712,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                     return 125
             docker_run_finished = True
+            _publish_docker_cli_logs(
+                docker_lease,
+                provider="grok",
+                returncode=primary_returncode,
+            )
         except OSError as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
             return 127
