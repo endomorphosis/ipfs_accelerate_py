@@ -2,7 +2,7 @@
 
 Optional cache, receipt, and xdist components are imported only after proof
 reuse is enabled.  In xdist runs, workers remain read/execute-only and return
-bounded publication intents to the single controller.
+bounded publication intents to the single controller (PCTDD-030).
 """
 
 from __future__ import annotations
@@ -1164,9 +1164,16 @@ def _record_runtime_report(config: Any, item: Any, report: Any) -> None:
             deferred = public_deferred_mapping(
                 getattr(item, DEFERRED_REQUEST_ATTRIBUTE, None)
             )
-        coordinator.queue_publication(
+        # PCTDD-030: workers enqueue bounded public intents only.  V2
+        # execution-key and optional composite-phase-receipt pins travel as
+        # public identity; workers still cannot publish.
+        from .xdist_reuse_coordination import queue_bounded_worker_intent
+
+        queue_bounded_worker_intent(
+            coordinator,
             result.receipt,
             deferred_request=deferred,
+            item=item,
         )
 
 
@@ -1270,10 +1277,15 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
     if not isinstance(coordinator, ProofReuseXdistCoordinator):
         clear_collectors()
         return
+    from .xdist_reuse_coordination import (
+        bound_worker_output,
+        publish_accepted_reuse_evidence,
+    )
+
     if coordinator.role is ProofReuseXdistRole.WORKER:
         worker_output = getattr(config, "workeroutput", None)
         if isinstance(worker_output, dict):
-            worker_output[WORKER_OUTPUT_KEY] = coordinator.worker_output()
+            worker_output[WORKER_OUTPUT_KEY] = bound_worker_output(coordinator)
     elif (
         proof_config.writes_receipts
         and coordinator.healthy
@@ -1284,7 +1296,8 @@ def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
             # a publication intent. This remains fail-open: an unavailable
             # cache/provider leaves the real test result untouched.
             _inject_default_services(config)
-        coordinator.flush_publications(
+        publish_accepted_reuse_evidence(
+            coordinator,
             getattr(config, STORE_SERVICE_ATTRIBUTE, None),
             getattr(config, ISSUER_SERVICE_ATTRIBUTE, None),
             candidate_store=getattr(config, CANDIDATE_STORE_SERVICE_ATTRIBUTE, None),

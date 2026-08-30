@@ -5,6 +5,10 @@ state.  They return bounded publication intents to the one controller, which
 deduplicates them and invokes the store's fenced publication entrypoint.
 Missing, stale, or failed coordination disables proof skips and all writes;
 ordinary pytest execution remains available.
+
+PCTDD-030 extends the worker intent with public V2 execution-key and optional
+composite-phase-receipt pins.  Those pins never authorize skip, never travel
+with witness material, and never let a worker publish accepted reuse evidence.
 """
 
 from __future__ import annotations
@@ -414,7 +418,12 @@ def _controller_deferred_request(
 
 @dataclass(frozen=True)
 class ProofReusePublicationIntent:
-    """Serializable, content-addressed unit submitted by one worker."""
+    """Serializable, content-addressed unit submitted by one worker.
+
+    PCTDD-030 public pins: ``execution_key_cid`` is taken from the admitted
+    receipt and ``composite_phase_receipt_cid`` is an optional public identity
+    only.  Neither pin authorizes skip or worker publication.
+    """
 
     receipt: Mapping[str, Any]
     receipt_cid: str
@@ -422,6 +431,8 @@ class ProofReusePublicationIntent:
     certificate: Mapping[str, Any] | None = None
     certificate_cid: str = ""
     deferred_request: Mapping[str, Any] | None = None
+    execution_key_cid: str = ""
+    composite_phase_receipt_cid: str = ""
 
     @classmethod
     def from_receipt(
@@ -431,6 +442,8 @@ class ProofReusePublicationIntent:
         certificate: Mapping[str, Any] | None = None,
         certificate_cid: str = "",
         deferred_request: Mapping[str, Any] | None = None,
+        execution_key_cid: str = "",
+        composite_phase_receipt_cid: str = "",
     ) -> "ProofReusePublicationIntent":
         if not isinstance(receipt, TestPassReceipt):
             raise TypeError("receipt must be TestPassReceipt")
@@ -438,6 +451,14 @@ class ProofReusePublicationIntent:
         if deferred_request is not None and public_deferred is None:
             # Present-but-invalid deferred context must not be silently dropped.
             raise ValueError("deferred request must be a public mapping")
+        claimed_key = _bounded_token(execution_key_cid)
+        if execution_key_cid and not claimed_key:
+            raise ValueError("publication execution key cid mismatch")
+        if claimed_key and claimed_key != receipt.execution_key_cid:
+            raise ValueError("publication execution key cid mismatch")
+        claimed_composite = _bounded_token(composite_phase_receipt_cid)
+        if composite_phase_receipt_cid and not claimed_composite:
+            raise ValueError("composite phase receipt cid is not a public pin")
         return cls(
             receipt=receipt.to_dict(),
             receipt_cid=receipt.receipt_id,
@@ -445,6 +466,8 @@ class ProofReusePublicationIntent:
             certificate=dict(certificate) if certificate is not None else None,
             certificate_cid=_bounded_token(certificate_cid),
             deferred_request=public_deferred,
+            execution_key_cid=claimed_key or receipt.execution_key_cid,
+            composite_phase_receipt_cid=claimed_composite,
         ).validated()
 
     def validated(self) -> "ProofReusePublicationIntent":
@@ -457,6 +480,20 @@ class ProofReusePublicationIntent:
             raise ValueError("publication receipt cid mismatch")
         if typed.locator_cid != self.locator_cid:
             raise ValueError("publication locator cid mismatch")
+        raw_key = self.execution_key_cid
+        claimed_key = _bounded_token(raw_key)
+        if raw_key and not claimed_key:
+            raise ValueError("publication execution key cid mismatch")
+        if claimed_key and claimed_key != typed.execution_key_cid:
+            raise ValueError("publication execution key cid mismatch")
+        if claimed_key != typed.execution_key_cid:
+            object.__setattr__(self, "execution_key_cid", typed.execution_key_cid)
+        raw_composite = self.composite_phase_receipt_cid
+        composite_cid = _bounded_token(raw_composite)
+        if raw_composite and not composite_cid:
+            raise ValueError("composite phase receipt cid is not a public pin")
+        if composite_cid != raw_composite:
+            object.__setattr__(self, "composite_phase_receipt_cid", composite_cid)
         if self.certificate is not None and not isinstance(
             self.certificate, Mapping
         ):
@@ -502,6 +539,8 @@ class ProofReusePublicationIntent:
                 if self.deferred_request is not None
                 else None
             ),
+            "execution_key_cid": self.execution_key_cid,
+            "composite_phase_receipt_cid": self.composite_phase_receipt_cid,
             "intent_id": self.intent_id,
         }
 
@@ -516,6 +555,8 @@ class ProofReusePublicationIntent:
             "certificate",
             "certificate_cid",
             "deferred_request",
+            "execution_key_cid",
+            "composite_phase_receipt_cid",
             "intent_id",
         }
         if set(payload) - allowed:
@@ -527,6 +568,9 @@ class ProofReusePublicationIntent:
             certificate=payload.get("certificate"),
             certificate_cid=_bounded_token(payload.get("certificate_cid")),
             deferred_request=payload.get("deferred_request"),
+            execution_key_cid=payload.get("execution_key_cid") or "",
+            composite_phase_receipt_cid=payload.get("composite_phase_receipt_cid")
+            or "",
         ).validated()
         claimed = _bounded_token(payload.get("intent_id"))
         if claimed and claimed != intent.intent_id:
