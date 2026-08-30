@@ -40496,20 +40496,26 @@ class PortalImplementationDaemon:
         )
         if missing_changed_submodule_paths:
             previous_reason = str(result.get("reason") or "submodule_merge_results_missing")
-            result.update(
-                {
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "changed_submodule_merge_unverified",
-                    "missing_changed_submodule_paths": missing_changed_submodule_paths,
-                    "submodule_verification": {
-                        "verified": False,
-                        "expected_paths": sorted(changed_submodule_paths or ()),
-                        "reported_paths": sorted(reported_submodule_paths),
-                        "previous_reason": previous_reason,
-                    },
-                }
+            result["missing_changed_submodule_paths"] = (
+                missing_changed_submodule_paths
             )
+            if result.get("merged") or previous_reason in {
+                "",
+                "submodule_merge_results_missing",
+            }:
+                result.update(
+                    {
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "changed_submodule_merge_unverified",
+                        "submodule_verification": {
+                            "verified": False,
+                            "expected_paths": sorted(changed_submodule_paths or ()),
+                            "reported_paths": sorted(reported_submodule_paths),
+                            "previous_reason": previous_reason,
+                        },
+                    }
+                )
         target_branch = self._main_branch_name()
         if (
             not result.get("merged", False)
@@ -63745,14 +63751,44 @@ class PortalImplementationDaemon:
             return False
         return True
 
+    @staticmethod
+    def _git_index_lock_contention_text(text: str) -> bool:
+        lowered = str(text or "").casefold()
+        return (
+            "unable to write index" in lowered
+            or (
+                "index.lock" in lowered
+                and (
+                    "file exists" in lowered
+                    or "unable to create" in lowered
+                )
+            )
+        )
+
+    def _repair_stale_git_index_lock(self, repo: Path | None = None) -> dict[str, Any]:
+        """Remove a crashed writer's leftover index.lock before merge/abort."""
+
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+            repair_stale_git_index_lock,
+        )
+
+        target = Path(repo or self.repo_root or "")
+        if not str(target):
+            return {"attempted": False, "reason": "no_repo"}
+        return repair_stale_git_index_lock(target)
+
     def _prepare_main_merge_workspace(self, target_branch: str, branch_name: str) -> dict[str, Any]:
         if self._git_current_branch(self.repo_root) == target_branch:
-            return {
+            lock_repair = self._repair_stale_git_index_lock(self.repo_root)
+            result = {
                 "available": True,
                 "path": str(self.repo_root),
                 "ephemeral": False,
                 "target_branch": target_branch,
             }
+            if lock_repair.get("removed") or lock_repair.get("attempted"):
+                result["stale_index_lock_repair"] = lock_repair
+            return result
 
         merge_root = self._main_merge_worktree_root()
         checked_out_paths = self._branch_checked_out_worktree_paths(target_branch)
@@ -64511,6 +64547,7 @@ class PortalImplementationDaemon:
                 merge_source,
             ]
             pre_merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
+            self._repair_stale_git_index_lock(merge_workspace)
             merge = subprocess.run(
                 command,
                 cwd=merge_workspace,
@@ -64518,6 +64555,23 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+            if merge.returncode != 0 and self._git_index_lock_contention_text(
+                f"{merge.stderr}\n{merge.stdout}"
+            ):
+                lock_repair = self._repair_stale_git_index_lock(merge_workspace)
+                if lock_repair.get("removed"):
+                    merge = subprocess.run(
+                        command,
+                        cwd=merge_workspace,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    merge_lock_retry = lock_repair
+                else:
+                    merge_lock_retry = lock_repair
+            else:
+                merge_lock_retry = {}
             finished_at = utc_now()
             merge_commit = ""
             submodule_merge_results: list[dict[str, Any]] = []
@@ -64745,10 +64799,18 @@ class PortalImplementationDaemon:
             if failed_submodules:
                 result["submodule_merge_failed"] = True
                 result["reason"] = "submodule_merge_failed"
-            elif missing_changed_submodule_paths:
+            elif missing_changed_submodule_paths and effective_merged:
                 result["reason"] = "changed_submodule_merge_unverified"
             elif not merged_gitlink_recording.get("ok", True):
                 result["reason"] = "submodule_gitlink_recording_failed"
+            elif merge_returncode != 0 and self._git_index_lock_contention_text(
+                f"{merge.stderr}\n{merge.stdout}"
+            ):
+                result["reason"] = "git_index_lock_contention"
+            elif merge_returncode != 0:
+                result["reason"] = str(result.get("reason") or "merge_failed")
+            if merge_lock_retry:
+                result["stale_index_lock_repair"] = merge_lock_retry
             self._record_event("merge_finished", result)
             return result
         finally:
@@ -65728,6 +65790,7 @@ class PortalImplementationDaemon:
         return result
 
     def _abort_failed_merge(self, cwd: Path) -> dict[str, Any]:
+        self._repair_stale_git_index_lock(cwd)
         merge_head = subprocess.run(
             ["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
             cwd=cwd,
@@ -89304,6 +89367,7 @@ class DatabaseImplementationDaemon:
             protected_reconciliation_self_lock_recovery_fn
         )
         self._merge_queue: Any = None
+        self._pending_merge_consume_fn: Callable[[], Mapping[str, Any] | None] | None = None
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
         self._merge_portal_attempt_root: Path | None = None
@@ -91445,13 +91509,13 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str,
         merge_target_branch: str,
         portal_attempt_root: Path | str | None = None,
+        pending_merge_consume_fn: Callable[[], Mapping[str, Any] | None] | None = None,
     ) -> None:
-        """Bind the shared merge queue for invalid-metadata quarantine settlement.
+        """Bind the shared merge queue for settlement and pending-train consume.
 
-        Database lanes do not otherwise consume the merge train.  Leftover
-        portal-projection rows quarantined for empty cross-board authority
-        metadata must still be settled when their declared outputs are
-        already on the target, even if a later Quack attach fails.
+        Database lanes historically did not consume the merge train after a
+        Portal attempt exited.  Retryable pending rows then sat forever, so a
+        gitlink merge that hit a stale ``index.lock`` blocked dependents.
         """
 
         self._require_execution_authority("bind merge-train recovery")
@@ -91482,6 +91546,7 @@ class DatabaseImplementationDaemon:
             self._merge_repo_root = Path(repo_root)
             self._merge_target_branch = branch
             self._merge_portal_attempt_root = configured_attempt_root
+            self._pending_merge_consume_fn = pending_merge_consume_fn
 
     def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
         """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
@@ -91564,6 +91629,60 @@ class DatabaseImplementationDaemon:
                 "durable_state_uncertain": True,
                 "write_count": 1,
             }
+
+    def _consume_bound_pending_merge_train(self) -> dict[str, Any]:
+        """Retry one pending merge-queue row from a database lane tick."""
+
+        schema = (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-pending-merge-train-consume@1"
+        )
+        consume = getattr(self, "_pending_merge_consume_fn", None)
+        if not callable(consume):
+            return {
+                "schema": schema,
+                "attempted": False,
+                "consumed": False,
+                "reason": "pending_merge_consume_not_bound",
+                "write_count": 0,
+            }
+        try:
+            raw = consume()
+        except Exception as exc:
+            return {
+                "schema": schema,
+                "attempted": True,
+                "consumed": False,
+                "reason": "pending_merge_consume_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "write_count": 0,
+            }
+        if raw is None:
+            return {
+                "schema": schema,
+                "attempted": True,
+                "consumed": False,
+                "reason": "no_pending_merge_request",
+                "write_count": 0,
+            }
+        payload = dict(raw) if isinstance(raw, Mapping) else {"result": raw}
+        status = str(payload.get("status") or "").strip().lower()
+        merged = bool(
+            payload.get("merged")
+            or status in {"merged", "already_merged", "completed", "deduplicated"}
+        )
+        return {
+            "schema": schema,
+            "attempted": True,
+            "consumed": True,
+            "merged": merged,
+            "status": status,
+            "reason": str(payload.get("reason") or ""),
+            "request_id": str(payload.get("request_id") or ""),
+            "write_count": 1 if merged else 0,
+            "train_result": payload,
+        }
 
     @staticmethod
     def _valid_post_merge_checkout_deferral(
@@ -119502,10 +119621,12 @@ class DatabaseImplementationDaemon:
             self._settle_invalid_metadata_portal_quarantines()
         )
         post_merge_recovery_reconciliation = self._run_post_merge_recovery()
+        pending_merge_consume = self._consume_bound_pending_merge_train()
         self._idle_recovery_prefix = {
             "output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "post_merge_recovery": post_merge_recovery_reconciliation,
+            "pending_merge_consume": pending_merge_consume,
         }
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
@@ -119556,6 +119677,7 @@ class DatabaseImplementationDaemon:
             len(dead_claim_reservation_recoveries)
             + int(merge_quarantine_settlement.get("write_count") or 0)
             + int(post_merge_recovery_reconciliation.get("write_count") or 0)
+            + int(pending_merge_consume.get("write_count") or 0)
             + self._reconciliation_outcome_count(completion_reconciliations)
             + self._reconciliation_outcome_count(
                 expired_attempt_reconciliations
@@ -119734,6 +119856,7 @@ class DatabaseImplementationDaemon:
                     "declared_output_rearm": output_rearm,
                     "merge_quarantine_settlement": merge_quarantine_settlement,
                     "post_merge_recovery": post_merge_recovery_reconciliation,
+                    "pending_merge_consume": pending_merge_consume,
                     "dead_claim_reservation_recoveries": (
                         dead_claim_reservation_recoveries
                     ),
@@ -119790,6 +119913,7 @@ class DatabaseImplementationDaemon:
                 "declared_output_rearm": output_rearm,
                 "merge_quarantine_settlement": merge_quarantine_settlement,
                 "post_merge_recovery": post_merge_recovery_reconciliation,
+                "pending_merge_consume": pending_merge_consume,
                 "dead_claim_reservation_recoveries": (
                     dead_claim_reservation_recoveries
                 ),
@@ -119836,6 +119960,7 @@ class DatabaseImplementationDaemon:
             "declared_output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "post_merge_recovery": post_merge_recovery_reconciliation,
+            "pending_merge_consume": pending_merge_consume,
             "dead_claim_reservation_recoveries": (
                 dead_claim_reservation_recoveries
             ),

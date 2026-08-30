@@ -14401,6 +14401,67 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
     assert result["status"] == "completed"
 
 
+def test_git_index_lock_contention_text_detects_writer_lock() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    stderr = (
+        "fatal: Unable to create '/tmp/repo/.git/index.lock': File exists.\n"
+        "Another git process seems to be running in this repository"
+    )
+    assert PortalImplementationDaemon._git_index_lock_contention_text(stderr)
+    assert PortalImplementationDaemon._git_index_lock_contention_text(
+        "error: Unable to write index.\n"
+    )
+    assert not PortalImplementationDaemon._git_index_lock_contention_text(
+        "Automatic merge failed; fix conflicts and then commit the result.\n"
+    )
+
+
+def test_repair_stale_git_index_lock_removes_inactive_lock(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    repo = _git_repo_with_output(tmp_path)
+    lock = repo / ".git" / "index.lock"
+    lock.write_text("", encoding="utf-8")
+    os.utime(lock, (1, 1))
+    daemon = SimpleNamespace(repo_root=repo)
+    result = PortalImplementationDaemon._repair_stale_git_index_lock(daemon, repo)
+    assert result["removed"] is True
+    assert not lock.exists()
+
+
+def test_database_lane_consumes_pending_merge_train() -> None:
+    daemon = SimpleNamespace(
+        _pending_merge_consume_fn=lambda: {
+            "status": "merged",
+            "merged": True,
+            "request_id": "req-1",
+            "reason": "merged",
+        }
+    )
+    result = DatabaseImplementationDaemon._consume_bound_pending_merge_train(
+        daemon
+    )
+    assert result["attempted"] is True
+    assert result["consumed"] is True
+    assert result["merged"] is True
+    assert result["write_count"] == 1
+    assert result["request_id"] == "req-1"
+
+
+def test_database_lane_pending_merge_consume_unbound() -> None:
+    daemon = SimpleNamespace(_pending_merge_consume_fn=None)
+    result = DatabaseImplementationDaemon._consume_bound_pending_merge_train(
+        daemon
+    )
+    assert result["attempted"] is False
+    assert result["reason"] == "pending_merge_consume_not_bound"
+
+
 def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
     requirement = typed_database_blocked_retry_revalidation_requirement(
         task_cid="task:pcsm-013",
