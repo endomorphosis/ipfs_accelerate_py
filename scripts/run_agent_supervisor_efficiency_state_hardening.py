@@ -23366,7 +23366,9 @@ class _GitGuardSyscallTrace:
 
 _ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
 _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
-ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 600.0
+_ASEH_EXACT_R39_RECEIPT_CHAIN: list[Mapping[str, Any]] | None = None
+_ASEH_EXACT_R39_RECEIPT_CHAIN_PATH: Path | None = None
+ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 1800.0
 _GIT_GUARD_PTRACE: Any | None = None
 _PTRACE_TRACEME: Final = 0
 _PTRACE_CONT: Final = 7
@@ -36675,12 +36677,18 @@ def _admit_exact_r40_transition_chain(
 def _load_exact_r39_receipt_chain(
     paths: Mapping[str, Path],
 ) -> list[Mapping[str, Any]]:
-    chain = list(_load_exact_r38_receipt_chain(paths))
+    global _ASEH_EXACT_R39_RECEIPT_CHAIN, _ASEH_EXACT_R39_RECEIPT_CHAIN_PATH
     r39_path = paths.get(
         "repair_implementation_supervisor_handoff_bootstrap_transition_receipt"
     )
     if not isinstance(r39_path, Path) or not r39_path.is_file():
         raise OperatorError("R40 prior R39 receipt is absent")
+    if (
+        _ASEH_EXACT_R39_RECEIPT_CHAIN is not None
+        and _ASEH_EXACT_R39_RECEIPT_CHAIN_PATH == r39_path
+    ):
+        return list(_ASEH_EXACT_R39_RECEIPT_CHAIN)
+    chain = list(_load_exact_r38_receipt_chain(paths))
     receipt = _secure_runtime_json(
         r39_path,
         max_bytes=STATUS_RECEIPT_MAX_BYTES,
@@ -36697,6 +36705,8 @@ def _load_exact_r39_receipt_chain(
         str(item.get("receipt_cid") or "") for item in admitted
     ) != ASEH_R40_EXACT_R1_R39_RECEIPT_CIDS:
         raise OperatorError("R40 prior receipt vector differs")
+    _ASEH_EXACT_R39_RECEIPT_CHAIN = list(admitted)
+    _ASEH_EXACT_R39_RECEIPT_CHAIN_PATH = r39_path
     return admitted
 
 

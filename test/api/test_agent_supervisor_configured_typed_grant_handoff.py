@@ -35935,7 +35935,7 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
     ) < run_supervisor.index(
         "launch_git_guard_scope = _prepared_candidate_git_guard"
     )
-    assert aseh_operator.ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS == 600.0
+    assert aseh_operator.ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS == 1800.0
 
 
 def test_aseh_r45_receipt_id_reuses_memoized_validation_contracts() -> None:
