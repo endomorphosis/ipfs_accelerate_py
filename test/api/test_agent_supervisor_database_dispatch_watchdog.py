@@ -36,7 +36,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 
 
-def _supervisor(tmp_path, *, lane_index: int = 1) -> PortalImplementationSupervisor:
+def _supervisor(
+    tmp_path,
+    *,
+    lane_index: int = 1,
+    task_prefix: str = "SAWM-",
+) -> PortalImplementationSupervisor:
     repo = tmp_path / f"repo-{lane_index}"
     repo.mkdir()
     state_dir = repo / "state" / f"lane-{lane_index}"
@@ -59,7 +64,7 @@ def _supervisor(tmp_path, *, lane_index: int = 1) -> PortalImplementationSupervi
             state_dir=state_dir,
             repo_root=repo,
             database_program=program,
-            task_prefix="SAWM-",
+            task_prefix=task_prefix,
             task_shard_count=4,
             task_shard_index=lane_index,
             strict_task_sharding=True,
@@ -1315,7 +1320,15 @@ def test_authoritative_database_readiness_filters_manual_and_home_shard(
     tmp_path,
     monkeypatch,
 ) -> None:
-    supervisor = _supervisor(tmp_path, lane_index=3)
+    # Production scheduler configs carry the Markdown heading prefix while
+    # canonical database aliases omit the heading marker.  The watchdog must
+    # use the same normalization as DatabaseImplementationDaemon or it cannot
+    # observe ready work and recycle a stalled idle lane.
+    supervisor = _supervisor(
+        tmp_path,
+        lane_index=3,
+        task_prefix="## SAWM-",
+    )
 
     def task_id_for_lane(lane_index: int) -> str:
         for ordinal in range(1, 500):

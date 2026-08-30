@@ -4051,6 +4051,150 @@ def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
     return path if path.is_absolute() else repo_root / path
 
 
+def _fresh_process_bound_child_log_fields(
+    track: SupervisorTrack,
+    *,
+    payload: Mapping[str, object],
+    repo_root: Path,
+    stale_seconds: float,
+    expected_supervisor_pid: int | None,
+    supervisor_status_not_before_epoch_seconds: float | None,
+    status_path: Path,
+) -> dict[str, object]:
+    """Qualify the stale wrapper's exact current child log as liveness.
+
+    A fresh file alone is not a process heartbeat. Admit the fallback only
+    when the sealed wrapper explicitly enabled it and the stale status, PID
+    marker, live direct child, and confined current-run log all agree. Any
+    unavailable binding fails closed so an unrelated or prior-run log cannot
+    preserve a stale supervisor.
+    """
+
+    result: dict[str, object] = {
+        "supervisor_child_log_fallback_enabled": (
+            payload.get("watchdog_accept_fresh_child_log") is True
+        ),
+        "supervisor_child_log_fresh": False,
+        "supervisor_child_log_process_bound": False,
+    }
+    if not result["supervisor_child_log_fallback_enabled"]:
+        return result
+    raw_repo_root = str(payload.get("repo_root") or "").strip()
+    if (
+        payload.get("status") != "running"
+        or not raw_repo_root
+        or not Path(raw_repo_root).is_absolute()
+        or Path(raw_repo_root).resolve(strict=False) != repo_root.resolve()
+        or not str(payload.get("run_id") or "").strip()
+    ):
+        return result
+    if (
+        isinstance(expected_supervisor_pid, bool)
+        or not isinstance(expected_supervisor_pid, int)
+        or expected_supervisor_pid <= 1
+        or not pid_alive(expected_supervisor_pid)
+    ):
+        return result
+    recorded_supervisor_pid = payload.get("supervisor_pid")
+    if (
+        isinstance(recorded_supervisor_pid, bool)
+        or not isinstance(recorded_supervisor_pid, int)
+        or recorded_supervisor_pid != expected_supervisor_pid
+    ):
+        return result
+
+    resolved = track.resolve(repo_root)
+    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
+    resolved_supervisor_pid_path = (
+        resolved.supervisor_pid_path.resolve(strict=False)
+    )
+    resolved_status_path = status_path.resolve(strict=False)
+    resolved_daemon_pid_path = resolved.daemon_pid_path.resolve(strict=False)
+    if (
+        not _path_within(state_root, repo_root.resolve())
+        or not _path_within(resolved_supervisor_pid_path, state_root)
+        or not _path_within(resolved_status_path, state_root)
+        or not _path_within(resolved_daemon_pid_path, state_root)
+        or status_path.is_symlink()
+        or resolved.supervisor_pid_path.is_symlink()
+        or resolved.daemon_pid_path.is_symlink()
+        or not resolved_status_path.is_file()
+        or read_pid_file(resolved_supervisor_pid_path)
+        != expected_supervisor_pid
+    ):
+        return result
+    updated_at = _parse_status_timestamp(
+        payload.get("updated_at") or payload.get("heartbeat_at")
+    )
+    if updated_at is None:
+        return result
+    if supervisor_status_not_before_epoch_seconds is not None:
+        try:
+            status_not_before = float(
+                supervisor_status_not_before_epoch_seconds
+            )
+            status_mtime = resolved_status_path.stat().st_mtime
+        except (OSError, TypeError, ValueError):
+            return result
+        if (
+            updated_at.timestamp() + 1e-6 < status_not_before
+            or status_mtime + 1e-6 < status_not_before
+        ):
+            return result
+
+    daemon_pid = payload.get("daemon_pid")
+    if (
+        isinstance(daemon_pid, bool)
+        or not isinstance(daemon_pid, int)
+        or daemon_pid <= 1
+        or read_pid_file(resolved_daemon_pid_path) != daemon_pid
+        or not pid_alive(daemon_pid)
+    ):
+        return result
+    try:
+        from ..merge.worktree_lifecycle import read_process_birth
+
+        daemon_birth = read_process_birth(daemon_pid)
+    except OSError:
+        return result
+    if (
+        daemon_birth is None
+        or daemon_birth.pid != daemon_pid
+        or daemon_birth.parent_pid != expected_supervisor_pid
+        or daemon_birth.start_time_ticks <= 0
+        or not daemon_birth.boot_id
+    ):
+        return result
+
+    raw_log_path = str(payload.get("log_path") or "").strip()
+    log_path = _relative_or_absolute_path(repo_root, raw_log_path)
+    if log_path is None or log_path.is_symlink():
+        return result
+    try:
+        resolved_log_path = log_path.resolve(strict=True)
+        log_stat = resolved_log_path.stat()
+    except (OSError, RuntimeError):
+        return result
+    if (
+        not _path_within(resolved_log_path, state_root)
+        or not resolved_log_path.is_file()
+        or log_stat.st_size <= 0
+        or stale_seconds <= 0
+    ):
+        return result
+    log_age_seconds = max(0.0, time.time() - log_stat.st_mtime)
+    result.update(
+        {
+            "supervisor_child_log_path": str(resolved_log_path),
+            "supervisor_child_log_age_seconds": round(log_age_seconds, 1),
+            "supervisor_child_log_daemon_pid": daemon_pid,
+            "supervisor_child_log_fresh": log_age_seconds <= stale_seconds,
+            "supervisor_child_log_process_bound": True,
+        }
+    )
+    return result
+
+
 def _track_task_state_path(track: SupervisorTrack, *, repo_root: Path) -> Path | None:
     """Resolve a track's task-state projection without trusting an escape path."""
 
@@ -4178,10 +4322,13 @@ def supervisor_status_health_fields(
     *,
     repo_root: Path,
     stale_seconds: float,
+    expected_supervisor_pid: int | None = None,
+    supervisor_status_not_before_epoch_seconds: float | None = None,
 ) -> dict[str, object]:
     """Return heartbeat fields for the wrapper supervisor status file."""
 
-    status_path = _inferred_supervisor_status_path(track)
+    resolved = track.resolve(repo_root)
+    status_path = _inferred_supervisor_status_path(resolved)
     if status_path is None:
         return {"supervisor_status": "untracked"}
     payload = _read_json_dict(status_path)
@@ -4212,13 +4359,35 @@ def supervisor_status_health_fields(
     active_task_id = str(child_state.get("active_task_id") or "").strip()
     implementation_in_progress = bool(child_state.get("implementation_in_progress"))
     active_child = bool(active_task_id or implementation_in_progress)
+    child_log_fields = _fresh_process_bound_child_log_fields(
+        resolved,
+        payload=payload,
+        repo_root=repo_root,
+        stale_seconds=stale_seconds,
+        expected_supervisor_pid=expected_supervisor_pid,
+        supervisor_status_not_before_epoch_seconds=(
+            supervisor_status_not_before_epoch_seconds
+        ),
+        status_path=status_path,
+    )
+    child_log_live = bool(
+        child_log_fields.get("supervisor_child_log_fresh")
+        and child_log_fields.get("supervisor_child_log_process_bound")
+    )
     return {
-        "supervisor_status": "stale_active" if active_child else "stale",
+        "supervisor_status": (
+            "stale_active"
+            if active_child
+            else "stale_child_log_live"
+            if child_log_live
+            else "stale"
+        ),
         "supervisor_status_path": str(status_path),
         "supervisor_status_age_seconds": round(age_seconds, 1),
         "supervisor_active_task_id": active_task_id,
         "supervisor_child_in_progress": implementation_in_progress,
-        "restart_supervisor": not active_child,
+        "restart_supervisor": not (active_child or child_log_live),
+        **child_log_fields,
     }
 
 
@@ -7396,6 +7565,10 @@ def run_supervisor_tracks(
                     resolved,
                     repo_root=resolved_repo_root,
                     stale_seconds=float(supervisor_status_stale_seconds),
+                    expected_supervisor_pid=(
+                        process.pid if process is not None else None
+                    ),
+                    supervisor_status_not_before_epoch_seconds=run_started_at,
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)

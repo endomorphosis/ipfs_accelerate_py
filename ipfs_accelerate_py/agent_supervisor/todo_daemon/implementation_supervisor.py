@@ -7218,8 +7218,12 @@ class PortalImplementationSupervisor:
         return int(digest[:8], 16) % count == int(self.config.task_shard_index)
 
     def _database_task_in_scope(self, task: Any) -> bool:
-        alias = str(getattr(task, "task_alias", "") or "")
-        if self.config.task_prefix and not alias.startswith(self.config.task_prefix):
+        alias = str(getattr(task, "task_alias", "") or "").strip()
+        configured_prefix = str(self.config.task_prefix or "").strip()
+        task_prefix = self._normalized_board_task_prefix(configured_prefix)
+        if configured_prefix and not task_prefix:
+            return False
+        if task_prefix and not alias.startswith(task_prefix):
             return False
         return not self._database_task_automatic_dispatch_forbidden(task)
 
