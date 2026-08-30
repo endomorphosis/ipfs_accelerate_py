@@ -71,6 +71,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     TaskSourceTransitionError as DatabaseTaskSourceTransitionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -83,12 +85,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     DATABASE_CLAIM_POLICY_SCHEMA,
     DATABASE_VIRGIN_TASK_TRANSFER_MODE,
     DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     MAX_BODY_BYTES as MAX_TASK_BODY_BYTES,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
@@ -2869,7 +2869,68 @@ def _git_repo_with_output(tmp_path: Path, relative: str = "landed.py") -> Path:
     return repo
 
 
-def test_landed_quarantined_task_with_outputs_is_completed(
+def _git_parent_with_landed_submodule_output(
+    tmp_path: Path,
+) -> tuple[Path, Path, str]:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source = _git_repo_with_output(source_root, "landed.py")
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Daemon Test"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "daemon-test@example.invalid"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(source),
+            "external/child",
+        ],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-am", "record landed child"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    recorded = subprocess.run(
+        ["git", "rev-parse", "HEAD:external/child"],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return parent, parent / "external" / "child", recorded
+
+
+def test_generic_quarantine_with_preexisting_outputs_fails_closed(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo_with_output(tmp_path)
@@ -2892,14 +2953,387 @@ def test_landed_quarantined_task_with_outputs_is_completed(
             },
         )
         result = daemon.run_once()
-        repaired = result["landed_merge_reconciliations"]
-        assert repaired
-        assert repaired[0]["completed"] is True
-        assert repaired[0]["task_cid"] == "task:cid:001"
-        completed = daemon.task_source.get("task:cid:001")
-        assert completed is not None
-        assert completed.status == "completed"
+        assert result["landed_merge_reconciliations"] == []
+        unchanged = daemon.task_source.get("task:cid:001")
+        assert unchanged is not None
+        assert unchanged.status == "quarantined"
         assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_generic_retry_with_gitlink_output_fails_closed_without_admission(
+    tmp_path: Path,
+) -> None:
+    repo, _child, _recorded_child_commit = (
+        _git_parent_with_landed_submodule_output(tmp_path)
+    )
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "external/child/landed.py"}]
+        tasks[0]["metadata"] = {"owning_repository": "external/child"}
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            int(task.revision),
+            "retrying",
+            receipt={"operation": "legacy_retry"},
+        )
+
+        assert daemon.reconcile_landed_merged_tasks() == []
+        unchanged = daemon.task_source.get(task.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "retrying"
+        assert unchanged.body["completion_receipt"] == {
+            "operation": "legacy_retry"
+        }
+    finally:
+        daemon.close()
+
+
+def test_preexisting_declared_output_has_no_admitted_candidate_lineage(
+    tmp_path: Path,
+) -> None:
+    """An output present at the sealed base cannot complete a later attempt."""
+
+    repo = _git_repo_with_output(tmp_path)
+    base_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    base_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0].update(
+            {
+                "outputs": [{"path": "landed.py"}],
+                "base_repositories": {
+                    "ipfs_accelerate_py": {
+                        "commit": base_commit,
+                        "tree": base_tree,
+                    }
+                },
+                "validations": [
+                    {
+                        "argv": ["git", "cat-file", "-e", "HEAD:landed.py"],
+                        "shell": False,
+                        "policy": {},
+                    }
+                ],
+            }
+        )
+        daemon.materialize_population(population)
+        ready = daemon.task_source.get("task:cid:001")
+        assert ready is not None
+        admission = {
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": (
+                implementation_daemon_module
+                .TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            ),
+            "attempt_id": "attempt:preexisting-output",
+            "attempt_number": 1,
+        }
+        admitted = daemon.task_source.compare_and_set_status(
+            ready.task_cid,
+            int(ready.revision),
+            "in_progress",
+            receipt=admission,
+        ).task
+        lossy_receipt = {
+            "schema": (
+                implementation_daemon_module
+                .TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA
+            ),
+            "operation": (
+                implementation_daemon_module
+                .TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION
+            ),
+            "reason": "in_progress_without_live_worktree_lifecycle_owner",
+            "task_alias": admitted.task_alias,
+            "age_seconds": 600,
+        }
+        retrying = daemon.task_source.compare_and_set_status(
+            admitted.task_cid,
+            int(admitted.revision),
+            "retrying",
+            receipt=lossy_receipt,
+        ).task
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="no unique admitted candidate lineage",
+        ):
+            daemon._landed_merge_repair_proof(retrying)
+
+        daemon.reconcile_landed_merged_tasks()
+        unchanged = daemon.task_source.get(retrying.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "retrying"
+        assert unchanged.body["completion_receipt"] == lossy_receipt
+    finally:
+        daemon.close()
+
+
+def test_gitlink_landed_binding_ignores_unrecorded_child_head(
+    tmp_path: Path,
+) -> None:
+    repo, child, recorded_child_commit = (
+        _git_parent_with_landed_submodule_output(tmp_path)
+    )
+    (child / "new-head-only.py").write_text("new\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "new-head-only.py"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "advance mutable child checkout"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        landed = SimpleNamespace(
+            outputs=({"path": "external/child/landed.py"},),
+            body={"metadata": {"owning_repository": "external/child"}},
+        )
+        unrecorded = SimpleNamespace(
+            outputs=({"path": "external/child/new-head-only.py"},),
+            body={"metadata": {"owning_repository": "external/child"}},
+        )
+        binding = daemon._task_landed_output_binding(landed)
+        assert binding is not None
+        assert binding["checks"][0]["repository_ref"] == recorded_child_commit
+        assert daemon._task_outputs_landed_on_target(unrecorded) is False
+    finally:
+        daemon.close()
+
+
+def test_landed_binding_normalizes_matching_branch_to_head_and_rejects_divergence(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    subprocess.run(
+        ["git", "branch", "stale-target", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        merge_target_ref="main",
+    )
+    task = SimpleNamespace(
+        outputs=({"path": "landed.py"},),
+        body={"metadata": {"owning_repository": "."}},
+    )
+    try:
+        current_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        matching = daemon._task_landed_output_binding(task)
+        assert matching is not None
+        assert matching["merge_target_ref"] == "HEAD"
+        assert matching["merge_target_commit"] == current_commit
+
+        (repo / "advance.txt").write_text("advance\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "advance.txt"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "advance current checkout"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        daemon.merge_target_ref = "stale-target"
+        assert daemon._task_landed_output_binding(task) is None
+        assert daemon._task_outputs_landed_on_target(task) is False
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("mutation_phase", ["before", "during"])
+def test_landed_current_tree_validation_rejects_untracked_files(
+    tmp_path: Path,
+    mutation_phase: str,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    untracked = repo / "conftest.py"
+    validation_argv = ["git", "cat-file", "-e", "HEAD:landed.py"]
+    if mutation_phase == "during":
+        validation_argv = [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "Path('conftest.py').write_text('untracked\\n', encoding='utf-8')"
+            ),
+        ]
+    task = SimpleNamespace(
+        task_cid="task:untracked-validation",
+        task_alias="DOEP-UNTRACKED",
+        outputs=({"path": "landed.py"},),
+        validations=(
+            {
+                "argv": validation_argv,
+                "shell": False,
+                "policy": {},
+            },
+        ),
+        body={"metadata": {"owning_repository": "."}},
+    )
+    try:
+        binding = daemon._task_landed_output_binding(task)
+        assert binding is not None
+        if mutation_phase == "before":
+            untracked.write_text("untracked\n", encoding="utf-8")
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match=(
+                "tracked or untracked modifications"
+                if mutation_phase == "before"
+                else "target advanced during execution"
+            ),
+        ):
+            daemon._landed_current_tree_validation(task, binding)
+
+        assert untracked.is_file()
+    finally:
+        daemon.close()
+
+
+def test_landed_validation_commands_share_one_decreasing_wall_time_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    task = SimpleNamespace(
+        task_cid="task:bounded-validation",
+        task_alias="DOEP-BOUNDED-VALIDATION",
+        outputs=({"path": "landed.py"},),
+        validations=(
+            {"argv": ["validation-one"], "shell": False, "policy": {}},
+            {"argv": ["validation-two"], "shell": False, "policy": {}},
+        ),
+        body={"metadata": {"owning_repository": "."}},
+    )
+    try:
+        binding = daemon._task_landed_output_binding(task)
+        assert binding is not None
+        now = {"seconds": 10.0}
+        validation_timeouts: list[float] = []
+        actual_run = subprocess.run
+
+        def run_with_bounded_validations(
+            argv: object,
+            **kwargs: object,
+        ) -> object:
+            command = list(argv) if isinstance(argv, (list, tuple)) else []
+            if command and command[0] in {"validation-one", "validation-two"}:
+                timeout = float(kwargs["timeout"])
+                validation_timeouts.append(timeout)
+                if command[0] == "validation-one":
+                    output = kwargs.get("stdout")
+                    assert hasattr(output, "write")
+                    output.write(b"first passed\n")
+                    now["seconds"] += 125.0
+                    return SimpleNamespace(returncode=0)
+                raise subprocess.TimeoutExpired(command, timeout)
+            return actual_run(argv, **kwargs)
+
+        monkeypatch.setattr(
+            implementation_daemon_module,
+            "time",
+            SimpleNamespace(monotonic=lambda: now["seconds"]),
+        )
+        monkeypatch.setattr(
+            implementation_daemon_module,
+            "subprocess",
+            SimpleNamespace(
+                run=run_with_bounded_validations,
+                DEVNULL=subprocess.DEVNULL,
+                PIPE=subprocess.PIPE,
+                STDOUT=subprocess.STDOUT,
+                TimeoutExpired=subprocess.TimeoutExpired,
+            ),
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="exhausted its total wall-time budget",
+        ):
+            daemon._landed_current_tree_validation(task, binding)
+
+        assert validation_timeouts == pytest.approx([300.0, 175.0])
+    finally:
+        daemon.close()
+
+
+def test_landed_output_binding_rejects_tree_and_symlink_entries(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path, "pkg/landed.py")
+    (repo / "landed-link.py").symlink_to("pkg/landed.py")
+    subprocess.run(
+        ["git", "add", "landed-link.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "record output symlink"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        for relative in ("pkg", "landed-link.py"):
+            task = SimpleNamespace(
+                outputs=({"path": relative},),
+                body={"metadata": {"owning_repository": "."}},
+            )
+            assert daemon._task_landed_output_binding(task) is None
+            assert daemon._task_outputs_landed_on_target(task) is False
     finally:
         daemon.close()
 
@@ -2955,7 +3389,7 @@ def test_landed_quarantine_rejects_csv_with_unsafe_segment(
         daemon.close()
 
 
-def test_landed_quarantine_repairs_comma_separated_predicted_files(
+def test_generic_quarantine_with_csv_outputs_fails_closed(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo_with_output(tmp_path, "pkg/a.py")
@@ -3004,23 +3438,16 @@ def test_landed_quarantine_repairs_comma_separated_predicted_files(
 
         result = daemon.run_once()
 
-        repaired = result["landed_merge_reconciliations"]
-        assert len(repaired) == 1
-        assert repaired[0]["completed"] is True
-        assert repaired[0]["landed_outputs"] == [
-            "pkg/a.py",
-            "pkg/b.py",
-            "test/test_a.py",
-        ]
+        assert result["landed_merge_reconciliations"] == []
         assert result["unknown_callback_reopens"] == []
-        completed = daemon.task_source.get("task:cid:001")
-        assert completed is not None
-        assert completed.status == "completed"
+        unchanged = daemon.task_source.get("task:cid:001")
+        assert unchanged is not None
+        assert unchanged.status == "quarantined"
     finally:
         daemon.close()
 
 
-def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
+def test_consumed_no_progress_with_preexisting_output_quarantines(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo_with_output(tmp_path)
@@ -3057,12 +3484,12 @@ def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
             )
         )
         result = daemon._resume_attempt_without_process_crash(attempted)
-        assert result["task_quarantined"] is False
-        assert result["landed_outputs_completed"] is True
-        assert result["status"] == "succeeded"
+        assert result["task_quarantined"] is True
+        assert result.get("landed_outputs_completed", False) is False
+        assert result["status"] == "blocked"
         task = daemon.task_source.get(attempted.task_cid)
         assert task is not None
-        assert task.status == "completed"
+        assert task.status == "quarantined"
     finally:
         daemon.close()
 
@@ -3194,11 +3621,21 @@ def _unknown_callback_quarantine_receipt() -> dict[str, object]:
     }
 
 
-def test_unknown_callback_without_landed_outputs_reopens(
+def test_unknown_callback_without_landed_outputs_never_reopens_or_requeues(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
-    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    provider_calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        return {"status": "ok", "accepted": True}
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        provider_fn=provider,
+    )
     try:
         population = _population(1)
         tasks = population["tasks"]
@@ -3207,20 +3644,33 @@ def test_unknown_callback_without_landed_outputs_reopens(
         daemon.materialize_population(population)
         task = daemon.task_source.get("task:cid:001")
         assert task is not None
-        daemon.task_source.compare_and_set_status(
+        quarantined = daemon.task_source.compare_and_set_status(
             "task:cid:001",
             int(task.revision),
             "quarantined",
             receipt=_unknown_callback_quarantine_receipt(),
+        ).task
+        expected_revision = int(quarantined.revision)
+        expected_receipt = dict(quarantined.body["completion_receipt"])
+
+        assert daemon._requeue_unimplemented_control_task(quarantined) is None
+        assert daemon.reconcile_unimplemented_unknown_callback_quarantines() == []
+        assert daemon.reconcile_unimplemented_unknown_callback_quarantines() == []
+        results = (daemon.run_once(), daemon.run_once())
+
+        assert all(result["unknown_callback_reopens"] == [] for result in results)
+        assert all(
+            result["selection_idle_reason"] == "no_ready_tasks"
+            for result in results
         )
-        result = daemon.run_once()
-        reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
-        assert reopened[0]["task_cid"] == "task:cid:001"
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert int(current.revision) == expected_revision
+        assert current.body["completion_receipt"] == expected_receipt
+        assert daemon.task_source.get_queue_entry(current.task_cid) is None
+        assert daemon.list_running_attempts() == []
+        assert provider_calls == []
     finally:
         daemon.close()
 
@@ -3250,7 +3700,7 @@ def test_unknown_callback_without_declared_outputs_stays_quarantined(
         daemon.close()
 
 
-def test_unknown_callback_reopen_count_survives_later_claim_receipt(
+def test_unknown_callback_reconciliation_does_not_mint_reopen_count(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3269,47 +3719,25 @@ def test_unknown_callback_reopen_count_survives_later_claim_receipt(
             "quarantined",
             receipt=_unknown_callback_quarantine_receipt(),
         )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        expected_revision = int(quarantined.revision)
         first = daemon.run_once()
-        assert first["unknown_callback_reopens"]
-        assert first["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 1
-        task = daemon.task_source.get("task:cid:001")
-        assert task is not None
-        daemon.task_source.compare_and_set_status(
-            "task:cid:001",
-            int(task.revision),
-            "in_progress",
-            receipt={
-                "operation": "database_claim",
-                "claim_id": "claim:fresh",
-                "attempt_id": "attempt:fresh",
-            },
-        )
-        task = daemon.task_source.get("task:cid:001")
-        assert task is not None
-        claim_receipt = task.body.get("completion_receipt")
-        assert isinstance(claim_receipt, dict)
-        assert claim_receipt.get("unknown_callback_reopen_count") == 1
-        receipt = _unknown_callback_quarantine_receipt()
-        receipt.pop("unknown_callback_reopen_count", None)
-        daemon.task_source.compare_and_set_status(
-            "task:cid:001",
-            int(task.revision),
-            "quarantined",
-            receipt=receipt,
-        )
         second = daemon.run_once()
-        assert second["unknown_callback_reopens"]
-        assert second["unknown_callback_reopens"][0]["unknown_callback_reopen_count"] == 2
+        assert first["unknown_callback_reopens"] == []
+        assert second["unknown_callback_reopens"] == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
+        assert current.status == "quarantined"
+        assert int(current.revision) == expected_revision
         current_receipt = current.body.get("completion_receipt")
         assert isinstance(current_receipt, dict)
-        assert current_receipt.get("unknown_callback_reopen_count") == 2
+        assert current_receipt.get("unknown_callback_reopen_count") == 0
     finally:
         daemon.close()
 
 
-def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
+def test_unknown_callback_historical_reopen_count_does_not_authorize_reopen(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3330,13 +3758,16 @@ def test_unknown_callback_quarantine_receipt_count_does_not_block_reopen(
             "quarantined",
             receipt=receipt,
         )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        expected_revision = int(quarantined.revision)
         result = daemon.run_once()
-        reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
+        assert result["unknown_callback_reopens"] == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert int(current.revision) == expected_revision
+        assert current.body["completion_receipt"] == receipt
     finally:
         daemon.close()
 
@@ -3542,7 +3973,7 @@ def test_supervisor_recovery_journal_defers_before_callback_intent(
         daemon.close()
 
 
-def test_unknown_callback_reopen_continues_while_outputs_are_missing(
+def test_prior_unknown_callback_reopen_does_not_authorize_another_reopen(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(tmp_path)
@@ -3573,13 +4004,16 @@ def test_unknown_callback_reopen_continues_while_outputs_are_missing(
             "quarantined",
             receipt=receipt,
         )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        expected_revision = int(quarantined.revision)
         result = daemon.run_once()
-        reopened = result["unknown_callback_reopens"]
-        assert reopened
-        assert reopened[0]["reopened"] is True
+        assert result["unknown_callback_reopens"] == []
         current = daemon.task_source.get("task:cid:001")
         assert current is not None
-        assert current.status != "quarantined"
+        assert current.status == "quarantined"
+        assert int(current.revision) == expected_revision
+        assert current.body["completion_receipt"] == receipt
     finally:
         daemon.close()
 
@@ -11918,6 +12352,441 @@ def test_orphan_in_progress_unstall_retries_gate_without_live_claim(
         daemon.close()
 
 
+class _StrictTypedOrphanTaskSource:
+    def __init__(
+        self,
+        *,
+        updated_at: str,
+        operation: str = "database_attempt_admitted",
+        quarantine_changed: bool = True,
+    ) -> None:
+        claim_schema = (
+            implementation_daemon_module.TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            if operation == "database_claim"
+            else implementation_daemon_module.TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        self.control_receipt: dict[str, object] = {
+            "operation": operation,
+            "claim_phase_schema": claim_schema,
+            "claim_process_attestation": {
+                "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+                "grant_id": "owner-grant:typed-orphan",
+                "client_id": "client:typed-orphan",
+                "process_birth_id": "sha256:" + ("a" * 64),
+                "pid": 12345,
+                "uid": 1000,
+                "start_time_ticks": 77,
+                "boot_id": "boot:typed-orphan",
+                "parent_pid": 1,
+            },
+            "attempt_id": "attempt:typed-orphan",
+            "claim_id": "claim:typed-orphan",
+            "attempt_number": 2,
+            "lease_id": "lease:typed-orphan",
+            "owner_session_id": "session:typed-orphan",
+            "fencing_token": 19,
+            "fence_epoch": 11,
+            "claimed_from_revision": 15,
+            "admitted_from_revision": 16,
+            "attempt_execution_phase": "claimed",
+            "attempt_execution_revision": 1,
+        }
+        self.task = SimpleNamespace(
+            task_cid="task:typed-orphan",
+            task_id="DOEP-000",
+            task_alias="DOEP-000",
+            status="in_progress",
+            revision=17,
+            updated_at=updated_at,
+            body={"completion_receipt": self.control_receipt},
+        )
+        self.calls: list[str] = []
+        self.quarantine_changed = quarantine_changed
+
+    def claim_process_attestation(self) -> Mapping[str, object]:
+        attestation = self.control_receipt["claim_process_attestation"]
+        assert isinstance(attestation, Mapping)
+        return attestation
+
+    def list_tasks(self, *, status: str, limit: int) -> SimpleNamespace:
+        assert status == "in_progress"
+        assert limit == implementation_daemon_module.TASK_SOURCE_QUERY_LIMIT
+        self.calls.append("list_tasks")
+        return SimpleNamespace(tasks=(self.task,))
+
+    def recover_dead_claim_reservation(
+        self,
+        task_cid: str,
+        *,
+        expected_task_revision: int,
+        now_ms: int,
+    ) -> SimpleNamespace:
+        assert task_cid == self.task.task_cid
+        assert expected_task_revision == 17
+        assert now_ms == 123_456
+        self.calls.append("recover_dead_claim_reservation")
+        return SimpleNamespace(
+            changed=True,
+            details={"operation": "database_dead_claim_reservation_recovered"},
+        )
+
+    def quarantine_dead_admitted_provider_outcome_unknown(
+        self,
+        task_cid: str,
+        *,
+        expected_task_revision: int,
+        expected_control_receipt: Mapping[str, object],
+    ) -> SimpleNamespace:
+        assert task_cid == self.task.task_cid
+        assert expected_task_revision == 17
+        assert dict(expected_control_receipt) == self.control_receipt
+        self.calls.append("quarantine_provider_outcome_unknown")
+        return SimpleNamespace(
+            changed=self.quarantine_changed,
+            details={"operation": "database_dead_admitted_outcome_unknown"},
+        )
+
+    def reject_generic_cas(self, *_args: object, **_kwargs: object) -> None:
+        pytest.fail("strict typed orphan recovery entered generic CAS")
+
+
+def _strict_typed_orphan_daemon(
+    *,
+    repo_root: Path,
+    source: _StrictTypedOrphanTaskSource,
+    shard_index: int,
+    liveness: object,
+    landed: bool = False,
+) -> SimpleNamespace:
+    events: list[dict[str, object]] = []
+
+    def complete_landed(
+        task: SimpleNamespace,
+        *,
+        allow_in_progress: bool = False,
+    ) -> dict[str, object]:
+        assert task is source.task
+        assert allow_in_progress is True
+        source.calls.append("complete_landed_in_progress")
+        return {
+            "task_cid": task.task_cid,
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+        }
+
+    def record_event(
+        event_type: str,
+        *,
+        task_cid: str,
+        body: Mapping[str, object],
+    ) -> None:
+        events.append(
+            {
+                "event_type": event_type,
+                "task_cid": task_cid,
+                "body": dict(body),
+            }
+        )
+
+    daemon = SimpleNamespace(
+        repo_root=repo_root,
+        task_source=source,
+        task_prefix="DOEP-",
+        strict_task_sharding=True,
+        task_shard_count=4,
+        task_shard_index=shard_index,
+        execution_slice_task_ids=frozenset(),
+        execution_slice_task_cids=frozenset(),
+        _now_ms=lambda: 123_456,
+        _cas_task_status_database=source.reject_generic_cas,
+        _parse_control_task_updated_at=(
+            DatabaseImplementationDaemon._parse_control_task_updated_at
+        ),
+        _typed_historic_claim_liveness=lambda _receipt: liveness,
+        _task_outputs_landed_on_target=lambda _task: landed,
+        _complete_landed_quarantined_task=complete_landed,
+        _record_event=record_event,
+        recorded_events=events,
+    )
+    daemon._task_home_shard_index = (
+        lambda alias: DatabaseImplementationDaemon._task_home_shard_index(
+            daemon,
+            alias,
+        )
+    )
+    daemon._task_belongs_to_strict_shard = (
+        lambda task: DatabaseImplementationDaemon._task_belongs_to_strict_shard(
+            daemon,
+            task,
+        )
+    )
+    daemon._database_task_is_in_execution_slice = (
+        lambda task: DatabaseImplementationDaemon._database_task_is_in_execution_slice(
+            daemon,
+            task,
+        )
+    )
+    daemon._task_matches_prefix = (
+        lambda task: DatabaseImplementationDaemon._task_matches_prefix(
+            daemon,
+            task,
+        )
+    )
+    daemon._database_task_is_eligible = (
+        lambda task: DatabaseImplementationDaemon._database_task_is_eligible(
+            daemon,
+            task,
+        )
+    )
+    daemon._legacy_orphan_recovery_is_eligible = lambda task: (
+        daemon._database_task_is_eligible(task)
+        and daemon._typed_historic_claim_liveness(
+            task.body["completion_receipt"]
+        )
+        is implementation_daemon_module.OwnerLiveness.DEAD
+    )
+    return daemon
+
+
+def _stale_typed_orphan_fixture(
+    tmp_path: Path,
+) -> tuple[Path, str]:
+    from datetime import UTC, datetime, timedelta
+
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    stale = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    return repo, stale
+
+
+def test_typed_dead_orphan_claim_uses_owner_recovery_without_generic_cas(
+    tmp_path: Path,
+) -> None:
+    repo, stale = _stale_typed_orphan_fixture(tmp_path)
+    source = _StrictTypedOrphanTaskSource(
+        updated_at=stale,
+        operation="database_claim",
+    )
+    home_shard = DatabaseImplementationDaemon._task_home_shard_index(
+        SimpleNamespace(task_shard_count=4),
+        source.task.task_alias,
+    )
+    daemon = _strict_typed_orphan_daemon(
+        repo_root=repo,
+        source=source,
+        shard_index=home_shard,
+        liveness=implementation_daemon_module.OwnerLiveness.DEAD,
+    )
+
+    outcomes = DatabaseImplementationDaemon._unstall_orphan_in_progress_gates(
+        daemon
+    )
+
+    assert source.calls == ["list_tasks", "recover_dead_claim_reservation"]
+    assert outcomes == [
+        {
+            "task_cid": "task:typed-orphan",
+            "task_alias": "DOEP-000",
+            "previous_status": "in_progress",
+            "status": "retrying",
+            "unstalled": True,
+            "reason": "dead_typed_claim_reservation_recovered",
+            "age_seconds": outcomes[0]["age_seconds"],
+            "typed_recovery": {
+                "operation": "database_dead_claim_reservation_recovered",
+            },
+        }
+    ]
+    assert outcomes[0]["age_seconds"] >= 590
+
+
+def test_typed_dead_admitted_orphan_with_landed_outputs_completes_directly(
+    tmp_path: Path,
+) -> None:
+    repo, stale = _stale_typed_orphan_fixture(tmp_path)
+    source = _StrictTypedOrphanTaskSource(updated_at=stale)
+    home_shard = DatabaseImplementationDaemon._task_home_shard_index(
+        SimpleNamespace(task_shard_count=4),
+        source.task.task_alias,
+    )
+    daemon = _strict_typed_orphan_daemon(
+        repo_root=repo,
+        source=source,
+        shard_index=home_shard,
+        liveness=implementation_daemon_module.OwnerLiveness.DEAD,
+        landed=True,
+    )
+
+    outcomes = DatabaseImplementationDaemon._unstall_orphan_in_progress_gates(
+        daemon
+    )
+
+    assert source.calls == ["list_tasks", "complete_landed_in_progress"]
+    assert outcomes == [
+        {
+            "task_cid": "task:typed-orphan",
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+        }
+    ]
+    assert daemon.recorded_events == []
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_typed_dead_admitted_orphan_quarantines_unknown_without_retry(
+    tmp_path: Path,
+    changed: bool,
+) -> None:
+    repo, stale = _stale_typed_orphan_fixture(tmp_path)
+    source = _StrictTypedOrphanTaskSource(
+        updated_at=stale,
+        quarantine_changed=changed,
+    )
+    home_shard = DatabaseImplementationDaemon._task_home_shard_index(
+        SimpleNamespace(task_shard_count=4),
+        source.task.task_alias,
+    )
+    daemon = _strict_typed_orphan_daemon(
+        repo_root=repo,
+        source=source,
+        shard_index=home_shard,
+        liveness=implementation_daemon_module.OwnerLiveness.DEAD,
+        landed=False,
+    )
+
+    outcomes = DatabaseImplementationDaemon._unstall_orphan_in_progress_gates(
+        daemon
+    )
+
+    assert source.calls == ["list_tasks", "quarantine_provider_outcome_unknown"]
+    assert outcomes == [
+        {
+            "task_cid": "task:typed-orphan",
+            "task_alias": "DOEP-000",
+            "previous_status": "in_progress",
+            "status": "quarantined",
+            "unstalled": changed,
+            "reason": "provider_outcome_unknown_quarantined",
+            "age_seconds": outcomes[0]["age_seconds"],
+        }
+    ]
+    expected_events = []
+    if changed:
+        expected_events.append(
+            {
+                "event_type": "provider_outcome_unknown_quarantined",
+                "task_cid": "task:typed-orphan",
+                "body": {
+                    "source_task_revision": 17,
+                    "retry_suppressed": True,
+                },
+            }
+        )
+    assert daemon.recorded_events == expected_events
+
+
+@pytest.mark.parametrize(
+    "liveness",
+    [
+        implementation_daemon_module.OwnerLiveness.ALIVE,
+        implementation_daemon_module.OwnerLiveness.UNKNOWN,
+        None,
+    ],
+    ids=("alive", "unknown", "foreign_client"),
+)
+def test_typed_orphan_without_same_client_dead_evidence_is_unchanged(
+    tmp_path: Path,
+    liveness: object,
+) -> None:
+    repo, stale = _stale_typed_orphan_fixture(tmp_path)
+    source = _StrictTypedOrphanTaskSource(updated_at=stale)
+    home_shard = DatabaseImplementationDaemon._task_home_shard_index(
+        SimpleNamespace(task_shard_count=4),
+        source.task.task_alias,
+    )
+    daemon = _strict_typed_orphan_daemon(
+        repo_root=repo,
+        source=source,
+        shard_index=home_shard,
+        liveness=liveness,
+    )
+
+    outcomes = DatabaseImplementationDaemon._unstall_orphan_in_progress_gates(
+        daemon
+    )
+
+    assert outcomes == []
+    assert source.calls == ["list_tasks"]
+    assert source.task.status == "in_progress"
+    assert source.task.revision == 17
+    assert daemon.recorded_events == []
+
+
+def test_typed_orphan_foreign_strict_shard_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    repo, stale = _stale_typed_orphan_fixture(tmp_path)
+    source = _StrictTypedOrphanTaskSource(updated_at=stale)
+    home_shard = DatabaseImplementationDaemon._task_home_shard_index(
+        SimpleNamespace(task_shard_count=4),
+        source.task.task_alias,
+    )
+    daemon = _strict_typed_orphan_daemon(
+        repo_root=repo,
+        source=source,
+        shard_index=(home_shard + 1) % 4,
+        liveness=implementation_daemon_module.OwnerLiveness.DEAD,
+    )
+
+    outcomes = DatabaseImplementationDaemon._unstall_orphan_in_progress_gates(
+        daemon
+    )
+
+    assert outcomes == []
+    assert source.calls == ["list_tasks"]
+    assert daemon.recorded_events == []
+
+
+def test_dead_admitted_unknown_quarantine_is_not_generically_requeued(
+    tmp_path: Path,
+) -> None:
+    operation = getattr(
+        implementation_daemon_module,
+        "TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION",
+    )
+    task = SimpleNamespace(
+        task_cid="task:typed-orphan",
+        status="quarantined",
+        revision=18,
+        body={
+            "completion_receipt": {
+                "operation": operation,
+            }
+        },
+    )
+    source = SimpleNamespace(get=lambda task_cid: task)
+    daemon = SimpleNamespace(
+        repo_root=tmp_path,
+        task_source=source,
+        _cas_task_status_database=lambda *_args, **_kwargs: pytest.fail(
+            "outcome-unknown quarantine entered generic requeue"
+        ),
+        _task_declared_output_paths=lambda _task: pytest.fail(
+            "outcome-unknown quarantine inspected output paths"
+        ),
+        _task_outputs_landed_on_target=lambda _task: pytest.fail(
+            "outcome-unknown quarantine inferred a landed effect"
+        ),
+    )
+
+    outcome = DatabaseImplementationDaemon._requeue_unimplemented_control_task(
+        daemon,
+        task,
+    )
+
+    assert outcome is None
+
+
 def test_orphan_in_progress_unstall_leaves_live_lifecycle_owner_alone(
     tmp_path: Path,
 ) -> None:
@@ -13989,7 +14858,290 @@ def test_terminal_portal_reason_skips_failed_attempt_without_phase_receipt() -> 
     )
 
 
-def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() -> None:
+def _multiple_admission_orphan_history() -> tuple[
+    SimpleNamespace,
+    dict[str, object],
+    dict[str, object],
+]:
+    def attestation(*, client_id: str, pid: int) -> dict[str, object]:
+        start_time_ticks = pid + 100
+        boot_id = f"boot:{pid}"
+        parent_pid = 1
+        return {
+            "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+            "grant_id": f"grant:{client_id}:{pid}",
+            "client_id": client_id,
+            "process_birth_id": _process_birth_content_id(
+                pid,
+                start_time_ticks,
+                boot_id,
+                parent_pid,
+            ),
+            "pid": pid,
+            "uid": os.getuid(),
+            "start_time_ticks": start_time_ticks,
+            "boot_id": boot_id,
+            "parent_pid": parent_pid,
+        }
+
+    def admission(
+        *,
+        admitted_revision: int,
+        attempt_number: int,
+        client_id: str,
+        pid: int,
+    ) -> dict[str, object]:
+        return {
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": (
+                implementation_daemon_module
+                .TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            ),
+            "claim_process_attestation": attestation(
+                client_id=client_id,
+                pid=pid,
+            ),
+            "claim_id": f"claim:{attempt_number}",
+            "attempt_id": f"attempt:{attempt_number}",
+            "attempt_number": attempt_number,
+            "lease_id": f"lease:{attempt_number}",
+            "owner_session_id": f"session:{attempt_number}",
+            "fencing_token": attempt_number,
+            "fence_epoch": attempt_number,
+            "claimed_from_revision": admitted_revision - 2,
+            "admitted_from_revision": admitted_revision - 1,
+        }
+
+    historic_client = "database-implementation-daemon:historic-lane"
+    older = admission(
+        admitted_revision=3,
+        attempt_number=1,
+        client_id="database-implementation-daemon:older-lane",
+        pid=910_001,
+    )
+    current = admission(
+        admitted_revision=7,
+        attempt_number=2,
+        client_id=historic_client,
+        pid=910_002,
+    )
+    lossy = {
+        "schema": implementation_daemon_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+        "operation": implementation_daemon_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+        "reason": "in_progress_without_live_worktree_lifecycle_owner",
+        "task_alias": "DOEP-000",
+        "age_seconds": 600,
+    }
+    task = SimpleNamespace(
+        task_cid="task:doep-000",
+        task_alias="DOEP-000",
+        status="retrying",
+        revision=8,
+        body={"completion_receipt": lossy},
+    )
+    history = {
+        "revisions": [
+            {"revision": 3, "status": "in_progress", "body": {"completion_receipt": older}},
+            {"revision": 7, "status": "in_progress", "body": {"completion_receipt": current}},
+            {"revision": 8, "status": "retrying", "body": dict(task.body)},
+        ]
+    }
+    return task, history, current
+
+
+def test_legacy_orphan_selects_immediate_admission_from_multiple_attempts() -> None:
+    task, history, current_admission = _multiple_admission_orphan_history()
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(
+            task_revision_history_projection=lambda _task_cid: history,
+        ),
+    )
+
+    selected = DatabaseImplementationDaemon._legacy_orphan_admission_receipt(
+        daemon,
+        task,
+    )
+
+    assert selected == current_admission
+    assert selected["attempt_id"] == "attempt:2"
+    assert selected["admitted_from_revision"] == 6
+
+
+def test_legacy_orphan_eligibility_uses_historic_admission_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task, history, current_admission = _multiple_admission_orphan_history()
+    historic = current_admission["claim_process_attestation"]
+    assert isinstance(historic, dict)
+    observed_births: list[int] = []
+
+    def dead_liveness(birth: object) -> object:
+        observed_births.append(int(birth.pid))
+        return implementation_daemon_module.OwnerLiveness.DEAD
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "owner_liveness",
+        dead_liveness,
+    )
+
+    def eligibility_for(client_id: str, pid: int) -> bool:
+        start_time_ticks = pid + 100
+        boot_id = f"boot:{pid}"
+        parent_pid = 1
+        current_attestation = {
+            "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+            "grant_id": f"grant:{client_id}:{pid}",
+            "client_id": client_id,
+            "process_birth_id": _process_birth_content_id(
+                pid,
+                start_time_ticks,
+                boot_id,
+                parent_pid,
+            ),
+            "pid": pid,
+            "uid": os.getuid(),
+            "start_time_ticks": start_time_ticks,
+            "boot_id": boot_id,
+            "parent_pid": parent_pid,
+        }
+        source = SimpleNamespace(
+            claim_process_attestation=lambda: current_attestation,
+            task_revision_history_projection=lambda _task_cid: history,
+        )
+        daemon = SimpleNamespace(
+            task_source=source,
+            _database_task_is_in_execution_slice=lambda _task: True,
+            _task_matches_prefix=lambda _task: True,
+            _database_task_is_eligible=lambda _task: (_ for _ in ()).throw(
+                AssertionError("legacy orphan fell back to alias shard routing")
+            ),
+        )
+        daemon._legacy_orphan_admission_receipt = (
+            lambda selected_task: DatabaseImplementationDaemon
+            ._legacy_orphan_admission_receipt(daemon, selected_task)
+        )
+        daemon._typed_claim_process_attestation = (
+            lambda: DatabaseImplementationDaemon
+            ._typed_claim_process_attestation(daemon)
+        )
+        daemon._typed_historic_claim_liveness = (
+            lambda receipt: DatabaseImplementationDaemon
+            ._typed_historic_claim_liveness(daemon, receipt)
+        )
+        return DatabaseImplementationDaemon._legacy_orphan_recovery_is_eligible(
+            daemon,
+            task,
+        )
+
+    assert eligibility_for(str(historic["client_id"]), 920_001) is True
+    assert eligibility_for("database-implementation-daemon:alias-home", 920_002) is False
+    assert observed_births == [int(historic["pid"])]
+
+
+def test_landed_recovery_denial_cache_bounds_repeated_validation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"seconds": 0.0}
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "time",
+        SimpleNamespace(monotonic=lambda: now["seconds"]),
+    )
+    task = SimpleNamespace(
+        task_cid="task:denied-landed-recovery",
+        revision=11,
+        validations=({"argv": ["false"], "shell": False, "policy": {}},),
+    )
+    validation_calls: list[int] = []
+
+    def validation_failure(
+        current: object,
+        *,
+        allow_in_progress: bool = False,
+    ) -> None:
+        del allow_in_progress
+        validation_calls.append(int(current.revision))
+        raise DatabaseImplementationAuthorityError(
+            "landed declared validation did not pass"
+        )
+
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(get=lambda _task_cid: task),
+        _landed_recovery_denials={},
+        _resolved_merge_target_commit=lambda: "a" * 40,
+        _complete_landed_quarantined_task_once=validation_failure,
+    )
+    daemon._landed_recovery_denial_key = (
+        lambda current: DatabaseImplementationDaemon
+        ._landed_recovery_denial_key(daemon, current)
+    )
+    daemon._landed_recovery_is_due = (
+        lambda key: DatabaseImplementationDaemon
+        ._landed_recovery_is_due(daemon, key)
+    )
+    daemon._remember_landed_recovery_denial = (
+        lambda key: DatabaseImplementationDaemon
+        ._remember_landed_recovery_denial(daemon, key)
+    )
+    daemon._clear_landed_recovery_denials = (
+        lambda task_cid: DatabaseImplementationDaemon
+        ._clear_landed_recovery_denials(daemon, task_cid)
+    )
+
+    def recover() -> object:
+        return DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        recover()
+    assert recover() is None
+    now["seconds"] = 30.0
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        recover()
+    assert recover() is None
+    now["seconds"] = 150.0
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        recover()
+    assert recover() is None
+    assert validation_calls == [11, 11, 11]
+    unchanged_key = daemon._landed_recovery_denial_key(task)
+    assert daemon._landed_recovery_denials[unchanged_key] == (3, 1_050.0)
+
+    now["seconds"] = 1_049.999
+    assert recover() is None
+    now["seconds"] = 1_050.0
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        recover()
+    assert validation_calls == [11, 11, 11, 11]
+    assert daemon._landed_recovery_denials[unchanged_key] == (3, 1_950.0)
+
+    task.revision = 12
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        recover()
+    assert validation_calls == [11, 11, 11, 11, 12]
+
+    daemon._landed_recovery_denials = {}
+    limit = (
+        implementation_daemon_module
+        ._DATABASE_LANDED_RECOVERY_DENIAL_CACHE_LIMIT
+    )
+    for index in range(limit + 1):
+        daemon._remember_landed_recovery_denial(
+            (f"task:{index}", 1, "b" * 40, "validation")
+        )
+    assert len(daemon._landed_recovery_denials) == limit
+    assert ("task:0", 1, "b" * 40, "validation") not in (
+        daemon._landed_recovery_denials
+    )
+    assert (f"task:{limit}", 1, "b" * 40, "validation") in (
+        daemon._landed_recovery_denials
+    )
+
+
+def test_reconcile_landed_merged_tasks_rejects_generic_retry_completion() -> None:
     cas: list[dict[str, object]] = []
 
     class _Source:
@@ -14021,7 +15173,27 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
         repo_root=Path("/tmp"),
         merge_target_ref="HEAD",
         task_source=source,
+        _database_task_is_eligible=lambda _task: True,
+        _legacy_orphan_recovery_is_eligible=lambda _task: True,
         _task_outputs_landed_on_target=lambda _task: True,
+        _task_landed_output_binding=lambda _task: {
+            "merge_target_ref": "HEAD",
+            "merge_target_commit": "a" * 40,
+            "checks": [
+                {
+                    "path": (
+                        "artifacts/proof_carrying_semantic_minification/"
+                        "receipts/PCSM-010.json"
+                    ),
+                    "repository": ".",
+                    "repository_ref": "a" * 40,
+                    "tracked_path": (
+                        "artifacts/proof_carrying_semantic_minification/"
+                        "receipts/PCSM-010.json"
+                    ),
+                }
+            ],
+        },
         _task_declared_output_paths=lambda _task: (
             "artifacts/proof_carrying_semantic_minification/receipts/PCSM-010.json",
         ),
@@ -14059,22 +15231,224 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
         )
     )
     daemon._complete_landed_quarantined_task = (
-        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task_once(
             daemon,
             task,
         )
     )
 
     outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
-    assert len(outcomes) == 1
-    assert outcomes[0]["completed"] is True
-    assert outcomes[0]["task_alias"] == "PCSM-010"
-    assert outcomes[0]["reason"] == "database_landed_merge_repair"
-    assert cas[0]["new_status"] == "completed"
-    assert cas[0]["expected_revision"] == 45
-    assert cas[0]["expected_control_receipt"] == {
-        "operation": "legacy_retry"
+    assert outcomes == []
+    assert cas == []
+    assert source.task.status == "retrying"
+    assert source.task.revision == 45
+
+
+@pytest.mark.parametrize("landed_proof_failure", [False, True])
+def test_reconcile_landed_tasks_quarantines_lossy_retry_without_redispatch(
+    landed_proof_failure: bool,
+) -> None:
+    calls: list[str] = []
+    legacy_receipt = {
+        "schema": implementation_daemon_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+        "operation": implementation_daemon_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+        "reason": "in_progress_without_live_worktree_lifecycle_owner",
+        "task_alias": "DOEP-000",
+        "age_seconds": 600,
     }
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:doep-000",
+            task_alias="DOEP-000",
+            status="retrying",
+            revision=4,
+            body={"completion_receipt": legacy_receipt},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            calls.append("list_tasks")
+            return SimpleNamespace(tasks=(self.task,))
+
+        def get(self, _task_cid: str):
+            calls.append("get")
+            return self.task
+
+        def quarantine_legacy_orphan_provider_outcome_unknown(
+            self,
+            task_cid: str,
+            *,
+            expected_task_revision: int,
+            expected_control_receipt: Mapping[str, object],
+        ) -> SimpleNamespace:
+            assert task_cid == self.task.task_cid
+            assert expected_task_revision == 4
+            assert dict(expected_control_receipt) == legacy_receipt
+            calls.append("quarantine")
+            self.task.status = "quarantined"
+            self.task.revision = 5
+            return SimpleNamespace(changed=True)
+
+    source = _Source()
+    events: list[dict[str, object]] = []
+
+    def complete_landed(_task: object) -> None:
+        if landed_proof_failure and source.task.status == "retrying":
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery has no unique admitted candidate lineage"
+            )
+        return None
+
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        task_source=source,
+        _database_task_is_eligible=lambda _task: True,
+        _legacy_orphan_recovery_is_eligible=lambda _task: True,
+        _task_outputs_landed_on_target=lambda _task: landed_proof_failure,
+        _complete_landed_quarantined_task=complete_landed,
+        _record_event=lambda event_type, **kwargs: events.append(
+            {"event_type": event_type, **kwargs}
+        ),
+    )
+    daemon._quarantine_legacy_orphan_retrying_task = (
+        lambda task: DatabaseImplementationDaemon._quarantine_legacy_orphan_retrying_task(
+            daemon,
+            task,
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+
+    quarantine_outcome = {
+        "task_cid": "task:doep-000",
+        "task_alias": "DOEP-000",
+        "previous_status": "retrying",
+        "status": "quarantined",
+        "changed": True,
+        "completed": False,
+        "reason": "legacy_provider_outcome_unknown_quarantined",
+    }
+    if landed_proof_failure:
+        assert outcomes == [
+            {
+                "task_cid": "task:doep-000",
+                "completed": False,
+                "reason": (
+                    "landed recovery has no unique admitted candidate lineage"
+                ),
+            },
+            quarantine_outcome,
+        ]
+    else:
+        assert outcomes == [quarantine_outcome]
+    assert calls == ["list_tasks", "get", "quarantine"]
+    assert events == [
+        {
+            "event_type": "provider_outcome_unknown_quarantined",
+            "task_cid": "task:doep-000",
+            "body": {
+                "source_task_revision": 4,
+                "source_status": "retrying",
+                "legacy_lossy_receipt_reconciled": True,
+                "retained_admission_receipt_reconciled": False,
+                "retry_suppressed": True,
+            },
+        }
+    ]
+    assert DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon) == []
+    assert calls == ["list_tasks", "get", "quarantine", "list_tasks", "get"]
+
+
+def test_reconcile_retained_admission_retry_quarantines_without_redispatch() -> None:
+    calls: list[str] = []
+    retained_admission = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": (
+            implementation_daemon_module
+            .TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ),
+        "attempt_id": "attempt:retained",
+        "attempt_number": 2,
+    }
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:retained-admission",
+            task_alias="DOEP-RETAINED",
+            status="retrying",
+            revision=8,
+            body={"completion_receipt": retained_admission},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            del status, limit
+            calls.append("list_tasks")
+            return SimpleNamespace(tasks=(self.task,))
+
+        def get(self, _task_cid: str):
+            calls.append("get")
+            return self.task
+
+        def quarantine_legacy_orphan_provider_outcome_unknown(
+            self,
+            task_cid: str,
+            *,
+            expected_task_revision: int,
+            expected_control_receipt: Mapping[str, object],
+        ) -> SimpleNamespace:
+            assert task_cid == self.task.task_cid
+            assert expected_task_revision == 8
+            assert dict(expected_control_receipt) == retained_admission
+            calls.append("quarantine")
+            self.task.status = "quarantined"
+            self.task.revision = 9
+            return SimpleNamespace(changed=True)
+
+    source = _Source()
+    events: list[dict[str, object]] = []
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        task_source=source,
+        _legacy_orphan_recovery_is_eligible=lambda _task: True,
+        _complete_landed_quarantined_task=lambda _task: None,
+        _record_event=lambda event_type, **kwargs: events.append(
+            {"event_type": event_type, **kwargs}
+        ),
+    )
+    daemon._quarantine_legacy_orphan_retrying_task = (
+        lambda task: DatabaseImplementationDaemon
+        ._quarantine_legacy_orphan_retrying_task(daemon, task)
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+
+    assert outcomes == [
+        {
+            "task_cid": "task:retained-admission",
+            "task_alias": "DOEP-RETAINED",
+            "previous_status": "retrying",
+            "status": "quarantined",
+            "changed": True,
+            "completed": False,
+            "reason": "legacy_provider_outcome_unknown_quarantined",
+        }
+    ]
+    assert calls == ["list_tasks", "get", "quarantine"]
+    assert events == [
+        {
+            "event_type": "provider_outcome_unknown_quarantined",
+            "task_cid": "task:retained-admission",
+            "body": {
+                "source_task_revision": 8,
+                "source_status": "retrying",
+                "legacy_lossy_receipt_reconciled": False,
+                "retained_admission_receipt_reconciled": True,
+                "retry_suppressed": True,
+            },
+        }
+    ]
+    assert DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon) == []
+    assert calls == ["list_tasks", "get", "quarantine", "list_tasks", "get"]
 
 
 def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
@@ -14108,12 +15482,14 @@ def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_reco
     daemon = SimpleNamespace(
         repo_root=Path("/tmp"),
         task_source=_Source(),
+        _database_task_is_eligible=lambda _task: True,
+        _legacy_orphan_recovery_is_eligible=lambda _task: True,
         _task_outputs_landed_on_target=lambda _task: (_ for _ in ()).throw(
             AssertionError("landed outputs must not bypass fresh Portal proof")
         ),
     )
     daemon._complete_landed_quarantined_task = (
-        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task_once(
             daemon,
             task,
         )
@@ -14174,7 +15550,7 @@ def test_malformed_fresh_portal_requirement_fails_closed() -> None:
         )
 
 
-def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race() -> None:
+def test_generic_landed_repair_does_not_create_validation_authority() -> None:
     task_cid = "task:pcsm-013"
     requirement = typed_database_blocked_retry_revalidation_requirement(
         task_cid=task_cid,
@@ -14234,13 +15610,13 @@ def test_landed_repair_rechecks_fresh_portal_requirement_after_validation_race()
     )
 
     assert (
-        DatabaseImplementationDaemon._complete_landed_quarantined_task(
+        DatabaseImplementationDaemon._complete_landed_quarantined_task_once(
             daemon,
             source.task,
         )
         is None
     )
-    assert source.validation_recorded is True
+    assert source.validation_recorded is False
 
 
 def test_persist_retry_settles_when_cooldown_matches_receipt_not_attempt() -> None:

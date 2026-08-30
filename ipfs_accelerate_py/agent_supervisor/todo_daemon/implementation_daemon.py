@@ -87196,6 +87196,12 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_REASON,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+    TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
@@ -87324,6 +87330,11 @@ DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA = (
 
 _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS = 300
 _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
+_DATABASE_LANDED_RECOVERY_MAX_FAILURES_PER_INPUT = 3
+_DATABASE_LANDED_RECOVERY_RETRY_BACKOFF_SECONDS = (30.0, 120.0, 900.0)
+_DATABASE_LANDED_RECOVERY_DENIAL_CACHE_LIMIT = 1_024
+_DATABASE_LANDED_RECOVERY_GIT_DEADLINE_SECONDS = 15.0
+_DATABASE_LANDED_RECOVERY_VALIDATION_DEADLINE_SECONDS = 300.0
 _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
     {
         "proposal_gate_failed",
@@ -89322,6 +89333,13 @@ class DatabaseImplementationDaemon:
         self._quack_attach_blocked_until = 0.0
         self._idle_recovery_prefix: dict[str, Any] | None = None
         self._consecutive_embedded_sidecar_reopens = 0
+        # Non-authoritative denial cache.  It bounds repeated Git/test work
+        # for an unchanged orphan recovery input; task revision, target tree,
+        # or validation-contract changes create a new key automatically.
+        self._landed_recovery_denials: dict[
+            tuple[str, int, str, str],
+            tuple[int, float],
+        ] = {}
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -93904,14 +93922,6 @@ class DatabaseImplementationDaemon:
         )
         if not callable(recover):
             return []
-        current_attestation = self._typed_claim_process_attestation()
-        if current_attestation is None:
-            return []
-        current_birth_id = current_attestation.get("process_birth_id")
-        if type(current_birth_id) is not str or not current_birth_id:
-            raise DatabaseImplementationAuthorityError(
-                "typed claim process attestation has no process birth"
-            )
         page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         recovered: list[Mapping[str, Any]] = []
         for task in page.tasks:
@@ -93931,26 +93941,27 @@ class DatabaseImplementationDaemon:
                 if isinstance(body, Mapping)
                 else None
             )
-            historic_attestation = (
-                reservation.get("claim_process_attestation")
-                if isinstance(reservation, Mapping)
-                else None
-            )
-            # The current process may still finish the local insert and
-            # promote this reservation.  Recovery is only for a rotated
-            # process; the owner independently proves that historic birth
-            # DEAD before authorizing either mutation.
+            # Every lane reads the shared task population.  Only the stable
+            # client that created the reservation may ask the owner to
+            # recover it, and only after both this process and the exclusive
+            # owner independently observe the historic birth as DEAD.
             if (
-                isinstance(historic_attestation, Mapping)
-                and historic_attestation.get("process_birth_id")
-                == current_birth_id
+                not isinstance(reservation, Mapping)
+                or self._typed_historic_claim_liveness(reservation)
+                is not OwnerLiveness.DEAD
             ):
                 continue
-            receipt = recover(
-                str(task.task_cid),
-                expected_task_revision=int(task.revision),
-                now_ms=self._now_ms(),
-            )
+            try:
+                receipt = recover(
+                    str(task.task_cid),
+                    expected_task_revision=int(task.revision),
+                    now_ms=self._now_ms(),
+                )
+            except Exception:
+                # Liveness and revision are rechecked atomically by the
+                # owner.  A race, takeover, or UNKNOWN re-observation is a
+                # fail-closed no-op, not a reason to poison unrelated work.
+                continue
             details = getattr(receipt, "details", None)
             recovered.append(
                 MappingProxyType(
@@ -93971,6 +93982,45 @@ class DatabaseImplementationDaemon:
                 "typed task source returned no claim process attestation"
             )
         return MappingProxyType(dict(value))
+
+    def _typed_historic_claim_liveness(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> OwnerLiveness | None:
+        """Observe one same-lane historic claim birth without reviving it.
+
+        ``None`` means that this daemon has no typed authority for the
+        receipt (including malformed and foreign-lane claims).  ALIVE and
+        UNKNOWN are explicit denials.  The exclusive owner repeats the same
+        check inside the eventual state transition, so this observation is
+        only an early no-op filter.
+        """
+
+        if not callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        ):
+            return None
+        try:
+            historic = _validated_database_claim_process_attestation(receipt)
+            current = self._typed_claim_process_attestation()
+        except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
+            return None
+        if current is None:
+            return None
+        if historic.get("client_id") != current.get("client_id"):
+            return None
+        if historic.get("process_birth_id") == current.get("process_birth_id"):
+            return OwnerLiveness.ALIVE
+        try:
+            birth = ProcessBirthIdentity(
+                pid=int(historic["pid"]),
+                start_time_ticks=int(historic["start_time_ticks"]),
+                boot_id=str(historic["boot_id"]),
+                parent_pid=int(historic["parent_pid"]),
+            )
+            return owner_liveness(birth)
+        except (KeyError, TypeError, ValueError, OSError):
+            return OwnerLiveness.UNKNOWN
 
     def _claimed_attempt_execution_revision(
         self,
@@ -98438,7 +98488,7 @@ class DatabaseImplementationDaemon:
         return outcomes
 
     def _unstall_orphan_in_progress_gates(self) -> list[dict[str, Any]]:
-        """Retry in_progress rows whose worktree owner is gone."""
+        """Reconcile orphaned gates without retrying an unknown effect."""
 
         if self.repo_root is None:
             return []
@@ -98481,25 +98531,174 @@ class DatabaseImplementationDaemon:
                 )
                 if liveness in {OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN}:
                     continue
+            task_body = getattr(task, "body", None)
+            control_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            typed_source = callable(
+                getattr(self.task_source, "claim_process_attestation", None)
+            )
+            operation = (
+                str(control_receipt.get("operation") or "")
+                if isinstance(control_receipt, Mapping)
+                else ""
+            )
+            if operation == "database_attempt_admitted":
+                eligible = self._legacy_orphan_recovery_is_eligible(task)
+            else:
+                eligible = self._database_task_is_eligible(task)
+            if not eligible:
+                continue
+            if typed_source:
+                # An admitted attempt may already have crossed an external
+                # effect boundary.  Absence of a worktree is never authority
+                # to turn it into a retry.  The stable home lane and the
+                # exclusive owner must both prove the historic process DEAD.
+                if (
+                    not isinstance(control_receipt, Mapping)
+                    or self._typed_historic_claim_liveness(control_receipt)
+                    is not OwnerLiveness.DEAD
+                ):
+                    continue
+                if operation == "database_claim":
+                    recover = getattr(
+                        self.task_source,
+                        "recover_dead_claim_reservation",
+                        None,
+                    )
+                    if not callable(recover):
+                        continue
+                    try:
+                        recovery = recover(
+                            task_cid,
+                            expected_task_revision=int(task.revision),
+                            now_ms=self._now_ms(),
+                        )
+                    except Exception as exc:
+                        outcomes.append(
+                            {
+                                "task_cid": task_cid,
+                                "unstalled": False,
+                                "reason": str(exc)[:500],
+                            }
+                        )
+                        continue
+                    details = getattr(recovery, "details", None)
+                    outcomes.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_alias": str(
+                                getattr(task, "task_alias", "") or task_id
+                            ),
+                            "previous_status": "in_progress",
+                            "status": "retrying",
+                            "unstalled": bool(
+                                getattr(recovery, "changed", True)
+                            ),
+                            "reason": "dead_typed_claim_reservation_recovered",
+                            "age_seconds": int(age),
+                            "typed_recovery": (
+                                dict(details)
+                                if isinstance(details, Mapping)
+                                else {}
+                            ),
+                        }
+                    )
+                    continue
+                if operation != "database_attempt_admitted":
+                    continue
+                if self._task_outputs_landed_on_target(task):
+                    try:
+                        landed = self._complete_landed_quarantined_task(
+                            task,
+                            allow_in_progress=True,
+                        )
+                    except Exception as exc:
+                        outcomes.append(
+                            {
+                                "task_cid": task_cid,
+                                "unstalled": False,
+                                "reason": str(exc)[:500],
+                            }
+                        )
+                    else:
+                        if landed is not None:
+                            outcomes.append(landed)
+                            continue
+                    # Existing paths with missing/invalid lineage or failing
+                    # validation are not success evidence.  Fall through to
+                    # the typed outcome-unknown quarantine so this task cannot
+                    # remain permanently in_progress or be blindly retried.
+                quarantine = getattr(
+                    self.task_source,
+                    "quarantine_dead_admitted_provider_outcome_unknown",
+                    None,
+                )
+                if not callable(quarantine):
+                    continue
+                try:
+                    result = quarantine(
+                        task_cid,
+                        expected_task_revision=int(task.revision),
+                        expected_control_receipt=control_receipt,
+                    )
+                except Exception as exc:
+                    outcomes.append(
+                        {
+                            "task_cid": task_cid,
+                            "unstalled": False,
+                            "reason": str(exc)[:500],
+                        }
+                    )
+                    continue
+                changed = bool(getattr(result, "changed", False))
+                if changed:
+                    self._record_event(
+                        "provider_outcome_unknown_quarantined",
+                        task_cid=task_cid,
+                        body={
+                            "source_task_revision": int(task.revision),
+                            "retry_suppressed": True,
+                        },
+                    )
+                outcomes.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": str(
+                            getattr(task, "task_alias", "") or task_id
+                        ),
+                        "previous_status": "in_progress",
+                        "status": "quarantined",
+                        "unstalled": changed,
+                        "reason": "provider_outcome_unknown_quarantined",
+                        "age_seconds": int(age),
+                    }
+                )
+                continue
+
+            # Embedded legacy sources have no exclusive owner-derived claim
+            # process attestation.  Preserve their existing bounded recovery;
+            # typed execution is forbidden from entering this branch.
+            retry_receipt = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-orphan-in-progress-unstall@1"
+                ),
+                "operation": "unstall_orphan_in_progress_without_live_lifecycle",
+                "reason": "in_progress_without_live_worktree_lifecycle_owner",
+                "task_alias": str(
+                    getattr(task, "task_alias", "") or task_id
+                ),
+                "age_seconds": int(age),
+            }
             try:
                 self._cas_task_status_database(
                     task_cid,
                     expected_revision=int(getattr(task, "revision", 0) or 0),
                     new_status="retrying",
-                    receipt={
-                        "schema": (
-                            "ipfs_accelerate_py/agent-supervisor/"
-                            "database-orphan-in-progress-unstall@1"
-                        ),
-                        "operation": (
-                            "unstall_orphan_in_progress_without_live_lifecycle"
-                        ),
-                        "reason": "in_progress_without_live_worktree_lifecycle_owner",
-                        "task_alias": str(
-                            getattr(task, "task_alias", "") or task_id
-                        ),
-                        "age_seconds": int(age),
-                    },
+                    receipt=retry_receipt,
                 )
             except Exception as exc:
                 outcomes.append(
@@ -118082,23 +118281,31 @@ class DatabaseImplementationDaemon:
             )
             and self._task_outputs_landed_on_target(task)
         ):
-            completed = self._complete_landed_running_attempt(current, task)
-            self._record_event(
-                "landed_merge_completed_instead_of_quarantine",
-                attempt_id=completed.attempt_id,
-                task_cid=completed.task_cid,
-                body={"status": completed.status},
-            )
-            return {
-                "resumed": True,
-                "portal_retryable_failure": False,
-                "portal_replay_suppressed": False,
-                "task_quarantined": False,
-                "landed_outputs_completed": True,
-                "attempt_id": completed.attempt_id,
-                "task_alias": completed.task_alias,
-                "status": completed.status,
-            }
+            try:
+                completed = self._complete_landed_running_attempt(current, task)
+            except Exception:
+                # Paths on the target without exact admitted-candidate lineage
+                # and passing declared validations are not completion evidence.
+                # Preserve the ordinary outcome-unknown quarantine below so a
+                # malformed or transient proof cannot strand the running gate.
+                completed = None
+            if completed is not None:
+                self._record_event(
+                    "landed_merge_completed_instead_of_quarantine",
+                    attempt_id=completed.attempt_id,
+                    task_cid=completed.task_cid,
+                    body={"status": completed.status},
+                )
+                return {
+                    "resumed": True,
+                    "portal_retryable_failure": False,
+                    "portal_replay_suppressed": False,
+                    "task_quarantined": False,
+                    "landed_outputs_completed": True,
+                    "attempt_id": completed.attempt_id,
+                    "task_alias": completed.task_alias,
+                    "status": completed.status,
+                }
 
         receipt, digests = self._neutral_portal_quarantine_material(
             current,
@@ -118828,32 +119035,952 @@ class DatabaseImplementationDaemon:
         # certify only the safe subset as complete.
         return () if invalid_path_declared else tuple(paths)
 
-    def _git_tree_contains_path(self, relative: str) -> bool:
-        if self.repo_root is None or not relative:
-            return False
+    def _resolved_merge_target_commit(self) -> str:
+        """Resolve the mutable target ref once before inspecting its tree."""
+
+        if self.repo_root is None:
+            return ""
         result = subprocess.run(
             [
                 "git",
-                "cat-file",
-                "-e",
-                f"{self.merge_target_ref}:{relative}",
+                "rev-parse",
+                "--verify",
+                f"{self.merge_target_ref}^{{commit}}",
             ],
             cwd=self.repo_root,
             text=True,
             capture_output=True,
             check=False,
         )
-        return result.returncode == 0
+        commit = result.stdout.strip() if result.returncode == 0 else ""
+        return commit if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit) else ""
+
+    @staticmethod
+    def _task_owning_repository_path(task: Any) -> str:
+        """Return the task-declared repository path, never an inferred path."""
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return ""
+        scopes: list[Mapping[str, Any]] = [body]
+        metadata = body.get("metadata")
+        if isinstance(metadata, Mapping):
+            scopes.append(metadata)
+        raw = ""
+        for scope in scopes:
+            for key in ("owning_repository", "owning repository"):
+                value = scope.get(key)
+                if type(value) is str and value.strip():
+                    raw = value.strip().replace("\\", "/")
+                    break
+            if raw:
+                break
+        if raw == ".":
+            return "."
+        parts = raw.split("/")
+        if (
+            not raw
+            or raw.startswith(("/", "~"))
+            or any(part in {"", ".", ".."} for part in parts)
+        ):
+            return ""
+        return "/".join(parts)
+
+    @staticmethod
+    def _git_tree_entry(
+        repository_root: Path,
+        *,
+        commit: str,
+        path: str,
+        deadline: float | None = None,
+    ) -> tuple[str, str, str] | None:
+        """Return one exact tracked tree entry, rejecting prefix matches."""
+
+        timeout = _DATABASE_LANDED_RECOVERY_GIT_DEADLINE_SECONDS
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            timeout = min(timeout, remaining)
+        try:
+            result = subprocess.run(
+                ["git", "ls-tree", "-z", commit, "--", path],
+                cwd=repository_root,
+                text=False,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        if result.returncode != 0:
+            return None
+        matches: list[tuple[str, str, str]] = []
+        for raw_entry in result.stdout.split(b"\0"):
+            if not raw_entry:
+                continue
+            metadata, separator, raw_path = raw_entry.partition(b"\t")
+            if not separator:
+                continue
+            try:
+                observed_path = raw_path.decode("utf-8")
+                mode, object_type, object_id = metadata.decode("ascii").split()
+            except (UnicodeDecodeError, ValueError):
+                continue
+            if observed_path == path:
+                matches.append((mode, object_type, object_id))
+        return matches[0] if len(matches) == 1 else None
+
+    def _git_tree_path_binding(
+        self,
+        relative: str,
+        *,
+        target_commit: str,
+        owning_repository: str = "",
+        deadline: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Bind one output to the exact outer tree or recorded child tree."""
+
+        if (
+            self.repo_root is None
+            or not relative
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", target_commit)
+            is None
+        ):
+            return None
+        repository = str(owning_repository or "").strip()
+        # Database task outputs are canonical within their owning repository.
+        # Some older boards also projected the same path through the outer
+        # superproject.  When an owner is sealed, resolve it first so a
+        # same-named outer blob cannot satisfy a nested task accidentally.
+        if repository in {"", "."}:
+            direct = self._git_tree_entry(
+                self.repo_root,
+                commit=target_commit,
+                path=relative,
+                deadline=deadline,
+            )
+            if direct is None or direct[:2] not in {
+                ("100644", "blob"),
+                ("100755", "blob"),
+            }:
+                return None
+            return {
+                "path": relative,
+                "repository": ".",
+                "repository_ref": target_commit,
+                "tracked_path": relative,
+                "mode": direct[0],
+                "object_type": direct[1],
+                "object_id": direct[2],
+            }
+
+        tracked_path = (
+            relative[len(repository) + 1 :]
+            if relative.startswith(repository + "/")
+            else relative
+        )
+        tracked_parts = tracked_path.split("/")
+        if (
+            not tracked_path
+            or any(part in {"", ".", ".."} for part in tracked_parts)
+        ):
+            return None
+        gitlink_entry = self._git_tree_entry(
+            self.repo_root,
+            commit=target_commit,
+            path=repository,
+            deadline=deadline,
+        )
+        if (
+            gitlink_entry is None
+            or gitlink_entry[:2] != ("160000", "commit")
+            or re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}",
+                gitlink_entry[2],
+            )
+            is None
+        ):
+            return None
+        child = self.repo_root / repository
+        if not child.is_dir() or child.is_symlink():
+            return None
+        child_commit = gitlink_entry[2]
+        contained = self._git_tree_entry(
+            child,
+            commit=child_commit,
+            path=tracked_path,
+            deadline=deadline,
+        )
+        if contained is None or contained[:2] not in {
+            ("100644", "blob"),
+            ("100755", "blob"),
+        }:
+            return None
+        return {
+            "path": relative,
+            "repository": repository,
+            "repository_ref": child_commit,
+            "tracked_path": tracked_path,
+            "mode": contained[0],
+            "object_type": contained[1],
+            "object_id": contained[2],
+        }
+
+    def _git_tree_contains_path(self, relative: str) -> bool:
+        target_commit = self._resolved_merge_target_commit()
+        return bool(
+            target_commit
+            and self._git_tree_path_binding(
+                relative,
+                target_commit=target_commit,
+            )
+        )
+
+    def _task_landed_output_binding(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        paths = self._task_declared_output_paths(task)
+        if not paths or len(paths) > 256:
+            return None
+        target_commit = self._resolved_merge_target_commit()
+        if not target_commit:
+            return None
+        deadline = (
+            time.monotonic()
+            + _DATABASE_LANDED_RECOVERY_GIT_DEADLINE_SECONDS
+        )
+        # The exclusive owner admits this exceptional legacy recovery only
+        # against the checkout's current HEAD.  A configured branch is useful
+        # for normal merge routing, but it must resolve to that same commit
+        # before the recovery proof is normalized to the owner policy ref.
+        try:
+            head = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=self.repo_root,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=False,
+                timeout=max(0.001, deadline - time.monotonic()),
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        if head.returncode != 0 or head.stdout.strip() != target_commit:
+            return None
+        owning_repository = self._task_owning_repository_path(task)
+        checks: list[dict[str, Any]] = []
+        for path in paths:
+            check = self._git_tree_path_binding(
+                path,
+                target_commit=target_commit,
+                owning_repository=owning_repository,
+                deadline=deadline,
+            )
+            if check is None:
+                return None
+            checks.append(check)
+        return {
+            "merge_target_ref": "HEAD",
+            "merge_target_commit": target_commit,
+            "checks": checks,
+        }
+
+    @staticmethod
+    def _git_output(
+        repository: Path,
+        *arguments: str,
+        text: bool = True,
+        deadline: float | None = None,
+    ) -> str | bytes:
+        timeout = _DATABASE_LANDED_RECOVERY_GIT_DEADLINE_SECONDS
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DatabaseImplementationAuthorityError(
+                    "landed recovery Git lineage exhausted its wall-time budget"
+                )
+            timeout = min(timeout, remaining)
+        try:
+            result = subprocess.run(
+                ["git", *arguments],
+                cwd=repository,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=timeout,
+                text=text,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery Git lineage exhausted its wall-time budget"
+            ) from exc
+        if result.returncode != 0:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery Git lineage is unavailable"
+            )
+        return result.stdout
+
+    def _legacy_orphan_admission_receipt(self, task: Any) -> dict[str, Any]:
+        """Return the exact admission immediately preceding this orphan.
+
+        A task may have several attempts in its bounded canonical history.
+        Selecting the only admission in the *whole* history therefore makes a
+        legitimate later attempt unrecoverable.  The owner state machine
+        already defines the exact predecessor distance for each retired
+        orphan shape; mirror that closed lineage here and reject every other
+        history entry.
+        """
+
+        history_reader = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_reader):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery has no canonical task revision history"
+            )
+        projection = history_reader(str(getattr(task, "task_cid", "") or ""))
+        revisions = projection.get("revisions") if isinstance(projection, Mapping) else None
+        if not isinstance(revisions, Sequence) or isinstance(
+            revisions,
+            (str, bytes, bytearray, memoryview),
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery task history is malformed"
+            )
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        revision = getattr(task, "revision", None)
+        task_body = getattr(task, "body", None)
+        current_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        operation = (
+            str(current_receipt.get("operation") or "")
+            if isinstance(current_receipt, Mapping)
+            else ""
+        )
+        if type(revision) is not int or revision < 2:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery task revision is invalid"
+            )
+
+        predecessor_distance: int
+        if status == "in_progress" and operation == "database_attempt_admitted":
+            predecessor_distance = 0
+        elif status == "retrying" and operation in {
+            "database_attempt_admitted",
+            TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+        }:
+            predecessor_distance = 1
+        elif (
+            status == "quarantined"
+            and operation
+            == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+        ):
+            predecessor_distance = 1
+        elif (
+            status == "quarantined"
+            and operation
+            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+        ):
+            predecessor_distance = 2
+        elif (
+            status == "quarantined"
+            and operation
+            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+        ):
+            predecessor_distance = 2
+        else:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery task has no admitted predecessor shape"
+            )
+
+        admitted_revision = revision - predecessor_distance
+        if admitted_revision < 2:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery admitted predecessor revision is invalid"
+            )
+        current_entries = [
+            entry
+            for entry in revisions
+            if isinstance(entry, Mapping)
+            and entry.get("revision") == revision
+        ]
+        admission_entries = [
+            entry
+            for entry in revisions
+            if isinstance(entry, Mapping)
+            and entry.get("revision") == admitted_revision
+        ]
+        if len(current_entries) != 1 or len(admission_entries) != 1:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery exact revision lineage is absent or ambiguous"
+            )
+        current_entry = current_entries[0]
+        if (
+            str(current_entry.get("status") or "").strip().lower() != status
+            or not isinstance(current_entry.get("body"), Mapping)
+            or _task_body_canonical_json_bytes(dict(current_entry["body"]))
+            != _task_body_canonical_json_bytes(dict(task_body))
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery current history revision is stale"
+            )
+        admission_entry = admission_entries[0]
+        admission_body = admission_entry.get("body")
+        admission_receipt = (
+            admission_body.get("completion_receipt")
+            if isinstance(admission_body, Mapping)
+            else None
+        )
+        if (
+            str(admission_entry.get("status") or "").strip().lower()
+            != "in_progress"
+            or not isinstance(admission_receipt, Mapping)
+            or admission_receipt.get("operation")
+            != "database_attempt_admitted"
+            or admission_receipt.get("claim_phase_schema")
+            != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            or admission_receipt.get("admitted_from_revision")
+            != admitted_revision - 1
+            or admission_receipt.get("claimed_from_revision")
+            != admitted_revision - 2
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery exact predecessor is not an admission"
+            )
+        if predecessor_distance == 0 and _task_body_canonical_json_bytes(
+            dict(current_receipt)
+        ) != _task_body_canonical_json_bytes(dict(admission_receipt)):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery current admission differs from history"
+            )
+        return dict(admission_receipt)
+
+    def _legacy_orphan_recovery_is_eligible(self, task: Any) -> bool:
+        """Route a retired orphan to its admitted lane, not a lossy receipt.
+
+        Virgin-transfer routing can disappear from the historical startup
+        receipt that replaced the admission.  The admission's process-bound
+        client identity is still authoritative: exactly the restarted stable
+        lane observes that historic birth as DEAD.  Generic/non-orphan work
+        retains ordinary current-receipt shard routing.
+        """
+
+        if not (
+            self._database_task_is_in_execution_slice(task)
+            and self._task_matches_prefix(task)
+        ):
+            return False
+        typed_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        if not typed_source:
+            return self._database_task_is_eligible(task)
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        operation = (
+            str(receipt.get("operation") or "")
+            if isinstance(receipt, Mapping)
+            else ""
+        )
+        if operation not in {
+            "database_attempt_admitted",
+            TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+            TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+            TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+            TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
+        }:
+            return self._database_task_is_eligible(task)
+        try:
+            admission = self._legacy_orphan_admission_receipt(task)
+        except Exception:
+            return False
+        return (
+            self._typed_historic_claim_liveness(admission)
+            is OwnerLiveness.DEAD
+        )
+
+    def _landed_recovery_denial_key(
+        self,
+        task: Any,
+    ) -> tuple[str, int, str, str]:
+        validations = getattr(task, "validations", ()) or ()
+        validation_contract = content_identity(
+            {
+                "validations": [
+                    dict(item) if isinstance(item, Mapping) else item
+                    for item in validations
+                ]
+            }
+        )
+        return (
+            str(getattr(task, "task_cid", "") or ""),
+            int(getattr(task, "revision", 0) or 0),
+            self._resolved_merge_target_commit(),
+            validation_contract,
+        )
+
+    def _landed_recovery_is_due(
+        self,
+        key: tuple[str, int, str, str],
+    ) -> bool:
+        cache = getattr(self, "_landed_recovery_denials", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._landed_recovery_denials = cache
+        failure = cache.get(key)
+        return failure is None or time.monotonic() >= failure[1]
+
+    def _remember_landed_recovery_denial(
+        self,
+        key: tuple[str, int, str, str],
+    ) -> None:
+        cache = getattr(self, "_landed_recovery_denials", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._landed_recovery_denials = cache
+        prior_count = int((cache.get(key) or (0, 0.0))[0])
+        count = min(
+            prior_count + 1,
+            _DATABASE_LANDED_RECOVERY_MAX_FAILURES_PER_INPUT,
+        )
+        # Saturate at one attempt per 15 minutes.  An infinite denial would
+        # turn a transient toolchain/capability repair into a permanent stall
+        # for a long-running lane even though no authoritative task or tree
+        # identity changed.
+        retry_after = time.monotonic() + (
+            _DATABASE_LANDED_RECOVERY_RETRY_BACKOFF_SECONDS[count - 1]
+        )
+        cache[key] = (count, retry_after)
+        while len(cache) > _DATABASE_LANDED_RECOVERY_DENIAL_CACHE_LIMIT:
+            cache.pop(next(iter(cache)))
+
+    def _clear_landed_recovery_denials(self, task_cid: str) -> None:
+        cache = getattr(self, "_landed_recovery_denials", None)
+        if not isinstance(cache, dict):
+            return
+        for key in tuple(cache):
+            if key[0] == task_cid:
+                cache.pop(key, None)
+
+    def _landed_candidate_lineage(
+        self,
+        task: Any,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        checks = binding.get("checks")
+        if not isinstance(checks, list) or not checks:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery has no immutable output checks"
+            )
+        repositories = {str(check.get("repository") or "") for check in checks}
+        if len(repositories) != 1:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery outputs span repositories"
+            )
+        repository = next(iter(repositories))
+        repository_root = (
+            self.repo_root
+            if repository == "."
+            else self.repo_root / repository
+            if self.repo_root is not None
+            else None
+        )
+        if repository_root is None:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery repository is unavailable"
+            )
+        git_deadline = (
+            time.monotonic()
+            + _DATABASE_LANDED_RECOVERY_GIT_DEADLINE_SECONDS
+        )
+
+        def git_output(*arguments: str, text: bool = True) -> str | bytes:
+            return self._git_output(
+                repository_root,
+                *arguments,
+                text=text,
+                deadline=git_deadline,
+            )
+
+        current_commit = str(checks[0].get("repository_ref") or "")
+        current_tree = str(
+            git_output("rev-parse", f"{current_commit}^{{tree}}")
+        ).strip()
+        admission = self._legacy_orphan_admission_receipt(task)
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        attempt_id = str(admission.get("attempt_id") or "")
+        attempt_number = admission.get("attempt_number")
+        if (
+            not task_alias
+            or not attempt_id
+            or isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery admitted attempt identity is invalid"
+            )
+        tracked_paths = [str(check.get("tracked_path") or "") for check in checks]
+        candidates_raw = str(
+            git_output(
+                "log",
+                "--format=%H",
+                "--fixed-strings",
+                f"--grep={task_alias}:",
+                "--max-count=17",
+                current_commit,
+            )
+        ).splitlines()
+        if len(candidates_raw) > 16:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery candidate history exceeds its bound"
+            )
+        body = getattr(task, "body", None)
+        base_repositories = (
+            body.get("base_repositories") if isinstance(body, Mapping) else None
+        )
+        if not isinstance(base_repositories, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery task has no exact base repositories"
+            )
+        matches: list[dict[str, Any]] = []
+        for candidate in candidates_raw:
+            candidate = candidate.strip()
+            parents = str(
+                git_output(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    candidate,
+                )
+            ).strip().split()
+            if len(parents) != 2 or parents[0] != candidate:
+                continue
+            parent = parents[1]
+            message = str(
+                git_output("show", "-s", "--format=%B", candidate)
+            )
+            message_lines = {line.strip() for line in message.splitlines() if line.strip()}
+            if (
+                not message.startswith(task_alias + ":")
+                or f"Attempt: {attempt_number}" not in message_lines
+                or (
+                    repository != "."
+                    and f"Submodule: {repository}" not in message_lines
+                )
+            ):
+                continue
+            changed_raw = git_output(
+                "diff-tree",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                "-z",
+                candidate,
+                text=False,
+            )
+            assert isinstance(changed_raw, bytes)
+            try:
+                changed = sorted(
+                    item.decode("utf-8")
+                    for item in changed_raw.split(b"\0")
+                    if item
+                )
+            except UnicodeDecodeError:
+                continue
+            if changed != sorted(tracked_paths):
+                continue
+            candidate_entries = [
+                self._git_tree_entry(
+                    repository_root,
+                    commit=candidate,
+                    path=path,
+                    deadline=git_deadline,
+                )
+                for path in tracked_paths
+            ]
+            if any(entry is None for entry in candidate_entries):
+                continue
+            if any(
+                entry[2] != str(check.get("object_id") or "")
+                for entry, check in zip(candidate_entries, checks, strict=True)
+                if entry is not None
+            ):
+                continue
+            base_matches: list[tuple[str, str]] = []
+            for raw_base in base_repositories.values():
+                if not isinstance(raw_base, Mapping):
+                    continue
+                base_commit = str(raw_base.get("commit") or "")
+                base_tree = str(raw_base.get("tree") or "")
+                if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", base_commit):
+                    continue
+                remaining_seconds = git_deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    raise DatabaseImplementationAuthorityError(
+                        "landed recovery Git lineage exhausted its wall-time budget"
+                    )
+                try:
+                    ancestry = subprocess.run(
+                        [
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            base_commit,
+                            parent,
+                        ],
+                        cwd=repository_root,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                        timeout=remaining_seconds,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "landed recovery Git lineage exhausted its wall-time budget"
+                    ) from exc
+                if ancestry.returncode != 0:
+                    continue
+                try:
+                    observed_tree = str(
+                        git_output(
+                            "rev-parse",
+                            f"{base_commit}^{{tree}}",
+                        )
+                    ).strip()
+                except DatabaseImplementationAuthorityError:
+                    continue
+                if observed_tree == base_tree:
+                    base_matches.append((base_commit, base_tree))
+            if len(base_matches) != 1:
+                continue
+            candidate_tree = str(
+                git_output("rev-parse", f"{candidate}^{{tree}}")
+            ).strip()
+            matches.append(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-landed-candidate-lineage@1"
+                    ),
+                    "repository": repository,
+                    "base_commit": base_matches[0][0],
+                    "base_tree": base_matches[0][1],
+                    "candidate_commit": candidate,
+                    "candidate_parent": parent,
+                    "candidate_tree": candidate_tree,
+                    "current_repository_commit": current_commit,
+                    "current_repository_tree": current_tree,
+                    "changed_paths": sorted(tracked_paths),
+                    "task_alias": task_alias,
+                    "attempt_id": attempt_id,
+                    "attempt_number": attempt_number,
+                    "commit_message_sha256": "sha256:"
+                    + hashlib.sha256(message.encode("utf-8")).hexdigest(),
+                }
+            )
+        if len(matches) != 1:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery has no unique admitted candidate lineage"
+            )
+        return matches[0]
+
+    def _landed_current_tree_validation(
+        self,
+        task: Any,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        validations = getattr(task, "validations", ()) or ()
+        if (
+            not isinstance(validations, Sequence)
+            or isinstance(validations, (str, bytes, bytearray, memoryview))
+            or not validations
+            or len(validations) > 16
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery requires bounded declared validations"
+            )
+        checks = binding.get("checks")
+        repositories = {
+            str(check.get("repository") or "")
+            for check in checks
+            if isinstance(check, Mapping)
+        }
+        if len(repositories) != 1 or self.repo_root is None:
+            raise DatabaseImplementationAuthorityError(
+                "landed validation repository authority is ambiguous"
+            )
+        repository = next(iter(repositories))
+        workspace = self.repo_root if repository == "." else self.repo_root / repository
+        repository_ref = str(checks[0].get("repository_ref") or "")
+        if str(self._git_output(workspace, "rev-parse", "HEAD")).strip() != repository_ref:
+            raise DatabaseImplementationAuthorityError(
+                "landed validation checkout differs from the immutable gitlink"
+            )
+        for diff_args in (("diff", "--quiet", "HEAD", "--"), ("diff", "--cached", "--quiet", "HEAD", "--")):
+            clean = subprocess.run(
+                ["git", *diff_args],
+                cwd=workspace,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=15,
+            )
+            if clean.returncode != 0:
+                raise DatabaseImplementationAuthorityError(
+                    "landed validation checkout has tracked modifications"
+                )
+        clean_status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ],
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+        if clean_status.returncode != 0 or clean_status.stdout:
+            raise DatabaseImplementationAuthorityError(
+                "landed validation checkout has tracked or untracked modifications"
+            )
+        results: list[dict[str, Any]] = []
+        validation_deadline = (
+            time.monotonic()
+            + _DATABASE_LANDED_RECOVERY_VALIDATION_DEADLINE_SECONDS
+        )
+        for validation in validations:
+            if not isinstance(validation, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "landed declared validation is malformed"
+                )
+            argv = validation.get("argv")
+            if (
+                validation.get("shell", False) is not False
+                or not isinstance(argv, Sequence)
+                or isinstance(argv, (str, bytes, bytearray, memoryview))
+                or not argv
+                or len(argv) > 128
+                or any(
+                    type(item) is not str
+                    or not item
+                    or "\x00" in item
+                    or len(item.encode("utf-8")) > 4096
+                    for item in argv
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "landed declared validation is outside argv-only policy"
+                )
+            remaining_seconds = validation_deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                raise DatabaseImplementationAuthorityError(
+                    "landed validation exhausted its total wall-time budget"
+                )
+            with tempfile.TemporaryFile() as output:
+                try:
+                    completed = subprocess.run(
+                        list(argv),
+                        cwd=workspace,
+                        stdin=subprocess.DEVNULL,
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                        check=False,
+                        timeout=remaining_seconds,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "landed validation exhausted its total wall-time budget"
+                    ) from exc
+                size = output.tell()
+                if size > 8 * 1024 * 1024:
+                    raise DatabaseImplementationAuthorityError(
+                        "landed validation output exceeds its byte bound"
+                    )
+                output.seek(0)
+                output_digest = "sha256:" + hashlib.sha256(output.read()).hexdigest()
+            if completed.returncode != 0:
+                raise DatabaseImplementationAuthorityError(
+                    "landed declared validation did not pass"
+                )
+            results.append(
+                {
+                    "argv": list(argv),
+                    "returncode": int(completed.returncode),
+                    "output_sha256": output_digest,
+                    "output_bytes": size,
+                }
+            )
+        final_status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ],
+            cwd=workspace,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=15,
+        )
+        if (
+            final_status.returncode != 0
+            or final_status.stdout
+            or str(
+                self._git_output(workspace, "rev-parse", "HEAD")
+            ).strip()
+            != repository_ref
+            or self._resolved_merge_target_commit()
+            != binding.get("merge_target_commit")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed validation target advanced during execution"
+            )
+        body = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-landed-current-tree-validation@1"
+            ),
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "repository": repository,
+            "repository_ref": repository_ref,
+            "merge_target_commit": str(binding.get("merge_target_commit") or ""),
+            "outcome": "passed",
+            "commands": results,
+        }
+        return {**body, "receipt_id": content_identity(body)}
 
     def _task_outputs_landed_on_target(self, task: Any) -> bool:
         """True when every declared output blob exists on the merge target."""
 
         if self.repo_root is None:
             return False
-        paths = self._task_declared_output_paths(task)
-        if not paths:
-            return False
-        return all(self._git_tree_contains_path(path) for path in paths)
+        return self._task_landed_output_binding(task) is not None
 
     def _landed_merge_repair_proof(
         self,
@@ -118862,17 +119989,28 @@ class DatabaseImplementationDaemon:
         attempt_id: str = "",
     ) -> tuple[dict[str, Any], str]:
         paths = self._task_declared_output_paths(task)
+        binding = self._task_landed_output_binding(task)
+        if binding is None:
+            raise DatabaseImplementationAuthorityError(
+                "landed merge repair has no exact current-tree output proof"
+            )
+        candidate_lineage = self._landed_candidate_lineage(task, binding)
+        validation_receipt = self._landed_current_tree_validation(task, binding)
         proof = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
-                "database-landed-merge-repair@1"
+                "database-landed-merge-repair@3"
             ),
             "operation": "database_landed_merge_repair",
             "task_cid": str(getattr(task, "task_cid", "") or ""),
             "task_alias": str(getattr(task, "task_alias", "") or ""),
-            "attempt_id": attempt_id,
-            "merge_target_ref": self.merge_target_ref,
+            "attempt_id": attempt_id or candidate_lineage["attempt_id"],
+            "merge_target_ref": binding["merge_target_ref"],
+            "merge_target_commit": binding["merge_target_commit"],
             "landed_outputs": list(paths),
+            "landed_output_checks": list(binding["checks"]),
+            "candidate_lineage": candidate_lineage,
+            "validation_receipt": validation_receipt,
         }
         digest = "sha256:" + hashlib.sha256(
             canonical_json(proof).encode("utf-8")
@@ -118956,13 +120094,48 @@ class DatabaseImplementationDaemon:
     def _complete_landed_quarantined_task(
         self,
         task: Any,
+        *,
+        allow_in_progress: bool = False,
+    ) -> dict[str, Any] | None:
+        """Run one bounded recovery attempt for an authoritative input key."""
+
+        current = self.task_source.get(
+            str(getattr(task, "task_cid", "") or "")
+        )
+        if current is None:
+            return None
+        key = self._landed_recovery_denial_key(current)
+        if not self._landed_recovery_is_due(key):
+            return None
+        try:
+            outcome = self._complete_landed_quarantined_task_once(
+                current,
+                allow_in_progress=allow_in_progress,
+            )
+        except Exception:
+            self._remember_landed_recovery_denial(key)
+            raise
+        if outcome is not None:
+            self._clear_landed_recovery_denials(
+                str(getattr(current, "task_cid", "") or "")
+            )
+        return outcome
+
+    def _complete_landed_quarantined_task_once(
+        self,
+        task: Any,
+        *,
+        allow_in_progress: bool = False,
     ) -> dict[str, Any] | None:
         task_cid = str(getattr(task, "task_cid", "") or "")
         current = self.task_source.get(task_cid)
         if current is None:
             return None
         status = str(getattr(current, "status", "") or "").strip().lower()
-        if status not in {"quarantined", "retrying", "blocked"}:
+        allowed_statuses = {"quarantined", "retrying", "blocked"}
+        if allow_in_progress:
+            allowed_statuses.add("in_progress")
+        if status not in allowed_statuses:
             return None
         if DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
             self,
@@ -118977,15 +120150,94 @@ class DatabaseImplementationDaemon:
         )
         if not isinstance(control_receipt, Mapping):
             return None
+        operation = str(control_receipt.get("operation") or "")
+        typed_orphan_completion = getattr(
+            self.task_source,
+            "complete_legacy_orphan_landed_attempt",
+            None,
+        )
+        use_typed_orphan_completion = bool(
+            callable(typed_orphan_completion)
+            and (
+                (
+                    status == "in_progress"
+                    and allow_in_progress
+                    and operation == "database_attempt_admitted"
+                    and control_receipt.get("claim_phase_schema")
+                    == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                )
+                or (
+                    status == "retrying"
+                    and operation
+                    in {
+                        TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+                        "database_attempt_admitted",
+                    }
+                    and (
+                        operation
+                        != "database_attempt_admitted"
+                        or control_receipt.get("claim_phase_schema")
+                        == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    )
+                )
+                or (
+                    status == "quarantined"
+                    and operation
+                    in {
+                        TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+                        TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+                        TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
+                    }
+                )
+            )
+        )
+        # Declared paths existing on the target is never, by itself, a
+        # completion authority.  Only the closed legacy-orphan command can
+        # bind the original admitted attempt, immutable candidate lineage,
+        # and freshly executed declared validations in one owner-verified
+        # receipt.  Generic CAS completion would recreate the historical
+        # false-completion/stale-task failure this recovery path repairs.
+        if not use_typed_orphan_completion:
+            return None
         if not self._task_outputs_landed_on_target(current):
             return None
         proof, digest = self._landed_merge_repair_proof(current)
+        validation_receipt = proof.get("validation_receipt")
+        validation_commands = (
+            validation_receipt.get("commands")
+            if isinstance(validation_receipt, Mapping)
+            else None
+        )
+        first_validation = (
+            validation_commands[0]
+            if isinstance(validation_commands, list) and validation_commands
+            else None
+        )
+        first_argv = (
+            first_validation.get("argv")
+            if isinstance(first_validation, Mapping)
+            else None
+        )
+        if not isinstance(first_argv, list) or not first_argv:
+            raise DatabaseImplementationAuthorityError(
+                "landed recovery has no executed validation command"
+            )
+        # Completion's canonical evidence gate consumes only evidence nodes
+        # already admitted by the owner.  Register the freshly executed
+        # argv (not a synthetic repair command) and bind the complete @3 proof
+        # into that evidence node before requesting the terminal CAS.
         self.task_source.record_validation_result(
             task_cid=task_cid,
             outcome="passed",
             evidence_digest=digest,
-            argv=["database-landed-merge-repair"],
-            body=proof,
+            argv=first_argv,
+            body={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-landed-recovery-validation-evidence@1"
+                ),
+                "landed_output_proof": proof,
+            },
         )
         refreshed = self.task_source.get(task_cid)
         if refreshed is None:
@@ -119011,29 +120263,103 @@ class DatabaseImplementationDaemon:
             )
         ):
             return None
-        self._cas_task_status_database(
+        result = typed_orphan_completion(
             refreshed.task_cid,
-            expected_revision=int(refreshed.revision),
-            new_status="completed",
-            receipt={**proof, "evidence_digest": digest},
+            expected_task_revision=int(refreshed.revision),
             expected_control_receipt=refreshed_receipt,
-            evidence_digests=[digest],
+            evidence_digest=digest,
+            landed_proof=proof,
         )
-        self._record_event(
-            "landed_merge_repaired",
-            task_cid=str(refreshed.task_cid),
-            body={
-                "evidence_digest": digest,
-                "landed_outputs": list(proof["landed_outputs"]),
-            },
-        )
+        changed = bool(getattr(result, "changed", True))
+        if changed:
+            self._record_event(
+                "landed_merge_repaired",
+                task_cid=str(refreshed.task_cid),
+                body={
+                    "evidence_digest": digest,
+                    "landed_outputs": list(proof["landed_outputs"]),
+                    "typed_orphan_recovery": use_typed_orphan_completion,
+                },
+            )
         return {
             "task_cid": str(refreshed.task_cid),
             "task_alias": str(refreshed.task_alias),
             "completed": True,
+            "changed": changed,
             "reason": "database_landed_merge_repair",
             "evidence_digest": digest,
             "landed_outputs": list(proof["landed_outputs"]),
+        }
+
+    def _quarantine_legacy_orphan_retrying_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Make one retired lossy retry row explicitly outcome-unknown."""
+
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        current = self.task_source.get(task_cid)
+        if current is None or str(current.status).strip().lower() != "retrying":
+            return None
+        body = getattr(current, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        if not isinstance(receipt, Mapping):
+            return None
+        legacy_lossy_source = bool(
+            receipt.get("schema")
+            == TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA
+            and receipt.get("operation")
+            == TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION
+        )
+        retained_admission_source = bool(
+            receipt.get("operation") == "database_attempt_admitted"
+            and receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        if not (legacy_lossy_source or retained_admission_source):
+            return None
+        if not self._legacy_orphan_recovery_is_eligible(current):
+            return None
+        quarantine = getattr(
+            self.task_source,
+            "quarantine_legacy_orphan_provider_outcome_unknown",
+            None,
+        )
+        if not callable(quarantine):
+            return None
+        source_revision = int(current.revision)
+        result = quarantine(
+            task_cid,
+            expected_task_revision=source_revision,
+            expected_control_receipt=receipt,
+        )
+        changed = bool(getattr(result, "changed", False))
+        if changed:
+            self._record_event(
+                "provider_outcome_unknown_quarantined",
+                task_cid=task_cid,
+                body={
+                    "source_task_revision": source_revision,
+                    "source_status": "retrying",
+                    "legacy_lossy_receipt_reconciled": legacy_lossy_source,
+                    "retained_admission_receipt_reconciled": (
+                        retained_admission_source
+                    ),
+                    "retry_suppressed": True,
+                },
+            )
+        return {
+            "task_cid": task_cid,
+            "task_alias": str(getattr(current, "task_alias", "") or ""),
+            "previous_status": "retrying",
+            "status": "quarantined",
+            "changed": changed,
+            "completed": False,
+            "reason": "legacy_provider_outcome_unknown_quarantined",
         }
 
     def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:
@@ -119056,6 +120382,12 @@ class DatabaseImplementationDaemon:
         tasks = tuple(getattr(page, "tasks", ()) or ())
         outcomes: list[dict[str, Any]] = []
         for task in tasks:
+            # All lanes observe shared task state.  For retired orphan shapes,
+            # route by the exact historic admission client (which survives a
+            # virgin transfer); current lossy receipts may no longer carry the
+            # recipient shard.  Generic tasks keep ordinary shard routing.
+            if not self._legacy_orphan_recovery_is_eligible(task):
+                continue
             try:
                 outcome = self._complete_landed_quarantined_task(task)
             except Exception as exc:
@@ -119066,9 +120398,26 @@ class DatabaseImplementationDaemon:
                         "reason": str(exc),
                     }
                 )
-                continue
+                outcome = None
             if outcome is not None:
                 outcomes.append(outcome)
+                continue
+            try:
+                quarantine = (
+                    DatabaseImplementationDaemon
+                    ._quarantine_legacy_orphan_retrying_task(self, task)
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "completed": False,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if quarantine is not None:
+                outcomes.append(quarantine)
         return outcomes
 
     def _requeue_unimplemented_control_task(
@@ -119094,6 +120443,31 @@ class DatabaseImplementationDaemon:
             "running",
             "quarantined",
         }:
+            return None
+        body = getattr(current, "body", None)
+        control_receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        operation = (
+            str(control_receipt.get("operation") or "")
+            if isinstance(control_receipt, Mapping)
+            else ""
+        )
+        # Once an attempt was admitted, missing output bytes do not prove that
+        # its provider/effect did not happen.  Dead admitted attempts enter the
+        # typed outcome-unknown quarantine above and may leave it only through
+        # exact landed evidence or explicit reconciliation authority.
+        if operation in {
+            "database_attempt_admitted",
+            TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+            TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+        } or (
+            isinstance(control_receipt, Mapping)
+            and control_receipt.get("failure_kind")
+            == "provider_callback_outcome_unknown"
+        ):
             return None
         paths = self._task_declared_output_paths(current)
         if not paths or self._task_outputs_landed_on_target(current):
@@ -119125,13 +120499,11 @@ class DatabaseImplementationDaemon:
         self,
         task: Any,
     ) -> dict[str, Any] | None:
-        """Reopen one unknown-callback quarantine that did not land outputs.
+        """Keep provider-outcome-unknown quarantined pending reconciliation.
 
-        The exact crashed callback stays unrepatched.  A later pass may claim a
-        fresh attempt.  Consumed-no-progress and output-less tasks stay closed.
-        Missing declared outputs keep reopening even after
-        ``_DATABASE_UNKNOWN_CALLBACK_REOPEN_LIMIT`` so a typed Portal setup
-        crash cannot permanently ``retry_suppressed`` the board.
+        Missing declared paths do not prove that an external effect did not
+        occur.  A future requeue requires separately admitted pre-dispatch or
+        idempotent-provider reconciliation evidence; this path has neither.
         """
 
         if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
@@ -119146,52 +120518,12 @@ class DatabaseImplementationDaemon:
             return None
         if receipt.get("retry_suppressed") is not True:
             return None
-        paths = self._task_declared_output_paths(task)
-        if not paths:
-            return None
-        if self._task_outputs_landed_on_target(task):
-            return None
-        reopen_count = self._unknown_callback_reopen_count(task)
-        next_count = reopen_count + 1
-        reopen_receipt = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "database-unimplemented-unknown-callback-reopen@1"
-            ),
-            "operation": "reopen_unimplemented_unknown_callback_quarantine",
-            "reason": "declared_outputs_missing_on_merge_target",
-            "previous_failure_kind": "provider_callback_outcome_unknown",
-            "previous_attempt_id": str(receipt.get("attempt_id") or ""),
-            "unknown_callback_reopen_count": next_count,
-            "missing_outputs": list(paths),
-        }
-        self._cas_task_status_database(
-            str(task.task_cid),
-            expected_revision=int(task.revision),
-            new_status="todo",
-            receipt=reopen_receipt,
-        )
-        self._record_event(
-            "unimplemented_unknown_callback_reopened",
-            task_cid=str(task.task_cid),
-            body={
-                "unknown_callback_reopen_count": next_count,
-                "missing_outputs": list(paths),
-            },
-        )
-        return {
-            "task_cid": str(task.task_cid),
-            "task_alias": str(getattr(task, "task_alias", "") or ""),
-            "reopened": True,
-            "reason": "unimplemented_unknown_callback_reopen",
-            "unknown_callback_reopen_count": next_count,
-            "missing_outputs": list(paths),
-        }
+        return None
 
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
-        """Reopen unknown-callback quarantines whose outputs never landed."""
+        """Observe unknown-callback quarantines without authorizing retries."""
 
         if self.repo_root is None:
             return []

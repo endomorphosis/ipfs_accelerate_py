@@ -95,7 +95,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
     TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
@@ -3458,6 +3462,12 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
                     "goal_cid": "goal:typed-legacy-unstall",
                     "status": "ready",
                 },
+                {
+                    "task_cid": "task:legacy-unstall-unrelated-ready",
+                    "task_id": "CASF-LEGACY-UNSTALL-UNRELATED-READY",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
             ],
         }
     )
@@ -3475,6 +3485,8 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
     older_cooldown_task: TaskRecord | None = None
     older_cooldown_receipt: Mapping[str, Any] | None = None
     for task in initial_tasks:
+        if task.task_alias.endswith("UNRELATED-READY"):
+            continue
         route = route_policy.binding_for_task(task).to_dict()
         reservation = {
             "operation": "database_claim",
@@ -3718,13 +3730,27 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
             },
         )
         assert adapter._legacy_unstall_claim_candidate(forged) is None
+        admitted_alias = "CASF-LEGACY-UNSTALL-ADMISSION"
+        admitted_task = poisoned[admitted_alias]
+        admitted_receipt = retained_receipts[admitted_alias]
+        assert adapter._legacy_unstall_claim_candidate(admitted_task) is None
+        with pytest.raises(
+            QuackClientError,
+            match="legacy unstall recovery claim lineage is invalid",
+        ):
+            client.recover_legacy_unstalled_claim(
+                task_cid=admitted_task.task_cid,
+                expected_task_revision=admitted_task.revision,
+                task_body=admitted_task.body,
+                claim_receipt=admitted_receipt,
+                now_ms=2_000,
+            )
         if historic_liveness is not OwnerLiveness.DEAD:
             generation_before = client.load_generation()
-            with pytest.raises(
-                TaskSourceIntegrityError,
-                match="retrying task has no typed cooldown receipt",
-            ):
-                adapter.ready_tasks(limit=10)
+            ready = adapter.ready_tasks(limit=10)
+            assert {task.task_alias for task in ready.tasks} == {
+                "CASF-LEGACY-UNSTALL-UNRELATED-READY"
+            }
             assert client.load_generation().revision == (
                 generation_before.revision
             )
@@ -3742,9 +3768,6 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
             return
 
         reservation_alias = "CASF-LEGACY-UNSTALL-RESERVATION"
-        assert adapter._legacy_unstall_claim_candidate(
-            poisoned["CASF-LEGACY-UNSTALL-ADMISSION"]
-        ) is not None
         reservation_task = poisoned[reservation_alias]
         original_body = dict(reservation_task.body)
         original_receipt = retained_receipts[reservation_alias]
@@ -3767,8 +3790,18 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
         assert replay.result_digest == first.result_digest
 
         ready = adapter.ready_tasks(limit=10)
-        assert {task.task_alias for task in ready.tasks} == set(poisoned)
-        for task_alias, prior in poisoned.items():
+        assert {task.task_alias for task in ready.tasks} == {
+            "CASF-LEGACY-UNSTALL-RESERVATION",
+            "CASF-LEGACY-UNSTALL-OLDER-COOLDOWN",
+            "CASF-LEGACY-UNSTALL-UNRELATED-READY",
+        }
+        assert adapter.get(admitted_alias) == admitted_task
+        assert adapter._retry_cooldown_row(admitted_task.task_cid) is None
+        for task_alias in (
+            "CASF-LEGACY-UNSTALL-RESERVATION",
+            "CASF-LEGACY-UNSTALL-OLDER-COOLDOWN",
+        ):
+            prior = poisoned[task_alias]
             repaired = adapter.get(task_alias)
             assert repaired is not None
             assert repaired.status == "retrying"
@@ -3780,11 +3813,7 @@ def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
             assert receipt["operation"] == (
                 TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
             )
-            assert receipt["recovered_claim_operation"] == (
-                "database_attempt_admitted"
-                if task_alias.endswith("ADMISSION")
-                else "database_claim"
-            )
+            assert receipt["recovered_claim_operation"] == "database_claim"
             cooldown = adapter._retry_cooldown_row(repaired.task_cid)
             assert cooldown is not None
             expected_attempt = (
@@ -7454,3 +7483,509 @@ def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
     )
     assert parsed.admit_task_execution is True
     assert parsed.executor_mode == "no-change"
+
+
+def test_typed_quack_run_once_recovers_owner_relative_gitlink_lossy_retry_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the production recovery composition used by the DOEP board.
+
+    The admitted attempt predates the child output.  A retired startup path
+    then replaces its admission receipt with the historical lossy retry
+    receipt.  The current daemon must reconstruct that lineage, prove the
+    owner-relative output through the parent's immutable gitlink, complete it
+    exactly once through the typed owner, and expose its dependent without
+    redispatching either task in this recovery lane.
+    """
+
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"],
+        cwd=child_source,
+        check=True,
+    )
+    for key, value in (
+        ("user.name", "DOEP Recovery Test"),
+        ("user.email", "doep-recovery@example.invalid"),
+    ):
+        subprocess.run(
+            ["git", "config", key, value],
+            cwd=child_source,
+            check=True,
+        )
+    (child_source / "README.md").write_text("baseline\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=child_source, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "child baseline"],
+        cwd=child_source,
+        check=True,
+    )
+    child_baseline_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=child_source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    child_baseline_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=child_source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    repository = tmp_path / "portfolio"
+    repository.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"], cwd=repository, check=True
+    )
+    for key, value in (
+        ("user.name", "DOEP Recovery Test"),
+        ("user.email", "doep-recovery@example.invalid"),
+    ):
+        subprocess.run(
+            ["git", "config", key, value], cwd=repository, check=True
+        )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(child_source),
+            "external/child",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qam", "portfolio baseline"],
+        cwd=repository,
+        check=True,
+    )
+    baseline_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    baseline_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    database = repository / ".agent-state" / "control.duckdb"
+    database.parent.mkdir()
+    population = {
+        "repository_tree_id": f"git-tree:{baseline_tree}",
+        "plan_root_cid": "plan:doep-lossy-recovery",
+        "objectives": [
+            {
+                "objective_id": "objective:doep-lossy-recovery",
+                "objective_alias": "DOEP-O-RECOVERY",
+                "goal_cid": "goal:doep-lossy-recovery",
+                "goal_alias": "DOEP-G-RECOVERY",
+                "title": "Recover landed admitted attempts",
+            }
+        ],
+        "plans": [
+            {
+                "plan_cid": "plan:doep-lossy-recovery",
+                "plan_alias": "DOEP-P-RECOVERY",
+                "goal_cid": "goal:doep-lossy-recovery",
+            }
+        ],
+        "tasks": [
+            {
+                "task_cid": "task:doep-landed",
+                "task_id": "DOEP-000",
+                "goal_cid": "goal:doep-lossy-recovery",
+                "plan_cid": "plan:doep-lossy-recovery",
+                "objective_id": "objective:doep-lossy-recovery",
+                "status": "ready",
+                # This is the live board shape: child-relative outputs plus
+                # an explicit owner and a redundant operator-facing path.
+                "outputs": [{"path": "landed.py", "effect": {}}],
+                "owning_repository": "external/child",
+                "metadata": {"owning_repository": "external/child"},
+                "superproject_outputs": [
+                    {"path": "external/child/landed.py", "effect": {}}
+                ],
+                "repository_commit": baseline_commit,
+                "base_repositories": {
+                    "ipfs_accelerate_py": {
+                        "commit": child_baseline_commit,
+                        "tree": child_baseline_tree,
+                    }
+                },
+                "validations": [
+                    {
+                        "argv": ["git", "cat-file", "-e", "HEAD:landed.py"],
+                        "shell": False,
+                        "policy": {},
+                    }
+                ],
+            },
+            {
+                "task_cid": "task:doep-successor",
+                "task_id": "DOEP-010",
+                "goal_cid": "goal:doep-lossy-recovery",
+                "plan_cid": "plan:doep-lossy-recovery",
+                "objective_id": "objective:doep-lossy-recovery",
+                "status": "todo",
+                "dependencies": ["task:doep-landed"],
+            },
+        ],
+    }
+    direct = DatabaseTaskSource(database)
+    direct.materialize(
+        population,
+        repository_tree_id=f"git-tree:{baseline_tree}",
+        plan_root_cid="plan:doep-lossy-recovery",
+    )
+    initial_tasks = direct.list_tasks(limit=10).tasks
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=direct.snapshot(),
+        tasks=initial_tasks,
+        execution_modes={
+            task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+            for task in initial_tasks
+        },
+    )
+    predecessor = direct.get_task("task:doep-landed")
+    assert predecessor is not None and predecessor.revision == 1
+    route = route_policy.binding_for_task(predecessor).to_dict()
+    historic_pid = 999_999
+    historic_ticks = 17
+    historic_boot = "boot:doep-historic-dead"
+    historic_parent = 0
+    client_id = "database-implementation-daemon:doep-recovery"
+    historic_process = {
+        "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+        "grant_id": "grant:doep-historic-dead",
+        "client_id": client_id,
+        "process_birth_id": _process_birth_content_id(
+            historic_pid,
+            historic_ticks,
+            historic_boot,
+            historic_parent,
+        ),
+        "pid": historic_pid,
+        "uid": os.getuid(),
+        "start_time_ticks": historic_ticks,
+        "boot_id": historic_boot,
+        "parent_pid": historic_parent,
+    }
+    claim = {
+        "operation": "database_claim",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": historic_process,
+        "claim_id": "claim:doep-landed",
+        "attempt_id": "attempt:doep-landed",
+        "attempt_number": 1,
+        "lease_id": "lease:doep-landed",
+        "owner_session_id": "session:doep-historic",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "claimed_from_revision": 1,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    claimed = direct.compare_and_set_status(
+        predecessor.task_cid,
+        predecessor.revision,
+        "in_progress",
+        claim,
+    ).task
+    admitted = {
+        **claim,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": claimed.revision,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    admitted_body = dict(claimed.body)
+    admitted_body["completion_receipt"] = admitted
+    lossy = {
+        "schema": TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+        "operation": TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+        "reason": TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
+        "task_alias": predecessor.task_alias,
+        "age_seconds": 600,
+    }
+    lossy_body = {**admitted_body, "completion_receipt": lossy}
+    recorded_at = "2026-08-30T00:00:00Z"
+    connection = open_duckdb_connection(database)
+    try:
+        for revision, status, body in (
+            (claimed.revision + 1, "in_progress", admitted_body),
+            (claimed.revision + 2, "retrying", lossy_body),
+        ):
+            connection.execute(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+                "body_json = ? WHERE task_cid = ? AND revision = ?",
+                [
+                    status,
+                    revision,
+                    recorded_at,
+                    canonical_json_bytes(body).decode("utf-8"),
+                    predecessor.task_cid,
+                    revision - 1,
+                ],
+            )
+            connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    predecessor.task_cid,
+                    revision,
+                    status,
+                    canonical_json_bytes(body).decode("utf-8"),
+                    recorded_at,
+                ],
+            )
+    finally:
+        connection.close()
+        direct.close()
+
+    # Land the declared child-relative output and then seal that exact child
+    # commit into the parent gitlink.  Merely changing the mutable child HEAD
+    # is deliberately insufficient for the recovery proof.
+    child = repository / "external" / "child"
+    (child / "landed.py").write_text("landed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "landed.py"], cwd=child, check=True)
+    subprocess.run(
+        [
+            "git",
+            "commit",
+            "-qm",
+            (
+                "DOEP-000: land admitted output\n\n"
+                "Attempt: 1\n\n"
+                "Submodule: external/child"
+            ),
+        ],
+        cwd=child,
+        check=True,
+    )
+    candidate_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "add", "external/child"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "record landed child"],
+        cwd=repository,
+        check=True,
+    )
+
+    server = build_server(
+        database_path=database,
+        state_dir=repository / ".agent-state" / "owner",
+        store_id="doep-composed-recovery-v1",
+        repository_id="repository:doep-composed-recovery",
+        repository_root=repository,
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    token, _grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=daemon_required_owner_command_operations(),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+
+        def unexpected_provider(attempt: DatabaseTaskAttempt) -> Mapping[str, Any]:
+            provider_calls.append(attempt.task_cid)
+            pytest.fail("landed recovery dispatched a provider")
+
+        def unexpected_effect(
+            attempt: DatabaseTaskAttempt,
+            _provider: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            effect_calls.append(attempt.task_cid)
+            pytest.fail("landed recovery repeated an effect")
+
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=tmp_path / "lane" / "coordination.duckdb",
+            execution_path=tmp_path / "lane" / "execution.duckdb",
+            owner_session_id="session:doep-recovery-lane",
+            process_instance_id=identity.process_birth_id,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            state_owner_bootstrap_credentials=credentials,
+            install_schema=False,
+            repo_root=repository,
+            merge_target_ref="HEAD",
+            task_prefix="DOEP-",
+            execution_slice_task_cids=(predecessor.task_cid,),
+            provider_fn=unexpected_provider,
+            effect_fn=unexpected_effect,
+            post_merge_recovery_fn=lambda: None,
+            require_real_execution=True,
+        )
+        daemon.open()
+
+        first = daemon.run_once()
+        repaired = first["landed_merge_reconciliations"]
+        assert len(repaired) == 1
+        assert repaired[0]["task_cid"] == predecessor.task_cid
+        assert repaired[0]["completed"] is True, repaired
+        completed = adapter.get_task(predecessor.task_cid)
+        assert completed is not None and completed.status == "completed"
+        receipt = completed.body["completion_receipt"]
+        assert receipt["source_status"] == "retrying"
+        proof = receipt["landed_output_proof"]
+        assert proof["schema"].endswith("database-landed-merge-repair@3")
+        assert proof["landed_output_checks"] == [
+            {
+                "path": "landed.py",
+                "repository": "external/child",
+                "repository_ref": subprocess.run(
+                    ["git", "rev-parse", "HEAD:external/child"],
+                    cwd=repository,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+                "tracked_path": "landed.py",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": subprocess.run(
+                    ["git", "rev-parse", "HEAD:landed.py"],
+                    cwd=child,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+            }
+        ]
+        lineage = proof["candidate_lineage"]
+        assert lineage["schema"].endswith(
+            "database-landed-candidate-lineage@1"
+        )
+        assert lineage["repository"] == "external/child"
+        assert lineage["base_commit"] == child_baseline_commit
+        assert lineage["base_tree"] == child_baseline_tree
+        assert lineage["candidate_commit"] == candidate_commit
+        assert lineage["candidate_parent"] == child_baseline_commit
+        assert lineage["candidate_tree"] == candidate_tree
+        assert lineage["current_repository_commit"] == candidate_commit
+        assert lineage["current_repository_tree"] == candidate_tree
+        assert lineage["changed_paths"] == ["landed.py"]
+        assert lineage["task_alias"] == "DOEP-000"
+        assert lineage["attempt_id"] == "attempt:doep-landed"
+        assert lineage["attempt_number"] == 1
+        validation = proof["validation_receipt"]
+        assert validation["schema"].endswith(
+            "database-landed-current-tree-validation@1"
+        )
+        assert validation["task_cid"] == predecessor.task_cid
+        assert validation["task_alias"] == "DOEP-000"
+        assert validation["repository"] == "external/child"
+        assert validation["repository_ref"] == candidate_commit
+        assert validation["outcome"] == "passed"
+        assert validation["commands"] == [
+            {
+                "argv": ["git", "cat-file", "-e", "HEAD:landed.py"],
+                "returncode": 0,
+                "output_sha256": (
+                    "sha256:e3b0c44298fc1c149afbf4c8996fb924"
+                    "27ae41e4649b934ca495991b7852b855"
+                ),
+                "output_bytes": 0,
+            }
+        ]
+        validation_body = dict(validation)
+        validation_receipt_id = validation_body.pop("receipt_id")
+        assert validation_receipt_id == content_identity(validation_body)
+        ready = adapter.ready_tasks().tasks
+        assert [task.task_cid for task in ready] == ["task:doep-successor"]
+
+        second = daemon.run_once()
+        assert second["landed_merge_reconciliations"] == []
+        assert provider_calls == []
+        assert effect_calls == []
+        history = adapter.task_revision_history_projection(
+            predecessor.task_cid
+        )["revisions"]
+        assert [item["status"] for item in history] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "retrying",
+            "completed",
+        ]
+        count_row = server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = ?",
+            [predecessor.task_cid],
+        ).fetchone()
+        assert count_row is not None and int(count_row[0]) == 1
+    finally:
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        elif client.attached:
+            client.close()
+        server.stop()

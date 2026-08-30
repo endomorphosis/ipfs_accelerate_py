@@ -25,6 +25,7 @@ import secrets
 import socket
 import stat
 import struct
+import subprocess
 import threading
 import time
 import uuid
@@ -51,11 +52,6 @@ from .database_task_source import (
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskSourceIntegrityError,
 )
-from .intent_repository import (
-    MAX_BODY_BYTES,
-    IntentRepositoryError,
-    _prepare_database_virgin_transfer_receipt_on,
-)
 from .duckdb_state import (
     DuckDBConnectionPolicyError,
     _drop_lease_state_indexes,
@@ -63,6 +59,11 @@ from .duckdb_state import (
     _restore_task_status_indexes,
     is_art_index_delete_fatal,
     rebuild_task_status_indexes,
+)
+from .intent_repository import (
+    MAX_BODY_BYTES,
+    IntentRepositoryError,
+    _prepare_database_virgin_transfer_receipt_on,
 )
 
 _OWNER_LOGGER = logging.getLogger(__name__)
@@ -114,6 +115,56 @@ TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
 )
 TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
     "database_claim_legacy_unstall_dead_process"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-orphan-in-progress-unstall@1"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION: Final = (
+    "unstall_orphan_in_progress_without_live_lifecycle"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON: Final = (
+    "in_progress_without_live_worktree_lifecycle_owner"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-legacy-orphan-landed-completion@1"
+)
+TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-dead-admitted-outcome-unknown@1"
+)
+TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION: Final = (
+    "database_dead_admitted_provider_outcome_unknown_quarantine"
+)
+TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_REASON: Final = (
+    "database_attempt_admitted_owner_dead_provider_outcome_unknown"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-legacy-orphan-outcome-unknown@1"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION: Final = (
+    "database_legacy_orphan_provider_outcome_unknown_quarantine"
+)
+TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_REASON: Final = (
+    "legacy_orphan_unstall_owner_dead_provider_outcome_unknown"
+)
+TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-retained-admission-retrying-outcome-unknown@1"
+)
+TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION: Final = (
+    "database_retained_admission_retrying_provider_outcome_unknown_quarantine"
+)
+TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_REASON: Final = (
+    "database_attempt_admission_retained_in_retrying_owner_dead_provider_outcome_unknown"
+)
+TYPED_DATABASE_LANDED_OUTPUT_PROOF_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/database-landed-merge-repair@3"
+)
+TYPED_DATABASE_LANDED_OUTPUT_PROOF_OPERATION: Final = (
+    "database_landed_merge_repair"
 )
 TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -1577,6 +1628,1418 @@ def _validated_database_claim_process_attestation(
     return attestation
 
 
+def _validated_legacy_orphan_unstall_receipt(
+    receipt: Any,
+    *,
+    task_alias: str,
+) -> dict[str, Any]:
+    """Accept only the exact lossy receipt written by the retired unstall path."""
+
+    required = {
+        "schema",
+        "operation",
+        "reason",
+        "task_alias",
+        "age_seconds",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan unstall receipt differs from its closed schema"
+        )
+    values = dict(receipt)
+    age_seconds = values.get("age_seconds")
+    if (
+        values.get("schema") != TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA
+        or values.get("operation")
+        != TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION
+        or values.get("reason") != TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON
+        or values.get("task_alias") != task_alias
+        or type(age_seconds) is not int
+        or not 0 <= age_seconds <= 31_536_000
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan unstall receipt is not the exact known-bad form"
+        )
+    return values
+
+
+def _safe_landed_proof_path(value: Any, *, noun: str) -> str:
+    if (
+        type(value) is not str
+        or not value
+        or value != value.strip()
+        or value.startswith(("/", "~"))
+        or "\\" in value
+        or len(value.encode("utf-8")) > 4_096
+        or any(marker in value for marker in ("\x00", "\n", "\r", "\t"))
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise TypedStateOwnerAuthorizationError(f"{noun} is unsafe")
+    return value
+
+
+def _task_owning_repository_from_body(body: Mapping[str, Any]) -> str:
+    """Resolve the repository authority sealed into one immutable task body."""
+
+    scopes: list[Mapping[str, Any]] = [body]
+    metadata = body.get("metadata")
+    if isinstance(metadata, Mapping):
+        scopes.append(metadata)
+    selected = "."
+    for scope in scopes:
+        for key in ("owning_repository", "owning repository"):
+            raw = scope.get(key)
+            if type(raw) is str and raw.strip():
+                selected = raw.strip().replace("\\", "/")
+                break
+        if selected != ".":
+            break
+    if selected == ".":
+        return selected
+    return _safe_landed_proof_path(
+        selected,
+        noun="task owning repository",
+    )
+
+
+def _validated_database_landed_output_proof(
+    proof: Any,
+    *,
+    task_cid: str,
+    task_alias: str,
+    admitted_attempt_id: str,
+    admitted_attempt_number: int,
+) -> dict[str, Any]:
+    """Validate the exact immutable-tree proof accepted for orphan completion."""
+
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "merge_target_ref",
+        "merge_target_commit",
+        "landed_outputs",
+        "landed_output_checks",
+        "candidate_lineage",
+        "validation_receipt",
+    }
+    if not isinstance(proof, Mapping) or set(proof) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof differs from its closed schema"
+        )
+    values = dict(proof)
+    attempt_id = values.get("attempt_id")
+    merge_target_ref = values.get("merge_target_ref")
+    merge_target_commit = values.get("merge_target_commit")
+    if (
+        values.get("schema") != TYPED_DATABASE_LANDED_OUTPUT_PROOF_SCHEMA
+        or values.get("operation")
+        != TYPED_DATABASE_LANDED_OUTPUT_PROOF_OPERATION
+        or values.get("task_cid") != task_cid
+        or values.get("task_alias") != task_alias
+        or attempt_id != admitted_attempt_id
+        or type(admitted_attempt_number) is not int
+        or admitted_attempt_number < 1
+        or type(merge_target_ref) is not str
+        or not merge_target_ref.strip()
+        or merge_target_ref != merge_target_ref.strip()
+        or len(merge_target_ref.encode("utf-8")) > 1_024
+        or any(marker in merge_target_ref for marker in ("\x00", "\n", "\r"))
+        or type(merge_target_commit) is not str
+        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", merge_target_commit)
+        is None
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof identity or immutable target is invalid"
+        )
+    outputs = values.get("landed_outputs")
+    checks = values.get("landed_output_checks")
+    if (
+        type(outputs) is not list
+        or type(checks) is not list
+        or not outputs
+        or len(outputs) > 256
+        or len(checks) != len(outputs)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof has no bounded one-to-one checks"
+        )
+    normalized_outputs = [
+        _safe_landed_proof_path(item, noun="landed output path")
+        for item in outputs
+    ]
+    if len(set(normalized_outputs)) != len(normalized_outputs):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof contains duplicate paths"
+        )
+    normalized_checks: list[dict[str, Any]] = []
+    check_fields = {
+        "path",
+        "repository",
+        "repository_ref",
+        "tracked_path",
+        "mode",
+        "object_type",
+        "object_id",
+    }
+    repository_refs: dict[str, str] = {}
+    for output, raw_check in zip(normalized_outputs, checks, strict=True):
+        if not isinstance(raw_check, Mapping) or set(raw_check) != check_fields:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output check differs from its closed schema"
+            )
+        check = dict(raw_check)
+        path = _safe_landed_proof_path(
+            check.get("path"), noun="landed output checked path"
+        )
+        tracked_path = _safe_landed_proof_path(
+            check.get("tracked_path"), noun="landed output tracked path"
+        )
+        repository = check.get("repository")
+        repository_ref = check.get("repository_ref")
+        mode = check.get("mode")
+        object_type = check.get("object_type")
+        object_id = check.get("object_id")
+        if (
+            path != output
+            or type(repository) is not str
+            or type(repository_ref) is not str
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", repository_ref)
+            is None
+            or mode not in {"100644", "100755"}
+            or object_type != "blob"
+            or type(object_id) is not str
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id)
+            is None
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output check identity is invalid"
+            )
+        if repository == ".":
+            exact_tree_binding = bool(
+                tracked_path == path and repository_ref == merge_target_commit
+            )
+        else:
+            normalized_repository = _safe_landed_proof_path(
+                repository, noun="landed output repository"
+            )
+            exact_tree_binding = bool(
+                tracked_path
+                == (
+                    path[len(normalized_repository) + 1 :]
+                    if path.startswith(normalized_repository + "/")
+                    else path
+                )
+            )
+        if not exact_tree_binding:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output check is not bound to its exact tree path"
+            )
+        prior_repository_ref = repository_refs.setdefault(
+            repository,
+            repository_ref,
+        )
+        if prior_repository_ref != repository_ref:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output repository checks span different commits"
+            )
+        normalized_checks.append(check)
+
+    if len(repository_refs) != 1:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof spans more than one repository"
+        )
+    proof_repository, proof_repository_ref = next(iter(repository_refs.items()))
+    tracked_paths = [str(check["tracked_path"]) for check in normalized_checks]
+
+    lineage_fields = {
+        "schema",
+        "repository",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_parent",
+        "candidate_tree",
+        "current_repository_commit",
+        "current_repository_tree",
+        "changed_paths",
+        "task_alias",
+        "attempt_id",
+        "attempt_number",
+        "commit_message_sha256",
+    }
+    raw_lineage = values.get("candidate_lineage")
+    if not isinstance(raw_lineage, Mapping) or set(raw_lineage) != lineage_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "landed candidate lineage differs from its closed schema"
+        )
+    lineage = dict(raw_lineage)
+    hexadecimal_fields = (
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_parent",
+        "candidate_tree",
+        "current_repository_commit",
+        "current_repository_tree",
+    )
+    changed_paths = lineage.get("changed_paths")
+    if (
+        lineage.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-landed-candidate-lineage@1"
+        )
+        or lineage.get("repository") != proof_repository
+        or lineage.get("current_repository_commit") != proof_repository_ref
+        or lineage.get("task_alias") != task_alias
+        or lineage.get("attempt_id") != admitted_attempt_id
+        or not _strict_scalar_equal(
+            lineage.get("attempt_number"), admitted_attempt_number
+        )
+        or any(
+            type(lineage.get(name)) is not str
+            or re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}", str(lineage.get(name))
+            )
+            is None
+            for name in hexadecimal_fields
+        )
+        or type(changed_paths) is not list
+        or changed_paths != sorted(tracked_paths)
+        or len(changed_paths) != len(set(changed_paths))
+        or type(lineage.get("commit_message_sha256")) is not str
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", lineage["commit_message_sha256"]
+        )
+        is None
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed candidate lineage identity is invalid"
+        )
+
+    validation_fields = {
+        "schema",
+        "task_cid",
+        "task_alias",
+        "repository",
+        "repository_ref",
+        "merge_target_commit",
+        "outcome",
+        "commands",
+        "receipt_id",
+    }
+    raw_validation = values.get("validation_receipt")
+    if (
+        not isinstance(raw_validation, Mapping)
+        or set(raw_validation) != validation_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed validation receipt differs from its closed schema"
+        )
+    validation = dict(raw_validation)
+    raw_commands = validation.get("commands")
+    if (
+        validation.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-landed-current-tree-validation@1"
+        )
+        or validation.get("task_cid") != task_cid
+        or validation.get("task_alias") != task_alias
+        or validation.get("repository") != proof_repository
+        or validation.get("repository_ref") != proof_repository_ref
+        or validation.get("merge_target_commit") != merge_target_commit
+        or validation.get("outcome") != "passed"
+        or type(raw_commands) is not list
+        or not raw_commands
+        or len(raw_commands) > 16
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed validation receipt identity is invalid"
+        )
+    normalized_commands: list[dict[str, Any]] = []
+    command_fields = {
+        "argv",
+        "returncode",
+        "output_sha256",
+        "output_bytes",
+    }
+    for raw_command in raw_commands:
+        if not isinstance(raw_command, Mapping) or set(raw_command) != command_fields:
+            raise TypedStateOwnerAuthorizationError(
+                "landed validation command differs from its closed schema"
+            )
+        command = dict(raw_command)
+        argv = command.get("argv")
+        output_bytes = command.get("output_bytes")
+        if (
+            type(argv) is not list
+            or not argv
+            or len(argv) > 128
+            or any(
+                type(argument) is not str
+                or not argument
+                or "\x00" in argument
+                or len(argument.encode("utf-8")) > 4_096
+                for argument in argv
+            )
+            or not _strict_scalar_equal(command.get("returncode"), 0)
+            or type(command.get("output_sha256")) is not str
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", command["output_sha256"]
+            )
+            is None
+            or type(output_bytes) is not int
+            or not 0 <= output_bytes <= 8 * 1_024 * 1_024
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "landed validation command result is invalid"
+            )
+        normalized_commands.append(command)
+    validation_body = {
+        key: validation[key]
+        for key in validation_fields
+        if key != "receipt_id"
+    }
+    if validation.get("receipt_id") != content_identity(validation_body):
+        raise TypedStateOwnerAuthorizationError(
+            "landed validation receipt identity differs from its contents"
+        )
+
+    normalized = {
+        **values,
+        "landed_outputs": normalized_outputs,
+        "landed_output_checks": normalized_checks,
+        "candidate_lineage": lineage,
+        "validation_receipt": {
+            **validation,
+            "commands": normalized_commands,
+        },
+    }
+    if len(canonical_json_bytes(normalized)) > _MAX_EXECUTOR_TASK_BODY_JSON_BYTES:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof exceeds its byte bound"
+        )
+    return normalized
+
+
+def _immutable_git_tree_entry(
+    repository_root: Path,
+    *,
+    commit: str,
+    path: str,
+    timeout_seconds: float = 10.0,
+) -> tuple[str, str, str, str]:
+    """Read one exact immutable Git tree entry without consulting worktree HEAD."""
+
+    root = Path(repository_root).resolve(strict=True)
+    if (
+        re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit) is None
+        or _safe_landed_proof_path(path, noun="immutable Git tree path") != path
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output Git tree query is unsafe"
+        )
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-tree",
+                "-z",
+                "--full-tree",
+                commit,
+                "--",
+                path,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=max(0.05, float(timeout_seconds)),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output immutable Git tree is unavailable"
+        ) from exc
+    rows = [row for row in completed.stdout.split(b"\0") if row]
+    if completed.returncode != 0 or len(rows) != 1:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output immutable Git tree entry is absent or ambiguous"
+        )
+    try:
+        metadata, observed_path = rows[0].split(b"\t", 1)
+        mode, object_type, object_id = metadata.decode("ascii").split(" ", 2)
+        decoded_path = observed_path.decode("utf-8")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output immutable Git tree entry is malformed"
+        ) from exc
+    if decoded_path != path:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output immutable Git tree path differs from its proof"
+        )
+    return mode, object_type, object_id, decoded_path
+
+
+def _verify_database_landed_output_proof(
+    proof: Mapping[str, Any],
+    *,
+    repository_root: Path | None,
+    expected_repository: str,
+    task_cid: str,
+    task_alias: str,
+    task_body: Mapping[str, Any],
+    admitted_attempt_id: str,
+    admitted_attempt_number: int,
+    declared_validation_argv: Sequence[Sequence[str]],
+) -> None:
+    """Independently bind a landed proof to task authority and Git objects."""
+
+    if repository_root is None:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output verification requires the owner's repository root"
+        )
+    try:
+        root = Path(repository_root).resolve(strict=True)
+    except OSError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output owner repository is unavailable"
+        ) from exc
+    merge_commit = str(proof.get("merge_target_commit") or "")
+    merge_target_ref = str(proof.get("merge_target_ref") or "")
+    expected_owner = str(expected_repository or "").strip()
+    if expected_owner != ".":
+        expected_owner = _safe_landed_proof_path(
+            expected_owner,
+            noun="landed output owning repository",
+        )
+    deadline = time.monotonic() + 10.0
+
+    def remaining() -> float:
+        available = deadline - time.monotonic()
+        if available <= 0.05:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output immutable Git verification exceeded its total deadline"
+            )
+        return available
+
+    def run_git(
+        repository: Path,
+        *arguments: str,
+        text_output: bool = True,
+    ) -> subprocess.CompletedProcess[Any]:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(repository), *arguments],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=text_output,
+                check=False,
+                timeout=remaining(),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output immutable Git verification is unavailable"
+            ) from exc
+    # This narrow legacy recovery is authorized only against the checkout's
+    # canonical target.  Arbitrary client-selected refs would let a stale or
+    # unrelated historical tree masquerade as the current merge result.
+    if merge_target_ref != "HEAD":
+        raise TypedStateOwnerAuthorizationError(
+            "landed output merge target ref is outside owner policy"
+        )
+    try:
+        resolved_target = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "rev-parse",
+                "--verify",
+                f"{merge_target_ref}^{{commit}}",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+            timeout=remaining(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output merge target is unavailable"
+        ) from exc
+    if (
+        resolved_target.returncode != 0
+        or resolved_target.stdout.strip() != merge_commit
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof is stale for the current merge target"
+        )
+    checks = proof.get("landed_output_checks")
+    if not isinstance(checks, list):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output checks are unavailable"
+        )
+    repositories = {
+        str(item.get("repository") or "")
+        for item in checks
+        if isinstance(item, Mapping)
+    }
+    if repositories != {expected_owner} or len(repositories) > 16:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output checks differ from the task owning repository"
+        )
+    verified_gitlinks: dict[str, str] = {}
+    for raw_check in checks:
+        if not isinstance(raw_check, Mapping):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output check is malformed"
+            )
+        check = dict(raw_check)
+        repository = str(check["repository"])
+        repository_ref = str(check["repository_ref"])
+        tracked_path = str(check["tracked_path"])
+        if repository == ".":
+            inspected_root = root
+            inspected_commit = merge_commit
+        else:
+            if repository not in verified_gitlinks:
+                gitlink = _immutable_git_tree_entry(
+                    root,
+                    commit=merge_commit,
+                    path=repository,
+                    timeout_seconds=remaining(),
+                )
+                if gitlink[:3] != ("160000", "commit", repository_ref):
+                    raise TypedStateOwnerAuthorizationError(
+                        "landed output child commit differs from the outer gitlink"
+                    )
+                verified_gitlinks[repository] = repository_ref
+            elif verified_gitlinks[repository] != repository_ref:
+                raise TypedStateOwnerAuthorizationError(
+                    "landed output child checks span different gitlinks"
+                )
+            candidate = root / repository
+            try:
+                if candidate.is_symlink():
+                    raise OSError("child repository path is a symlink")
+                inspected_root = candidate.resolve(strict=True)
+                inspected_root.relative_to(root)
+            except (OSError, ValueError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "landed output child repository escapes or is unavailable"
+                ) from exc
+            top_level = run_git(inspected_root, "rev-parse", "--show-toplevel")
+            if (
+                top_level.returncode != 0
+                or Path(top_level.stdout.strip()).resolve() != inspected_root
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "landed output child repository identity is invalid"
+                )
+            inspected_commit = repository_ref
+        observed = _immutable_git_tree_entry(
+            inspected_root,
+            commit=inspected_commit,
+            path=tracked_path,
+            timeout_seconds=remaining(),
+        )
+        if observed[:3] != (
+            str(check["mode"]),
+            str(check["object_type"]),
+            str(check["object_id"]),
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output immutable Git object differs from its proof"
+            )
+
+    repository_ref = str(checks[0].get("repository_ref") or "")
+    repository = str(checks[0].get("repository") or "")
+    if inspected_commit != repository_ref:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output repository ref differs from its checks"
+        )
+    current_repository_head = run_git(
+        inspected_root,
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+    )
+    if (
+        current_repository_head.returncode != 0
+        or current_repository_head.stdout.strip() != repository_ref
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output repository checkout differs from its immutable ref"
+        )
+    for diff_arguments in (
+        ("diff", "--quiet", "HEAD", "--"),
+        ("diff", "--cached", "--quiet", "HEAD", "--"),
+    ):
+        clean = run_git(inspected_root, *diff_arguments)
+        if clean.returncode != 0:
+            raise TypedStateOwnerAuthorizationError(
+                "landed output repository has tracked worktree changes"
+            )
+    clean_status = run_git(
+        inspected_root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        text_output=False,
+    )
+    if clean_status.returncode != 0 or clean_status.stdout:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output repository has tracked or untracked worktree changes"
+        )
+
+    lineage = proof.get("candidate_lineage")
+    validation = proof.get("validation_receipt")
+    if not isinstance(lineage, Mapping) or not isinstance(validation, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output proof lacks lineage or validation authority"
+        )
+    if (
+        lineage.get("repository") != repository
+        or lineage.get("current_repository_commit") != repository_ref
+        or lineage.get("task_alias") != task_alias
+        or lineage.get("attempt_id") != admitted_attempt_id
+        or not _strict_scalar_equal(
+            lineage.get("attempt_number"), admitted_attempt_number
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output lineage differs from admitted task authority"
+        )
+
+    current_tree = run_git(
+        inspected_root,
+        "rev-parse",
+        "--verify",
+        f"{repository_ref}^{{tree}}",
+    )
+    if (
+        current_tree.returncode != 0
+        or current_tree.stdout.strip() != lineage.get("current_repository_tree")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output current repository tree differs from its lineage"
+        )
+
+    candidate_commit = str(lineage.get("candidate_commit") or "")
+    candidate_parent = str(lineage.get("candidate_parent") or "")
+    candidate_parents = run_git(
+        inspected_root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        candidate_commit,
+    )
+    if (
+        candidate_parents.returncode != 0
+        or candidate_parents.stdout.strip().split()
+        != [candidate_commit, candidate_parent]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate is not the exact one-parent commit"
+        )
+    candidate_tree = run_git(
+        inspected_root,
+        "rev-parse",
+        "--verify",
+        f"{candidate_commit}^{{tree}}",
+    )
+    if (
+        candidate_tree.returncode != 0
+        or candidate_tree.stdout.strip() != lineage.get("candidate_tree")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate tree differs from its lineage"
+        )
+    candidate_is_current_ancestor = run_git(
+        inspected_root,
+        "merge-base",
+        "--is-ancestor",
+        candidate_commit,
+        repository_ref,
+    )
+    if candidate_is_current_ancestor.returncode != 0:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate is not in the current repository lineage"
+        )
+
+    base_repositories = task_body.get("base_repositories")
+    if (
+        not isinstance(base_repositories, Mapping)
+        or not base_repositories
+        or len(base_repositories) > 16
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output task base repositories are unavailable or unbounded"
+        )
+    qualified_bases: list[tuple[str, str]] = []
+    for raw_base in base_repositories.values():
+        if not isinstance(raw_base, Mapping):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output task base repository is malformed"
+            )
+        base_commit = raw_base.get("commit")
+        base_tree = raw_base.get("tree")
+        if (
+            type(base_commit) is not str
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", base_commit) is None
+            or type(base_tree) is not str
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", base_tree) is None
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output task base repository identity is invalid"
+            )
+        observed_base_tree = run_git(
+            inspected_root,
+            "rev-parse",
+            "--verify",
+            f"{base_commit}^{{tree}}",
+        )
+        if observed_base_tree.returncode != 0:
+            continue
+        base_is_parent_ancestor = run_git(
+            inspected_root,
+            "merge-base",
+            "--is-ancestor",
+            base_commit,
+            candidate_parent,
+        )
+        if (
+            observed_base_tree.stdout.strip() == base_tree
+            and base_is_parent_ancestor.returncode == 0
+        ):
+            qualified_bases.append((base_commit, base_tree))
+    if qualified_bases != [
+        (
+            str(lineage.get("base_commit") or ""),
+            str(lineage.get("base_tree") or ""),
+        )
+    ]:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate has no unique task-authorized base"
+        )
+
+    changed_paths_result = run_git(
+        inspected_root,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        "-z",
+        candidate_commit,
+        text_output=False,
+    )
+    if changed_paths_result.returncode != 0:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate changed paths are unavailable"
+        )
+    try:
+        changed_paths = sorted(
+            item.decode("utf-8")
+            for item in changed_paths_result.stdout.split(b"\0")
+            if item
+        )
+    except UnicodeDecodeError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate changed paths are malformed"
+        ) from exc
+    tracked_paths = sorted(str(item["tracked_path"]) for item in checks)
+    if (
+        changed_paths != tracked_paths
+        or changed_paths != lineage.get("changed_paths")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate changed paths exceed task scope"
+        )
+    for raw_check in checks:
+        check = dict(raw_check)
+        candidate_entry = _immutable_git_tree_entry(
+            inspected_root,
+            commit=candidate_commit,
+            path=str(check["tracked_path"]),
+            timeout_seconds=remaining(),
+        )
+        if candidate_entry[:3] != (
+            str(check["mode"]),
+            str(check["object_type"]),
+            str(check["object_id"]),
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "landed output candidate blobs differ from the current proof"
+            )
+
+    candidate_message = run_git(
+        inspected_root,
+        "show",
+        "-s",
+        "--format=%B",
+        candidate_commit,
+    )
+    if candidate_message.returncode != 0:
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate message is unavailable"
+        )
+    message = candidate_message.stdout
+    message_lines = [line.strip() for line in message.splitlines() if line.strip()]
+    attempt_trailers = [
+        line for line in message_lines if line.startswith("Attempt:")
+    ]
+    submodule_trailers = [
+        line for line in message_lines if line.startswith("Submodule:")
+    ]
+    expected_submodule_trailers = (
+        [] if repository == "." else [f"Submodule: {repository}"]
+    )
+    if (
+        not message.startswith(task_alias + ":")
+        or attempt_trailers != [f"Attempt: {admitted_attempt_number}"]
+        or submodule_trailers != expected_submodule_trailers
+        or lineage.get("commit_message_sha256")
+        != "sha256:" + hashlib.sha256(message.encode("utf-8")).hexdigest()
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output candidate message does not bind the admitted attempt"
+        )
+
+    expected_validation_argv = [list(argv) for argv in declared_validation_argv]
+    observed_commands = validation.get("commands")
+    if (
+        validation.get("task_cid") != task_cid
+        or validation.get("task_alias") != task_alias
+        or validation.get("repository") != repository
+        or validation.get("repository_ref") != repository_ref
+        or validation.get("merge_target_commit") != merge_commit
+        or validation.get("outcome") != "passed"
+        or not isinstance(observed_commands, list)
+        or [
+            command.get("argv") if isinstance(command, Mapping) else None
+            for command in observed_commands
+        ]
+        != expected_validation_argv
+        or any(
+            not isinstance(command, Mapping)
+            or not _strict_scalar_equal(command.get("returncode"), 0)
+            or type(command.get("output_bytes")) is not int
+            or not 0 <= command["output_bytes"] <= 8 * 1_024 * 1_024
+            or type(command.get("output_sha256")) is not str
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", command["output_sha256"]
+            )
+            is None
+            for command in observed_commands
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed validation result differs from declared task validations"
+        )
+    validation_body = dict(validation)
+    validation_receipt_id = validation_body.pop("receipt_id", None)
+    if validation_receipt_id != content_identity(validation_body):
+        raise TypedStateOwnerAuthorizationError(
+            "landed validation result identity differs from its contents"
+        )
+    # Detect a target advance that happened while the bounded tree checks ran.
+    confirmed_clean_status = run_git(
+        inspected_root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        text_output=False,
+    )
+    confirmed_repository_head = run_git(
+        inspected_root,
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+    )
+    confirmed_target = run_git(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{merge_target_ref}^{{commit}}",
+    )
+    confirmed_clean = all(
+        run_git(inspected_root, *diff_arguments).returncode == 0
+        for diff_arguments in (
+            ("diff", "--quiet", "HEAD", "--"),
+            ("diff", "--cached", "--quiet", "HEAD", "--"),
+        )
+    )
+    if (
+        confirmed_clean_status.returncode != 0
+        or confirmed_clean_status.stdout
+        or confirmed_target.returncode != 0
+        or confirmed_target.stdout.strip() != merge_commit
+        or confirmed_repository_head.returncode != 0
+        or confirmed_repository_head.stdout.strip() != repository_ref
+        or not confirmed_clean
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "landed output merge target or checkout changed during verification"
+        )
+
+
+def _dead_admitted_provider_outcome_unknown_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_task_revision: int,
+    admitted_control_receipt: Mapping[str, Any],
+    recovery_process_attestation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive the exact quarantine receipt for one dead admitted attempt.
+
+    This receipt deliberately says only that no landed-output proof was
+    admitted to this transition.  It does not assert that the provider had no
+    effect, and therefore suppresses retry while preserving the attempt for
+    later reconciliation.
+    """
+
+    task = str(task_cid or "").strip()
+    alias = str(task_alias or "").strip()
+    if (
+        not task
+        or not alias
+        or len(task.encode("utf-8")) > 1_024
+        or len(alias.encode("utf-8")) > 1_024
+        or any(marker in task for marker in ("\x00", "\n", "\r"))
+        or any(marker in alias for marker in ("\x00", "\n", "\r"))
+        or type(source_task_revision) is not int
+        or source_task_revision < 2
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead admitted reconciliation task identity is invalid"
+        )
+    admitted = dict(admitted_control_receipt)
+    identity = _validated_database_claim_identity(admitted)
+    historic_attestation = _validated_database_claim_process_attestation(
+        admitted
+    )
+    recovery_attestation = _validated_database_claim_process_attestation(
+        {"claim_process_attestation": recovery_process_attestation}
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            admitted.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "dead admitted reconciliation has no exact execution route"
+        ) from exc
+    if (
+        admitted.get("operation") != "database_attempt_admitted"
+        or admitted.get("claim_phase_schema")
+        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        or not _strict_scalar_equal(
+            admitted.get("admitted_from_revision"),
+            source_task_revision - 1,
+        )
+        or not _strict_scalar_equal(
+            admitted.get("claimed_from_revision"),
+            source_task_revision - 2,
+        )
+        or admitted.get("attempt_execution_phase") != "claimed"
+        or not _strict_scalar_equal(
+            admitted.get("attempt_execution_revision"), 1
+        )
+        or dict(admitted.get("execution_route_binding") or {}) != route
+        or route["task_cid"] != task
+        or route["task_alias"] != alias
+        or admitted.get("execution_route_policy_id") != route["policy_id"]
+        or not _strict_scalar_equal(
+            admitted.get("execution_route_origin_revision"),
+            route["task_revision"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead admitted reconciliation differs from its exact revision lineage"
+        )
+    if (
+        historic_attestation["client_id"]
+        != recovery_attestation["client_id"]
+        or historic_attestation["process_birth_id"]
+        == recovery_attestation["process_birth_id"]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead admitted reconciliation is foreign or still current"
+        )
+    material = {
+        "schema": TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA,
+        "operation": TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+        "reason": TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_REASON,
+        "task_cid": task,
+        "task_alias": alias,
+        **identity,
+        "source_status": "in_progress",
+        "source_task_revision": source_task_revision,
+        "source_control_receipt_cid": content_identity(admitted),
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "claimed_from_revision": admitted["claimed_from_revision"],
+        "admitted_from_revision": admitted["admitted_from_revision"],
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+        "historic_claim_process_attestation": historic_attestation,
+        "recovery_process_attestation": recovery_attestation,
+        "historic_process_liveness": OwnerLiveness.DEAD.value,
+        "reconciliation_state": "provider_outcome_unknown",
+        "terminal_status": "quarantined",
+        "retry_suppressed": True,
+        "completion_authority": False,
+        "landed_output_proof_admitted": False,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    return {
+        **material,
+        "receipt_id": content_identity(
+            {"typed_database_dead_admitted_outcome_unknown": material}
+        ),
+    }
+
+
+def _legacy_orphan_provider_outcome_unknown_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_task_revision: int,
+    source_control_receipt: Mapping[str, Any],
+    admitted_task_revision: int,
+    admitted_control_receipt: Mapping[str, Any],
+    recovery_process_attestation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive a quarantine receipt for the retired lossy retrying shape."""
+
+    if (
+        type(source_task_revision) is not int
+        or type(admitted_task_revision) is not int
+        or admitted_task_revision < 2
+        or source_task_revision != admitted_task_revision + 1
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan outcome-unknown revision lineage is invalid"
+        )
+    source = _validated_legacy_orphan_unstall_receipt(
+        source_control_receipt,
+        task_alias=task_alias,
+    )
+    admitted = dict(admitted_control_receipt)
+    base = _dead_admitted_provider_outcome_unknown_receipt(
+        task_cid=task_cid,
+        task_alias=task_alias,
+        source_task_revision=admitted_task_revision,
+        admitted_control_receipt=admitted,
+        recovery_process_attestation=recovery_process_attestation,
+    )
+    material = {
+        **{
+            key: value
+            for key, value in base.items()
+            if key not in {"schema", "operation", "reason", "receipt_id"}
+        },
+        "schema": TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA,
+        "operation": TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+        "reason": TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_REASON,
+        "source_status": "retrying",
+        "source_task_revision": source_task_revision,
+        "legacy_source_control_receipt": source,
+        "source_control_receipt_cid": content_identity(source),
+        "admitted_task_revision": admitted_task_revision,
+        "admitted_control_receipt_cid": content_identity(admitted),
+    }
+    return {
+        **material,
+        "receipt_id": content_identity(
+            {"typed_database_legacy_orphan_outcome_unknown": material}
+        ),
+    }
+
+
+def _retained_admission_retrying_provider_outcome_unknown_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_task_revision: int,
+    source_control_receipt: Mapping[str, Any],
+    admitted_task_revision: int,
+    admitted_control_receipt: Mapping[str, Any],
+    recovery_process_attestation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Quarantine the retired retrying row that retained its admission.
+
+    One historical transition advanced the task revision to ``retrying`` but
+    copied the exact admitted receipt.  That shape is not authority to retry:
+    its provider outcome remains unknown after the admitted owner dies.
+    """
+
+    if (
+        type(source_task_revision) is not int
+        or type(admitted_task_revision) is not int
+        or admitted_task_revision < 2
+        or source_task_revision != admitted_task_revision + 1
+        or canonical_json_bytes(dict(source_control_receipt))
+        != canonical_json_bytes(dict(admitted_control_receipt))
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retained-admission outcome-unknown revision lineage is invalid"
+        )
+    admitted = dict(admitted_control_receipt)
+    base = _dead_admitted_provider_outcome_unknown_receipt(
+        task_cid=task_cid,
+        task_alias=task_alias,
+        source_task_revision=admitted_task_revision,
+        admitted_control_receipt=admitted,
+        recovery_process_attestation=recovery_process_attestation,
+    )
+    material = {
+        **{
+            key: value
+            for key, value in base.items()
+            if key not in {"schema", "operation", "reason", "receipt_id"}
+        },
+        "schema": TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA,
+        "operation": (
+            TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+        ),
+        "reason": TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_REASON,
+        "source_status": "retrying",
+        "source_task_revision": source_task_revision,
+        "source_control_receipt_cid": content_identity(
+            dict(source_control_receipt)
+        ),
+        "admitted_task_revision": admitted_task_revision,
+        "admitted_control_receipt_cid": content_identity(admitted),
+        "retained_admission_receipt": True,
+    }
+    return {
+        **material,
+        "receipt_id": content_identity(
+            {
+                "typed_database_retained_admission_outcome_unknown": (
+                    material
+                )
+            }
+        ),
+    }
+
+
+def _legacy_orphan_landed_completion_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_status: str,
+    source_task_revision: int,
+    source_control_receipt: Mapping[str, Any],
+    admitted_task_revision: int,
+    admitted_control_receipt: Mapping[str, Any],
+    evidence_digest: str,
+    landed_proof: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Derive the one canonical completion receipt for a dead landed attempt."""
+
+    if source_status not in {"in_progress", "retrying", "quarantined"}:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed completion source status is invalid"
+        )
+    if (
+        type(source_task_revision) is not int
+        or type(admitted_task_revision) is not int
+        or admitted_task_revision < 2
+        or source_task_revision
+        != admitted_task_revision
+        + (
+            2
+            if source_status == "quarantined"
+            and source_control_receipt.get("operation")
+            in {
+                TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+                TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
+            }
+            else 1
+            if source_status in {"retrying", "quarantined"}
+            else 0
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed completion revision lineage is invalid"
+        )
+    admitted = dict(admitted_control_receipt)
+    identity = _validated_database_claim_identity(admitted)
+    historic_attestation = _validated_database_claim_process_attestation(
+        admitted
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            admitted.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed admission has no exact execution route"
+        ) from exc
+    if (
+        admitted.get("operation") != "database_attempt_admitted"
+        or admitted.get("claim_phase_schema")
+        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        or not _strict_scalar_equal(
+            admitted.get("admitted_from_revision"),
+            admitted_task_revision - 1,
+        )
+        or not _strict_scalar_equal(
+            admitted.get("claimed_from_revision"),
+            admitted_task_revision - 2,
+        )
+        or admitted.get("attempt_execution_phase") != "claimed"
+        or not _strict_scalar_equal(
+            admitted.get("attempt_execution_revision"), 1
+        )
+        or dict(admitted.get("execution_route_binding") or {}) != route
+        or route["task_cid"] != task_cid
+        or admitted.get("execution_route_policy_id") != route["policy_id"]
+        or not _strict_scalar_equal(
+            admitted.get("execution_route_origin_revision"),
+            route["task_revision"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed admission differs from its exact revision lineage"
+        )
+    if source_status == "retrying":
+        if canonical_json_bytes(
+            dict(source_control_receipt)
+        ) != canonical_json_bytes(admitted):
+            _validated_legacy_orphan_unstall_receipt(
+                source_control_receipt,
+                task_alias=task_alias,
+            )
+    elif source_status == "quarantined":
+        recovery_attestation = source_control_receipt.get(
+            "recovery_process_attestation"
+        )
+        if not isinstance(recovery_attestation, Mapping):
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan landed quarantine has no recovery process"
+            )
+        if (
+            source_control_receipt.get("schema")
+            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+            and source_control_receipt.get("operation")
+            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+        ):
+            legacy_source = source_control_receipt.get(
+                "legacy_source_control_receipt"
+            )
+            if not isinstance(legacy_source, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy orphan landed quarantine lost its source receipt"
+                )
+            expected_quarantine = (
+                _legacy_orphan_provider_outcome_unknown_receipt(
+                    task_cid=task_cid,
+                    task_alias=task_alias,
+                    source_task_revision=source_task_revision - 1,
+                    source_control_receipt=legacy_source,
+                    admitted_task_revision=admitted_task_revision,
+                    admitted_control_receipt=admitted,
+                    recovery_process_attestation=recovery_attestation,
+                )
+            )
+        elif (
+            source_control_receipt.get("schema")
+            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+            and source_control_receipt.get("operation")
+            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+        ):
+            expected_quarantine = (
+                _retained_admission_retrying_provider_outcome_unknown_receipt(
+                    task_cid=task_cid,
+                    task_alias=task_alias,
+                    source_task_revision=source_task_revision - 1,
+                    source_control_receipt=admitted,
+                    admitted_task_revision=admitted_task_revision,
+                    admitted_control_receipt=admitted,
+                    recovery_process_attestation=recovery_attestation,
+                )
+            )
+        else:
+            expected_quarantine = _dead_admitted_provider_outcome_unknown_receipt(
+                task_cid=task_cid,
+                task_alias=task_alias,
+                source_task_revision=admitted_task_revision,
+                admitted_control_receipt=admitted,
+                recovery_process_attestation=recovery_attestation,
+            )
+        if canonical_json_bytes(
+            dict(source_control_receipt)
+        ) != canonical_json_bytes(expected_quarantine):
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan landed quarantine receipt is not canonical"
+            )
+    elif canonical_json_bytes(dict(source_control_receipt)) != canonical_json_bytes(
+        admitted
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed in-progress source is not its admission"
+        )
+    if (
+        type(evidence_digest) is not str
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_digest) is None
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan landed completion evidence digest is invalid"
+        )
+    proof = _validated_database_landed_output_proof(
+        landed_proof,
+        task_cid=task_cid,
+        task_alias=task_alias,
+        admitted_attempt_id=identity["attempt_id"],
+        admitted_attempt_number=identity["attempt_number"],
+    )
+    expected_proof_digest = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(proof)
+    ).hexdigest()
+    if evidence_digest != expected_proof_digest:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan completion evidence is not its landed proof"
+        )
+    return {
+        "schema": TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA,
+        "operation": "database_complete",
+        "recovery_operation": "database_legacy_orphan_landed_complete",
+        "recovery_reason": "legacy_orphan_declared_outputs_landed",
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        **identity,
+        "source_status": source_status,
+        "source_task_revision": source_task_revision,
+        "source_control_receipt_cid": content_identity(
+            dict(source_control_receipt)
+        ),
+        "admitted_task_revision": admitted_task_revision,
+        "admitted_control_receipt_cid": content_identity(admitted),
+        "historic_claim_process_birth_id": historic_attestation[
+            "process_birth_id"
+        ],
+        "historic_process_liveness": OwnerLiveness.DEAD.value,
+        "evidence_digest": evidence_digest,
+        "landed_output_proof": proof,
+    }
+
+
 def _validated_legacy_unstall_claim_receipt(
     receipt: Mapping[str, Any],
     *,
@@ -1612,37 +3075,15 @@ def _validated_legacy_unstall_claim_receipt(
     operation = values.get("operation")
     phase_schema = values.get("claim_phase_schema")
     claimed_from_revision = values.get("claimed_from_revision")
-    if operation == "database_claim":
-        phase_matches = bool(
-            phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
-            and _strict_scalar_equal(
-                claimed_from_revision,
-                revision - 2,
-            )
+    admitted_from_revision: int | None = None
+    phase_matches = bool(
+        operation == "database_claim"
+        and phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        and _strict_scalar_equal(
+            claimed_from_revision,
+            revision - 2,
         )
-        admitted_from_revision: int | None = None
-    elif operation == "database_attempt_admitted":
-        admitted_from_revision = values.get("admitted_from_revision")
-        phase_matches = bool(
-            phase_schema == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
-            and revision >= 3
-            and _strict_scalar_equal(
-                claimed_from_revision,
-                revision - 3,
-            )
-            and _strict_scalar_equal(
-                admitted_from_revision,
-                revision - 2,
-            )
-            and values.get("attempt_execution_phase") == "claimed"
-            and _strict_scalar_equal(
-                values.get("attempt_execution_revision"),
-                1,
-            )
-        )
-    else:
-        admitted_from_revision = None
-        phase_matches = False
+    )
     if (
         not phase_matches
         or dict(values.get("execution_route_binding") or {}) != route
@@ -3749,6 +5190,7 @@ class TypedStateOwnerGateway:
         catalog: Mapping[str, OwnerOperation] | None = None,
         owner_liveness_probe: Any | None = None,
         transaction_lock: Any | None = None,
+        repository_root: Path | None = None,
     ) -> None:
         self._connection = connection
         self.socket_path = Path(socket_path)
@@ -3757,6 +5199,11 @@ class TypedStateOwnerGateway:
         self.catalog = catalog or build_control_plane_operation_catalog()
         self.catalog_id = catalog_fingerprint(self.catalog)
         self._owner_liveness_probe = owner_liveness_probe or owner_liveness
+        self._repository_root = (
+            None
+            if repository_root is None
+            else Path(repository_root).resolve(strict=True)
+        )
         if not callable(self._owner_liveness_probe):
             raise TypedStateOwnerProtocolError(
                 "owner liveness probe must be callable"
@@ -6633,6 +8080,7 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt body is malformed"
                 ) from exc
+            expected_control_receipt: dict[str, Any] | None = None
             if "expected_control_receipt_json" in command.parameters:
                 expected_control_receipt_json = command.parameters.get(
                     "expected_control_receipt_json"
@@ -6648,7 +8096,7 @@ class TypedStateOwnerGateway:
                     raise TypedStateOwnerAuthorizationError(
                         "expected task control receipt is malformed"
                     )
-                _closed_canonical_json_object(
+                expected_control_receipt, _ = _closed_canonical_json_object(
                     expected_control_receipt_json,
                     noun="expected task control receipt",
                 )
@@ -6687,6 +8135,314 @@ class TypedStateOwnerGateway:
                 if isinstance(next_body, Mapping)
                 else None
             )
+            dead_admitted_outcome_unknown = bool(
+                isinstance(next_receipt, Mapping)
+                and (
+                    next_receipt.get("schema")
+                    == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA
+                    or next_receipt.get("operation")
+                    == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+                )
+            )
+            legacy_orphan_outcome_unknown = bool(
+                isinstance(next_receipt, Mapping)
+                and (
+                    next_receipt.get("schema")
+                    == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+                    or next_receipt.get("operation")
+                    == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+                )
+            )
+            retained_admission_outcome_unknown = bool(
+                isinstance(next_receipt, Mapping)
+                and (
+                    next_receipt.get("schema")
+                    == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+                    or next_receipt.get("operation")
+                    == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+                )
+            )
+            if (
+                dead_admitted_outcome_unknown
+                or legacy_orphan_outcome_unknown
+                or retained_admission_outcome_unknown
+            ):
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                requested_status = str(
+                    command.parameters.get("status") or ""
+                ).strip().lower()
+                if (
+                    not grant.client_id.startswith(
+                        "database-implementation-daemon:"
+                    )
+                    or not task_cid
+                    or type(expected_revision) is not int
+                    or expected_revision < 2
+                    or requested_status != "quarantined"
+                    or expected_control_receipt is None
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT status, revision, task_alias, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation task is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                prior_status = str(task_row[0] or "").strip().lower()
+                task_alias = str(task_row[2] or "")
+                prior_body, prior_body_json = _closed_canonical_json_object(
+                    task_row[3],
+                    noun="dead admitted reconciliation prior task body",
+                )
+                source_receipt = prior_body.get("completion_receipt")
+                expected_source_status = (
+                    "retrying"
+                    if (
+                        legacy_orphan_outcome_unknown
+                        or retained_admission_outcome_unknown
+                    )
+                    else "in_progress"
+                )
+                if (
+                    prior_status != expected_source_status
+                    or int(task_row[1]) != expected_revision
+                    or not isinstance(source_receipt, Mapping)
+                    or canonical_json_bytes(dict(source_receipt))
+                    != canonical_json_bytes(expected_control_receipt)
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation source authority is stale"
+                    )
+                history_rows = self._connection.execute(
+                    """
+                    SELECT status, body_json FROM task_revisions
+                    WHERE task_cid = ? AND revision = ? LIMIT 2
+                    """,
+                    [task_cid, expected_revision],
+                ).fetchall()
+                if (
+                    len(history_rows) != 1
+                    or str(history_rows[0][0] or "").strip().lower()
+                    != expected_source_status
+                    or str(history_rows[0][1] or "") != prior_body_json
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation history is absent or stale"
+                    )
+                admitted_task_revision = expected_revision
+                admitted_receipt = source_receipt
+                if (
+                    legacy_orphan_outcome_unknown
+                    or retained_admission_outcome_unknown
+                ):
+                    if legacy_orphan_outcome_unknown:
+                        _validated_legacy_orphan_unstall_receipt(
+                            source_receipt,
+                            task_alias=task_alias,
+                        )
+                    elif (
+                        source_receipt.get("operation")
+                        != "database_attempt_admitted"
+                        or source_receipt.get("claim_phase_schema")
+                        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "retained-admission outcome-unknown source is not an admission"
+                        )
+                    admitted_task_revision = expected_revision - 1
+                    admission_rows = self._connection.execute(
+                        """
+                        SELECT status, body_json FROM task_revisions
+                        WHERE task_cid = ? AND revision = ? LIMIT 2
+                        """,
+                        [task_cid, admitted_task_revision],
+                    ).fetchall()
+                    if len(admission_rows) != 1:
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan outcome-unknown admission is absent or ambiguous"
+                        )
+                    admission_body, _ = _closed_canonical_json_object(
+                        admission_rows[0][1],
+                        noun="legacy orphan outcome-unknown admission body",
+                    )
+                    admitted_receipt = admission_body.get(
+                        "completion_receipt"
+                    )
+                    if (
+                        str(admission_rows[0][0] or "").strip().lower()
+                        != "in_progress"
+                        or not isinstance(admitted_receipt, Mapping)
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan outcome-unknown predecessor is not an admission"
+                        )
+                    if (
+                        retained_admission_outcome_unknown
+                        and canonical_json_bytes(dict(source_receipt))
+                        != canonical_json_bytes(dict(admitted_receipt))
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "retained-admission outcome-unknown differs from its predecessor"
+                        )
+                    cooldown_rows = self._connection.execute(
+                        "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                        [task_cid],
+                    ).fetchall()
+                    if cooldown_rows:
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan outcome-unknown requires exact cooldown absence"
+                        )
+                recovery_attestation = _claim_process_attestation(grant)
+                if legacy_orphan_outcome_unknown:
+                    expected_receipt = (
+                        _legacy_orphan_provider_outcome_unknown_receipt(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            source_task_revision=expected_revision,
+                            source_control_receipt=source_receipt,
+                            admitted_task_revision=admitted_task_revision,
+                            admitted_control_receipt=admitted_receipt,
+                            recovery_process_attestation=recovery_attestation,
+                        )
+                    )
+                elif retained_admission_outcome_unknown:
+                    expected_receipt = (
+                        _retained_admission_retrying_provider_outcome_unknown_receipt(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            source_task_revision=expected_revision,
+                            source_control_receipt=source_receipt,
+                            admitted_task_revision=admitted_task_revision,
+                            admitted_control_receipt=admitted_receipt,
+                            recovery_process_attestation=recovery_attestation,
+                        )
+                    )
+                else:
+                    expected_receipt = (
+                        _dead_admitted_provider_outcome_unknown_receipt(
+                        task_cid=task_cid,
+                        task_alias=task_alias,
+                        source_task_revision=expected_revision,
+                        admitted_control_receipt=admitted_receipt,
+                        recovery_process_attestation=recovery_attestation,
+                    )
+                    )
+                expected_body = dict(prior_body)
+                expected_body["completion_receipt"] = expected_receipt
+                expected_body_json = canonical_json_bytes(expected_body).decode(
+                    "utf-8"
+                )
+                if (
+                    canonical_json_bytes(dict(next_receipt))
+                    != canonical_json_bytes(expected_receipt)
+                    or str(command.parameters.get("body_json") or "")
+                    != expected_body_json
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation receipt is not canonical"
+                    )
+                historic_attestation = (
+                    _validated_database_claim_process_attestation(
+                        admitted_receipt
+                    )
+                )
+                historic_birth = ProcessBirthIdentity(
+                    pid=int(historic_attestation["pid"]),
+                    start_time_ticks=int(
+                        historic_attestation["start_time_ticks"]
+                    ),
+                    boot_id=str(historic_attestation["boot_id"]),
+                    parent_pid=int(historic_attestation["parent_pid"]),
+                )
+                try:
+                    historic_liveness = OwnerLiveness(
+                        self._owner_liveness_probe(historic_birth)
+                    )
+                except BaseException:
+                    historic_liveness = OwnerLiveness.UNKNOWN
+                if historic_liveness is not OwnerLiveness.DEAD:
+                    raise TypedStateOwnerAuthorizationError(
+                        "dead admitted reconciliation requires a provably dead historic process"
+                    )
+                return {
+                    "operation": "task.database.dead_admitted_outcome_unknown",
+                    "task_cid": task_cid,
+                    "status": "quarantined",
+                    "expected_revision": expected_revision,
+                    "body_json": expected_body_json,
+                    "receipt": expected_receipt,
+                }
+            typed_database_retrying = bool(
+                grant.client_id.startswith("database-implementation-daemon:")
+                and str(command.parameters.get("status") or "")
+                .strip()
+                .lower()
+                == "retrying"
+            )
+            if typed_database_retrying:
+                retry_identity_text = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "queue_reason",
+                )
+                retry_identity_integers = (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                retry_backoff = (
+                    next_receipt.get("backoff_ms")
+                    if isinstance(next_receipt, Mapping)
+                    else None
+                )
+                retry_deadline = (
+                    next_receipt.get("retry_not_before_ms")
+                    if isinstance(next_receipt, Mapping)
+                    else None
+                )
+                expected_task_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                if (
+                    not isinstance(next_receipt, Mapping)
+                    or next_receipt.get("operation")
+                    not in TYPED_RETRYING_RECEIPT_OPERATIONS
+                    or any(
+                        type(next_receipt.get(name)) is not str
+                        or not next_receipt[name].strip()
+                        for name in retry_identity_text
+                    )
+                    or any(
+                        type(next_receipt.get(name)) is not int
+                        or next_receipt[name] < 1
+                        for name in retry_identity_integers
+                    )
+                    or type(retry_backoff) is not int
+                    or retry_backoff < 0
+                    or type(retry_deadline) is not int
+                    or retry_deadline < retry_backoff
+                    or type(expected_task_revision) is not int
+                    or not _strict_scalar_equal(
+                        next_receipt.get("control_expected_revision"),
+                        expected_task_revision,
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database retrying CAS has no complete admitted retry receipt"
+                    )
             phase_schema = (
                 str(next_receipt.get("claim_phase_schema") or "")
                 if isinstance(next_receipt, Mapping)
@@ -7118,7 +8874,8 @@ class TypedStateOwnerGateway:
                 )
                 task_rows = self._connection.execute(
                     """
-                    SELECT goal_cid, status, revision, body_json FROM tasks
+                    SELECT goal_cid, status, revision, task_alias, body_json
+                    FROM tasks
                     WHERE task_cid = ? LIMIT 2
                     """,
                     [task_cid],
@@ -7140,7 +8897,7 @@ class TypedStateOwnerGateway:
                         "completion task revision or goal authority is stale"
                     )
                 prior_body, _ = _closed_canonical_json_object(
-                    task_row[3],
+                    task_row[4],
                     noun="completion prior task body",
                 )
                 control_receipt = next_body.get("completion_receipt")
@@ -7168,28 +8925,446 @@ class TypedStateOwnerGateway:
                     "fencing_token",
                     "fence_epoch",
                 )
+                legacy_orphan_admission: Mapping[str, Any] | None = None
+                if (
+                    typed_database_completion
+                    and prior_status not in _COMPLETED_TASK_STATUSES
+                    and receipt_map.get("schema")
+                    == TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA
+                ):
+                    task_alias = str(task_row[3] or "")
+                    if (
+                        not isinstance(prior_receipt, Mapping)
+                        or prior_status
+                        not in {"in_progress", "retrying", "quarantined"}
+                        or "expected_control_receipt_json"
+                        not in command.parameters
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion has no exact source authority"
+                        )
+                    expected_control_receipt, _ = _closed_canonical_json_object(
+                        command.parameters["expected_control_receipt_json"],
+                        noun="legacy orphan landed expected control receipt",
+                    )
+                    if canonical_json_bytes(expected_control_receipt) != (
+                        canonical_json_bytes(dict(prior_receipt))
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed expected control receipt is stale"
+                        )
+                    current_history_rows = self._connection.execute(
+                        """
+                        SELECT status, body_json FROM task_revisions
+                        WHERE task_cid = ? AND revision = ? LIMIT 2
+                        """,
+                        [task_cid, expected_revision],
+                    ).fetchall()
+                    if (
+                        len(current_history_rows) != 1
+                        or str(current_history_rows[0][0] or "").strip().lower()
+                        != prior_status
+                        or current_history_rows[0][1] != task_row[4]
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed current history is absent or stale"
+                        )
+                    retained_admission_receipt = False
+                    if prior_status in {"retrying", "quarantined"}:
+                        if prior_status == "retrying":
+                            retained_admission_receipt = bool(
+                                prior_receipt.get("operation")
+                                == "database_attempt_admitted"
+                                and prior_receipt.get("claim_phase_schema")
+                                == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                            )
+                            if not retained_admission_receipt:
+                                _validated_legacy_orphan_unstall_receipt(
+                                    prior_receipt,
+                                    task_alias=task_alias,
+                                )
+                        legacy_outcome_unknown_quarantine = bool(
+                            prior_status == "quarantined"
+                            and prior_receipt.get("schema")
+                            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+                            and prior_receipt.get("operation")
+                            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+                        )
+                        retained_admission_outcome_unknown_quarantine = bool(
+                            prior_status == "quarantined"
+                            and prior_receipt.get("schema")
+                            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+                            and prior_receipt.get("operation")
+                            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+                        )
+                        admitted_task_revision = expected_revision - (
+                            2
+                            if (
+                                legacy_outcome_unknown_quarantine
+                                or retained_admission_outcome_unknown_quarantine
+                            )
+                            else 1
+                        )
+                        admission_rows = self._connection.execute(
+                            """
+                            SELECT status, body_json FROM task_revisions
+                            WHERE task_cid = ? AND revision = ? LIMIT 2
+                            """,
+                            [task_cid, admitted_task_revision],
+                        ).fetchall()
+                        if len(admission_rows) != 1:
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed completion has no unique immediate predecessor"
+                            )
+                        admission_body, _ = _closed_canonical_json_object(
+                            admission_rows[0][1],
+                            noun="legacy orphan landed admitted task body",
+                        )
+                        admission_receipt = admission_body.get(
+                            "completion_receipt"
+                        )
+                        if (
+                            str(admission_rows[0][0] or "").strip().lower()
+                            != "in_progress"
+                            or not isinstance(admission_receipt, Mapping)
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed predecessor is not an admission"
+                            )
+                        if (
+                            prior_status == "retrying"
+                            and retained_admission_receipt
+                            and canonical_json_bytes(dict(prior_receipt))
+                            != canonical_json_bytes(dict(admission_receipt))
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed retained admission differs from its predecessor"
+                            )
+                        if prior_status == "quarantined":
+                            recovery_attestation = prior_receipt.get(
+                                "recovery_process_attestation"
+                            )
+                            if not isinstance(
+                                recovery_attestation, Mapping
+                            ):
+                                raise TypedStateOwnerAuthorizationError(
+                                    "legacy orphan landed quarantine has no recovery process"
+                                )
+                            if legacy_outcome_unknown_quarantine:
+                                legacy_source = prior_receipt.get(
+                                    "legacy_source_control_receipt"
+                                )
+                                if not isinstance(legacy_source, Mapping):
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "legacy orphan landed quarantine lost its source receipt"
+                                    )
+                                intermediate_rows = self._connection.execute(
+                                    """
+                                    SELECT status, body_json FROM task_revisions
+                                    WHERE task_cid = ? AND revision = ? LIMIT 2
+                                    """,
+                                    [task_cid, expected_revision - 1],
+                                ).fetchall()
+                                if len(intermediate_rows) != 1:
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "legacy orphan landed quarantine lost its retrying predecessor"
+                                    )
+                                intermediate_body, _ = _closed_canonical_json_object(
+                                    intermediate_rows[0][1],
+                                    noun="legacy orphan landed retrying predecessor",
+                                )
+                                intermediate_receipt = intermediate_body.get(
+                                    "completion_receipt"
+                                )
+                                if (
+                                    str(intermediate_rows[0][0] or "")
+                                    .strip()
+                                    .lower()
+                                    != "retrying"
+                                    or not isinstance(
+                                        intermediate_receipt, Mapping
+                                    )
+                                    or canonical_json_bytes(
+                                        dict(intermediate_receipt)
+                                    )
+                                    != canonical_json_bytes(dict(legacy_source))
+                                ):
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "legacy orphan landed retrying predecessor is stale"
+                                    )
+                                expected_quarantine = (
+                                    _legacy_orphan_provider_outcome_unknown_receipt(
+                                        task_cid=task_cid,
+                                        task_alias=task_alias,
+                                        source_task_revision=expected_revision - 1,
+                                        source_control_receipt=legacy_source,
+                                        admitted_task_revision=(
+                                            admitted_task_revision
+                                        ),
+                                        admitted_control_receipt=(
+                                            admission_receipt
+                                        ),
+                                        recovery_process_attestation=(
+                                            recovery_attestation
+                                        ),
+                                    )
+                                )
+                            elif retained_admission_outcome_unknown_quarantine:
+                                intermediate_rows = self._connection.execute(
+                                    """
+                                    SELECT status, body_json FROM task_revisions
+                                    WHERE task_cid = ? AND revision = ? LIMIT 2
+                                    """,
+                                    [task_cid, expected_revision - 1],
+                                ).fetchall()
+                                if len(intermediate_rows) != 1:
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "retained-admission quarantine lost its retrying predecessor"
+                                    )
+                                intermediate_body, _ = _closed_canonical_json_object(
+                                    intermediate_rows[0][1],
+                                    noun="retained-admission retrying predecessor",
+                                )
+                                intermediate_receipt = intermediate_body.get(
+                                    "completion_receipt"
+                                )
+                                if (
+                                    str(intermediate_rows[0][0] or "")
+                                    .strip()
+                                    .lower()
+                                    != "retrying"
+                                    or not isinstance(
+                                        intermediate_receipt, Mapping
+                                    )
+                                    or canonical_json_bytes(
+                                        dict(intermediate_receipt)
+                                    )
+                                    != canonical_json_bytes(
+                                        dict(admission_receipt)
+                                    )
+                                ):
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "retained-admission retrying predecessor is stale"
+                                    )
+                                expected_quarantine = (
+                                    _retained_admission_retrying_provider_outcome_unknown_receipt(
+                                        task_cid=task_cid,
+                                        task_alias=task_alias,
+                                        source_task_revision=expected_revision - 1,
+                                        source_control_receipt=intermediate_receipt,
+                                        admitted_task_revision=admitted_task_revision,
+                                        admitted_control_receipt=admission_receipt,
+                                        recovery_process_attestation=recovery_attestation,
+                                    )
+                                )
+                            else:
+                                expected_quarantine = (
+                                    _dead_admitted_provider_outcome_unknown_receipt(
+                                    task_cid=task_cid,
+                                    task_alias=task_alias,
+                                    source_task_revision=(
+                                        admitted_task_revision
+                                    ),
+                                    admitted_control_receipt=(
+                                        admission_receipt
+                                    ),
+                                    recovery_process_attestation=(
+                                        recovery_attestation
+                                    ),
+                                )
+                                )
+                            if canonical_json_bytes(
+                                dict(prior_receipt)
+                            ) != canonical_json_bytes(expected_quarantine):
+                                raise TypedStateOwnerAuthorizationError(
+                                    "legacy orphan landed quarantine is not canonical"
+                                )
+                    else:
+                        admitted_task_revision = expected_revision
+                        admission_receipt = prior_receipt
+                    expected_recovery_receipt = (
+                        _legacy_orphan_landed_completion_receipt(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            source_status=prior_status,
+                            source_task_revision=expected_revision,
+                            source_control_receipt=prior_receipt,
+                            admitted_task_revision=admitted_task_revision,
+                            admitted_control_receipt=admission_receipt,
+                            evidence_digest=str(
+                                receipt_map.get("evidence_digest") or ""
+                            ),
+                            landed_proof=receipt_map.get(
+                                "landed_output_proof"
+                            ),
+                        )
+                    )
+                    if canonical_json_bytes(receipt_map) != canonical_json_bytes(
+                        expected_recovery_receipt
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion receipt is not canonical"
+                        )
+                    output_rows = self._connection.execute(
+                        """
+                        SELECT path FROM task_outputs
+                        WHERE task_cid = ? ORDER BY ordinal
+                        """,
+                        [task_cid],
+                    ).fetchall()
+                    declared_outputs = [str(row[0] or "") for row in output_rows]
+                    if (
+                        not declared_outputs
+                        or expected_recovery_receipt["landed_output_proof"][
+                            "landed_outputs"
+                        ]
+                        != declared_outputs
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed proof differs from declared task outputs"
+                        )
+                    validation_rows = self._connection.execute(
+                        """
+                        SELECT ordinal, argv_json, policy_json
+                        FROM task_validations
+                        WHERE task_cid = ? ORDER BY ordinal
+                        """,
+                        [task_cid],
+                    ).fetchall()
+                    if not validation_rows or len(validation_rows) > 16:
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion requires bounded declared validations"
+                        )
+                    declared_validation_argv: list[list[str]] = []
+                    for validation_ordinal, row in enumerate(validation_rows):
+                        if (
+                            type(row[0]) is not int
+                            or row[0] != validation_ordinal
+                            or type(row[1]) is not str
+                            or type(row[2]) is not str
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed validation row is malformed"
+                            )
+                        try:
+                            argv = json.loads(row[1])
+                            policy = json.loads(row[2])
+                            argv_canonical = canonical_json_bytes(argv).decode(
+                                "utf-8"
+                            )
+                            policy_canonical = canonical_json_bytes(policy).decode(
+                                "utf-8"
+                            )
+                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed validation row is malformed"
+                            ) from exc
+                        if (
+                            type(argv) is not list
+                            or not argv
+                            or len(argv) > 128
+                            or any(
+                                type(argument) is not str
+                                or not argument
+                                or "\x00" in argument
+                                or len(argument.encode("utf-8")) > 4_096
+                                for argument in argv
+                            )
+                            or not isinstance(policy, Mapping)
+                            or policy.get("shell", False) is not False
+                            or argv_canonical != row[1]
+                            or policy_canonical != row[2]
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "legacy orphan landed validation is outside argv-only policy"
+                            )
+                        declared_validation_argv.append(list(argv))
+                    admitted_identity = _validated_database_claim_identity(
+                        admission_receipt
+                    )
+                    _verify_database_landed_output_proof(
+                        expected_recovery_receipt["landed_output_proof"],
+                        repository_root=self._repository_root,
+                        expected_repository=(
+                            _task_owning_repository_from_body(prior_body)
+                        ),
+                        task_cid=task_cid,
+                        task_alias=task_alias,
+                        task_body=prior_body,
+                        admitted_attempt_id=admitted_identity["attempt_id"],
+                        admitted_attempt_number=admitted_identity[
+                            "attempt_number"
+                        ],
+                        declared_validation_argv=declared_validation_argv,
+                    )
+                    legacy_orphan_admission = dict(admission_receipt)
+                    historic_attestation = (
+                        _validated_database_claim_process_attestation(
+                            legacy_orphan_admission
+                        )
+                    )
+                    current_attestation = _claim_process_attestation(grant)
+                    if (
+                        historic_attestation["client_id"] != grant.client_id
+                        or historic_attestation["process_birth_id"]
+                        == current_attestation["process_birth_id"]
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion is foreign or still current"
+                        )
+                    historic_birth = ProcessBirthIdentity(
+                        pid=int(historic_attestation["pid"]),
+                        start_time_ticks=int(
+                            historic_attestation["start_time_ticks"]
+                        ),
+                        boot_id=str(historic_attestation["boot_id"]),
+                        parent_pid=int(historic_attestation["parent_pid"]),
+                    )
+                    try:
+                        historic_liveness = OwnerLiveness(
+                            self._owner_liveness_probe(historic_birth)
+                        )
+                    except BaseException:
+                        historic_liveness = OwnerLiveness.UNKNOWN
+                    if historic_liveness is not OwnerLiveness.DEAD:
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion requires a provably dead historic process"
+                        )
+                    queue_rows = self._connection.execute(
+                        "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                        [task_cid],
+                    ).fetchall()
+                    if queue_rows:
+                        raise TypedStateOwnerAuthorizationError(
+                            "legacy orphan landed completion requires exact cooldown absence"
+                        )
                 if (
                     typed_database_completion
                     and prior_status not in _COMPLETED_TASK_STATUSES
                 ):
-                    if (
-                        prior_status != "in_progress"
-                        or not isinstance(prior_receipt, Mapping)
-                        or prior_receipt.get("operation")
-                        != "database_attempt_admitted"
-                        or prior_receipt.get("claim_phase_schema")
-                        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
-                    ):
-                        raise TypedStateOwnerAuthorizationError(
-                            "database completion has no admitted claim authority"
+                    if legacy_orphan_admission is None:
+                        if (
+                            prior_status != "in_progress"
+                            or not isinstance(prior_receipt, Mapping)
+                            or prior_receipt.get("operation")
+                            != "database_attempt_admitted"
+                            or prior_receipt.get("claim_phase_schema")
+                            != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "database completion has no admitted claim authority"
+                            )
+                        prior_identity = _validated_database_claim_identity(
+                            prior_receipt
                         )
-                    prior_identity = _validated_database_claim_identity(
-                        prior_receipt
-                    )
-                    _require_database_claim_process_attestation(
-                        prior_receipt,
-                        grant=grant,
-                    )
+                        _require_database_claim_process_attestation(
+                            prior_receipt,
+                            grant=grant,
+                        )
+                    else:
+                        prior_identity = _validated_database_claim_identity(
+                            legacy_orphan_admission
+                        )
                     if any(
                         not _strict_scalar_equal(
                             receipt_map.get(name), prior_identity[name]
@@ -9439,6 +11614,84 @@ class TypedStateOwnerGateway:
                 )
             return
 
+        if operation == "task.database.dead_admitted_outcome_unknown":
+            if set(by_name) != {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision",
+                "txn_advance_store_revision",
+                "txn_record_idempotency",
+            }:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead admitted reconciliation has an unexpected mutation role"
+                )
+            mutation = one("executor_cas_task_status_receipt")
+            history = one("executor_insert_task_revision")
+            expected_revision = int(authority["expected_revision"])
+            next_revision = expected_revision + 1
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": next_revision,
+                    "status": "quarantined",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                history,
+                {
+                    "task_cid": authority["task_cid"],
+                    "revision": next_revision,
+                    "status": "quarantined",
+                    "body_json": authority["body_json"],
+                    "recorded_at": mutation.get("updated_at"),
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json, updated_at FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            history_rows = self._connection.execute(
+                """
+                SELECT status, body_json, recorded_at FROM task_revisions
+                WHERE task_cid = ? AND revision = ? LIMIT 2
+                """,
+                [authority["task_cid"], next_revision],
+            ).fetchall()
+            expected_post_state = (
+                "quarantined",
+                next_revision,
+                authority["body_json"],
+                mutation.get("updated_at"),
+            )
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(4))
+                if len(task_rows) == 1
+                else ()
+            )
+            observed_history = (
+                (
+                    history_rows[0][0],
+                    history_rows[0][1],
+                    history_rows[0][2],
+                )
+                if len(history_rows) == 1
+                else ()
+            )
+            if observed_task != expected_post_state or observed_history != (
+                "quarantined",
+                authority["body_json"],
+                mutation.get("updated_at"),
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead admitted reconciliation post-state differs"
+                )
+            return
+
         if operation == "task.database.strict_resume_rejection":
             mutation = one("executor_cas_task_status_receipt")
             expected_revision = int(authority["expected_revision"])
@@ -10545,6 +12798,15 @@ __all__ = [
     "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND",
     "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION",
     "TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA",
+    "TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION",
+    "TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_REASON",
+    "TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA",
+    "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION",
+    "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_REASON",
+    "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA",
+    "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION",
+    "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_REASON",
+    "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA",
     "TYPED_RETRY_COOLDOWN_SCHEMA",
     "compact_default_owner_socket_path",
     "TYPED_TASK_STATUS_VOCABULARY",

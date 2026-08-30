@@ -1044,7 +1044,7 @@ class QuackStateServerConfig:
     isolation_receipt_path: Path | None = None
     typed_command_socket_path_override: Path | None = None
     repository_root: Path | None = None
-    allow_legacy_board_unstall: bool = True
+    allow_legacy_board_unstall: bool = False
 
     def __post_init__(self) -> None:
         if type(self.allow_legacy_board_unstall) is not bool:
@@ -6406,6 +6406,7 @@ class QuackStateServer:
                     identity=identity.to_dict(),
                     owner_liveness_probe=self.owner_liveness_probe,
                     transaction_lock=self._owner_transaction_lock,
+                    repository_root=self.config.repository_root,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
                 gateway.start()
@@ -7081,7 +7082,7 @@ def build_server(
     ] | None = None,
     event_source: EventSource | None = None,
     typed_command_socket_path: Path | str | None = None,
-    allow_legacy_board_unstall: bool = True,
+    allow_legacy_board_unstall: bool = False,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`."""
 

@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 import socket
+import subprocess
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     quack_state_server as quack_server_module,
 )
@@ -148,6 +150,46 @@ def _raw_quack_query(uri: str, token: str, sql: str) -> list[Any]:
         ).fetchall()
     finally:
         client.close()
+
+
+def _initialize_git_fixture(root: Path) -> None:
+    """Create one immutable regular-blob commit for owner proof tests."""
+
+    if (root / ".git").is_dir():
+        return
+    subprocess.run(
+        ["git", "init", "-q", str(root)],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.name", "Test Owner"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "config",
+            "user.email",
+            "owner@example.invalid",
+        ],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    (root / "README.md").write_text("owner proof fixture\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(root), "add", "README.md"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "fixture"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def _server(tmp_path: Path):
@@ -376,6 +418,385 @@ def _typed_claim_receipt(
     }
 
 
+def _legacy_orphan_database_path(tmp_path: Path) -> Path:
+    return (
+        tmp_path
+        / "checkout"
+        / ".git"
+        / "agent-supervisor"
+        / "control.duckdb"
+    )
+
+
+def _seed_legacy_orphan_landed_attempt(
+    database: Path,
+    *,
+    client_id: str,
+    source_status: str,
+    retain_admission_on_retry: bool = False,
+) -> dict[str, Any]:
+    """Create the exact historical admission and optional lossy unstall row."""
+
+    # Keep DuckDB, owner state, sockets, and lock files inside repository
+    # authority but below the resolved Git directory, where they cannot become
+    # untracked execution inputs in the worktree.
+    repository_root = database.parents[2]
+    _initialize_git_fixture(repository_root)
+    git_dir = Path(
+        subprocess.run(
+            ["git", "-C", str(repository_root), "rev-parse", "--absolute-git-dir"],
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+    ).resolve()
+    state_root = git_dir / "agent-supervisor"
+    state_root.mkdir(parents=True, exist_ok=True)
+    assert database.parent.resolve() == state_root.resolve()
+    base_commit = subprocess.run(
+        ["git", "-C", str(repository_root), "rev-parse", "HEAD"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    base_tree = subprocess.run(
+        ["git", "-C", str(repository_root), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+
+    repo = open_intent_repository(database, owner_id="legacy-orphan-seed")
+    try:
+        repo.upsert_objective(
+            objective_id="objective:test", objective_alias="O", title="Objective"
+        )
+        repo.upsert_goal(
+            goal_cid="goal:test",
+            goal_alias="G",
+            title="Goal",
+            objective_id="objective:test",
+        )
+        repo.upsert_plan(
+            plan_cid="plan:test",
+            goal_cid="goal:test",
+            plan_alias="P",
+        )
+        repo.upsert_task(
+            task_cid="task:test",
+            task_alias="T",
+            goal_cid="goal:test",
+            plan_cid="plan:test",
+            objective_id="objective:test",
+            ordinal=1,
+            status="ready",
+            body={
+                "owning_repository": ".",
+                "base_repositories": {
+                    "ipfs_accelerate_py": {
+                        "commit": base_commit,
+                        "tree": base_tree,
+                    }
+                },
+            },
+            outputs=[{"path": "README.md", "effect": {}}],
+            validations=[
+                {
+                    "argv": ["git", "cat-file", "-e", "HEAD:README.md"],
+                    "shell": False,
+                    "policy": {},
+                }
+            ],
+        )
+    finally:
+        repo.close()
+
+    pid = 999_999
+    start_time_ticks = 17
+    boot_id = "boot:provably-dead-fixture"
+    parent_pid = 0
+    historic_attestation = {
+        "schema": typed_owner_module.TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+        "grant_id": "grant:historic-dead-fixture",
+        "client_id": client_id,
+        "process_birth_id": typed_owner_module._process_birth_content_id(  # noqa: SLF001
+            pid,
+            start_time_ticks,
+            boot_id,
+            parent_pid,
+        ),
+        "pid": pid,
+        "uid": os.getuid(),
+        "start_time_ticks": start_time_ticks,
+        "boot_id": boot_id,
+        "parent_pid": parent_pid,
+    }
+    route = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "task-execution-route-binding@1"
+        ),
+        "policy_id": "policy:legacy-orphan-test",
+        "plan_root_cid": "plan:test",
+        "repository_tree_id": "tree:legacy-orphan-test",
+        "source_revision": 1,
+        "task_cid": "task:test",
+        "task_alias": "T",
+        "task_revision": 1,
+        "task_contract_cid": "contract:legacy-orphan-test",
+        "execution_mode": "deterministic-only",
+    }
+    claim = {
+        "operation": "database_claim",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": historic_attestation,
+        "claim_id": "claim:legacy-orphan",
+        "attempt_id": "attempt:legacy-orphan",
+        "attempt_number": 1,
+        "lease_id": "lease:legacy-orphan",
+        "owner_session_id": "session:legacy-orphan",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "claimed_from_revision": 1,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    with DatabaseTaskSource(database, install_schema=False) as source:
+        ready = source.get_task("task:test")
+        assert ready is not None and ready.revision == 1
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+    admitted_receipt = {
+        **claim,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": claimed.revision,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    admitted_body = dict(claimed.body)
+    admitted_body["completion_receipt"] = admitted_receipt
+    admitted_body_json = canonical_json_bytes(admitted_body).decode("utf-8")
+    recorded_at = "2026-08-30T00:00:00Z"
+    connection = duckdb_state_module.open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+            "body_json = ? WHERE task_cid = ? AND revision = ?",
+            [
+                "in_progress",
+                claimed.revision + 1,
+                recorded_at,
+                admitted_body_json,
+                claimed.task_cid,
+                claimed.revision,
+            ],
+        )
+        connection.execute(
+            "INSERT INTO task_revisions "
+            "(task_cid, revision, status, body_json, recorded_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                claimed.task_cid,
+                claimed.revision + 1,
+                "in_progress",
+                admitted_body_json,
+                recorded_at,
+            ],
+        )
+        admitted_revision = claimed.revision + 1
+        if source_status == "in_progress":
+            source_receipt = admitted_receipt
+            source_revision = admitted_revision
+        else:
+            assert source_status == "retrying"
+            source_receipt = (
+                admitted_receipt
+                if retain_admission_on_retry
+                else {
+                    "schema": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+                    "operation": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+                    "reason": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
+                    "task_alias": "T",
+                    "age_seconds": 600,
+                }
+            )
+            poisoned_body = dict(admitted_body)
+            poisoned_body["completion_receipt"] = source_receipt
+            poisoned_body_json = canonical_json_bytes(poisoned_body).decode(
+                "utf-8"
+            )
+            source_revision = admitted_revision + 1
+            connection.execute(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+                "body_json = ? WHERE task_cid = ? AND revision = ?",
+                [
+                    "retrying",
+                    source_revision,
+                    recorded_at,
+                    poisoned_body_json,
+                    claimed.task_cid,
+                    admitted_revision,
+                ],
+            )
+            connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    claimed.task_cid,
+                    source_revision,
+                    "retrying",
+                    poisoned_body_json,
+                    recorded_at,
+                ],
+            )
+    finally:
+        connection.close()
+    commit_message_argument = "T: land admitted output\n\nAttempt: 1"
+    # ``git show --format=%B`` appends its record terminator to the commit's
+    # own trailing newline; the production proof hashes those exact bytes.
+    commit_message = commit_message_argument + "\n\n"
+    (repository_root / "README.md").write_text(
+        "landed by admitted attempt\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "-C", str(repository_root), "add", "README.md"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "commit",
+            "-qm",
+            commit_message_argument,
+        ],
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+    target_commit = subprocess.run(
+        ["git", "-C", str(repository_root), "rev-parse", "HEAD"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "-C", str(repository_root), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    object_id = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "rev-parse",
+            f"{target_commit}:README.md",
+        ],
+        check=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    validation_body = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-landed-current-tree-validation@1"
+        ),
+        "task_cid": "task:test",
+        "task_alias": "T",
+        "repository": ".",
+        "repository_ref": target_commit,
+        "merge_target_commit": target_commit,
+        "outcome": "passed",
+        "commands": [
+            {
+                "argv": ["git", "cat-file", "-e", "HEAD:README.md"],
+                "returncode": 0,
+                "output_sha256": (
+                    "sha256:e3b0c44298fc1c149afbf4c8996fb924"
+                    "27ae41e4649b934ca495991b7852b855"
+                ),
+                "output_bytes": 0,
+            }
+        ],
+    }
+    proof = {
+        "schema": typed_owner_module.TYPED_DATABASE_LANDED_OUTPUT_PROOF_SCHEMA,
+        "operation": typed_owner_module.TYPED_DATABASE_LANDED_OUTPUT_PROOF_OPERATION,
+        "task_cid": "task:test",
+        "task_alias": "T",
+        "attempt_id": "attempt:legacy-orphan",
+        "merge_target_ref": "HEAD",
+        "merge_target_commit": target_commit,
+        "landed_outputs": ["README.md"],
+        "landed_output_checks": [
+            {
+                "path": "README.md",
+                "repository": ".",
+                "repository_ref": target_commit,
+                "tracked_path": "README.md",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": object_id,
+            }
+        ],
+        "candidate_lineage": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-landed-candidate-lineage@1"
+            ),
+            "repository": ".",
+            "base_commit": base_commit,
+            "base_tree": base_tree,
+            "candidate_commit": target_commit,
+            "candidate_parent": base_commit,
+            "candidate_tree": target_tree,
+            "current_repository_commit": target_commit,
+            "current_repository_tree": target_tree,
+            "changed_paths": ["README.md"],
+            "task_alias": "T",
+            "attempt_id": "attempt:legacy-orphan",
+            "attempt_number": 1,
+            "commit_message_sha256": (
+                "sha256:"
+                + hashlib.sha256(commit_message.encode("utf-8")).hexdigest()
+            ),
+        },
+        "validation_receipt": {
+            **validation_body,
+            "receipt_id": content_identity(validation_body),
+        },
+    }
+    evidence_digest = "sha256:" + hashlib.sha256(
+        canonical_json_bytes(proof)
+    ).hexdigest()
+    return {
+        "repository_root": repository_root,
+        "state_root": state_root,
+        "source_receipt": source_receipt,
+        "source_revision": source_revision,
+        "admitted_receipt": admitted_receipt,
+        "proof": proof,
+        "evidence_digest": evidence_digest,
+    }
+
+
 def _typed_owner_completion_state(connection: Any) -> dict[str, Any]:
     """Capture every durable surface a rejected completion could mutate."""
 
@@ -415,6 +836,240 @@ def _typed_owner_completion_state(connection: Any) -> dict[str, Any]:
     }
 
 
+def _closed_landed_proof_v3(
+    *,
+    check: Mapping[str, Any],
+    merge_target_commit: str,
+    attempt_id: str = "attempt:test",
+) -> dict[str, Any]:
+    """Build a closed @3 proof for structural boundary-negative tests."""
+
+    tracked_path = str(check["tracked_path"])
+    repository = str(check["repository"])
+    validation_body = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-landed-current-tree-validation@1"
+        ),
+        "task_cid": "task:test",
+        "task_alias": "T",
+        "repository": repository,
+        "repository_ref": str(check["repository_ref"]),
+        "merge_target_commit": merge_target_commit,
+        "outcome": "passed",
+        "commands": [
+            {
+                "argv": ["git", "cat-file", "-e", f"HEAD:{tracked_path}"],
+                "returncode": 0,
+                "output_sha256": (
+                    "sha256:e3b0c44298fc1c149afbf4c8996fb924"
+                    "27ae41e4649b934ca495991b7852b855"
+                ),
+                "output_bytes": 0,
+            }
+        ],
+    }
+    return {
+        "schema": typed_owner_module.TYPED_DATABASE_LANDED_OUTPUT_PROOF_SCHEMA,
+        "operation": (
+            typed_owner_module.TYPED_DATABASE_LANDED_OUTPUT_PROOF_OPERATION
+        ),
+        "task_cid": "task:test",
+        "task_alias": "T",
+        "attempt_id": attempt_id,
+        "merge_target_ref": "HEAD",
+        "merge_target_commit": merge_target_commit,
+        "landed_outputs": [str(check["path"])],
+        "landed_output_checks": [dict(check)],
+        "candidate_lineage": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-landed-candidate-lineage@1"
+            ),
+            "repository": repository,
+            "base_commit": "1" * 40,
+            "base_tree": "2" * 40,
+            "candidate_commit": str(check["repository_ref"]),
+            "candidate_parent": "1" * 40,
+            "candidate_tree": "3" * 40,
+            "current_repository_commit": str(check["repository_ref"]),
+            "current_repository_tree": "3" * 40,
+            "changed_paths": [tracked_path],
+            "task_alias": "T",
+            "attempt_id": attempt_id,
+            "attempt_number": 1,
+            "commit_message_sha256": "sha256:" + "4" * 64,
+        },
+        "validation_receipt": {
+            **validation_body,
+            "receipt_id": content_identity(validation_body),
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("mode", "120000"),
+        ("object_type", "tree"),
+        ("object_id", "not-an-object"),
+    ],
+)
+def test_landed_output_proof_rejects_nonregular_or_unbound_objects(
+    field: str,
+    value: str,
+) -> None:
+    target_commit = "a" * 40
+    check = {
+        "path": "README.md",
+        "repository": ".",
+        "repository_ref": target_commit,
+        "tracked_path": "README.md",
+        "mode": "100644",
+        "object_type": "blob",
+        "object_id": "b" * 40,
+    }
+    check[field] = value
+    proof = _closed_landed_proof_v3(
+        check=check,
+        merge_target_commit=target_commit,
+    )
+    with pytest.raises(
+        typed_owner_module.TypedStateOwnerAuthorizationError,
+        match="landed output check identity is invalid",
+    ):
+        typed_owner_module._validated_database_landed_output_proof(  # noqa: SLF001
+            proof,
+            task_cid="task:test",
+            task_alias="T",
+            admitted_attempt_id="attempt:test",
+            admitted_attempt_number=1,
+        )
+
+
+def test_owner_git_verifier_rejects_unrelated_nested_commit(tmp_path: Path) -> None:
+    """A valid-looking child SHA must equal the outer commit's gitlink."""
+
+    _initialize_git_fixture(tmp_path)
+    child = tmp_path / "external" / "child"
+    child.mkdir(parents=True)
+    _initialize_git_fixture(child)
+    child_commit = subprocess.run(
+        ["git", "-C", str(child), "rev-parse", "HEAD"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    child_tree = subprocess.run(
+        ["git", "-C", str(child), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{child_commit},external/child",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-qm", "record child"],
+        check=True,
+    )
+    outer_commit = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    (child / "README.md").write_text("unrelated child revision\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(child), "commit", "-qam", "unrelated"],
+        check=True,
+    )
+    unrelated_commit = subprocess.run(
+        ["git", "-C", str(child), "rev-parse", "HEAD"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    unrelated_tree = subprocess.run(
+        ["git", "-C", str(child), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    unrelated_blob = subprocess.run(
+        ["git", "-C", str(child), "rev-parse", f"{unrelated_commit}:README.md"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    proof = _closed_landed_proof_v3(
+        check={
+            "path": "external/child/README.md",
+            "repository": "external/child",
+            "repository_ref": unrelated_commit,
+            "tracked_path": "README.md",
+            "mode": "100644",
+            "object_type": "blob",
+            "object_id": unrelated_blob,
+        },
+        merge_target_commit=outer_commit,
+    )
+    proof["candidate_lineage"].update(
+        {
+            "base_commit": child_commit,
+            "base_tree": child_tree,
+            "candidate_commit": unrelated_commit,
+            "candidate_parent": child_commit,
+            "candidate_tree": unrelated_tree,
+            "current_repository_commit": unrelated_commit,
+            "current_repository_tree": unrelated_tree,
+            "commit_message_sha256": (
+                "sha256:" + hashlib.sha256(b"unrelated\n\n").hexdigest()
+            ),
+        }
+    )
+    validated = typed_owner_module._validated_database_landed_output_proof(  # noqa: SLF001
+        proof,
+        task_cid="task:test",
+        task_alias="T",
+        admitted_attempt_id="attempt:test",
+        admitted_attempt_number=1,
+    )
+    with pytest.raises(
+        TypedStateOwnerAuthorizationError,
+        match="child commit differs from the outer gitlink",
+    ):
+        typed_owner_module._verify_database_landed_output_proof(  # noqa: SLF001
+            validated,
+            repository_root=tmp_path,
+            expected_repository="external/child",
+            task_cid="task:test",
+            task_alias="T",
+            task_body={
+                "base_repositories": {
+                    "ipfs_accelerate_py": {
+                        "commit": child_commit,
+                        "tree": child_tree,
+                    }
+                }
+            },
+            admitted_attempt_id="attempt:test",
+            admitted_attempt_number=1,
+            declared_validation_argv=(
+                ("git", "cat-file", "-e", "HEAD:README.md"),
+            ),
+        )
+
+
 def _raw_typed_status_command(
     source: TypedDatabaseTaskSource,
     *,
@@ -438,6 +1093,948 @@ def _raw_typed_status_command(
         idempotency_key=f"idem:completion-authority:{suffix}",
         parameters=parameters,
     )
+
+
+@pytest.mark.parametrize(
+    ("source_status", "retain_admission_on_retry"),
+    [
+        ("in_progress", False),
+        ("retrying", False),
+        ("retrying", True),
+    ],
+)
+def test_legacy_orphan_landed_completion_is_atomic_and_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_status: str,
+    retain_admission_on_retry: bool,
+) -> None:
+    """A dead admission completes once from current exact landed evidence."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:legacy-orphan-lane"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status=source_status,
+        retain_admission_on_retry=retain_admission_on_retry,
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "legacy-orphan-owner",
+        store_id="legacy-orphan-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        before = source.get_task("task:test")
+        assert before is not None
+        assert (before.status, before.revision) == (
+            source_status,
+            fixture["source_revision"],
+        )
+        if source_status == "in_progress":
+            legacy_poison = {
+                "schema": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+                "operation": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+                "reason": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
+                "task_alias": "T",
+                "age_seconds": 600,
+            }
+            with pytest.raises(TransactionError, match="authorization_denied"):
+                source.compare_and_set_status(
+                    before.task_cid,
+                    before.revision,
+                    "retrying",
+                    legacy_poison,
+                    expected_control_receipt=fixture["source_receipt"],
+                )
+            unchanged = source.get_task(before.task_cid)
+            assert unchanged is not None
+            assert (unchanged.status, unchanged.revision) == (
+                before.status,
+                before.revision,
+            )
+
+        validation = source.record_validation_result(
+            task_cid=before.task_cid,
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            attempt_id="attempt:legacy-orphan",
+            body=fixture["proof"],
+        )
+        assert validation.changed is True
+        completed = source.complete_legacy_orphan_landed_attempt(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["source_receipt"],
+            evidence_digest=fixture["evidence_digest"],
+            landed_proof=fixture["proof"],
+        )
+        assert completed.changed is True
+        assert (completed.task.status, completed.task.revision) == (
+            "completed",
+            before.revision + 1,
+        )
+        receipt = completed.task.body["completion_receipt"]
+        assert receipt["schema"] == (
+            typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA
+        )
+        assert receipt["operation"] == "database_complete"
+        assert receipt["source_status"] == source_status
+        assert receipt["source_task_revision"] == before.revision
+        assert receipt["evidence_digest"] == fixture["evidence_digest"]
+        assert receipt["landed_output_proof"] == fixture["proof"]
+        replay = source.complete_legacy_orphan_landed_attempt(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["source_receipt"],
+            evidence_digest=fixture["evidence_digest"],
+            landed_proof=fixture["proof"],
+        )
+        assert replay.changed is False
+        assert replay.task == completed.task
+        history = source.task_revision_history_projection(before.task_cid)
+        expected_statuses = ["ready", "in_progress", "in_progress"]
+        if source_status == "retrying":
+            expected_statuses.append("retrying")
+        expected_statuses.append("completed")
+        assert [item["status"] for item in history["revisions"]] == (
+            expected_statuses
+        )
+        receipt_count = server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = ?",
+            [before.task_cid],
+        ).fetchone()
+        assert receipt_count is not None and int(receipt_count[0]) == 1
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_dead_admitted_unknown_outcome_quarantines_once_then_landed_completes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead admitted attempt is never retried and remains reconcilable."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:dead-admitted-lane"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="in_progress",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "dead-admitted-owner",
+        store_id="dead-admitted-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        before = source.get_task("task:test")
+        assert before is not None
+        assert (before.status, before.revision) == (
+            "in_progress",
+            fixture["source_revision"],
+        )
+        quarantined = (
+            source.quarantine_dead_admitted_provider_outcome_unknown(
+                before.task_cid,
+                expected_task_revision=before.revision,
+                expected_control_receipt=fixture["source_receipt"],
+            )
+        )
+        assert quarantined.changed is True
+        assert (quarantined.task.status, quarantined.task.revision) == (
+            "quarantined",
+            before.revision + 1,
+        )
+        receipt = quarantined.task.body["completion_receipt"]
+        assert receipt["schema"] == (
+            typed_owner_module.TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA
+        )
+        assert receipt["operation"] == (
+            typed_owner_module.TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+        )
+        assert receipt["reconciliation_state"] == "provider_outcome_unknown"
+        assert receipt["terminal_status"] == "quarantined"
+        assert receipt["historic_process_liveness"] == "dead"
+        assert receipt["retry_suppressed"] is True
+        assert receipt["completion_authority"] is False
+        assert receipt["landed_output_proof_admitted"] is False
+        assert receipt["source_task_revision"] == before.revision
+        assert receipt["source_control_receipt_cid"] == content_identity(
+            fixture["admitted_receipt"]
+        )
+        assert receipt["execution_route_binding"] == fixture[
+            "admitted_receipt"
+        ]["execution_route_binding"]
+        assert receipt["historic_claim_process_attestation"] == fixture[
+            "admitted_receipt"
+        ]["claim_process_attestation"]
+        assert receipt["recovery_process_attestation"]["client_id"] == client_id
+        assert (
+            receipt["recovery_process_attestation"]["process_birth_id"]
+            != receipt["historic_claim_process_attestation"]["process_birth_id"]
+        )
+        assert quarantined.receipt_cid == receipt["receipt_id"]
+        history = source.task_revision_history_projection(before.task_cid)
+        assert [item["status"] for item in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "quarantined",
+        ]
+        assert source.get_queue_entry(before.task_cid) is None
+        completion_count = server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = ?",
+            [before.task_cid],
+        ).fetchone()
+        assert completion_count is not None and int(completion_count[0]) == 0
+
+        replay = source.quarantine_dead_admitted_provider_outcome_unknown(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["source_receipt"],
+        )
+        assert replay.changed is False
+        assert replay.task == quarantined.task
+        assert replay.receipt_cid == quarantined.receipt_cid
+
+        validation = source.record_validation_result(
+            task_cid=before.task_cid,
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            attempt_id="attempt:legacy-orphan",
+            body=fixture["proof"],
+        )
+        assert validation.changed is True
+        completed = source.complete_legacy_orphan_landed_attempt(
+            before.task_cid,
+            expected_task_revision=quarantined.task.revision,
+            expected_control_receipt=receipt,
+            evidence_digest=fixture["evidence_digest"],
+            landed_proof=fixture["proof"],
+        )
+        assert completed.changed is True
+        assert (completed.task.status, completed.task.revision) == (
+            "completed",
+            quarantined.task.revision + 1,
+        )
+        completion_receipt = completed.task.body["completion_receipt"]
+        assert completion_receipt["source_status"] == "quarantined"
+        assert completion_receipt["admitted_task_revision"] == before.revision
+        final_history = source.task_revision_history_projection(before.task_cid)
+        assert [item["status"] for item in final_history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "quarantined",
+            "completed",
+        ]
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_lossy_retrying_unknown_outcome_quarantines_once_then_landed_completes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retired retry poison becomes explicit unknown, never blind retry."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:legacy-lossy-lane"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "legacy-lossy-owner",
+        store_id="legacy-lossy-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        before = source.get_task("task:test")
+        assert before is not None
+        assert (before.status, before.revision) == (
+            "retrying",
+            fixture["source_revision"],
+        )
+        quarantined = (
+            source.quarantine_legacy_orphan_provider_outcome_unknown(
+                before.task_cid,
+                expected_task_revision=before.revision,
+                expected_control_receipt=fixture["source_receipt"],
+            )
+        )
+        assert quarantined.changed is True
+        assert (quarantined.task.status, quarantined.task.revision) == (
+            "quarantined",
+            before.revision + 1,
+        )
+        receipt = quarantined.task.body["completion_receipt"]
+        assert receipt["schema"] == (
+            typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+        )
+        assert receipt["operation"] == (
+            typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+        )
+        assert receipt["source_status"] == "retrying"
+        assert receipt["source_task_revision"] == before.revision
+        assert receipt["admitted_task_revision"] == before.revision - 1
+        assert receipt["legacy_source_control_receipt"] == fixture[
+            "source_receipt"
+        ]
+        assert receipt["retry_suppressed"] is True
+        assert receipt["completion_authority"] is False
+        assert source.get_queue_entry(before.task_cid) is None
+
+        replay = source.quarantine_legacy_orphan_provider_outcome_unknown(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["source_receipt"],
+        )
+        assert replay.changed is False
+        assert replay.task == quarantined.task
+
+        validation = source.record_validation_result(
+            task_cid=before.task_cid,
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            body=fixture["proof"],
+        )
+        assert validation.changed is True
+        completed = source.complete_legacy_orphan_landed_attempt(
+            before.task_cid,
+            expected_task_revision=quarantined.task.revision,
+            expected_control_receipt=receipt,
+            evidence_digest=fixture["evidence_digest"],
+            landed_proof=fixture["proof"],
+        )
+        assert completed.changed is True
+        assert completed.task.status == "completed"
+        completion_receipt = completed.task.body["completion_receipt"]
+        assert completion_receipt["source_status"] == "quarantined"
+        assert completion_receipt["admitted_task_revision"] == (
+            before.revision - 1
+        )
+        history = source.task_revision_history_projection(before.task_cid)
+        assert [item["status"] for item in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "retrying",
+            "quarantined",
+            "completed",
+        ]
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_retained_admission_retrying_quarantines_once_then_landed_completes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retrying row cannot reuse its retained admission as retry authority."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:retained-admission-lane"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+        retain_admission_on_retry=True,
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "retained-admission-owner",
+        store_id="retained-admission-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        before = source.get_task("task:test")
+        assert before is not None
+        assert (before.status, before.revision) == (
+            "retrying",
+            fixture["source_revision"],
+        )
+        assert before.body["completion_receipt"] == fixture["admitted_receipt"]
+
+        quarantined = source.quarantine_legacy_orphan_provider_outcome_unknown(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["admitted_receipt"],
+        )
+
+        assert quarantined.changed is True
+        assert (quarantined.task.status, quarantined.task.revision) == (
+            "quarantined",
+            before.revision + 1,
+        )
+        receipt = quarantined.task.body["completion_receipt"]
+        assert receipt["schema"] == (
+            typed_owner_module
+            .TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+        )
+        assert receipt["operation"] == (
+            typed_owner_module
+            .TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+        )
+        assert receipt["source_task_revision"] == before.revision
+        assert receipt["admitted_task_revision"] == before.revision - 1
+        assert receipt["retained_admission_receipt"] is True
+        assert receipt["retry_suppressed"] is True
+        assert receipt["completion_authority"] is False
+        assert source.get_queue_entry(before.task_cid) is None
+
+        replay = source.quarantine_legacy_orphan_provider_outcome_unknown(
+            before.task_cid,
+            expected_task_revision=before.revision,
+            expected_control_receipt=fixture["admitted_receipt"],
+        )
+        assert replay.changed is False
+        assert replay.task == quarantined.task
+        assert replay.receipt_cid == quarantined.receipt_cid
+
+        validation = source.record_validation_result(
+            task_cid=before.task_cid,
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            attempt_id="attempt:legacy-orphan",
+            body=fixture["proof"],
+        )
+        assert validation.changed is True
+        completed = source.complete_legacy_orphan_landed_attempt(
+            before.task_cid,
+            expected_task_revision=quarantined.task.revision,
+            expected_control_receipt=receipt,
+            evidence_digest=fixture["evidence_digest"],
+            landed_proof=fixture["proof"],
+        )
+        assert completed.changed is True
+        assert completed.task.status == "completed"
+        completion_receipt = completed.task.body["completion_receipt"]
+        assert completion_receipt["source_status"] == "quarantined"
+        assert completion_receipt["admitted_task_revision"] == before.revision - 1
+        history = source.task_revision_history_projection(before.task_cid)
+        assert [item["status"] for item in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "retrying",
+            "quarantined",
+            "completed",
+        ]
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize("invalid_lineage", ["forged_receipt", "nonadjacent"])
+def test_retained_admission_retrying_quarantine_rejects_invalid_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_lineage: str,
+) -> None:
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:retained-invalid-lane"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+        retain_admission_on_retry=True,
+    )
+    expected_revision = int(fixture["source_revision"])
+    expected_receipt = dict(fixture["admitted_receipt"])
+    if invalid_lineage == "forged_receipt":
+        expected_receipt["attempt_id"] = "attempt:forged"
+    else:
+        connection = duckdb_state_module.open_duckdb_connection(database)
+        try:
+            row = connection.execute(
+                "SELECT status, revision, body_json FROM tasks "
+                "WHERE task_cid = 'task:test'"
+            ).fetchone()
+            assert row is not None
+            assert (str(row[0]), int(row[1])) == ("retrying", expected_revision)
+            expected_revision += 1
+            connection.execute(
+                "UPDATE tasks SET revision = ?, updated_at = ? "
+                "WHERE task_cid = ? AND revision = ?",
+                [
+                    expected_revision,
+                    "2026-08-30T00:00:01Z",
+                    "task:test",
+                    expected_revision - 1,
+                ],
+            )
+            connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    "task:test",
+                    expected_revision,
+                    "retrying",
+                    str(row[2]),
+                    "2026-08-30T00:00:01Z",
+                ],
+            )
+        finally:
+            connection.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / f"retained-invalid-{invalid_lineage}",
+        store_id=f"retained-invalid-{invalid_lineage}-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="no exact admitted history",
+        ):
+            source.quarantine_legacy_orphan_provider_outcome_unknown(
+                "task:test",
+                expected_task_revision=expected_revision,
+                expected_control_receipt=expected_receipt,
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "historic_liveness",
+    [
+        typed_owner_module.OwnerLiveness.ALIVE,
+        typed_owner_module.OwnerLiveness.UNKNOWN,
+    ],
+)
+def test_dead_admitted_unknown_outcome_requires_provably_dead_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historic_liveness: Any,
+) -> None:
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:dead-admitted-liveness"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="in_progress",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "dead-admitted-liveness-owner",
+        store_id="dead-admitted-liveness-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: historic_liveness,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            source.quarantine_dead_admitted_provider_outcome_unknown(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_dead_admitted_unknown_outcome_rejects_foreign_client_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = _legacy_orphan_database_path(tmp_path)
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id="database-implementation-daemon:historic-lane",
+        source_status="in_progress",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "dead-admitted-foreign-owner",
+        store_id="dead-admitted-foreign-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:foreign-lane",
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(TaskSourceIntegrityError, match="foreign"):
+            source.quarantine_dead_admitted_provider_outcome_unknown(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "historic_liveness",
+    [
+        typed_owner_module.OwnerLiveness.ALIVE,
+        typed_owner_module.OwnerLiveness.UNKNOWN,
+    ],
+)
+def test_legacy_orphan_landed_completion_requires_dead_historic_birth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historic_liveness: Any,
+) -> None:
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:legacy-orphan-liveness"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "legacy-orphan-liveness-owner",
+        store_id="legacy-orphan-liveness-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: historic_liveness,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        source.record_validation_result(
+            task_cid="task:test",
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            body=fixture["proof"],
+        )
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            source.complete_legacy_orphan_landed_attempt(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+                evidence_digest=fixture["evidence_digest"],
+                landed_proof=fixture["proof"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_legacy_orphan_landed_completion_rejects_noncurrent_evidence_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:legacy-orphan-evidence"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "legacy-orphan-evidence-owner",
+        store_id="legacy-orphan-evidence-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        source.record_validation_result(
+            task_cid="task:test",
+            outcome="passed",
+            evidence_digest="sha256:" + ("b" * 64),
+            argv=["unrelated-validation"],
+            body={"outcome": "passed"},
+        )
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            source.complete_legacy_orphan_landed_attempt(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+                evidence_digest=fixture["evidence_digest"],
+                landed_proof=fixture["proof"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_legacy_orphan_completion_owner_rejects_forged_git_object_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Client-minted hashes cannot replace the owner's immutable Git read."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:forged-git-proof"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "forged-git-owner",
+        store_id="forged-git-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        forged = json.loads(json.dumps(fixture["proof"]))
+        forged["landed_output_checks"][0]["object_id"] = "f" * 40
+        forged_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(forged)
+        ).hexdigest()
+        source.record_validation_result(
+            task_cid="task:test",
+            outcome="passed",
+            evidence_digest=forged_digest,
+            argv=["database-landed-merge-repair"],
+            body=forged,
+        )
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            source.complete_legacy_orphan_landed_attempt(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+                evidence_digest=forged_digest,
+                landed_proof=forged,
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_legacy_orphan_completion_owner_rejects_untracked_execution_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untracked conftest cannot influence an admitted validation run."""
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = "database-implementation-daemon:untracked-proof-input"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+    )
+    repository_root = fixture["repository_root"]
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / "untracked-proof-owner",
+        store_id="untracked-proof-owner-v1",
+        repository_id="repository:test",
+        repository_root=repository_root,
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        source.record_validation_result(
+            task_cid="task:test",
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            body=fixture["proof"],
+        )
+        (repository_root / "conftest.py").write_text(
+            "raise AssertionError('untracked validation input executed')\n",
+            encoding="utf-8",
+        )
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            source.complete_legacy_orphan_landed_attempt(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+                evidence_digest=fixture["evidence_digest"],
+                landed_proof=fixture["proof"],
+            )
+
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+    finally:
+        source.close()
+        server.stop()
 
 
 def _isolation_receipt(tmp_path: Path) -> tuple[Path, dict[str, Any]]:

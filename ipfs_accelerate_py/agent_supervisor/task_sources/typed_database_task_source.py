@@ -67,6 +67,15 @@ from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION,
+    TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA,
+    TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA,
+    TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
+    TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
+    TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
+    TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
@@ -75,8 +84,13 @@ from .typed_state_owner import (
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
-    _validated_legacy_unstall_claim_receipt,
+    _dead_admitted_provider_outcome_unknown_receipt,
+    _legacy_orphan_landed_completion_receipt,
+    _legacy_orphan_provider_outcome_unknown_receipt,
+    _retained_admission_retrying_provider_outcome_unknown_receipt,
     _validated_database_strict_resume_rejection_receipt,
+    _validated_legacy_orphan_unstall_receipt,
+    _validated_legacy_unstall_claim_receipt,
     _validated_stored_retry_cooldown,
 )
 
@@ -707,10 +721,10 @@ class TypedDatabaseTaskSource:
             return None
         body = task.body if isinstance(task.body, Mapping) else {}
         receipt = body.get("completion_receipt")
-        if not isinstance(receipt, Mapping) or receipt.get("operation") not in {
-            "database_claim",
-            "database_attempt_admitted",
-        }:
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation") != "database_claim"
+        ):
             return None
         try:
             _validated_legacy_unstall_claim_receipt(
@@ -756,6 +770,25 @@ class TypedDatabaseTaskSource:
         )
         if not candidates:
             return False
+        current_attestation = self.claim_process_attestation()
+        current_client_id = current_attestation.get("client_id")
+        if type(current_client_id) is not str or not current_client_id:
+            raise TaskSourceIntegrityError(
+                "typed claim process attestation has no client identity"
+            )
+        # Each supervisor lane has a distinct owner grant but reads the same
+        # task population.  A foreign lane must leave the retained claim for
+        # its original client to recover; attempting the owner command here
+        # would fail authorization and poison every lane's ready snapshot.
+        candidates = tuple(
+            (record, receipt)
+            for record, receipt in candidates
+            if isinstance(receipt.get("claim_process_attestation"), Mapping)
+            and receipt["claim_process_attestation"].get("client_id")
+            == current_client_id
+        )
+        if not candidates:
+            return False
         selected_now = self._clock_ms()
         if (
             isinstance(selected_now, bool)
@@ -763,6 +796,7 @@ class TypedDatabaseTaskSource:
             or selected_now < 0
         ):
             raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        population_changed = False
         for record, receipt in candidates:
             try:
                 result = self._client.recover_legacy_unstalled_claim(
@@ -790,14 +824,39 @@ class TypedDatabaseTaskSource:
                     and current_receipt.get("operation")
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
-                    return True
+                    population_changed = True
+                    continue
+                try:
+                    unchanged = bool(
+                        current is not None
+                        and current.status == record.status
+                        and current.revision == record.revision
+                        and isinstance(current_receipt, Mapping)
+                        and canonical_json_bytes(dict(current_receipt))
+                        == canonical_json_bytes(dict(receipt))
+                    )
+                except (TypeError, ValueError):
+                    unchanged = False
+                if unchanged:
+                    # ALIVE/UNKNOWN is a correct fail-closed owner decision,
+                    # not a reason to poison every unrelated ready task.
+                    # The exact reservation remains unready without cooldown.
+                    continue
                 self._raise_unrepaired_retrying_integrity_error(
                     record,
                     cooldowns,
                 )
             if not result.accepted:
-                return True
-        return True
+                current = self.get_task(record.task_cid)
+                if current is None or current.revision != record.revision:
+                    population_changed = True
+                    continue
+                self._raise_unrepaired_retrying_integrity_error(
+                    record,
+                    cooldowns,
+                )
+            population_changed = population_changed or bool(result.changed)
+        return population_changed
 
     def _stable_ready_material(
         self,
@@ -1795,6 +1854,691 @@ class TypedDatabaseTaskSource:
             changed=bool(result.changed),
             details=details,
         )
+
+    def quarantine_dead_admitted_provider_outcome_unknown(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+    ) -> DatabaseCASResult:
+        """Quarantine one provably dead admission without assuming its outcome.
+
+        The exclusive owner re-derives the current process attestation, checks
+        that the historic process is DEAD, and commits the receipt/status plus
+        revision history under the existing receipt-bearing CAS.  A stored
+        exact post-state is returned as an idempotent replay, including after
+        a client reconnect changes the active grant.
+        """
+
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 2
+            or not isinstance(expected_control_receipt, Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "dead admitted reconciliation inputs are invalid"
+            )
+        session = self._client.session
+        adapter = getattr(self._client, "_adapter", None)
+        owner_connection = getattr(adapter, "raw", None)
+        if (
+            type(session) is not ClientSession
+            or session.transport_mode is not TransportMode.QUACK
+            or type(owner_connection) is not TypedStateOwnerConnection
+        ):
+            raise TaskSourceIntegrityError(
+                "dead admitted reconciliation requires the exclusive typed owner"
+            )
+        admitted_receipt = dict(expected_control_receipt)
+        task = self.get(task_cid_or_alias)
+        if task is None:
+            raise KeyError(str(task_cid_or_alias))
+
+        def canonical_receipt(
+            recovery_attestation: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            try:
+                return _dead_admitted_provider_outcome_unknown_receipt(
+                    task_cid=task.task_cid,
+                    task_alias=task.task_alias,
+                    source_task_revision=expected_task_revision,
+                    admitted_control_receipt=admitted_receipt,
+                    recovery_process_attestation=recovery_attestation,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceIntegrityError(str(exc)) from exc
+
+        def exact_replay(candidate: Any) -> DatabaseCASResult | None:
+            if (
+                candidate is None
+                or candidate.status != "quarantined"
+                or candidate.revision != expected_task_revision + 1
+            ):
+                return None
+            observed = candidate.body.get("completion_receipt")
+            recovery_attestation = (
+                observed.get("recovery_process_attestation")
+                if isinstance(observed, Mapping)
+                else None
+            )
+            if (
+                not isinstance(observed, Mapping)
+                or observed.get("schema")
+                != TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA
+                or observed.get("operation")
+                != TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+                or not isinstance(recovery_attestation, Mapping)
+            ):
+                return None
+            expected_receipt = canonical_receipt(recovery_attestation)
+            if canonical_json_bytes(dict(observed)) != canonical_json_bytes(
+                expected_receipt
+            ):
+                return None
+            history = self.task_revision_history_projection(candidate.task_cid)
+            revisions = history.get("revisions")
+            if not isinstance(revisions, list):
+                raise TaskSourceIntegrityError(
+                    "dead admitted reconciliation history is malformed"
+                )
+            by_revision = {
+                entry.get("revision"): entry
+                for entry in revisions
+                if isinstance(entry, Mapping)
+            }
+            admitted_entry = by_revision.get(expected_task_revision)
+            quarantine_entry = by_revision.get(expected_task_revision + 1)
+            admitted_entry_receipt = (
+                admitted_entry.get("body", {}).get("completion_receipt")
+                if isinstance(admitted_entry, Mapping)
+                and isinstance(admitted_entry.get("body"), Mapping)
+                else None
+            )
+            quarantine_entry_receipt = (
+                quarantine_entry.get("body", {}).get("completion_receipt")
+                if isinstance(quarantine_entry, Mapping)
+                and isinstance(quarantine_entry.get("body"), Mapping)
+                else None
+            )
+            if (
+                not isinstance(admitted_entry, Mapping)
+                or admitted_entry.get("status") != "in_progress"
+                or not isinstance(admitted_entry_receipt, Mapping)
+                or canonical_json_bytes(dict(admitted_entry_receipt))
+                != canonical_json_bytes(admitted_receipt)
+                or not isinstance(quarantine_entry, Mapping)
+                or quarantine_entry.get("status") != "quarantined"
+                or not isinstance(quarantine_entry_receipt, Mapping)
+                or canonical_json_bytes(dict(quarantine_entry_receipt))
+                != canonical_json_bytes(expected_receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "dead admitted reconciliation history is inconsistent"
+                )
+            return DatabaseCASResult(
+                task=candidate,
+                previous_status="in_progress",
+                revision=candidate.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid=str(expected_receipt["receipt_id"]),
+            )
+
+        replay = exact_replay(task)
+        if replay is not None:
+            return replay
+        current_receipt = task.body.get("completion_receipt")
+        try:
+            source_receipt_matches = bool(
+                isinstance(current_receipt, Mapping)
+                and canonical_json_bytes(dict(current_receipt))
+                == canonical_json_bytes(admitted_receipt)
+            )
+        except (TypeError, ValueError) as exc:
+            raise TaskSourceIntegrityError(
+                "dead admitted reconciliation source receipt is not canonical"
+            ) from exc
+        if (
+            task.status != "in_progress"
+            or task.revision != expected_task_revision
+            or not source_receipt_matches
+        ):
+            raise TaskSourceConflictError(
+                "dead admitted reconciliation task revision or receipt is stale"
+            )
+        recovery_attestation = self.claim_process_attestation()
+        quarantine_receipt = canonical_receipt(recovery_attestation)
+        try:
+            result = self.compare_and_set_status(
+                task.task_cid,
+                expected_task_revision,
+                "quarantined",
+                quarantine_receipt,
+                expected_control_receipt=admitted_receipt,
+            )
+        except Exception:
+            # A transport failure may hide an already committed CAS.  Admit
+            # only the exact deterministic post-state; otherwise preserve the
+            # original failure.
+            try:
+                recovered = exact_replay(self.get(task.task_cid))
+            except Exception:
+                recovered = None
+            else:
+                if recovered is not None:
+                    return recovered
+            raise
+        observed = result.task.body.get("completion_receipt")
+        if (
+            result.task.status != "quarantined"
+            or result.task.revision != expected_task_revision + 1
+            or not isinstance(observed, Mapping)
+            or canonical_json_bytes(dict(observed))
+            != canonical_json_bytes(quarantine_receipt)
+        ):
+            raise TaskSourceIntegrityError(
+                "dead admitted reconciliation post-state is inconsistent"
+            )
+        return DatabaseCASResult(
+            task=result.task,
+            previous_status="in_progress",
+            revision=result.revision,
+            event_cursor=result.event_cursor,
+            changed=result.changed,
+            receipt_cid=str(quarantine_receipt["receipt_id"]),
+        )
+
+    def quarantine_legacy_orphan_provider_outcome_unknown(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+    ) -> DatabaseCASResult:
+        """Quarantine the exact retired lossy retry row without blind retry."""
+
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 3
+            or not isinstance(expected_control_receipt, Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan outcome-unknown inputs are invalid"
+            )
+        session = self._client.session
+        adapter = getattr(self._client, "_adapter", None)
+        owner_connection = getattr(adapter, "raw", None)
+        if (
+            type(session) is not ClientSession
+            or session.transport_mode is not TransportMode.QUACK
+            or type(owner_connection) is not TypedStateOwnerConnection
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan outcome-unknown recovery requires the exclusive typed owner"
+            )
+        source_receipt = dict(expected_control_receipt)
+        task = self.get(task_cid_or_alias)
+        if task is None:
+            raise KeyError(str(task_cid_or_alias))
+        retained_admission_source = bool(
+            source_receipt.get("operation") == "database_attempt_admitted"
+            and source_receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        if not retained_admission_source:
+            try:
+                _validated_legacy_orphan_unstall_receipt(
+                    source_receipt,
+                    task_alias=task.task_alias,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceIntegrityError(str(exc)) from exc
+        admitted_task_revision = expected_task_revision - 1
+        history = self.task_revision_history_projection(task.task_cid)
+        revisions = history.get("revisions")
+        if not isinstance(revisions, list):
+            raise TaskSourceIntegrityError(
+                "legacy orphan outcome-unknown history is malformed"
+            )
+        by_revision = {
+            entry.get("revision"): entry
+            for entry in revisions
+            if isinstance(entry, Mapping)
+        }
+        source_entry = by_revision.get(expected_task_revision)
+        admitted_entry = by_revision.get(admitted_task_revision)
+        source_entry_receipt = (
+            source_entry.get("body", {}).get("completion_receipt")
+            if isinstance(source_entry, Mapping)
+            and isinstance(source_entry.get("body"), Mapping)
+            else None
+        )
+        admitted_receipt = (
+            admitted_entry.get("body", {}).get("completion_receipt")
+            if isinstance(admitted_entry, Mapping)
+            and isinstance(admitted_entry.get("body"), Mapping)
+            else None
+        )
+        if (
+            not isinstance(source_entry, Mapping)
+            or source_entry.get("status") != "retrying"
+            or not isinstance(source_entry_receipt, Mapping)
+            or canonical_json_bytes(dict(source_entry_receipt))
+            != canonical_json_bytes(source_receipt)
+            or not isinstance(admitted_entry, Mapping)
+            or admitted_entry.get("status") != "in_progress"
+            or not isinstance(admitted_receipt, Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan outcome-unknown has no exact admitted history"
+            )
+        if retained_admission_source and canonical_json_bytes(
+            source_receipt
+        ) != canonical_json_bytes(dict(admitted_receipt)):
+            raise TaskSourceIntegrityError(
+                "retained-admission retrying source differs from its predecessor"
+            )
+
+        def canonical_receipt(
+            recovery_attestation: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            try:
+                if retained_admission_source:
+                    return (
+                        _retained_admission_retrying_provider_outcome_unknown_receipt(
+                            task_cid=task.task_cid,
+                            task_alias=task.task_alias,
+                            source_task_revision=expected_task_revision,
+                            source_control_receipt=source_receipt,
+                            admitted_task_revision=admitted_task_revision,
+                            admitted_control_receipt=admitted_receipt,
+                            recovery_process_attestation=recovery_attestation,
+                        )
+                    )
+                return _legacy_orphan_provider_outcome_unknown_receipt(
+                    task_cid=task.task_cid,
+                    task_alias=task.task_alias,
+                    source_task_revision=expected_task_revision,
+                    source_control_receipt=source_receipt,
+                    admitted_task_revision=admitted_task_revision,
+                    admitted_control_receipt=admitted_receipt,
+                    recovery_process_attestation=recovery_attestation,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceIntegrityError(str(exc)) from exc
+
+        def exact_replay(candidate: Any) -> DatabaseCASResult | None:
+            if (
+                candidate is None
+                or candidate.status != "quarantined"
+                or candidate.revision != expected_task_revision + 1
+            ):
+                return None
+            observed = candidate.body.get("completion_receipt")
+            recovery_attestation = (
+                observed.get("recovery_process_attestation")
+                if isinstance(observed, Mapping)
+                else None
+            )
+            if (
+                not isinstance(observed, Mapping)
+                or observed.get("schema")
+                != (
+                    TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+                    if retained_admission_source
+                    else TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+                )
+                or observed.get("operation")
+                != (
+                    TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+                    if retained_admission_source
+                    else TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+                )
+                or not isinstance(recovery_attestation, Mapping)
+            ):
+                return None
+            expected_receipt = canonical_receipt(recovery_attestation)
+            if canonical_json_bytes(dict(observed)) != canonical_json_bytes(
+                expected_receipt
+            ):
+                return None
+            quarantine_entry = by_revision.get(expected_task_revision + 1)
+            quarantine_entry_receipt = (
+                quarantine_entry.get("body", {}).get("completion_receipt")
+                if isinstance(quarantine_entry, Mapping)
+                and isinstance(quarantine_entry.get("body"), Mapping)
+                else None
+            )
+            # Refresh history on replay because this closure may have been
+            # constructed before the first CAS in the same client call.
+            if not isinstance(quarantine_entry_receipt, Mapping):
+                refreshed_history = self.task_revision_history_projection(
+                    candidate.task_cid
+                )
+                refreshed = refreshed_history.get("revisions")
+                if isinstance(refreshed, list):
+                    refreshed_entry = next(
+                        (
+                            item
+                            for item in refreshed
+                            if isinstance(item, Mapping)
+                            and item.get("revision")
+                            == expected_task_revision + 1
+                        ),
+                        None,
+                    )
+                    quarantine_entry_receipt = (
+                        refreshed_entry.get("body", {}).get(
+                            "completion_receipt"
+                        )
+                        if isinstance(refreshed_entry, Mapping)
+                        and isinstance(refreshed_entry.get("body"), Mapping)
+                        else None
+                    )
+            if (
+                not isinstance(quarantine_entry_receipt, Mapping)
+                or canonical_json_bytes(dict(quarantine_entry_receipt))
+                != canonical_json_bytes(expected_receipt)
+            ):
+                raise TaskSourceIntegrityError(
+                    "legacy orphan outcome-unknown history is inconsistent"
+                )
+            return DatabaseCASResult(
+                task=candidate,
+                previous_status="retrying",
+                revision=candidate.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid=str(expected_receipt["receipt_id"]),
+            )
+
+        replay = exact_replay(task)
+        if replay is not None:
+            return replay
+        current_receipt = task.body.get("completion_receipt")
+        if (
+            task.status != "retrying"
+            or task.revision != expected_task_revision
+            or not isinstance(current_receipt, Mapping)
+            or canonical_json_bytes(dict(current_receipt))
+            != canonical_json_bytes(source_receipt)
+        ):
+            raise TaskSourceConflictError(
+                "legacy orphan outcome-unknown task revision or receipt is stale"
+            )
+        recovery_attestation = self.claim_process_attestation()
+        quarantine_receipt = canonical_receipt(recovery_attestation)
+        try:
+            result = self.compare_and_set_status(
+                task.task_cid,
+                expected_task_revision,
+                "quarantined",
+                quarantine_receipt,
+                expected_control_receipt=source_receipt,
+            )
+        except Exception:
+            try:
+                recovered = exact_replay(self.get(task.task_cid))
+            except Exception:
+                recovered = None
+            else:
+                if recovered is not None:
+                    return recovered
+            raise
+        observed = result.task.body.get("completion_receipt")
+        if (
+            result.task.status != "quarantined"
+            or result.task.revision != expected_task_revision + 1
+            or not isinstance(observed, Mapping)
+            or canonical_json_bytes(dict(observed))
+            != canonical_json_bytes(quarantine_receipt)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan outcome-unknown post-state is inconsistent"
+            )
+        return DatabaseCASResult(
+            task=result.task,
+            previous_status="retrying",
+            revision=result.revision,
+            event_cursor=result.event_cursor,
+            changed=result.changed,
+            receipt_cid=str(quarantine_receipt["receipt_id"]),
+        )
+
+    def complete_legacy_orphan_landed_attempt(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        evidence_digest: str,
+        landed_proof: Mapping[str, Any],
+    ) -> DatabaseCASResult:
+        """Complete one dead admitted attempt from exact immutable-tree evidence.
+
+        This is the only recovery surface for the retired lossy orphan receipt.
+        It also accepts an admitted ``in_progress`` row whose owner birth is
+        dead, avoiding any retry when the provider outcome is already proven by
+        landed outputs.  The exclusive owner independently reconstructs the
+        same admission and performs the liveness/evidence checks atomically.
+        """
+
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 2
+            or not isinstance(expected_control_receipt, Mapping)
+            or not isinstance(landed_proof, Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed completion inputs are invalid"
+            )
+        task = self.get(task_cid_or_alias)
+        if task is None:
+            raise KeyError(str(task_cid_or_alias))
+        source_receipt = dict(expected_control_receipt)
+        source_operation = source_receipt.get("operation")
+        if (
+            source_receipt.get("schema")
+            == TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA
+            and source_operation == TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION
+        ):
+            source_status = "retrying"
+            admitted_task_revision = expected_task_revision - 1
+            try:
+                _validated_legacy_orphan_unstall_receipt(
+                    source_receipt,
+                    task_alias=task.task_alias,
+                )
+            except TypedStateOwnerError as exc:
+                raise TaskSourceIntegrityError(str(exc)) from exc
+        elif (
+            source_receipt.get("schema")
+            == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_SCHEMA
+            and source_operation
+            == TYPED_DATABASE_DEAD_ADMITTED_OUTCOME_UNKNOWN_OPERATION
+        ):
+            source_status = "quarantined"
+            admitted_task_revision = expected_task_revision - 1
+        elif (
+            source_receipt.get("schema")
+            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA
+            and source_operation
+            == TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION
+        ):
+            source_status = "quarantined"
+            admitted_task_revision = expected_task_revision - 2
+        elif (
+            source_receipt.get("schema")
+            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA
+            and source_operation
+            == TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION
+        ):
+            source_status = "quarantined"
+            admitted_task_revision = expected_task_revision - 2
+        elif (
+            source_operation == "database_attempt_admitted"
+            and source_receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ):
+            # One retired daemon briefly carried the exact admission receipt
+            # into a lossy retrying revision.  Accept that closed historical
+            # shape only when the immediately preceding revision is the same
+            # admitted in-progress row; new typed retry CAS rejects it.
+            history_preview = self.task_revision_history_projection(
+                task.task_cid
+            )
+            preview_revisions = history_preview.get("revisions")
+            preview_source = next(
+                (
+                    item
+                    for item in preview_revisions
+                    if isinstance(item, Mapping)
+                    and item.get("revision") == expected_task_revision
+                ),
+                None,
+            ) if isinstance(preview_revisions, list) else None
+            if (
+                task.status == "retrying"
+                or isinstance(preview_source, Mapping)
+                and preview_source.get("status") == "retrying"
+            ):
+                source_status = "retrying"
+                admitted_task_revision = expected_task_revision - 1
+            else:
+                source_status = "in_progress"
+                admitted_task_revision = expected_task_revision
+        else:
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed completion has no admitted source"
+            )
+
+        history = self.task_revision_history_projection(task.task_cid)
+        revisions = history.get("revisions")
+        if not isinstance(revisions, list):
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed completion history is malformed"
+            )
+        by_revision = {
+            entry.get("revision"): entry
+            for entry in revisions
+            if isinstance(entry, Mapping)
+        }
+        source_entry = by_revision.get(expected_task_revision)
+        admitted_entry = by_revision.get(admitted_task_revision)
+        source_entry_receipt = (
+            source_entry.get("body", {}).get("completion_receipt")
+            if isinstance(source_entry, Mapping)
+            and isinstance(source_entry.get("body"), Mapping)
+            else None
+        )
+        admitted_receipt = (
+            admitted_entry.get("body", {}).get("completion_receipt")
+            if isinstance(admitted_entry, Mapping)
+            and isinstance(admitted_entry.get("body"), Mapping)
+            else None
+        )
+        try:
+            source_receipt_matches = bool(
+                isinstance(source_entry_receipt, Mapping)
+                and canonical_json_bytes(dict(source_entry_receipt))
+                == canonical_json_bytes(source_receipt)
+            )
+        except (TypeError, ValueError) as exc:
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed source receipt is not canonical"
+            ) from exc
+        if (
+            not isinstance(source_entry, Mapping)
+            or source_entry.get("status") != source_status
+            or not source_receipt_matches
+            or not isinstance(admitted_entry, Mapping)
+            or admitted_entry.get("status") != "in_progress"
+            or not isinstance(admitted_receipt, Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed completion has no exact admitted history"
+            )
+        try:
+            completion_receipt = _legacy_orphan_landed_completion_receipt(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                source_status=source_status,
+                source_task_revision=expected_task_revision,
+                source_control_receipt=source_receipt,
+                admitted_task_revision=admitted_task_revision,
+                admitted_control_receipt=admitted_receipt,
+                evidence_digest=str(evidence_digest),
+                landed_proof=landed_proof,
+            )
+        except TypedStateOwnerError as exc:
+            raise TaskSourceIntegrityError(str(exc)) from exc
+        declared_outputs = [
+            str(item.get("path") or "")
+            for item in task.outputs
+            if isinstance(item, Mapping)
+        ]
+        if (
+            not declared_outputs
+            or completion_receipt["landed_output_proof"]["landed_outputs"]
+            != declared_outputs
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed proof differs from declared task outputs"
+            )
+
+        if task.status in _COMPLETED_STATUSES:
+            observed = task.body.get("completion_receipt")
+            if (
+                task.revision != expected_task_revision + 1
+                or not isinstance(observed, Mapping)
+                or canonical_json_bytes(dict(observed))
+                != canonical_json_bytes(completion_receipt)
+            ):
+                raise TaskSourceConflictError(
+                    "legacy orphan landed completion replay is stale"
+                )
+            return DatabaseCASResult(
+                task=task,
+                previous_status=source_status,
+                revision=task.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid=content_identity(
+                    {"legacy_orphan_landed_completion": completion_receipt}
+                ),
+            )
+        if (
+            task.status != source_status
+            or task.revision != expected_task_revision
+        ):
+            raise TaskSourceConflictError(
+                "legacy orphan landed completion task revision is stale"
+            )
+        result = self.compare_and_set_status(
+            task.task_cid,
+            expected_task_revision,
+            "completed",
+            completion_receipt,
+            expected_control_receipt=source_receipt,
+            evidence_digests=[str(evidence_digest)],
+        )
+        observed = result.task.body.get("completion_receipt")
+        if (
+            result.task.status not in _COMPLETED_STATUSES
+            or not isinstance(observed, Mapping)
+            or observed.get("schema")
+            != TYPED_DATABASE_LEGACY_ORPHAN_LANDED_COMPLETION_SCHEMA
+            or canonical_json_bytes(dict(observed))
+            != canonical_json_bytes(completion_receipt)
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy orphan landed completion post-state is inconsistent"
+            )
+        return result
 
     def record_validation_result(
         self,

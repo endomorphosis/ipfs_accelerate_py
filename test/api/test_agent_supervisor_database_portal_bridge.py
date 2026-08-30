@@ -10522,13 +10522,15 @@ def _append_exact_callback_completion_chain(
     tamper: str = "",
     projected_source: bool = False,
     terminal_tamper: str = "",
+    integration_commit: str = "",
+    invariant_checks: list[dict[str, object]] | None = None,
 ) -> None:
     alias = "LGSWF-004"
     task_cid = "task:cid:004"
     task_key = "task/v1/exact-callback"
     baseline = "b" * 40
     implementation = "a" * 40
-    integration = "c" * 40
+    integration = integration_commit or "c" * 40
     request_id = "request:exact-callback"
     completion_task_cids = {alias: task_cid}
     task_source_identity = {
@@ -10729,7 +10731,7 @@ def _append_exact_callback_completion_chain(
             "target_branch": "main",
         },
         "post_merge_declared_output_invariant": {
-            "checks": [],
+            "checks": [dict(check) for check in (invariant_checks or [])],
             "missing_outputs": [],
             "mode": "repository_tree",
             "passed": True,
@@ -10851,6 +10853,287 @@ def _append_exact_callback_completion_chain(
     elif tamper == "completion-key-missing":
         completion_payload.pop("canonical_task_key")
     append_jsonl_event(paths.events, "task_completed", completion_payload)
+
+
+def _gitlink_callback_integration(repo: Path) -> tuple[str, str, str]:
+    _init_git_fixture(repo)
+    (repo / "README.md").write_text("callback fixture\n", encoding="utf-8")
+    root_output = repo / "inventory/result.json"
+    root_output.parent.mkdir(parents=True)
+    root_output.write_text("{}\n", encoding="utf-8")
+    (repo / "inventory-link.json").symlink_to("inventory/result.json")
+    _commit_git_fixture(repo, "callback fixture baseline")
+    gitlink_path = "external/ipfs_accelerate"
+    child = repo / gitlink_path
+    child.parent.mkdir(parents=True)
+    _init_git_fixture(child)
+    output = child / "docs/architecture/inventory.md"
+    output.parent.mkdir(parents=True)
+    output.write_text("inventory\n", encoding="utf-8")
+    _commit_git_fixture(child, "record callback output")
+    integration_gitlink = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{integration_gitlink},{gitlink_path}",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "record callback integration gitlink"],
+        cwd=repo,
+        check=True,
+    )
+    integration = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (child / "README.md").write_text("mutable child head\n", encoding="utf-8")
+    _commit_git_fixture(child, "advance mutable callback child")
+    current_gitlink = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=child,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--cacheinfo",
+            f"160000,{current_gitlink},{gitlink_path}",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "advance mutable callback gitlink"],
+        cwd=repo,
+        check=True,
+    )
+    return integration, integration_gitlink, current_gitlink
+
+
+def test_bridge_callback_reconciliation_accepts_exact_nested_gitlink_check(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "outer"
+    integration, integration_gitlink, _current_gitlink = (
+        _gitlink_callback_integration(repo)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "exact nested callback lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    output = "external/ipfs_accelerate/docs/architecture/inventory.md"
+    _append_exact_callback_completion_chain(
+        paths,
+        integration_commit=integration,
+        invariant_checks=[
+            {
+                "exists": True,
+                "path": output,
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": integration_gitlink,
+                "task_id": "LGSWF-004",
+                "tracked": True,
+                "tracked_path": "docs/architecture/inventory.md",
+            },
+            {
+                "exists": True,
+                "path": "inventory/result.json",
+                "reason": "declared_output_tracked",
+                "repository": ".",
+                "repository_ref": integration,
+                "task_id": "LGSWF-004",
+                "tracked": True,
+                "tracked_path": "inventory/result.json",
+            },
+        ],
+    )
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        completion_task_key="task/v1/exact-callback",
+        repository_root=repo,
+    )
+
+    assert evidence is not None
+    assert evidence["implementation_commit"] == "a" * 40
+
+
+def test_protected_recovery_replays_exact_nested_gitlink_callback_idempotently(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "outer"
+    integration, integration_gitlink, _current_gitlink = (
+        _gitlink_callback_integration(repo)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "protected callback replay reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    output = "external/ipfs_accelerate/docs/architecture/inventory.md"
+    _append_exact_callback_completion_chain(
+        paths,
+        integration_commit=integration,
+        invariant_checks=[
+            {
+                "exists": True,
+                "path": output,
+                "reason": "declared_output_tracked",
+                "repository": "external/ipfs_accelerate",
+                "repository_ref": integration_gitlink,
+                "task_id": "LGSWF-004",
+                "tracked": True,
+                "tracked_path": "docs/architecture/inventory.md",
+            }
+        ],
+    )
+    before = paths.events.read_bytes()
+
+    first = bridge._ensure_protected_recovery_completion_event(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        canonical_task_key="task/v1/exact-callback",
+        baseline_commit="b" * 40,
+        implementation_commit="a" * 40,
+        repository_root=repo,
+        queue_reconciliation_proven=True,
+    )
+    replay = bridge._ensure_protected_recovery_completion_event(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        canonical_task_key="task/v1/exact-callback",
+        baseline_commit="b" * 40,
+        implementation_commit="a" * 40,
+        repository_root=repo,
+        queue_reconciliation_proven=True,
+    )
+
+    assert replay == first
+    assert first["implementation_commit"] == "a" * 40
+    assert paths.events.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "repository-prefix",
+        "tracked-path",
+        "gitlink-ref",
+        "missing-child-blob",
+        "root-tracked-path",
+        "root-repository-ref",
+        "root-tree",
+        "root-symlink",
+    ],
+)
+def test_bridge_callback_reconciliation_rejects_tampered_repository_check(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    repo = tmp_path / "outer"
+    integration, integration_gitlink, current_gitlink = (
+        _gitlink_callback_integration(repo)
+    )
+    output = "external/ipfs_accelerate/docs/architecture/inventory.md"
+    check: dict[str, object] = {
+        "exists": True,
+        "path": output,
+        "reason": "declared_output_tracked",
+        "repository": "external/ipfs_accelerate",
+        "repository_ref": integration_gitlink,
+        "task_id": "LGSWF-004",
+        "tracked": True,
+        "tracked_path": "docs/architecture/inventory.md",
+    }
+    if tamper == "repository-prefix":
+        check["path"] = (
+            "external/ipfs_accelerate-forged/docs/architecture/inventory.md"
+        )
+    elif tamper == "tracked-path":
+        check["tracked_path"] = output
+    elif tamper == "gitlink-ref":
+        check["repository_ref"] = current_gitlink
+    elif tamper == "missing-child-blob":
+        check["path"] = "external/ipfs_accelerate/docs/architecture/missing.md"
+        check["tracked_path"] = "docs/architecture/missing.md"
+    else:
+        check.update(
+            {
+                "path": "inventory/result.json",
+                "repository": ".",
+                "repository_ref": integration,
+                "tracked_path": "inventory/result.json",
+            }
+        )
+        if tamper == "root-tracked-path":
+            check["tracked_path"] = "forged/result.json"
+        elif tamper == "root-repository-ref":
+            check["repository_ref"] = integration_gitlink
+        elif tamper == "root-tree":
+            check["path"] = "inventory"
+            check["tracked_path"] = "inventory"
+        else:
+            check["path"] = "inventory-link.json"
+            check["tracked_path"] = "inventory-link.json"
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "tampered repository callback lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_exact_callback_completion_chain(
+        paths,
+        integration_commit=integration,
+        invariant_checks=[check],
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="callback reconciliation binding is invalid",
+    ):
+        bridge._completion_event_evidence(
+            paths,
+            alias="LGSWF-004",
+            task_cid="task:cid:004",
+            completion_task_key="task/v1/exact-callback",
+            repository_root=repo,
+        )
 
 
 def test_bridge_completion_lineage_accepts_only_later_exact_queue_reconciliation(

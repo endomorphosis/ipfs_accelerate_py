@@ -2130,6 +2130,112 @@ def _git_blob_at_commit(
     return bytes(payload.stdout)
 
 
+def _gitlink_oid_at_commit(
+    repository_root: Path,
+    *,
+    commit: str,
+    repository: str,
+) -> str:
+    """Resolve one exact nested-repository gitlink from an immutable tree."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise DatabasePortalBridgeError(
+            "callback integration commit identity is malformed"
+        )
+    safe_repository = _safe_repository_path(repository)
+    if safe_repository == ".":
+        raise DatabasePortalBridgeError(
+            "callback nested repository cannot be the repository root"
+        )
+    try:
+        tree_entry = subprocess.run(
+            [
+                "git",
+                "ls-tree",
+                "-z",
+                "--full-tree",
+                commit,
+                "--",
+                safe_repository,
+            ],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DatabasePortalBridgeError(
+            "callback integration gitlink is unavailable"
+        ) from exc
+    match = re.fullmatch(
+        rb"160000 commit ([0-9a-f]{40})\t([^\0]+)\0",
+        tree_entry.stdout,
+    )
+    try:
+        observed_repository = (
+            match.group(2).decode("utf-8") if match is not None else ""
+        )
+    except UnicodeDecodeError as exc:
+        raise DatabasePortalBridgeError(
+            "callback integration gitlink path is malformed"
+        ) from exc
+    if (
+        tree_entry.returncode != 0
+        or match is None
+        or observed_repository != safe_repository
+    ):
+        raise DatabasePortalBridgeError(
+            "callback integration repository is not an exact gitlink"
+        )
+    return match.group(1).decode("ascii")
+
+
+def _regular_blob_oid_at_commit(
+    repository_root: Path,
+    *,
+    commit: str,
+    path: str,
+) -> str:
+    """Resolve an exact regular-file blob from one immutable repository tree."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise DatabasePortalBridgeError(
+            "callback output repository commit identity is malformed"
+        )
+    safe_path = _safe_output_path(path)
+    try:
+        tree_entry = subprocess.run(
+            ["git", "ls-tree", "-z", "--full-tree", commit, "--", safe_path],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DatabasePortalBridgeError(
+            "callback output blob is unavailable"
+        ) from exc
+    match = re.fullmatch(
+        rb"(?:100644|100755) blob ([0-9a-f]{40})\t([^\0]+)\0",
+        tree_entry.stdout,
+    )
+    try:
+        observed_path = match.group(2).decode("utf-8") if match else ""
+    except UnicodeDecodeError as exc:
+        raise DatabasePortalBridgeError(
+            "callback output blob path is malformed"
+        ) from exc
+    if (
+        tree_entry.returncode != 0
+        or match is None
+        or observed_path != safe_path
+    ):
+        raise DatabasePortalBridgeError(
+            "callback output is absent or is not a regular tracked blob"
+        )
+    return match.group(1).decode("ascii")
+
+
 def _content_addressed_record(
     value: Mapping[str, Any],
     *,
@@ -5598,6 +5704,7 @@ class DatabasePortalExecutionBridge:
                 alias=task_alias,
                 task_cid=portal_task_cid,
                 task_key=portal_task_key,
+                repository_root=self.repository_root,
             )
         ):
             return None
@@ -6247,6 +6354,7 @@ class DatabasePortalExecutionBridge:
                 alias=task_alias,
                 task_cid=portal_task_cid,
                 completion_task_key=portal_task_key,
+                repository_root=self.repository_root,
             )
         except DatabasePortalBridgeError:
             exact_completion = None
@@ -8962,6 +9070,7 @@ class DatabasePortalExecutionBridge:
         alias: str,
         task_cid: str,
         task_key: str,
+        repository_root: Path | None = None,
     ) -> bool:
         """Verify the complete callback handoff, not merely its landed SHA."""
 
@@ -9450,6 +9559,7 @@ class DatabasePortalExecutionBridge:
             or invariant.get("task_ids") != list(expected_task_cids)
         ):
             return False
+        integration_gitlinks: dict[str, str] = {}
         for check in invariant["checks"]:
             if (
                 not isinstance(check, Mapping)
@@ -9467,12 +9577,61 @@ class DatabasePortalExecutionBridge:
                 or check.get("exists") is not True
                 or check.get("tracked") is not True
                 or check.get("reason") != "declared_output_tracked"
-                or not str(check.get("path") or "")
-                or not str(check.get("repository") or "")
-                or check.get("tracked_path") != check.get("path")
-                or str(check.get("repository_ref") or "") != integration
                 or str(check.get("task_id") or "") not in expected_task_cids
             ):
+                return False
+            try:
+                path = _safe_output_path(check.get("path"))
+                repository = _safe_repository_path(check.get("repository"))
+                tracked_path = _safe_output_path(check.get("tracked_path"))
+            except DatabasePortalBridgeError:
+                return False
+            check_repository_ref = str(check.get("repository_ref") or "")
+            if repository_root is None:
+                return False
+            if repository == ".":
+                if (
+                    tracked_path != path
+                    or check_repository_ref != integration
+                ):
+                    return False
+                try:
+                    _regular_blob_oid_at_commit(
+                        repository_root,
+                        commit=integration,
+                        path=tracked_path,
+                    )
+                except DatabasePortalBridgeError:
+                    return False
+                continue
+
+            repository_prefix = f"{repository}/"
+            if not path.startswith(repository_prefix):
+                return False
+            expected_tracked_path = path[len(repository_prefix) :]
+            if not expected_tracked_path or tracked_path != expected_tracked_path:
+                return False
+            if repository not in integration_gitlinks:
+                try:
+                    integration_gitlinks[repository] = _gitlink_oid_at_commit(
+                        repository_root,
+                        commit=integration,
+                        repository=repository,
+                    )
+                except DatabasePortalBridgeError:
+                    return False
+            if check_repository_ref != integration_gitlinks[repository]:
+                return False
+            child_root = repository_root / repository
+            if not child_root.is_dir() or child_root.is_symlink():
+                return False
+            try:
+                _regular_blob_oid_at_commit(
+                    child_root,
+                    commit=integration_gitlinks[repository],
+                    path=tracked_path,
+                )
+            except DatabasePortalBridgeError:
                 return False
 
         receipt_evidence = reconciliation.get("completion_receipt_evidence")
@@ -10552,6 +10711,7 @@ class DatabasePortalExecutionBridge:
         completion_task_cid: str | None = None,
         verified_landed_completion_claim_seed: Mapping[str, Any] | None = None,
         validated_no_change_authority: Mapping[str, Any] | None = None,
+        repository_root: Path | None = None,
     ) -> Mapping[str, Any] | None:
         """Bind projected completion to one exact implementation commit.
 
@@ -10840,6 +11000,7 @@ class DatabasePortalExecutionBridge:
                     alias=alias,
                     task_cid=event_task_cid,
                     task_key=completion_task_key,
+                    repository_root=repository_root,
                 )
             ):
                 raise DatabasePortalBridgeError(
@@ -11061,6 +11222,7 @@ class DatabasePortalExecutionBridge:
         canonical_task_key: str,
         baseline_commit: str,
         implementation_commit: str,
+        repository_root: Path | None = None,
         queue_reconciliation_proven: bool = False,
     ) -> Mapping[str, Any]:
         """Repair the exact private completion event after a zero-provider merge.
@@ -11077,6 +11239,7 @@ class DatabasePortalExecutionBridge:
             alias=alias,
             task_cid=task_cid,
             completion_task_key=canonical_task_key,
+            repository_root=repository_root,
         )
         if existing is not None:
             if (
@@ -11205,6 +11368,7 @@ class DatabasePortalExecutionBridge:
             alias=alias,
             task_cid=task_cid,
             completion_task_key=canonical_task_key,
+            repository_root=repository_root,
         )
         if (
             repaired is None
@@ -17247,6 +17411,7 @@ class DatabasePortalExecutionBridge:
                     canonical_task_key=portal_task_key,
                     baseline_commit=baseline_commit,
                     implementation_commit=preserved_commit,
+                    repository_root=self.repository_root,
                     queue_reconciliation_proven=True,
                 )
                 return bool(
@@ -17285,6 +17450,7 @@ class DatabasePortalExecutionBridge:
                         canonical_task_key=portal_task_key,
                         baseline_commit=baseline_commit,
                         implementation_commit=preserved_commit,
+                        repository_root=self.repository_root,
                     )
                 cleanup_transaction = run_mutation(
                     task_id=alias,
@@ -17698,6 +17864,7 @@ class DatabasePortalExecutionBridge:
                     canonical_task_key=portal_task_key,
                     baseline_commit=baseline_commit,
                     implementation_commit=preserved_commit,
+                    repository_root=self.repository_root,
                 )
             if (
                 _projection_status(projection) not in _TERMINAL_STATUSES
@@ -18902,6 +19069,7 @@ class DatabasePortalExecutionBridge:
                 verified_landed_completion_claim_seed
             ),
             validated_no_change_authority=validated_no_change_authority,
+            repository_root=self.repository_root,
         )
         if completion is None:
             raise DatabasePortalBridgeError(
@@ -21134,6 +21302,7 @@ class DatabasePortalExecutionBridge:
             completion_task_key=str(binding.get("canonical_task_key") or ""),
             verified_landed_completion_claim_seed=landed_seed,
             validated_no_change_authority=authority,
+            repository_root=self.repository_root,
         )
         expected = {
             "baseline_commit": str(evidence.get("baseline_commit") or ""),

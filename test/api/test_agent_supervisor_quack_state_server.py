@@ -2901,6 +2901,81 @@ def test_start_applies_explicit_legacy_board_unstall_policy(
         server.stop()
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
+def test_build_server_omitted_legacy_board_unstall_defaults_fail_closed(
+    tmp_path: Path,
+) -> None:
+    """Omitting the retired migration switch must never rewrite task state."""
+
+    from datetime import datetime, timedelta
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="test-owner",
+    )
+    stale = (datetime.now(UTC) - timedelta(hours=12)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    connection = open_duckdb_connection(db)
+    try:
+        columns = [
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info('tasks')").fetchall()
+        ]
+        payload: dict[str, object] = {
+            "task_cid": "cid-default-fail-closed",
+            "task_alias": "DOEP-DEFAULT-FAIL-CLOSED",
+            "status": "in_progress",
+            "revision": 9,
+            "updated_at": stale,
+            "goal_cid": "goal:cid:root",
+            "ordinal": 1,
+            "identity_json": "{}",
+            "body_json": "{}",
+        }
+        names = [name for name in columns if name in payload]
+        connection.execute(
+            f"INSERT INTO tasks ({', '.join(names)}) VALUES ("
+            + ", ".join("?" for _ in names)
+            + ")",
+            [payload[name] for name in names],
+        )
+    finally:
+        connection.close()
+
+    # Deliberately omit allow_legacy_board_unstall.  This is the production
+    # construction shape that previously inherited the unsafe default.
+    server = build_server(
+        database_path=db,
+        state_dir=state,
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_k: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=os.getpid()),
+        owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+    )
+    assert server.config.allow_legacy_board_unstall is False
+    server.start()
+    try:
+        raw = getattr(server._connection, "_connection", server._connection)
+        row = raw.execute(
+            "SELECT status, revision, updated_at FROM tasks "
+            "WHERE task_alias = 'DOEP-DEFAULT-FAIL-CLOSED'"
+        ).fetchone()
+        assert row == ("in_progress", 9, stale)
+        assert server.status()["legacy_board_unstall_enabled"] is False
+    finally:
+        server.stop()
+
+
 def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
     with pytest.raises(QuackStateServerTokenError):
         QuackStateServerConfig(
