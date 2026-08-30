@@ -68041,22 +68041,43 @@ class DatabaseImplementationDaemon:
                     ),
                 }
                 if self.task_shard_count > 1:
-                    existing_lane_metadata = {
-                        str(key): str(value)
-                        for key, value in self._connection.execute(
-                            """
-                            SELECT key, value
-                            FROM daemon_execution_metadata
-                            WHERE key IN (
-                                'execution_state_dir',
-                                'execution_state_prefix',
-                                'task_shard_count',
-                                'task_shard_index',
-                                'strict_task_sharding'
+                    existing_lane_metadata: dict[str, str] = {}
+                    existing_lane_rows = self._connection.execute(
+                        """
+                        SELECT key, value
+                        FROM daemon_execution_metadata
+                        WHERE key IN (
+                            'execution_state_dir',
+                            'execution_state_prefix',
+                            'task_shard_count',
+                            'task_shard_index',
+                            'strict_task_sharding'
+                        )
+                        """
+                    ).fetchall()
+                    for row in existing_lane_rows:
+                        if isinstance(row, Mapping):
+                            if set(row) != {"key", "value"}:
+                                raise DatabaseImplementationAuthorityError(
+                                    "execution sidecar lane metadata row is malformed"
+                                )
+                            key, value = row["key"], row["value"]
+                        elif isinstance(row, (tuple, list)) and len(row) == 2:
+                            key, value = row
+                        else:
+                            raise DatabaseImplementationAuthorityError(
+                                "execution sidecar lane metadata row is malformed"
                             )
-                            """
-                        ).fetchall()
-                    }
+                        if (
+                            not isinstance(key, str)
+                            or not key
+                            or not isinstance(value, str)
+                            or key in existing_lane_metadata
+                        ):
+                            raise DatabaseImplementationAuthorityError(
+                                "execution sidecar lane metadata row is malformed"
+                            )
+                        existing_lane_metadata[key] = value
                     if (
                         existing_lane_metadata
                         and existing_lane_metadata != lane_metadata

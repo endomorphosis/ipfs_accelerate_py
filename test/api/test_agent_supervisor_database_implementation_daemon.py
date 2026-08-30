@@ -644,6 +644,64 @@ def test_strict_lanes_use_distinct_sidecars_and_duplicate_lane_still_fences(
         task_source.close()
 
 
+def test_strict_lane_reopens_its_exact_execution_sidecar(tmp_path: Path) -> None:
+    first = _open_daemon(
+        tmp_path,
+        task_shard_count=4,
+        task_shard_index=2,
+        strict_task_sharding=True,
+    )
+    execution_path = first.execution_path
+    first_process_id = str(
+        first._connection.execute(
+            """
+            SELECT value FROM daemon_execution_metadata
+            WHERE key = 'process_instance_id'
+            """
+        ).fetchone()["value"]
+    )
+    first.close()
+
+    replacement = _open_daemon(
+        tmp_path,
+        task_shard_count=4,
+        task_shard_index=2,
+        strict_task_sharding=True,
+    )
+    try:
+        assert replacement.execution_path == execution_path
+        rows = replacement._connection.execute(
+            """
+            SELECT key, value FROM daemon_execution_metadata
+            WHERE key IN (
+                'execution_state_dir',
+                'execution_state_prefix',
+                'task_shard_count',
+                'task_shard_index',
+                'strict_task_sharding'
+            )
+            """
+        ).fetchall()
+        assert {str(row["key"]): str(row["value"]) for row in rows} == {
+            "execution_state_dir": str(tmp_path / "state" / "lane-2"),
+            "execution_state_prefix": "dqp-lane-2",
+            "task_shard_count": "4",
+            "task_shard_index": "2",
+            "strict_task_sharding": "true",
+        }
+        replacement_process_id = str(
+            replacement._connection.execute(
+                """
+                SELECT value FROM daemon_execution_metadata
+                WHERE key = 'process_instance_id'
+                """
+            ).fetchone()["value"]
+        )
+        assert replacement_process_id != first_process_id
+    finally:
+        replacement.close()
+
+
 def test_process_serialized_coordinator_keeps_fenced_callback_atomic(
     tmp_path: Path,
 ) -> None:
