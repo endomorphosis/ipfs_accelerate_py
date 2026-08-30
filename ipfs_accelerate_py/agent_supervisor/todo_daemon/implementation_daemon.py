@@ -98242,7 +98242,10 @@ class DatabaseImplementationDaemon:
                     str(getattr(task, "status", "") or "").lower()
                     != "retrying"
                     or prior_status_receipt.get("operation")
-                    != "database_portal_post_commit_candidate_recovery"
+                    not in {
+                        "database_portal_post_commit_candidate_recovery",
+                        "database_post_commit_route_lineage_recovery",
+                    }
                     or not isinstance(post_commit_candidate_seed, Mapping)
                 ):
                     raise DatabaseImplementationAuthorityError(

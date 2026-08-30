@@ -138,6 +138,39 @@ def _seed(database: Path) -> None:
         repo.close()
 
 
+def _seed_routed_task(database: Path) -> None:
+    """Seed one task with an immutable repository-tree execution identity."""
+
+    repo = open_intent_repository(database, owner_id="seed-routed-task")
+    try:
+        repo.upsert_objective(
+            objective_id="objective:test", objective_alias="O", title="Objective"
+        )
+        repo.upsert_goal(
+            goal_cid="goal:test",
+            goal_alias="G",
+            title="Goal",
+            objective_id="objective:test",
+        )
+        repo.upsert_plan(
+            plan_cid="plan:test",
+            goal_cid="goal:test",
+            plan_alias="P",
+        )
+        repo.upsert_task(
+            task_cid="task:test",
+            task_alias="T",
+            goal_cid="goal:test",
+            plan_cid="plan:test",
+            objective_id="objective:test",
+            ordinal=1,
+            status="ready",
+            identity={"repository_tree_id": "tree:post-commit-route-test"},
+        )
+    finally:
+        repo.close()
+
+
 def _raw_quack_query(uri: str, token: str, sql: str) -> list[Any]:
     import duckdb
 
@@ -248,6 +281,24 @@ def _typed_task_source(
         monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
     assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
     return TypedDatabaseTaskSource(client, clock_ms=clock_ms)
+
+
+def _seal_routed_source(
+    source: TypedDatabaseTaskSource,
+    *,
+    clock_ms: Callable[[], int],
+) -> TypedDatabaseTaskSource:
+    """Rebind one attached client to the exact current launch route policy."""
+
+    policy = source.seal_execution_route_policy({"T": "deterministic-only"})
+    client = source._client  # noqa: SLF001 - process-bound test handoff.
+    source._owns_client = False  # noqa: SLF001 - transfer exact client ownership.
+    source.close()
+    return TypedDatabaseTaskSource(
+        client,
+        execution_route_policy=policy,
+        clock_ms=clock_ms,
+    )
 
 
 def test_typed_client_grant_renews_an_existing_connected_client(
@@ -5269,6 +5320,285 @@ def test_typed_owner_stamps_post_commit_retry_placeholders_before_cas(
         assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
     finally:
         source.close()
+        server.stop()
+
+
+def test_ready_reconciliation_recovers_exact_missing_post_commit_route_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restarted owner repairs a historical route omission without redispatch."""
+
+    database = tmp_path / "control.duckdb"
+    _seed_routed_task(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id="post-commit-route-history-recovery-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 1_000}
+    bootstrap = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:route-loss-writer",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    writer = _seal_routed_source(
+        bootstrap,
+        clock_ms=lambda: clock["now_ms"],
+    )
+    recovery: TypedDatabaseTaskSource | None = None
+    try:
+        ready = writer.get_task("task:test")
+        assert ready is not None and (ready.status, ready.revision) == ("ready", 1)
+        route = dict(writer.execution_route_binding_for_task(ready))
+        route_policy = writer.execution_route_policy
+        assert route_policy is not None
+        claim = {
+            **_typed_claim_receipt(
+                writer,
+                lane="post-commit-route-loss",
+                claimed_from_revision=ready.revision,
+            ),
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        claimed = writer.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+        neutral = {
+            **claim,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            ),
+            "operation": "database_portal_neutral_failure_quarantine",
+            "failure_kind": "provider_callback_outcome_unknown",
+            "retry_suppressed": True,
+        }
+        quarantined = writer.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "quarantined",
+            neutral,
+            expected_control_receipt=claim,
+        ).task
+        queue_reason = (
+            "database_portal_post_commit_candidate_recovery:sha256:" + "a" * 64
+        )
+        seed = {
+            "receipt_id": "receipt:post-commit-candidate",
+            "task_cid": quarantined.task_cid,
+            "task_alias": quarantined.task_alias,
+            **{
+                name: claim[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
+        missing_receipt = {
+            "operation": "database_portal_post_commit_candidate_recovery",
+            **{
+                name: claim[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+            "queue_reason": queue_reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "control_expected_status": "quarantined",
+            "control_expected_revision": quarantined.revision,
+            "post_commit_candidate_recovery_seed": seed,
+        }
+        malformed = writer.record_queue_backoff_and_cas_status(
+            task_cid=quarantined.task_cid,
+            expected_revision=quarantined.revision,
+            expected_control_receipt=neutral,
+            status="retrying",
+            receipt=missing_receipt,
+            delay_ms=0,
+            reason=queue_reason,
+            exact_retry_not_before_ms=clock["now_ms"],
+        )["cas_result"].task
+        assert (malformed.status, malformed.revision) == ("retrying", 4)
+        assert not {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        } & set(malformed.body["completion_receipt"])
+        queue_before = writer._retry_cooldown_row(  # noqa: SLF001
+            malformed.task_cid
+        )
+        assert queue_before is not None
+        writer.close()
+
+        unsealed = _typed_task_source(
+            server,
+            identity,
+            monkeypatch,
+            client_id="database-implementation-daemon:route-loss-restart",
+            allowed_command_operations=(
+                typed_owner_module.TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+            ),
+            clock_ms=lambda: clock["now_ms"],
+        )
+        recovery_client = unsealed._client  # noqa: SLF001 - restart handoff.
+        unsealed._owns_client = False  # noqa: SLF001 - transfer exact client.
+        unsealed.close()
+        recovery = TypedDatabaseTaskSource(
+            recovery_client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: clock["now_ms"],
+        )
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="advanced task revision has no carried execution-route binding",
+        ):
+            recovery.execution_route_binding_for_task(malformed)
+
+        # Stale revision input is rejected before a command is issued.
+        with pytest.raises(TaskSourceConflictError, match="revision is stale"):
+            recovery.recover_post_commit_route_lineage(
+                malformed.task_cid,
+                expected_task_revision=malformed.revision - 1,
+            )
+        assert recovery.get_task(malformed.task_cid).revision == malformed.revision
+
+        # The client will not choose between two projected predecessor rows,
+        # even when both bytes are otherwise identical.
+        original_history_projection = recovery.task_revision_history_projection
+        ambiguous_history = original_history_projection(malformed.task_cid)
+        predecessor = next(
+            item
+            for item in ambiguous_history["revisions"]
+            if item["revision"] == malformed.revision - 1
+        )
+        monkeypatch.setattr(
+            recovery,
+            "task_revision_history_projection",
+            lambda _task: {
+                **ambiguous_history,
+                "revisions": [
+                    *ambiguous_history["revisions"],
+                    dict(predecessor),
+                ],
+            },
+        )
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="predecessor is absent or ambiguous",
+        ):
+            recovery.recover_post_commit_route_lineage(
+                malformed.task_cid,
+                expected_task_revision=malformed.revision,
+            )
+        monkeypatch.setattr(
+            recovery,
+            "task_revision_history_projection",
+            original_history_projection,
+        )
+        assert recovery.get_task(malformed.task_cid).revision == malformed.revision
+
+        # The owner-side derivation refuses a partial tuple; it may recover
+        # only when all three current fields are exactly absent.
+        partial_body = dict(malformed.body)
+        partial_receipt = dict(partial_body["completion_receipt"])
+        partial_receipt["execution_route_policy_id"] = route["policy_id"]
+        partial_body["completion_receipt"] = partial_receipt
+        stored_queue = recovery._retry_cooldown_row(  # noqa: SLF001
+            malformed.task_cid
+        )
+        current_policy = recovery.execution_route_policy
+        assert stored_queue is not None and current_policy is not None
+        current_entry = current_policy.entries_by_cid[malformed.task_cid]
+        with pytest.raises(
+            TypedStateOwnerAuthorizationError,
+            match="current lineage is partial or already present",
+        ):
+            typed_owner_module._post_commit_route_recovery_material(  # noqa: SLF001
+                task_cid=malformed.task_cid,
+                task_alias=malformed.task_alias,
+                current_revision=malformed.revision,
+                current_body=partial_body,
+                prior_status="quarantined",
+                prior_body=predecessor["body"],
+                queue=stored_queue,
+                current_policy_id=current_policy.policy_id,
+                current_policy_source_revision=current_policy.source_revision,
+                current_plan_root_cid=current_policy.plan_root_cid,
+                current_repository_tree_id=current_policy.repository_tree_id,
+                current_task_contract_cid=current_entry.task_contract_cid,
+                current_execution_mode=current_entry.execution_mode,
+            )
+        assert recovery.get_task(malformed.task_cid).revision == malformed.revision
+
+        ready_page = recovery.ready_tasks()
+        assert len(ready_page.tasks) == 1
+        repaired = ready_page.tasks[0]
+        assert (repaired.status, repaired.revision) == ("retrying", 5)
+        repaired_receipt = repaired.body["completion_receipt"]
+        assert repaired_receipt["schema"] == (
+            typed_owner_module.TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+        )
+        assert repaired_receipt["operation"] == (
+            typed_owner_module.TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+        )
+        assert repaired_receipt["source_control_operation"] == (
+            "database_portal_post_commit_candidate_recovery"
+        )
+        assert repaired_receipt["execution_route_binding"] == route
+        assert dict(recovery.execution_route_binding_for_task(repaired)) == route
+        witness = repaired_receipt["execution_route_lineage_recovery"]
+        assert witness["source_task_revision"] == quarantined.revision
+        assert witness["missing_route_task_revision"] == malformed.revision
+        assert witness["recovered_task_revision"] == repaired.revision
+        assert witness["post_commit_candidate_receipt_id"] == seed["receipt_id"]
+        queue_after = recovery._retry_cooldown_row(  # noqa: SLF001
+            repaired.task_cid
+        )
+        assert queue_after is not None
+        assert queue_after["revision"] == queue_before["revision"]
+        history = recovery.task_revision_history_projection(repaired.task_cid)
+        assert [item["status"] for item in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "quarantined",
+            "retrying",
+            "retrying",
+        ]
+        assert recovery.ready_tasks().tasks[0].revision == repaired.revision
+        assert recovery.get_task(repaired.task_cid).revision == repaired.revision
+    finally:
+        if recovery is not None:
+            recovery.close()
+        elif not writer._closed:  # noqa: SLF001 - cleanup after an early failure.
+            writer.close()
         server.stop()
 
 

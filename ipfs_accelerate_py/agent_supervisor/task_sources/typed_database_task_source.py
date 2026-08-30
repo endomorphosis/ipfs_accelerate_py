@@ -78,6 +78,9 @@ from .typed_state_owner import (
     TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
@@ -156,6 +159,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_insert_task_revision_history",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
+        "executor_rebind_retry_cooldown_task_revision",
         "executor_insert_validation_run",
         "executor_insert_validation_result",
         "executor_insert_validation_evidence",
@@ -163,7 +167,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 # The canonical causal operator remains sealed to this predecessor profile.
 # LGCVF derives the extended profile below from the public helper.  Authority
-# binding admits exactly these two complete sets; arbitrary subsets, supersets,
+# binding admits exactly these three complete sets; arbitrary subsets, supersets,
 # and mixed profiles remain invalid.
 _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
     frozenset(
@@ -177,10 +181,18 @@ _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
         }
     )
 )
+_DAEMON_ROUTE_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+            TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        }
+    )
+)
 _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
-        *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
-        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        *_DAEMON_ROUTE_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
     }
 )
 _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
@@ -188,6 +200,7 @@ _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
 ] = frozenset(
     {
         _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_ROUTE_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
         _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
     }
 )
@@ -858,6 +871,219 @@ class TypedDatabaseTaskSource:
             population_changed = population_changed or bool(result.changed)
         return population_changed
 
+    @staticmethod
+    def _post_commit_route_field_state(task: TaskRecord) -> str:
+        """Classify only the retired post-commit receipt's route tuple."""
+
+        if task.status != "retrying" or not isinstance(task.body, Mapping):
+            return "unrelated"
+        receipt = task.body.get("completion_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation")
+            != "database_portal_post_commit_candidate_recovery"
+        ):
+            return "unrelated"
+        fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        carried = set(receipt) & fields
+        if not carried:
+            return "missing"
+        if carried == fields:
+            return "complete"
+        return "partial"
+
+    def recover_post_commit_route_lineage(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+    ) -> IntentReceipt:
+        """Restore one omitted route tuple from its exact predecessor revision."""
+
+        task = self.get_task(task_cid_or_alias)
+        if task is None:
+            raise KeyError(str(task_cid_or_alias))
+        if (
+            type(expected_task_revision) is not int
+            or task.revision != expected_task_revision
+            or task.status != "retrying"
+        ):
+            raise TaskSourceConflictError(
+                "post-commit route recovery task revision is stale"
+            )
+        if self._post_commit_route_field_state(task) != "missing":
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery requires exactly zero route fields"
+            )
+        policy = self._require_execution_route_plan_root()
+        entry = policy.entries_by_cid.get(task.task_cid)
+        if (
+            entry is None
+            or entry.task_alias != task.task_alias
+            or entry.task_contract_cid != task_execution_contract_cid(task)
+        ):
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery task differs from current policy"
+            )
+        history = self.task_revision_history_projection(task.task_cid)
+        revisions = history.get("revisions")
+        if not isinstance(revisions, list):
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery history is malformed"
+            )
+        prior = [
+            item
+            for item in revisions
+            if isinstance(item, Mapping)
+            and item.get("revision") == expected_task_revision - 1
+        ]
+        if (
+            len(prior) != 1
+            or prior[0].get("status") != "quarantined"
+            or not isinstance(prior[0].get("body"), Mapping)
+        ):
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery predecessor is absent or ambiguous"
+            )
+        queue = self._retry_cooldown_row(task.task_cid)
+        if queue is None:
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery cooldown is absent"
+            )
+        result = self._client.recover_post_commit_route_lineage(
+            task_cid=task.task_cid,
+            task_alias=task.task_alias,
+            expected_task_revision=expected_task_revision,
+            current_body=task.body,
+            prior_status=str(prior[0]["status"]),
+            prior_body=prior[0]["body"],
+            queue=queue,
+            current_policy_id=policy.policy_id,
+            current_policy_source_revision=int(policy.source_revision),
+            current_plan_root_cid=policy.plan_root_cid,
+            current_repository_tree_id=policy.repository_tree_id,
+            current_task_contract_cid=entry.task_contract_cid,
+            current_execution_mode=entry.execution_mode,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "post-commit route recovery was not accepted"
+                )
+            )
+        updated = self.get_task(task.task_cid)
+        updated_queue = self._retry_cooldown_row(task.task_cid)
+        if (
+            updated is None
+            or updated.status != "retrying"
+            or updated.revision != expected_task_revision + 1
+            or updated_queue is None
+        ):
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, updated_queue)
+        receipt = updated.body.get("completion_receipt")
+        route = (
+            receipt.get("execution_route_binding")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        witness = (
+            receipt.get("execution_route_lineage_recovery")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("schema")
+            != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            or receipt.get("operation")
+            != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            or not isinstance(route, Mapping)
+            or not isinstance(witness, Mapping)
+            or witness.get("receipt_id")
+            != result.result.get("recovery_receipt_id")
+        ):
+            raise TaskSourceIntegrityError(
+                "post-commit route recovery receipt is inconsistent"
+            )
+        self.validate_execution_route_binding(
+            route,
+            task=updated,
+            allow_claim_revision=True,
+        )
+        details = MappingProxyType(dict(result.result))
+        return IntentReceipt(
+            event_id=str(
+                result.result_digest or content_identity(dict(details))
+            ),
+            event_type="TASK_POST_COMMIT_ROUTE_LINEAGE_RECOVERED",
+            global_sequence=0,
+            recorded_at="typed-state-owner",
+            subject_id=task.task_cid,
+            revision=updated.revision,
+            changed=bool(result.changed),
+            details=details,
+        )
+
+    def _repair_post_commit_route_records(
+        self,
+        records: Sequence[tuple[TaskRecord, Mapping[str, Any]]],
+    ) -> tuple[bool, frozenset[str]]:
+        """Repair exact missing tuples and suppress every rejected candidate."""
+
+        if self._execution_route_policy is None:
+            return False, frozenset()
+        candidates = tuple(
+            record
+            for record, _identity in records
+            if self._post_commit_route_field_state(record)
+            in {"missing", "partial"}
+        )
+        changed = False
+        suppressed: set[str] = set()
+        for record in candidates:
+            if self._post_commit_route_field_state(record) == "partial":
+                suppressed.add(record.task_cid)
+                continue
+            try:
+                result = self.recover_post_commit_route_lineage(
+                    record.task_cid,
+                    expected_task_revision=record.revision,
+                )
+            except (
+                QuackClientError,
+                TransactionError,
+                TaskSourceConflictError,
+                TaskSourceIntegrityError,
+            ):
+                current = self.get_task(record.task_cid)
+                current_receipt = (
+                    current.body.get("completion_receipt")
+                    if current is not None and isinstance(current.body, Mapping)
+                    else None
+                )
+                if (
+                    current is not None
+                    and current.status == "retrying"
+                    and current.revision == record.revision + 1
+                    and isinstance(current_receipt, Mapping)
+                    and current_receipt.get("operation")
+                    == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+                ):
+                    changed = True
+                    continue
+                suppressed.add(record.task_cid)
+                continue
+            changed = changed or bool(result.changed)
+        return changed, frozenset(suppressed)
+
     def _stable_ready_material(
         self,
     ) -> tuple[
@@ -912,6 +1138,17 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "retry cooldown projection contains a foreign task"
                     )
+                route_changed, route_suppressed = (
+                    self._repair_post_commit_route_records(records)
+                )
+                if route_changed:
+                    continue
+                if route_suppressed:
+                    cooldowns = {
+                        task_cid: cooldown
+                        for task_cid, cooldown in cooldowns.items()
+                        if task_cid not in route_suppressed
+                    }
                 if self._repair_legacy_unstalled_records(
                     records,
                     cooldowns,
