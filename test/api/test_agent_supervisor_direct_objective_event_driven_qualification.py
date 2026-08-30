@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     CLOSED_RELEASE_OUTCOMES,
     CURRENT_HEAD_UNAVAILABLE_VERDICT_CID,
     DIRECT_OBJECTIVE_EVENT_DRIVEN_QUALIFICATION_INTERFACE,
+    GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     HARD_ZERO_INVARIANTS,
     HERMETIC_CANDIDATE_SUITES,
     LIVE_OBJECTIVE_MINIMUM,
@@ -74,6 +75,17 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
     assert "test/api/test_agent_supervisor_database_portal_bridge.py" in HERMETIC_CANDIDATE_SUITES[
         "automatic_task_frontier_refill"
     ]
+    assert GITLINK_LANDED_MERGE_HERMETIC_SUITES == (
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    )
+    assert all(
+        path in HERMETIC_CANDIDATE_SUITES["automatic_task_frontier_refill"]
+        for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES
+    )
+    assert all(
+        path in HERMETIC_CANDIDATE_SUITES["stale_task_recovery"]
+        for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES
+    )
 
 
 def test_missing_live_campaign_is_rnd_non_promoted_and_not_a_release() -> None:
@@ -534,9 +546,19 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     )
     assert "test/api/test_agent_supervisor_todo_daemon_port.py" in refill.hermetic_suite_paths
     assert "test/api/test_agent_supervisor_database_portal_bridge.py" in refill.hermetic_suite_paths
+    assert all(path in refill.hermetic_suite_paths for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES)
+    stale = next(item for item in verdict.cohort if item.case_id == "stale_task_recovery")
+    assert all(path in stale.hermetic_suite_paths for path in GITLINK_LANDED_MERGE_HERMETIC_SUITES)
     assert refill.evidence_kind == "unavailable"
+    assert stale.evidence_kind == "unavailable"
     assert "automatic_task_frontier_refill" in verdict.missed_live_cohort
+    assert "stale_task_recovery" in verdict.missed_live_cohort
     section = pcpr_phase0_receipt_live_cohort(verdict)
     assert section["live_campaign_executed"] is False
     targets_section = pcpr_phase0_receipt_efficiency_targets(verdict)
     assert targets_section["median_end_to_end_input_token_reduction"]["observed_bps"] is None
+    refill_section = next(
+        item for item in section["cases"] if item["case_id"] == "automatic_task_frontier_refill"
+    )
+    assert refill_section["live_status"] == "unavailable"
+    assert "gitlink landed-merge" in refill_section["reason"]

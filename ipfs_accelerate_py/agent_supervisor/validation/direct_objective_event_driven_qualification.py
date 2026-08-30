@@ -138,7 +138,10 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
         "owner_loss_and_restart": (
             "No live owner-loss or authoritative-state-owner restart campaign ran."
         ),
-        "stale_task_recovery": "No live stale-task recovery campaign ran.",
+        "stale_task_recovery": (
+            "No live stale-task recovery campaign ran. Gitlink landed-merge "
+            "reconciliation tests are hermetic candidates only."
+        ),
         "provider_outcome_unknown_reconciliation": (
             "No live provider-outcome-unknown reconciliation campaign ran."
         ),
@@ -147,8 +150,8 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
             "No live duplicate-delivery campaign ran. Hermetic cursor replay is not live."
         ),
         "automatic_task_frontier_refill": (
-            "No live automatic task-frontier refill campaign ran. Post-merge auto-start "
-            "and portal-idle tests are hermetic candidates only."
+            "No live automatic task-frontier refill campaign ran. Post-merge auto-start, "
+            "portal-idle, and gitlink landed-merge tests are hermetic candidates only."
         ),
         "incremental_plan_reassessment": (
             "No live incremental plan-reassessment campaign ran."
@@ -222,6 +225,12 @@ HARD_ZERO_INVARIANTS: Final[tuple[str, ...]] = (
     "release_creation_after_failed_required_gates",
 )
 
+# Post-merge gitlink landed-completion coverage.  Trailing-slash gitlink
+# outputs and completed-merge proofs are hermetic candidates only.
+GITLINK_LANDED_MERGE_HERMETIC_SUITES: Final[tuple[str, ...]] = (
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+)
+
 # Existing hermetic suites that exercise machinery related to each case.
 # Presence of a path is not live qualification and is not a pass.
 HERMETIC_CANDIDATE_SUITES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -245,6 +254,7 @@ HERMETIC_CANDIDATE_SUITES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
         "stale_task_recovery": (
             "test/api/test_agent_supervisor_acceptance_recovery.py",
             "test/api/test_agent_supervisor_typed_deferral_recovery.py",
+            *GITLINK_LANDED_MERGE_HERMETIC_SUITES,
         ),
         "provider_outcome_unknown_reconciliation": (
             "test/api/test_agent_supervisor_typed_deferral_recovery.py",
@@ -263,6 +273,7 @@ HERMETIC_CANDIDATE_SUITES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
             "test/api/test_agent_supervisor_refill_residual_guard.py",
             "test/api/test_agent_supervisor_todo_daemon_port.py",
             "test/api/test_agent_supervisor_database_portal_bridge.py",
+            *GITLINK_LANDED_MERGE_HERMETIC_SUITES,
         ),
         "incremental_plan_reassessment": (
             "test/api/test_agent_supervisor_adaptive_planner.py",
@@ -790,7 +801,7 @@ def qualify_current_head_without_live_campaign() -> QualificationVerdict:
 # means the default unavailable payload changed and the outer receipt must be
 # regenerated from this evaluator rather than transcribed.
 CURRENT_HEAD_UNAVAILABLE_VERDICT_CID: Final = (
-    "baguqeeraxo2nkg6uoh46ak2snuihopkj7muiw5rn35xdruew6viwri4vo6rq"
+    "baguqeerani7dpoxz3g2hizjuedw5einvr5p6vbyds2nulirtwfl4w44zrzaa"
 )
 
 PCPR_PHASE0_TASK_ID: Final = "PCPR-001"
