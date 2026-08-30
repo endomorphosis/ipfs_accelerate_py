@@ -4909,6 +4909,212 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         restarted.close()
 
 
+def _exact_callback_no_effect_receipt(
+    source: DatabaseTaskAttempt,
+    *,
+    workspace: Path,
+) -> dict[str, object]:
+    body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-callback-no-effect-recovery@1"
+        ),
+        "disposition": "classify_no_effect",
+        "reason": "no_admissible_candidate_or_allowed_effect",
+        "task_cid": source.task_cid,
+        "task_alias": source.task_alias,
+        "attempt_id": source.attempt_id,
+        "claim_id": source.claim_id,
+        "lease_id": source.lease_id,
+        "attempt_number": int(source.attempt_number),
+        "fencing_token": int(source.fencing_token),
+        "fence_epoch": int(source.fence_epoch),
+        "workspace_path": str(workspace.resolve()),
+        "branch": (
+            f"implementation/{source.task_alias.lower()}-"
+            f"attempt-{source.attempt_number}"
+        ),
+        "baseline_commit": "a" * 40,
+        "baseline_tree": "b" * 40,
+        "observed_head": "a" * 40,
+        "observed_tree": "b" * 40,
+        "observed_branch": (
+            f"implementation/{source.task_alias.lower()}-"
+            f"attempt-{source.attempt_number}"
+        ),
+        "status_fingerprint": "sha256:" + "1" * 64,
+        "source_ref_commit": "a" * 40,
+        "candidate_rescue_refs": [],
+        "submodule_dirt_checked": True,
+        "portal_attempt": int(source.attempt_number),
+        "allowed_effects": [
+            "isolated worktree edits",
+            "local deterministic validation",
+            "reviewed merge request through canonical authority",
+        ],
+        "allowed_effect_scope": "workspace_local_only",
+        "binding_id": "sha256:" + "2" * 64,
+        "source_task_revision": 2,
+        "events_prefix_digest": "sha256:" + "3" * 64,
+        "event_stream_id": "stream:callback-no-effect",
+        "implementation_started_event_id": "sha256:" + "4" * 64,
+        "pre_implementation_kernel_event_id": "sha256:" + "5" * 64,
+        "protected_snapshot_digest": "sha256:" + "6" * 64,
+        "protected_path_digests": {
+            "README.md": "sha256:" + "9" * 64,
+        },
+        "reconciliation_event_id": "sha256:" + "7" * 64,
+        "reconciled_events_prefix_digest": "sha256:" + "8" * 64,
+        "portal_reconciliation_reason": "quiesced_active_attempt_reconciled",
+        "portal_attempt_newly_charged": False,
+        "portal_attempt_charged": True,
+        "provider_dispatched": True,
+        "attempt_consumed": True,
+        "effect_state": "proven_absent_in_allowed_workspace_scope",
+        "completion_authoritative": False,
+        "merge_attempted": False,
+    }
+    body["receipt_id"] = (
+        implementation_daemon_module._database_daemon_evidence_digest(body)
+    )
+    return body
+
+
+def test_callback_no_effect_recovery_stops_at_budget_without_global_stall(
+    tmp_path: Path,
+) -> None:
+    """Charge provider work, deny attempt N+1, and leave peers claimable."""
+
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    now = {"ms": 1_000}
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected callback no-effect crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-no-effect-budget",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(2))
+        first_attempt = first.claim_next()
+        assert first_attempt is not None
+        assert first_attempt.task_cid == "task:cid:001"
+        with pytest.raises(SimulatedProcessCrash):
+            first._resume_attempt_without_process_crash(first_attempt)
+    finally:
+        first.close()
+
+    def exact_no_effect(
+        source: DatabaseTaskAttempt,
+    ) -> Mapping[str, object]:
+        return _exact_callback_no_effect_receipt(
+            source,
+            workspace=tmp_path / f"retained-{source.attempt_number}",
+        )
+
+    now["ms"] = 7_000
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        repo_root=tmp_path,
+        session="session:callback-no-effect-budget",
+        provider_fn=crash_after_callback_started,
+        post_commit_candidate_recovery_fn=exact_no_effect,
+        strict_task_sharding=True,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        expired = restarted.reconcile_expired_running_attempts()
+        assert any(item.get("disposition") == "quarantined" for item in expired)
+        first_recovery = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(first_recovery) == 1
+        assert first_recovery[0]["reason"] == "exact_no_effect_callback_rearmed"
+        assert first_recovery[0]["attempt_consumed"] is True
+
+        second_attempt = restarted.claim_next(
+            exclude_task_cids=("task:cid:002",)
+        )
+        assert second_attempt is not None
+        assert second_attempt.task_cid == first_attempt.task_cid
+        assert second_attempt.attempt_number == 2
+        with pytest.raises(SimulatedProcessCrash):
+            restarted._resume_attempt_without_process_crash(second_attempt)
+        assert provider_calls == [first_attempt.attempt_id, second_attempt.attempt_id]
+
+        now["ms"] = 13_000
+        second_expired = restarted.reconcile_expired_running_attempts()
+        assert any(
+            item.get("attempt_id") == second_attempt.attempt_id
+            and item.get("disposition") == "quarantined"
+            for item in second_expired
+        )
+        budget_stop = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(budget_stop) == 1
+        assert budget_stop[0]["status"] == "blocked"
+        assert budget_stop[0]["reason"] == (
+            "callback_no_effect_attempt_budget_exhausted"
+        )
+        assert budget_stop[0]["attempt_consumed"] is True
+        assert budget_stop[0]["remaining_task_attempts"] == 0
+
+        blocked = restarted.task_source.get(first_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        blocked_receipt = blocked.body["completion_receipt"]
+        assert blocked_receipt["operation"] == (
+            "database_portal_callback_no_effect_budget_exhausted"
+        )
+        assert blocked_receipt["attempt_number"] == 2
+        assert blocked_receipt["max_task_attempts"] == 2
+        assert blocked_receipt["remaining_task_attempts"] == 0
+
+        # Reconciliation is idempotent and cannot mint an implicit attempt 3.
+        assert (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+            == []
+        )
+        attempt_numbers = [
+            int(row[0])
+            for row in restarted._require_connection().execute(
+                "SELECT attempt_number FROM database_task_attempts "
+                "WHERE task_cid = ? ORDER BY attempt_number",
+                [first_attempt.task_cid],
+            ).fetchall()
+        ]
+        assert attempt_numbers == [1, 2]
+        assert provider_calls == [first_attempt.attempt_id, second_attempt.attempt_id]
+
+        # The terminal budget stop is task-local; an independent ready row
+        # remains claimable by the same DuckDB/Quack supervisor.
+        unrelated = restarted.claim_next()
+        assert unrelated is not None
+        assert unrelated.task_cid == "task:cid:002"
+        assert unrelated.attempt_number == 1
+        assert provider_calls == [first_attempt.attempt_id, second_attempt.attempt_id]
+    finally:
+        restarted.close()
+
+
 def test_blocked_response_replay_rejects_different_failure_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -206,6 +206,10 @@ DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-inflight-process-recovery@1"
 )
+DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-callback-no-effect-recovery@1"
+)
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-validation-retry-seed-conflict-recovery@1"
@@ -238,6 +242,16 @@ _EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_FILENAME: Final[str] = (
 _INFLIGHT_PROCESS_RECOVERY_FILENAME: Final[str] = (
     "database-portal-inflight-process-recovery.json"
 )
+_CALLBACK_NO_EFFECT_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-callback-no-effect-recovery.json"
+)
+_CALLBACK_NO_EFFECT_RECOVERY_INTENT_FILENAME: Final[str] = (
+    "database-portal-callback-no-effect-recovery-intent.json"
+)
+_CALLBACK_NO_EFFECT_RECOVERY_INTENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-callback-no-effect-recovery-intent@1"
+)
 _VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME: Final[str] = (
     "database-portal-validation-retry-seed-conflict-recovery.json"
 )
@@ -260,6 +274,13 @@ _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME: Final[str] = (
     "implementation-protected-path-incident.json"
 )
 _MAX_PROTECTED_PATH_RECOVERY_PATHS: Final[int] = 256
+_CALLBACK_NO_EFFECT_LOCAL_ALLOWED_EFFECTS: Final[frozenset[str]] = frozenset(
+    {
+        "isolated worktree edits",
+        "local deterministic validation",
+        "reviewed merge request through canonical authority",
+    }
+)
 DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-validation-retry-order-repair@1"
@@ -17689,6 +17710,779 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    @staticmethod
+    def _event_prefix_digest(
+        events: Sequence[Mapping[str, Any]],
+        event_id: str,
+    ) -> str:
+        matches = [
+            index
+            for index, event in enumerate(events)
+            if str(event.get("event_id") or "") == event_id
+        ]
+        if len(matches) != 1:
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery event boundary is not unique"
+            )
+        return _sha256_bytes(_canonical_json(list(events[: matches[0] + 1])))
+
+    @staticmethod
+    def _callback_no_effect_git(
+        workspace: Path,
+        *arguments: str,
+    ) -> str:
+        try:
+            result = subprocess.run(
+                ["git", *arguments],
+                cwd=workspace,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                "callback no-effect Git proof is unavailable"
+            ) from exc
+        if result.returncode != 0:
+            raise DatabasePortalBridgeError(
+                "callback no-effect Git proof failed"
+            )
+        return result.stdout
+
+    def _callback_no_effect_workspace_observation(
+        self,
+        *,
+        workspace_text: str,
+        branch: str,
+        baseline_commit: str,
+    ) -> dict[str, Any]:
+        """Prove one managed workspace is exactly its clean baseline."""
+
+        if (
+            self.worktree_root is None
+            or self.repository_root is None
+            or not workspace_text
+            or not branch.startswith("implementation/")
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect workspace identity is incomplete"
+            )
+        try:
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace = Path(workspace_text).resolve(strict=True)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "callback no-effect workspace is outside authority"
+            ) from exc
+        if str(workspace) != workspace_text or workspace.is_symlink():
+            raise DatabasePortalBridgeError(
+                "callback no-effect workspace identity changed"
+            )
+        top = self._callback_no_effect_git(
+            workspace, "rev-parse", "--show-toplevel"
+        ).strip()
+        head = self._callback_no_effect_git(
+            workspace, "rev-parse", "--verify", "HEAD^{commit}"
+        ).strip()
+        tree = self._callback_no_effect_git(
+            workspace, "rev-parse", "--verify", "HEAD^{tree}"
+        ).strip()
+        baseline_tree = self._callback_no_effect_git(
+            workspace,
+            "rev-parse",
+            "--verify",
+            f"{baseline_commit}^{{tree}}",
+        ).strip()
+        observed_branch = self._callback_no_effect_git(
+            workspace, "branch", "--show-current"
+        ).strip()
+        status = self._callback_no_effect_git(
+            workspace,
+            "-c",
+            "status.showUntrackedFiles=all",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+        )
+        source_ref = self._callback_no_effect_git(
+            workspace,
+            "rev-parse",
+            "--verify",
+            f"refs/heads/{branch}^{{commit}}",
+        ).strip()
+        rescue_refs = tuple(
+            line.strip()
+            for line in self._callback_no_effect_git(
+                self.repository_root,
+                "for-each-ref",
+                "--format=%(refname)",
+                f"refs/heads/rescue/{branch}",
+            ).splitlines()
+            if line.strip()
+        )
+        if (
+            Path(top).resolve(strict=False) != workspace
+            or head != baseline_commit
+            or tree != baseline_tree
+            or source_ref != baseline_commit
+            or observed_branch != branch
+            or status
+            or rescue_refs
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect workspace has a candidate or repository effect"
+            )
+        return {
+            "workspace_path": workspace_text,
+            "branch": branch,
+            "baseline_commit": baseline_commit,
+            "baseline_tree": baseline_tree,
+            "observed_head": head,
+            "observed_tree": tree,
+            "observed_branch": observed_branch,
+            "status_fingerprint": _sha256_bytes(status.encode("utf-8")),
+            "source_ref_commit": source_ref,
+            "candidate_rescue_refs": [],
+            "submodule_dirt_checked": True,
+        }
+
+    def _callback_no_effect_source_observation(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind a callback-unknown attempt to no admissible local effect."""
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        body = dict(getattr(record, "body", {}) or {})
+        raw_allowed_effects = body.get("allowed_effects")
+        if (
+            not isinstance(raw_allowed_effects, (list, tuple))
+            or not raw_allowed_effects
+            or not all(type(item) is str for item in raw_allowed_effects)
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery has no closed allowed-effect scope"
+            )
+        allowed_effects = tuple(sorted(set(raw_allowed_effects)))
+        if (
+            len(allowed_effects) != len(raw_allowed_effects)
+            or not set(allowed_effects).issubset(
+                _CALLBACK_NO_EFFECT_LOCAL_ALLOWED_EFFECTS
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery refuses an effectful task scope"
+            )
+
+        events = self._verified_event_chain(paths)
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(binding.get("task_cid") or "")
+        task_key = str(binding.get("canonical_task_key") or "")
+        starts = [
+            event
+            for event in events
+            if event.get("type") == "implementation_started"
+            and event.get("task_id") == alias
+            and event.get("canonical_task_cid") == task_cid
+            and event.get("canonical_task_key") == task_key
+        ]
+        if len(starts) != 1:
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery has no unique implementation start"
+            )
+        started = starts[0]
+        portal_attempt = started.get("attempt")
+        branch = str(started.get("branch") or "")
+        baseline = str(started.get("baseline_ref") or "")
+        workspace_text = str(started.get("worktree_path") or "")
+        kernels = [
+            event
+            for event in events
+            if event.get("type") == "pre_implementation_kernel_evaluated"
+            and event.get("task_id") == alias
+            and event.get("canonical_task_cid") == task_cid
+            and event.get("canonical_task_key") == task_key
+            and event.get("attempt") == portal_attempt
+        ]
+        if (
+            len(kernels) != 1
+            or events[-2:] != [started, kernels[0]]
+            or kernels[0].get("previous_event_id")
+            != started.get("event_id")
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or started.get("provider_dispatched") is not False
+            or any(
+                event.get("type")
+                in {
+                    "implementation_candidate_handoff_verified",
+                    "implementation_finished",
+                    "implementation_provider_routed",
+                    "merge_requested",
+                    "merge_finished",
+                }
+                for event in events[events.index(started) + 1 :]
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery suffix is ambiguous or effectful"
+            )
+        expected_outputs = [
+            str(item.get("path") or "")
+            if isinstance(item, Mapping)
+            else str(item or "")
+            for item in tuple(getattr(record, "outputs", ()) or ())
+        ]
+        if list(started.get("outputs") or ()) != expected_outputs:
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery output scope changed"
+            )
+
+        workspace = self._callback_no_effect_workspace_observation(
+            workspace_text=workspace_text,
+            branch=branch,
+            baseline_commit=baseline,
+        )
+        active_path = paths.root / _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME
+        incident_path = paths.root / _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+        if (
+            not active_path.is_file()
+            or active_path.is_symlink()
+            or incident_path.exists()
+            or incident_path.is_symlink()
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected-path evidence is ambiguous"
+            )
+        active = self._read_json_object(
+            active_path,
+            noun="callback no-effect protected-path snapshot",
+        )
+        protected = active.get("protected_paths")
+        if (
+            active.get("schema") != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or active.get("task_id") != alias
+            or active.get("canonical_task_cid") != task_cid
+            or active.get("canonical_task_key") != task_key
+            or active.get("attempt") != portal_attempt
+            or active.get("workspace_path") != workspace_text
+            or not isinstance(protected, list)
+            or not all(type(item) is str for item in protected)
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected-path snapshot is foreign"
+            )
+        protected_paths = tuple(
+            sorted(_safe_repository_path(item) for item in protected)
+        )
+        if (
+            len(protected_paths) != len(protected)
+            or protected_paths
+            != tuple(sorted(self.implementation_protected_paths))
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected-path population changed"
+            )
+        snapshot = active.get("snapshot")
+        workspace_scope = (
+            snapshot.get("workspace") if isinstance(snapshot, Mapping) else None
+        )
+        shared_scope = (
+            snapshot.get("shared_checkout")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        if not isinstance(workspace_scope, Mapping) or not isinstance(
+            shared_scope, Mapping
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected-path scopes are incomplete"
+            )
+        assert self.repository_root is not None
+        if (
+            workspace_scope.get("root") != workspace_text
+            or shared_scope.get("root")
+            != str(self.repository_root.resolve(strict=True))
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected-path roots changed"
+            )
+        workspace_digests = self._protected_path_identity_digests(
+            workspace_scope,
+            protected_paths,
+        )
+        shared_digests = self._protected_path_identity_digests(
+            shared_scope,
+            protected_paths,
+        )
+        if (
+            workspace_digests != shared_digests
+            or self._current_protected_path_digests(protected_paths)
+            != shared_digests
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect protected content changed"
+            )
+        state = self._read_json_object(
+            paths.state,
+            noun="callback no-effect Portal state",
+        )
+        if (
+            state.get("implementation_in_progress") is not True
+            or state.get("active_task_id") != alias
+            or state.get("active_task_cid") != task_cid
+            or state.get("active_task_key") != task_key
+            or state.get("active_attempt") != portal_attempt
+            or state.get("active_worktree_path") != workspace_text
+            or str(state.get("active_branch") or "") != branch
+            or state.get("active_provider_runner") != {}
+            or str(state.get("last_implementation_commit") or "")
+            or str(state.get("last_implementation_finished_at") or "")
+            or state.get("last_implementation_returncode") is not None
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect Portal state is ambiguous or progressed"
+            )
+        return {
+            **workspace,
+            "portal_attempt": portal_attempt,
+            "allowed_effects": list(allowed_effects),
+            "allowed_effect_scope": "workspace_local_only",
+            "binding_id": str(binding.get("binding_id") or ""),
+            "source_task_revision": int(binding.get("task_revision") or 0),
+            "events_prefix_digest": self._event_prefix_digest(
+                events,
+                str(kernels[0].get("event_id") or ""),
+            ),
+            "event_stream_id": str(kernels[0].get("stream_id") or ""),
+            "implementation_started_event_id": str(
+                started.get("event_id") or ""
+            ),
+            "pre_implementation_kernel_event_id": str(
+                kernels[0].get("event_id") or ""
+            ),
+            "protected_snapshot_digest": _sha256_bytes(
+                _canonical_json(active)
+            ),
+            "protected_path_digests": dict(shared_digests),
+        }
+
+    def _callback_no_effect_recovery_intent(
+        self,
+        *,
+        attempt: Any,
+        observation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        body = {
+            "schema": _CALLBACK_NO_EFFECT_RECOVERY_INTENT_SCHEMA,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "observation": dict(observation),
+        }
+        body["intent_id"] = _sha256_bytes(_canonical_json(body))
+        return body
+
+    def _verify_callback_no_effect_recovery_intent(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        intent: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        body = dict(intent)
+        intent_id = str(body.pop("intent_id", "") or "")
+        observation = body.get("observation")
+        exact_identity = {
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            set(body) != {"schema", *exact_identity, "observation"}
+            or body.get("schema")
+            != _CALLBACK_NO_EFFECT_RECOVERY_INTENT_SCHEMA
+            or any(
+                body.get(key) != value
+                for key, value in exact_identity.items()
+            )
+            or not isinstance(observation, Mapping)
+            or observation.get("binding_id") != binding.get("binding_id")
+            or observation.get("source_task_revision")
+            != binding.get("task_revision")
+            or intent_id != _sha256_bytes(_canonical_json(body))
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery intent is malformed or foreign"
+            )
+        observed = self._callback_no_effect_workspace_observation(
+            workspace_text=str(observation.get("workspace_path") or ""),
+            branch=str(observation.get("branch") or ""),
+            baseline_commit=str(observation.get("baseline_commit") or ""),
+        )
+        if any(
+            observed.get(field) != observation.get(field)
+            for field in observed
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery intent workspace changed"
+            )
+        protected_path_digests = observation.get("protected_path_digests")
+        if (
+            not isinstance(protected_path_digests, Mapping)
+            or not protected_path_digests
+            or self._current_protected_path_digests(
+                tuple(sorted(map(str, protected_path_digests)))
+            )
+            != dict(protected_path_digests)
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery intent protected content changed"
+            )
+        events = self._verified_event_chain(paths)
+        if self._event_prefix_digest(
+            events,
+            str(
+                observation.get(
+                    "pre_implementation_kernel_event_id"
+                )
+                or ""
+            ),
+        ) != observation.get("events_prefix_digest"):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery intent event prefix changed"
+            )
+        return dict(observation)
+
+    def _callback_no_effect_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        observation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Clear exact dead-owner sidecars and seal the no-effect proof."""
+
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        prior_events = self._verified_event_chain(paths)
+        prior_reconciliations = [
+            event
+            for event in prior_events
+            if event.get("type") == "implementation_shutdown_reconciled"
+            and event.get("task_id") == alias
+            and event.get("attempt") == observation.get("portal_attempt")
+            and isinstance(event.get("clean_restart_evidence"), Mapping)
+        ]
+        if len(prior_reconciliations) > 1:
+            raise DatabasePortalBridgeError(
+                "callback no-effect cleanup event is ambiguous"
+            )
+        if prior_reconciliations:
+            reconciliation: Mapping[str, Any] = prior_reconciliations[0]
+        else:
+            daemon = self.portal_factory(paths, alias)
+            if daemon is None:
+                raise DatabasePortalBridgeError(
+                    "callback no-effect recovery Portal factory returned no executor"
+                )
+            try:
+                reconcile = getattr(
+                    daemon,
+                    "reconcile_quiesced_active_attempt",
+                    None,
+                )
+                if not callable(reconcile):
+                    raise DatabasePortalBridgeError(
+                        "callback no-effect recovery has no lifecycle reconciler"
+                    )
+                reconciliation = reconcile()
+            finally:
+                close = getattr(daemon, "close_event_runtime", None) or getattr(
+                    daemon, "close", None
+                )
+                if callable(close):
+                    close()
+        clean_restart = (
+            reconciliation.get("clean_restart_evidence")
+            if isinstance(reconciliation, Mapping)
+            else None
+        )
+        attempt_recovery = (
+            reconciliation.get("attempt_recovery")
+            if isinstance(reconciliation, Mapping)
+            else None
+        )
+        if (
+            not isinstance(reconciliation, Mapping)
+            or reconciliation.get("reconciled") is not True
+            or reconciliation.get("blocked") is not False
+            or reconciliation.get("task_id") != alias
+            or reconciliation.get("attempt") != observation.get("portal_attempt")
+            or not isinstance(clean_restart, Mapping)
+            or clean_restart.get("workspace_path")
+            != observation.get("workspace_path")
+            or clean_restart.get("baseline_commit")
+            != observation.get("baseline_commit")
+            or clean_restart.get("observed_head")
+            != observation.get("observed_head")
+            or not isinstance(attempt_recovery, Mapping)
+            or attempt_recovery.get("attempt")
+            != observation.get("portal_attempt")
+            or attempt_recovery.get("task_id") != alias
+            or attempt_recovery.get("canonical_task_cid")
+            != str(attempt.task_cid)
+            or type(attempt_recovery.get("consumed")) is not bool
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect lifecycle reconciliation was not exact"
+            )
+        repeated = self._callback_no_effect_workspace_observation(
+            workspace_text=str(observation["workspace_path"]),
+            branch=str(observation["branch"]),
+            baseline_commit=str(observation["baseline_commit"]),
+        )
+        if any(
+            repeated.get(field) != observation.get(field)
+            for field in (
+                "baseline_tree",
+                "observed_head",
+                "observed_tree",
+                "observed_branch",
+                "status_fingerprint",
+                "source_ref_commit",
+                "candidate_rescue_refs",
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect workspace changed during reconciliation"
+            )
+        events = self._verified_event_chain(paths)
+        reconciled = [
+            event
+            for event in events
+            if event.get("type") == "implementation_shutdown_reconciled"
+            and event.get("task_id") == alias
+            and event.get("attempt") == observation.get("portal_attempt")
+            and event.get("clean_restart_evidence") == clean_restart
+        ]
+        if len(reconciled) != 1:
+            raise DatabasePortalBridgeError(
+                "callback no-effect cleanup has no unique durable event"
+            )
+        body: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
+            "disposition": "classify_no_effect",
+            "reason": "no_admissible_candidate_or_allowed_effect",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            **dict(observation),
+            "reconciliation_event_id": str(
+                reconciled[0].get("event_id") or ""
+            ),
+            "reconciled_events_prefix_digest": self._event_prefix_digest(
+                events,
+                str(reconciled[0].get("event_id") or ""),
+            ),
+            "portal_reconciliation_reason": str(
+                reconciliation.get("reason") or ""
+            ),
+            # ``consume_stale_active_attempt`` charges the local Portal round
+            # if an older projection had not done so yet.  Either value of
+            # ``consumed`` is valid here: False means the exact round was
+            # already charged before the crash, not that it was refunded.
+            "portal_attempt_newly_charged": bool(
+                attempt_recovery.get("consumed")
+            ),
+            "portal_attempt_charged": True,
+            "provider_dispatched": True,
+            "attempt_consumed": True,
+            "effect_state": "proven_absent_in_allowed_workspace_scope",
+            "completion_authoritative": False,
+            "merge_attempted": False,
+        }
+        body["receipt_id"] = _sha256_bytes(_canonical_json(body))
+        return body
+
+    def _verify_callback_no_effect_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        body = dict(receipt)
+        receipt_id = str(body.pop("receipt_id", "") or "")
+        exact_identity = {
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            receipt_id != _sha256_bytes(_canonical_json(body))
+            or body.get("schema")
+            != DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
+            or body.get("disposition") != "classify_no_effect"
+            or body.get("reason")
+            != "no_admissible_candidate_or_allowed_effect"
+            or any(body.get(key) != value for key, value in exact_identity.items())
+            or body.get("provider_dispatched") is not True
+            or body.get("attempt_consumed") is not True
+            or body.get("portal_attempt_charged") is not True
+            or type(body.get("portal_attempt_newly_charged")) is not bool
+            or body.get("effect_state")
+            != "proven_absent_in_allowed_workspace_scope"
+            or body.get("completion_authoritative") is not False
+            or body.get("merge_attempted") is not False
+            or body.get("candidate_rescue_refs") != []
+            or not set(body.get("allowed_effects") or ()).issubset(
+                _CALLBACK_NO_EFFECT_LOCAL_ALLOWED_EFFECTS
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery receipt is malformed or foreign"
+            )
+        observed = self._callback_no_effect_workspace_observation(
+            workspace_text=str(body.get("workspace_path") or ""),
+            branch=str(body.get("branch") or ""),
+            baseline_commit=str(body.get("baseline_commit") or ""),
+        )
+        if any(
+            observed.get(field) != body.get(field)
+            for field in observed
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery workspace proof changed"
+            )
+        protected_path_digests = body.get("protected_path_digests")
+        if (
+            not isinstance(protected_path_digests, Mapping)
+            or not protected_path_digests
+            or self._current_protected_path_digests(
+                tuple(sorted(map(str, protected_path_digests)))
+            )
+            != dict(protected_path_digests)
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery protected content changed"
+            )
+        events = self._verified_event_chain(paths)
+        if (
+            self._event_prefix_digest(
+                events,
+                str(body.get("pre_implementation_kernel_event_id") or ""),
+            )
+            != body.get("events_prefix_digest")
+            or self._event_prefix_digest(
+                events,
+                str(body.get("reconciliation_event_id") or ""),
+            )
+            != body.get("reconciled_events_prefix_digest")
+        ):
+            raise DatabasePortalBridgeError(
+                "callback no-effect recovery event proof changed"
+            )
+        result = dict(body)
+        result["receipt_id"] = receipt_id
+        return result
+
+    def _recover_callback_no_effect(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        final_path = paths.root / _CALLBACK_NO_EFFECT_RECOVERY_FILENAME
+        intent_path = (
+            paths.root / _CALLBACK_NO_EFFECT_RECOVERY_INTENT_FILENAME
+        )
+        if final_path.is_file():
+            return self._verify_callback_no_effect_recovery_receipt(
+                attempt=attempt,
+                paths=paths,
+                receipt=self._read_json_object(
+                    final_path,
+                    noun="callback no-effect recovery receipt",
+                ),
+            )
+        if intent_path.is_file():
+            observation = self._verify_callback_no_effect_recovery_intent(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                intent=self._read_json_object(
+                    intent_path,
+                    noun="callback no-effect recovery intent",
+                ),
+            )
+        else:
+            observation = self._callback_no_effect_source_observation(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
+            intent = self._callback_no_effect_recovery_intent(
+                attempt=attempt,
+                observation=observation,
+            )
+            _atomic_write(
+                intent_path,
+                json.dumps(intent, indent=2, sort_keys=True).encode("utf-8")
+                + b"\n",
+            )
+            observation = self._verify_callback_no_effect_recovery_intent(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                intent=intent,
+            )
+        receipt = self._callback_no_effect_recovery_receipt(
+            attempt=attempt,
+            paths=paths,
+            observation=observation,
+        )
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return self._verify_callback_no_effect_recovery_receipt(
+            attempt=attempt,
+            paths=paths,
+            receipt=receipt,
+        )
+
     def recover_post_commit_candidate(self, attempt: Any) -> Mapping[str, Any]:
         """Recover one exact callback-unknown Portal suffix without redispatch.
 
@@ -17698,7 +18492,10 @@ class DatabasePortalExecutionBridge:
         successful callback, but before DuckDB admitted that callback.  In
         that shape the immutable completed queue row is requalified at the
         current target and returned through the existing post-merge evidence
-        contract.  Neither branch invokes the provider again.
+        contract.  A final fail-closed branch classifies a dead-provider
+        suffix only when the managed workspace is still its exact clean
+        baseline and the task contract permits no external effect.  Recovery
+        itself never invokes the provider again.
         """
 
         paths, binding = self._recovery_attempt_binding(
@@ -17718,7 +18515,14 @@ class DatabasePortalExecutionBridge:
                 binding=binding,
             )
             if landed is None:
-                raise retained_error
+                try:
+                    return self._recover_callback_no_effect(
+                        attempt=attempt,
+                        paths=paths,
+                        binding=binding,
+                    )
+                except DatabasePortalBridgeError:
+                    raise retained_error
             return landed
 
     def _unknown_callback_landed_recovery_evidence(

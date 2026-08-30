@@ -17160,6 +17160,107 @@ class PortalImplementationDaemon:
         self._record_event("implementation_shutdown_reconciled", result)
         return result
 
+    def _controlled_restart_clean_baseline_evidence(
+        self,
+        event: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Prove a dead-owner workspace retained no repository effect.
+
+        A controlled-restart lifecycle disposition proves only that the
+        recorded owner died.  It does not prove that the provider produced no
+        candidate.  Admit cleanup of that otherwise-sticky disposition only
+        when the exact managed worktree is still on its recorded branch and
+        immutable baseline, including submodule dirt, and no provider runner
+        remains.  This method clears only Portal's private lifecycle/state;
+        it never authorizes a task retry or a control-plane transition.
+        """
+
+        if (
+            str(event.get("_inflight_disposition") or "")
+            != "controlled_restart_recovery"
+            or self._implementation_runner_process_active(event)
+        ):
+            return None
+        workspace_text = str(event.get("worktree_path") or "")
+        branch = str(event.get("branch") or "").removeprefix("refs/heads/")
+        baseline = str(event.get("baseline_ref") or "")
+        if (
+            not workspace_text
+            or not branch.startswith("implementation/")
+            or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
+        ):
+            return None
+        try:
+            root = self.worktree_root.resolve(strict=True)
+            workspace = Path(workspace_text).resolve(strict=True)
+            workspace.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if str(workspace) != workspace_text or workspace.is_symlink():
+            return None
+
+        def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+            try:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=workspace,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return subprocess.CompletedProcess(arguments, 1, "", "")
+
+        top = git("rev-parse", "--show-toplevel")
+        head = git("rev-parse", "--verify", "HEAD^{commit}")
+        tree = git("rev-parse", "--verify", "HEAD^{tree}")
+        baseline_tree = git(
+            "rev-parse", "--verify", f"{baseline}^{{tree}}"
+        )
+        current_branch = git("branch", "--show-current")
+        status = git(
+            "-c",
+            "status.showUntrackedFiles=all",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignore-submodules=none",
+        )
+        if (
+            any(
+                result.returncode != 0
+                for result in (
+                    top,
+                    head,
+                    tree,
+                    baseline_tree,
+                    current_branch,
+                    status,
+                )
+            )
+            or Path(top.stdout.strip()).resolve(strict=False) != workspace
+            or head.stdout.strip() != baseline
+            or tree.stdout.strip() != baseline_tree.stdout.strip()
+            or current_branch.stdout.strip() != branch
+            or bool(status.stdout)
+        ):
+            return None
+        return {
+            "workspace_path": workspace_text,
+            "branch": branch,
+            "baseline_commit": baseline,
+            "baseline_tree": baseline_tree.stdout.strip(),
+            "observed_head": head.stdout.strip(),
+            "observed_tree": tree.stdout.strip(),
+            "status_fingerprint": (
+                "sha256:"
+                + hashlib.sha256(status.stdout.encode("utf-8")).hexdigest()
+            ),
+            "submodule_dirt_checked": True,
+            "provider_runner_present": False,
+        }
+
     def _legacy_reconcile_quiesced_active_attempt(
         self,
         *,
@@ -17177,7 +17278,14 @@ class PortalImplementationDaemon:
         """
 
         live_implementation = self._find_live_inflight_implementation()
-        if live_implementation is not None:
+        clean_restart_evidence = (
+            self._controlled_restart_clean_baseline_evidence(
+                live_implementation
+            )
+            if live_implementation is not None
+            else None
+        )
+        if live_implementation is not None and clean_restart_evidence is None:
             result = {
                 "reconciled": False,
                 "blocked": True,
@@ -17416,6 +17524,8 @@ class PortalImplementationDaemon:
             ),
             "stale_lock_cleared": stale_lock_cleared,
         }
+        if clean_restart_evidence is not None:
+            result["clean_restart_evidence"] = clean_restart_evidence
         self._record_event(
             "implementation_shutdown_reconciled",
             result,
@@ -97866,6 +97976,9 @@ class DatabaseImplementationDaemon:
             post_commit_candidate_seed = prior_status_receipt.get(
                 "post_commit_candidate_recovery_seed"
             )
+            callback_no_effect_seed = prior_status_receipt.get(
+                "callback_no_effect_recovery_seed"
+            )
             protected_seed = prior_status_receipt.get(
                 "protected_path_recovery_seed"
             )
@@ -97888,6 +98001,7 @@ class DatabaseImplementationDaemon:
                 consumed_seed is not None,
                 post_merge_completion_seed is not None,
                 post_commit_candidate_seed is not None,
+                callback_no_effect_seed is not None,
                 protected_seed is not None,
                 external_seed is not None,
                 inflight_seed is not None,
@@ -98234,6 +98348,52 @@ class DatabaseImplementationDaemon:
                         ),
                         "protected_preservation_seed": (
                             verified_preservation_seed
+                        ),
+                    }
+                )
+            elif callback_no_effect_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != "database_portal_callback_no_effect_recovery"
+                    or not isinstance(callback_no_effect_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed callback no-effect seed"
+                    )
+                source_attempt_id = str(
+                    callback_no_effect_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if (
+                    source_attempt is None
+                    or source_attempt.status not in {"blocked", "failed"}
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim callback no-effect source attempt is "
+                        "unavailable"
+                    )
+                verified_no_effect_seed = (
+                    self._verified_callback_no_effect_recovery_receipt(
+                        source_attempt,
+                        callback_no_effect_seed,
+                    )
+                )
+                target_identity, target_claim_identity = feature_retry_target(
+                    source_attempt
+                )
+                carry_feature_retry_target(
+                    target_identity,
+                    target_claim_identity,
+                )
+                receipt_payload.update(
+                    {
+                        "callback_no_effect_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "callback_no_effect_recovery_seed": (
+                            verified_no_effect_seed
                         ),
                     }
                 )
@@ -121700,7 +121860,13 @@ class DatabaseImplementationDaemon:
         self,
         task: Any,
     ) -> dict[str, Any] | None:
-        """Rearm only an exact retained post-commit candidate, without retry."""
+        """Reconcile one exact callback-unknown suffix without blind retry.
+
+        Retained candidates follow their existing validation path.  A dead
+        provider with an exact clean-baseline proof consumes its attempt and
+        either re-enters the canonical queue within the remaining budget or
+        becomes an explicit budget stop.
+        """
 
         if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
             return None
@@ -121741,6 +121907,9 @@ class DatabaseImplementationDaemon:
                 str(recovered.get("schema") or "")
                 if isinstance(recovered, Mapping)
                 else ""
+            )
+            from .database_portal_bridge import (
+                DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
             )
             if (
                 recovered_schema
@@ -121807,10 +121976,21 @@ class DatabaseImplementationDaemon:
                     "attempt_consumed": True,
                     "operator_review_required": False,
                 }
-            seed = self._verified_post_commit_candidate_recovery_receipt(
-                attempt,
-                recovered,
-            )
+            no_effect: dict[str, Any] | None = None
+            seed: dict[str, Any] | None = None
+            if (
+                recovered_schema
+                == DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
+            ):
+                no_effect = self._verified_callback_no_effect_recovery_receipt(
+                    attempt,
+                    recovered,
+                )
+            else:
+                seed = self._verified_post_commit_candidate_recovery_receipt(
+                    attempt,
+                    recovered,
+                )
         except Exception as exc:
             return {
                 "task_cid": str(task.task_cid),
@@ -121849,11 +122029,117 @@ class DatabaseImplementationDaemon:
                 "reason": "post_commit_recovery_control_superseded",
                 "operator_review_required": False,
             }
+        if no_effect is not None and (
+            self.max_task_attempts > 0
+            and int(attempt.attempt_number) >= self.max_task_attempts
+        ):
+            budget_stop_receipt = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-portal-callback-no-effect-budget-stop@1"
+                ),
+                "operation": (
+                    "database_portal_callback_no_effect_budget_exhausted"
+                ),
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": "callback_no_effect_attempt_budget_exhausted",
+                "retryable": False,
+                "provider_dispatched": True,
+                "attempt_consumed": True,
+                "max_task_attempts": int(self.max_task_attempts),
+                "remaining_task_attempts": 0,
+                "callback_no_effect_recovery_receipt": dict(no_effect),
+                "control_expected_status": "quarantined",
+                "control_expected_revision": int(current.revision),
+            }
+            result = self._cas_task_status_database(
+                str(current.task_cid),
+                expected_revision=int(current.revision),
+                new_status="blocked",
+                receipt=budget_stop_receipt,
+                expected_control_receipt=receipt,
+            )
+            updated = self.task_source.get(str(current.task_cid))
+            updated_control_receipt = (
+                updated.body.get("completion_receipt")
+                if updated is not None
+                and isinstance(updated.body, Mapping)
+                else None
+            )
+            if (
+                updated is None
+                or str(updated.status).strip().lower() != "blocked"
+                or not isinstance(updated_control_receipt, Mapping)
+                or updated_control_receipt.get("schema")
+                != budget_stop_receipt["schema"]
+                or updated_control_receipt.get("operation")
+                != budget_stop_receipt["operation"]
+                or updated_control_receipt.get("attempt_id")
+                != attempt.attempt_id
+                or updated_control_receipt.get("attempt_number")
+                != int(attempt.attempt_number)
+                or updated_control_receipt.get(
+                    "callback_no_effect_recovery_receipt"
+                )
+                != dict(no_effect)
+                or updated_control_receipt.get("remaining_task_attempts") != 0
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "callback no-effect budget stop did not persist"
+                )
+            result_to_dict = getattr(result, "to_dict", None)
+            self._record_event(
+                "callback_no_effect_budget_exhausted",
+                attempt_id=attempt.attempt_id,
+                task_cid=str(updated.task_cid),
+                body={
+                    "source_receipt_id": str(no_effect["receipt_id"]),
+                    "provider_dispatched": False,
+                    "source_provider_dispatched": True,
+                    "attempt_consumed": True,
+                    "max_task_attempts": int(self.max_task_attempts),
+                    "remaining_task_attempts": 0,
+                },
+            )
+            return {
+                "task_cid": str(updated.task_cid),
+                "reopened": False,
+                "changed": bool(
+                    getattr(result, "changed", True)
+                    if not callable(result_to_dict)
+                    else result_to_dict().get("changed", True)
+                ),
+                "status": "blocked",
+                "reason": "callback_no_effect_attempt_budget_exhausted",
+                "provider_dispatched": False,
+                "source_provider_dispatched": True,
+                "attempt_consumed": True,
+                "max_task_attempts": int(self.max_task_attempts),
+                "remaining_task_attempts": 0,
+                "source_receipt_id": str(no_effect["receipt_id"]),
+                "operator_review_required": False,
+            }
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         coordination = claim.to_dict() if claim is not None else {}
+        source_evidence = no_effect if no_effect is not None else seed
+        assert source_evidence is not None
+        callback_no_effect = no_effect is not None
         queue_reason = (
-            "database_portal_post_commit_candidate_recovery:"
-            + str(seed["receipt_id"])
+            (
+                "database_portal_callback_no_effect_recovery:"
+                if callback_no_effect
+                else "database_portal_post_commit_candidate_recovery:"
+            )
+            + str(source_evidence["receipt_id"])
         )[:2048]
         carried_route_fields = (
             set(receipt) & _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
@@ -121873,7 +122159,11 @@ class DatabaseImplementationDaemon:
             if field in carried_route_fields
         }
         transition_receipt = {
-            "operation": "database_portal_post_commit_candidate_recovery",
+            "operation": (
+                "database_portal_callback_no_effect_recovery"
+                if callback_no_effect
+                else "database_portal_post_commit_candidate_recovery"
+            ),
             "attempt_id": attempt.attempt_id,
             "attempt_number": int(attempt.attempt_number),
             "claim_id": attempt.claim_id,
@@ -121884,7 +122174,11 @@ class DatabaseImplementationDaemon:
             "execution_phase": attempt.committed_phase,
             "execution_revision": int(attempt.revision),
             "execution_finished_at_ms": attempt.finished_at_ms,
-            "reason": "exact_post_commit_candidate_retained",
+            "reason": (
+                "exact_no_effect_callback_reconciled"
+                if callback_no_effect
+                else "exact_post_commit_candidate_retained"
+            ),
             "queue_reason": queue_reason,
             "backoff_ms": 0,
             "retry_not_before_ms": 0,
@@ -121892,7 +122186,11 @@ class DatabaseImplementationDaemon:
             "coordination": coordination,
             "control_expected_status": "quarantined",
             "control_expected_revision": int(current.revision),
-            "post_commit_candidate_recovery_seed": dict(seed),
+            **(
+                {"callback_no_effect_recovery_seed": dict(no_effect)}
+                if callback_no_effect
+                else {"post_commit_candidate_recovery_seed": dict(seed or {})}
+            ),
             **route_lineage,
         }
         result = guarded(
@@ -121911,9 +122209,13 @@ class DatabaseImplementationDaemon:
             or not isinstance(updated.body, Mapping)
             or not isinstance(updated.body.get("completion_receipt"), Mapping)
             or updated.body["completion_receipt"].get(
-                "post_commit_candidate_recovery_seed"
+                (
+                    "callback_no_effect_recovery_seed"
+                    if callback_no_effect
+                    else "post_commit_candidate_recovery_seed"
+                )
             )
-            != dict(seed)
+            != dict(source_evidence)
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-commit recovery retry projection did not persist"
@@ -121924,14 +122226,27 @@ class DatabaseImplementationDaemon:
             else attempt
         )
         self._record_event(
-            "post_commit_candidate_recovery_rearmed",
+            (
+                "callback_no_effect_recovery_rearmed"
+                if callback_no_effect
+                else "post_commit_candidate_recovery_rearmed"
+            ),
             attempt_id=retired.attempt_id,
             task_cid=str(updated.task_cid),
             body={
-                "source_receipt_id": str(seed["receipt_id"]),
-                "implementation_commit": str(seed["implementation_commit"]),
+                "source_receipt_id": str(source_evidence["receipt_id"]),
+                **(
+                    {}
+                    if callback_no_effect
+                    else {
+                        "implementation_commit": str(
+                            source_evidence["implementation_commit"]
+                        )
+                    }
+                ),
                 "provider_dispatched": False,
-                "attempt_consumed": False,
+                "source_provider_dispatched": True,
+                "attempt_consumed": bool(callback_no_effect),
             },
         )
         return {
@@ -121939,11 +122254,24 @@ class DatabaseImplementationDaemon:
             "reopened": True,
             "changed": bool(getattr(result, "changed", True)),
             "status": "retrying",
-            "reason": "exact_post_commit_candidate_rearmed",
+            "reason": (
+                "exact_no_effect_callback_rearmed"
+                if callback_no_effect
+                else "exact_post_commit_candidate_rearmed"
+            ),
             "provider_dispatched": False,
-            "attempt_consumed": False,
-            "source_receipt_id": str(seed["receipt_id"]),
-            "implementation_commit": str(seed["implementation_commit"]),
+            "source_provider_dispatched": True,
+            "attempt_consumed": bool(callback_no_effect),
+            "source_receipt_id": str(source_evidence["receipt_id"]),
+            **(
+                {}
+                if callback_no_effect
+                else {
+                    "implementation_commit": str(
+                        source_evidence["implementation_commit"]
+                    )
+                }
+            ),
         }
 
     def _verified_post_commit_candidate_recovery_receipt(
@@ -122088,10 +122416,168 @@ class DatabaseImplementationDaemon:
         receipt["receipt_id"] = receipt_id
         return receipt
 
+    def _verified_callback_no_effect_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify Portal's exact no-effect reconciliation."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "callback no-effect recovery receipt is malformed"
+            )
+        receipt = dict(raw)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "workspace_path",
+            "branch",
+            "baseline_commit",
+            "baseline_tree",
+            "observed_head",
+            "observed_tree",
+            "observed_branch",
+            "status_fingerprint",
+            "source_ref_commit",
+            "candidate_rescue_refs",
+            "submodule_dirt_checked",
+            "portal_attempt",
+            "allowed_effects",
+            "allowed_effect_scope",
+            "binding_id",
+            "source_task_revision",
+            "events_prefix_digest",
+            "event_stream_id",
+            "implementation_started_event_id",
+            "pre_implementation_kernel_event_id",
+            "protected_snapshot_digest",
+            "protected_path_digests",
+            "reconciliation_event_id",
+            "reconciled_events_prefix_digest",
+            "portal_reconciliation_reason",
+            "portal_attempt_newly_charged",
+            "portal_attempt_charged",
+            "provider_dispatched",
+            "attempt_consumed",
+            "effect_state",
+            "completion_authoritative",
+            "merge_attempted",
+        }
+        exact_identity = {
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        allowed_effects = receipt.get("allowed_effects")
+        protected_path_digests = receipt.get("protected_path_digests")
+        if (
+            set(receipt) != expected_fields
+            or receipt.get("schema")
+            != DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
+            or receipt.get("disposition") != "classify_no_effect"
+            or receipt.get("reason")
+            != "no_admissible_candidate_or_allowed_effect"
+            or any(receipt.get(key) != value for key, value in exact_identity.items())
+            or receipt.get("provider_dispatched") is not True
+            or receipt.get("attempt_consumed") is not True
+            or receipt.get("portal_attempt_charged") is not True
+            or type(receipt.get("portal_attempt_newly_charged")) is not bool
+            or receipt.get("effect_state")
+            != "proven_absent_in_allowed_workspace_scope"
+            or receipt.get("completion_authoritative") is not False
+            or receipt.get("merge_attempted") is not False
+            or receipt.get("candidate_rescue_refs") != []
+            or receipt.get("submodule_dirt_checked") is not True
+            or not isinstance(protected_path_digests, Mapping)
+            or not protected_path_digests
+            or not all(
+                type(path) is str
+                and bool(path)
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(digest or ""),
+                )
+                for path, digest in protected_path_digests.items()
+            )
+            or receipt.get("allowed_effect_scope") != "workspace_local_only"
+            or not isinstance(allowed_effects, list)
+            or not allowed_effects
+            or len(allowed_effects) != len(set(map(str, allowed_effects)))
+            or not all(type(item) is str and bool(item) for item in allowed_effects)
+            or receipt.get("observed_head") != receipt.get("baseline_commit")
+            or receipt.get("observed_tree") != receipt.get("baseline_tree")
+            or receipt.get("source_ref_commit") != receipt.get("baseline_commit")
+            or receipt.get("observed_branch") != receipt.get("branch")
+            or not str(receipt.get("branch") or "").startswith("implementation/")
+            or not Path(str(receipt.get("workspace_path") or "")).is_absolute()
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(receipt.get(field) or ""))
+                is None
+                for field in (
+                    "baseline_commit",
+                    "baseline_tree",
+                    "observed_head",
+                    "observed_tree",
+                    "source_ref_commit",
+                )
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(receipt.get(field) or ""),
+                )
+                is None
+                for field in (
+                    "status_fingerprint",
+                    "binding_id",
+                    "events_prefix_digest",
+                    "implementation_started_event_id",
+                    "pre_implementation_kernel_event_id",
+                    "protected_snapshot_digest",
+                    "reconciliation_event_id",
+                    "reconciled_events_prefix_digest",
+                )
+            )
+            or not str(receipt.get("event_stream_id") or "")
+            or not str(receipt.get("portal_reconciliation_reason") or "")
+            or isinstance(receipt.get("portal_attempt"), bool)
+            or not isinstance(receipt.get("portal_attempt"), int)
+            or int(receipt["portal_attempt"]) < 1
+            or isinstance(receipt.get("source_task_revision"), bool)
+            or not isinstance(receipt.get("source_task_revision"), int)
+            or int(receipt["source_task_revision"]) < 1
+            or receipt_id != _database_daemon_evidence_digest(receipt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "callback no-effect recovery receipt failed verification"
+            )
+        receipt["receipt_id"] = receipt_id
+        return receipt
+
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
-        """Resume exact post-commit candidates; otherwise stay quarantined."""
+        """Reconcile exact retained or clean-baseline callback quarantines."""
 
         if self.repo_root is None:
             return []

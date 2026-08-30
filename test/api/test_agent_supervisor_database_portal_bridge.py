@@ -60,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+    DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
@@ -535,6 +536,389 @@ def test_bridge_post_commit_candidate_later_event_fails_closed(
         DatabasePortalBridgeError,
         match="exact terminal event suffix",
     ):
+        bridge.recover_post_commit_candidate(source)
+
+    assert factory_calls == []
+
+
+def _callback_no_effect_fixture(
+    tmp_path: Path,
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    SimpleNamespace,
+    object,
+    Path,
+    list[str],
+]:
+    """Create the exact clean-baseline callback-unknown crash shape."""
+
+    repo = tmp_path / "callback-no-effect-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "README.md").write_text("protected baseline\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Callback Recovery",
+            "-c",
+            "user.email=callback-recovery@example.invalid",
+            "add",
+            "README.md",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Callback Recovery",
+            "-c",
+            "user.email=callback-recovery@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    worktree_root = tmp_path / "callback-no-effect-worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "attempt-1"
+    branch = "implementation/lgswf-004-callback-no-effect"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "-b", branch, str(workspace), baseline],
+        cwd=repo,
+        check=True,
+    )
+
+    record = _record()
+    record.dependencies = ()
+    record.status = "quarantined"
+    record.body = {
+        **record.body,
+        "allowed_effects": [
+            "isolated worktree edits",
+            "local deterministic validation",
+            "reviewed merge request through canonical authority",
+        ],
+    }
+    source = _attempt()
+    factory_calls: list[str] = []
+
+    class _CleanRestartPortal:
+        def __init__(self, paths: object, alias: str) -> None:
+            self.paths = paths
+            self.alias = alias
+
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            factory_calls.append(self.alias)
+            baseline_tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=workspace,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            clean = {
+                "workspace_path": str(workspace),
+                "branch": branch,
+                "baseline_commit": baseline,
+                "baseline_tree": baseline_tree,
+                "observed_head": baseline,
+                "observed_tree": baseline_tree,
+                "status_fingerprint": "sha256:" + hashlib.sha256(b"").hexdigest(),
+                "submodule_dirt_checked": True,
+                "provider_runner_present": False,
+            }
+            attempt_recovery = {
+                "consumed": False,
+                "attempt": 1,
+                "task_id": source.task_alias,
+                "canonical_task_key": "task/v1/current-authority-inventory",
+                "canonical_task_cid": source.task_cid,
+                "previous_display_count": 1,
+                "previous_cid_count": 1,
+            }
+            result: dict[str, object] = {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "quiesced_active_attempt_reconciled",
+                "task_id": source.task_alias,
+                "canonical_task_cid": source.task_cid,
+                "attempt": 1,
+                "attempt_recovery": attempt_recovery,
+                "clean_restart_evidence": clean,
+            }
+            append_jsonl_event(
+                self.paths.events,
+                "implementation_shutdown_reconciled",
+                result,
+            )
+            self.paths.state.write_text(
+                json.dumps(
+                    {
+                        "implementation_in_progress": False,
+                        "active_task_id": "",
+                        "active_task_cid": "",
+                        "active_task_key": "",
+                        "active_attempt": 0,
+                        "active_worktree_path": "",
+                        "active_branch": "",
+                        "active_provider_runner": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (self.paths.root / "implementation-protected-path-active.json").unlink()
+            return result
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "callback-no-effect-attempts",
+        repository_root=repo,
+        worktree_root=worktree_root,
+        implementation_protected_paths=("README.md",),
+        portal_factory=lambda paths, alias: _CleanRestartPortal(paths, alias),
+    )
+    paths, _binding = bridge._ensure_attempt_projection(source, record)
+    append_jsonl_event(
+        paths.events,
+        "implementation_started",
+        {
+            "task_id": source.task_alias,
+            "canonical_task_cid": source.task_cid,
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "attempt": 1,
+            "branch": branch,
+            "baseline_ref": baseline,
+            "worktree_path": str(workspace),
+            "outputs": ["inventory/result.json"],
+            "provider_dispatched": False,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "pre_implementation_kernel_evaluated",
+        {
+            "task_id": source.task_alias,
+            "canonical_task_cid": source.task_cid,
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "attempt": 1,
+        },
+    )
+    protected_digest = hashlib.sha256(
+        (repo / "README.md").read_bytes()
+    ).hexdigest()
+    identity = {
+        "state": "present",
+        "kind": "regular_file",
+        "sha256": protected_digest,
+    }
+    (paths.root / "implementation-protected-path-active.json").write_text(
+        json.dumps(
+            {
+                "schema": "implementation-protected-path-active-v1",
+                "task_id": source.task_alias,
+                "canonical_task_key": "task/v1/current-authority-inventory",
+                "canonical_task_cid": source.task_cid,
+                "attempt": 1,
+                "workspace_path": str(workspace),
+                "ephemeral_worktree": True,
+                "protected_paths": ["README.md"],
+                "snapshot": {
+                    "workspace": {
+                        "root": str(workspace),
+                        "paths": {"README.md": identity},
+                    },
+                    "shared_checkout": {
+                        "root": str(repo),
+                        "paths": {"README.md": identity},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths.state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_task_id": source.task_alias,
+                "active_task_cid": source.task_cid,
+                "active_task_key": "task/v1/current-authority-inventory",
+                "active_attempt": 1,
+                "active_worktree_path": str(workspace),
+                "active_branch": branch,
+                "active_provider_runner": {},
+                "last_implementation_commit": "",
+                "last_implementation_finished_at": "",
+                "last_implementation_returncode": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return bridge, source, record, paths, workspace, factory_calls
+
+
+def test_bridge_reconciles_exact_clean_baseline_callback_unknown(
+    tmp_path: Path,
+) -> None:
+    bridge, source, _record_value, paths, workspace, factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+
+    receipt = dict(bridge.recover_post_commit_candidate(source))
+
+    assert receipt["schema"] == DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
+    assert receipt["disposition"] == "classify_no_effect"
+    assert receipt["provider_dispatched"] is True
+    assert receipt["attempt_consumed"] is True
+    assert receipt["portal_attempt_charged"] is True
+    assert receipt["effect_state"] == "proven_absent_in_allowed_workspace_scope"
+    assert receipt["observed_head"] == receipt["baseline_commit"]
+    assert subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
+    assert json.loads(paths.state.read_text(encoding="utf-8"))[
+        "implementation_in_progress"
+    ] is False
+    assert factory_calls == [source.task_alias]
+
+
+def test_portal_controlled_restart_cleanup_requires_exact_clean_baseline(
+    tmp_path: Path,
+) -> None:
+    bridge, _source, _record_value, _paths, workspace, _factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    event = {
+        "_inflight_disposition": "controlled_restart_recovery",
+        "worktree_path": str(workspace),
+        "branch": "implementation/lgswf-004-callback-no-effect",
+        "baseline_ref": baseline,
+    }
+    portal = SimpleNamespace(
+        worktree_root=bridge.worktree_root,
+        _implementation_runner_process_active=lambda _event: False,
+    )
+
+    evidence = (
+        PortalImplementationDaemon._controlled_restart_clean_baseline_evidence(
+            portal,
+            event,
+        )
+    )
+    assert evidence is not None
+    assert evidence["observed_head"] == baseline
+    assert evidence["provider_runner_present"] is False
+
+    (workspace / "untracked.txt").write_text("candidate\n", encoding="utf-8")
+    assert (
+        PortalImplementationDaemon._controlled_restart_clean_baseline_evidence(
+            portal,
+            event,
+        )
+        is None
+    )
+    (workspace / "untracked.txt").unlink()
+    portal._implementation_runner_process_active = lambda _event: True
+    assert (
+        PortalImplementationDaemon._controlled_restart_clean_baseline_evidence(
+            portal,
+            event,
+        )
+        is None
+    )
+
+
+def test_bridge_callback_no_effect_replays_after_cleanup_before_final_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, source, _record_value, paths, _workspace, factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    original_atomic_write = database_portal_bridge_module._atomic_write
+    interrupted = {"raised": False}
+
+    def interrupt_final(path: Path, payload: bytes) -> None:
+        if (
+            path.name == "database-portal-callback-no-effect-recovery.json"
+            and not interrupted["raised"]
+        ):
+            interrupted["raised"] = True
+            raise RuntimeError("injected receipt-publication crash")
+        original_atomic_write(path, payload)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write",
+        interrupt_final,
+    )
+    with pytest.raises(RuntimeError, match="receipt-publication crash"):
+        bridge.recover_post_commit_candidate(source)
+    assert factory_calls == [source.task_alias]
+    assert (
+        paths.root
+        / "database-portal-callback-no-effect-recovery-intent.json"
+    ).is_file()
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write",
+        original_atomic_write,
+    )
+    receipt = dict(bridge.recover_post_commit_candidate(source))
+
+    assert receipt["schema"] == DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
+    assert factory_calls == [source.task_alias]
+
+
+@pytest.mark.parametrize("unsafe_shape", ("dirty", "ambiguous", "effectful"))
+def test_bridge_callback_no_effect_recovery_rejects_unsafe_evidence(
+    tmp_path: Path,
+    unsafe_shape: str,
+) -> None:
+    bridge, source, record, paths, workspace, factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    if unsafe_shape == "dirty":
+        (workspace / "untracked.txt").write_text("candidate\n", encoding="utf-8")
+    elif unsafe_shape == "ambiguous":
+        state = json.loads(paths.state.read_text(encoding="utf-8"))
+        state["active_provider_runner"] = {"pid": 999999}
+        paths.state.write_text(json.dumps(state), encoding="utf-8")
+    else:
+        record.body = {
+            **record.body,
+            "allowed_effects": [*record.body["allowed_effects"], "network publication"],
+        }
+
+    with pytest.raises(DatabasePortalBridgeError):
         bridge.recover_post_commit_candidate(source)
 
     assert factory_calls == []
