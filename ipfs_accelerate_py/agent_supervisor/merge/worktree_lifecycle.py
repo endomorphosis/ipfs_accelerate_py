@@ -1651,6 +1651,26 @@ class WorktreeLifecycleStore:
                 record=None,
             )
 
+        if (
+            record.is_terminal
+            and record.terminal_reason
+            == "verification_deferred_checkout_lease_unavailable"
+        ):
+            # A provider-dispatched candidate retained because protected-path
+            # verification could not acquire the repository checkout lease is
+            # terminal only with respect to the original worker claim.  Its
+            # bytes are still the sole candidate evidence.  Generic cleanup
+            # must not erase them before the receipt-bound recovery path has
+            # reproduced their fingerprint under the checkout transaction.
+            return CleanupDecision(
+                disposition=CleanupDisposition.DENY,
+                reason="verification_deferred_candidate_recovery_required",
+                record=record,
+                failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                provider_call_allowed=False,
+                attempt_consumed=False,
+            )
+
         if record.is_terminal:
             return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,

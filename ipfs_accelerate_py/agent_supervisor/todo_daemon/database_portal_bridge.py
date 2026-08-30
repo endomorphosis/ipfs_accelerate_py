@@ -280,6 +280,10 @@ DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-path-preservation@1"
 )
+DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-verification-deferred-preservation@1"
+)
 DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-reconciliation-self-lock@1"
@@ -349,6 +353,14 @@ _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS: Final[
         "protected_path_violation_digest",
         "preservation_digest",
         "receipt_id",
+    }
+)
+_DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_FIELDS: Final[
+    frozenset[str]
+] = _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS | frozenset(
+    {
+        "source_retained_receipt_id",
+        "source_fingerprint_id",
     }
 )
 _PROTECTED_PATH_PRESERVATION_EVENT_CHAIN: Final[tuple[str, ...]] = (
@@ -1364,6 +1376,33 @@ class DatabasePortalConsumedAttemptTerminal(DatabasePortalBridgeError):
         self.retry_receipt = value
 
 
+class DatabasePortalHistoricalFingerprintUnavailable(DatabasePortalBridgeError):
+    """Fail closed when a retained historical candidate has no byte receipt."""
+
+    def __init__(self) -> None:
+        super().__init__("historical_fingerprint_unavailable")
+        self.reason = "historical_fingerprint_unavailable"
+        self.attempt_consumed = False
+        self.provider_dispatched = True
+        self.operator_review_required = True
+
+
+class DatabasePortalVerificationRecoveryDeferred(DatabasePortalBridgeError):
+    """A receipt-backed retained recovery still contends on checkout state."""
+
+    def __init__(self, recovery: Mapping[str, Any]) -> None:
+        value = dict(recovery)
+        super().__init__(
+            str(value.get("reason") or "verification_recovery_deferred")
+        )
+        self.reason = str(
+            value.get("reason") or "verification_recovery_deferred"
+        )
+        self.attempt_consumed = False
+        self.provider_dispatched = True
+        self.recovery_receipt = value
+
+
 class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
     """Replay one exact post-dispatch protected-path preservation.
 
@@ -1378,14 +1417,34 @@ class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
         value = dict(receipt)
         commit = str(value.get("preserved_commit") or "")
         rescue_branch = str(value.get("rescue_branch") or "")
+        verification_deferred = (
+            value.get("schema")
+            == DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA
+        )
+        expected_fields = (
+            _DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_FIELDS
+            if verification_deferred
+            else _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS
+        )
+        expected_reason = (
+            "implementation_protected_path_verification_lock_timeout"
+            if verification_deferred
+            else "implementation_protected_path_mutated"
+        )
+        expected_suffix = (
+            "-verification-deferred"
+            if verification_deferred
+            else "-protected-path-interrupted"
+        )
         if (
-            set(value)
-            != _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS
+            set(value) != expected_fields
             or value.get("schema")
-            != DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA
+            not in {
+                DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+                DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
+            }
             or value.get("disposition") != "protected_candidate_preserved"
-            or value.get("reason")
-            != "implementation_protected_path_mutated"
+            or value.get("reason") != expected_reason
             or value.get("attempt_consumed") is not False
             or value.get("provider_dispatched") is not True
             or value.get("completion_authoritative") is not False
@@ -1394,7 +1453,22 @@ class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
             or value.get("implementation_commit") != commit
             or not re.fullmatch(r"[0-9a-f]{40}", commit)
             or not rescue_branch.startswith("rescue/")
-            or not rescue_branch.endswith("-protected-path-interrupted")
+            or not rescue_branch.endswith(expected_suffix)
+            or (
+                verification_deferred
+                and (
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(value.get("source_retained_receipt_id") or ""),
+                    )
+                    is None
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(value.get("source_fingerprint_id") or ""),
+                    )
+                    is None
+                )
+            )
         ):
             raise ValueError(
                 "protected-path preservation receipt has an invalid disposition"
@@ -1407,8 +1481,8 @@ class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
             raise ValueError(
                 "protected-path preservation receipt identity is invalid"
             )
-        super().__init__("implementation_protected_path_mutated")
-        self.reason = "implementation_protected_path_mutated"
+        super().__init__(expected_reason)
+        self.reason = expected_reason
         self.attempt_consumed = False
         self.provider_dispatched = True
         self.preservation_receipt = value
@@ -15966,11 +16040,300 @@ class DatabasePortalExecutionBridge:
             paths=paths,
             binding=observed_binding,
         )
-        if receipt is None:
+        if receipt is not None:
+            return receipt
+        return self._recover_verification_deferred_retained_candidate(
+            attempt=attempt,
+            paths=paths,
+            binding=observed_binding,
+        )
+
+    def _recover_verification_deferred_retained_candidate(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Materialize one exact retained timeout candidate without provider work."""
+
+        from .implementation_daemon import (
+            VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA,
+            parse_task_text,
+        )
+
+        events = self._verified_event_chain(paths)
+        alias = str(binding.get("task_alias") or "")
+        retained_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "protected_path_verification_deferred_worktree_retained"
+        ]
+        timeout_finished = [
+            event
+            for event in events
+            if event.get("type") == "implementation_finished"
+            and event.get("reason")
+            == "implementation_protected_path_verification_lock_timeout"
+            and event.get("provider_dispatched") is True
+            and event.get("attempt_consumed") is False
+        ]
+        timeout_marker = bool(retained_events or timeout_finished)
+        if not timeout_marker:
             raise DatabasePortalBridgeError(
-                "attempt is not eligible for protected-path preservation "
-                "recovery"
+                "attempt is not eligible for protected-path preservation recovery"
             )
+        if len(retained_events) != 1 or len(timeout_finished) != 1:
+            raise DatabasePortalBridgeError(
+                "verification-deferred retained terminal is ambiguous"
+            )
+        retained_event = retained_events[0]
+        finished_event = timeout_finished[0]
+        retained_body = {
+            key: value
+            for key, value in retained_event.items()
+            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+        }
+        source_receipt = retained_event.get("retained_candidate_receipt")
+        if not isinstance(source_receipt, Mapping):
+            # Pre-contract workspaces have bytes now, but no proof those bytes
+            # are the provider's terminal bytes.  Never upgrade observation to
+            # provenance after the fact.
+            raise DatabasePortalHistoricalFingerprintUnavailable()
+        if (
+            source_receipt.get("schema")
+            != VERIFICATION_DEFERRED_RETAINED_CANDIDATE_SCHEMA
+            or source_receipt.get("task_id") != alias
+            or source_receipt.get("portal_attempt")
+            != finished_event.get("attempt")
+            or source_receipt.get("branch")
+            != finished_event.get("branch")
+            or source_receipt.get("workspace_path")
+            != finished_event.get("worktree_path")
+            or source_receipt.get("baseline_commit")
+            != finished_event.get("baseline_ref")
+            or source_receipt.get("provider_dispatched") is not True
+            or source_receipt.get("attempt_consumed") is not False
+            or finished_event.get("failed_preservation_result")
+            != retained_body
+            or retained_event.get("retained") is not True
+            or retained_event.get("preserved") is not False
+            or retained_event.get("reason")
+            != "verification_deferred_checkout_lease_active"
+        ):
+            raise DatabasePortalBridgeError(
+                "verification-deferred retained terminal failed verification"
+            )
+        projection = self._verify_projection(paths, binding)
+        tasks = parse_task_text(
+            projection,
+            path=paths.task_projection,
+            task_header_prefix=f"## {alias}",
+        )
+        if len(tasks) != 1 or tasks[0].task_id != alias:
+            raise DatabasePortalBridgeError(
+                "verification-deferred retained task contract is unavailable"
+            )
+        task = tasks[0]
+        source_receipt_id = str(source_receipt.get("receipt_id") or "")
+        source_fingerprint = source_receipt.get("retained_workspace")
+        source_fingerprint_id = (
+            str(source_fingerprint.get("fingerprint_id") or "")
+            if isinstance(source_fingerprint, Mapping)
+            else ""
+        )
+        recovery_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "verification_deferred_retained_candidate_preserved"
+            and isinstance(event.get("retained_candidate_recovery"), Mapping)
+            and event["retained_candidate_recovery"].get(
+                "retained_candidate_receipt_id"
+            )
+            == source_receipt_id
+        ]
+        if len(recovery_events) > 1:
+            raise DatabasePortalBridgeError(
+                "verification-deferred retained recovery is ambiguous"
+            )
+        if recovery_events:
+            preservation_event = recovery_events[0]
+            preservation = {
+                key: value
+                for key, value in preservation_event.items()
+                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            }
+        else:
+            daemon = self.portal_factory(paths, alias)
+            recover = getattr(
+                daemon,
+                "recover_retained_verification_deferred_candidate",
+                None,
+            )
+            if not callable(recover):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon cannot recover retained verification candidate"
+                )
+            materialization = recover(
+                task=task,
+                retained_candidate_receipt=source_receipt,
+            )
+            if materialization.get("recovered") is not True:
+                raise DatabasePortalVerificationRecoveryDeferred(
+                    materialization
+                )
+            events = self._verified_event_chain(paths)
+            recovery_events = [
+                event
+                for event in events
+                if event.get("type")
+                == "verification_deferred_retained_candidate_preserved"
+                and isinstance(
+                    event.get("retained_candidate_recovery"), Mapping
+                )
+                and event["retained_candidate_recovery"].get(
+                    "retained_candidate_receipt_id"
+                )
+                == source_receipt_id
+            ]
+            if len(recovery_events) != 1:
+                raise DatabasePortalBridgeError(
+                    "verification-deferred materialization receipt is unavailable"
+                )
+            preservation_event = recovery_events[0]
+            preservation = {
+                key: value
+                for key, value in preservation_event.items()
+                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+            }
+
+        preserved_commit = str(preservation.get("preserved_commit") or "")
+        rescue_branch = str(preservation.get("rescue_branch") or "")
+        baseline_commit = str(source_receipt.get("baseline_commit") or "")
+        violation = finished_event.get("protected_path_violation")
+        protected_paths = (
+            violation.get("protected_paths")
+            if isinstance(violation, Mapping)
+            else None
+        )
+        if (
+            preservation.get("preserved") is not True
+            or preservation.get("implementation_commit") != preserved_commit
+            or not isinstance(preservation.get("commit_result"), Mapping)
+            or preservation["commit_result"].get("committed") is not True
+            or preservation["commit_result"].get("commit")
+            != preserved_commit
+            or not isinstance(preservation.get("cleanup_result"), Mapping)
+            or preservation["cleanup_result"].get("cleaned") is not True
+            or not rescue_branch.endswith("-verification-deferred")
+            or not isinstance(protected_paths, list)
+            or not protected_paths
+            or not self._preserved_commit_exists(
+                commit=preserved_commit,
+                rescue_branch=rescue_branch,
+            )
+            or not self._preserved_commit_descends_from(
+                baseline_commit=baseline_commit,
+                preserved_commit=preserved_commit,
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "verification-deferred materialization failed verification"
+            )
+        source_revision = binding.get("task_revision")
+        if (
+            isinstance(source_revision, bool)
+            or not isinstance(source_revision, int)
+            or source_revision < 1
+        ):
+            raise DatabasePortalBridgeError(
+                "verification-deferred source revision is invalid"
+            )
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
+            "disposition": "protected_candidate_preserved",
+            "reason": (
+                "implementation_protected_path_verification_lock_timeout"
+            ),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "source_task_revision": int(source_revision),
+            "portal_attempt": int(source_receipt["portal_attempt"]),
+            "attempt_consumed": False,
+            "provider_dispatched": True,
+            "completion_authoritative": False,
+            "local_recovery_required": True,
+            "mutation_scopes": ["shared_checkout"],
+            "protected_paths": sorted(map(str, protected_paths)),
+            "baseline_commit": baseline_commit,
+            "implementation_commit": preserved_commit,
+            "preserved_commit": preserved_commit,
+            "rescue_branch": rescue_branch,
+            "original_branch": str(source_receipt["branch"]),
+            "original_worktree_path": str(source_receipt["workspace_path"]),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "events_digest": _sha256_file(paths.events),
+            "event_stream_id": str(finished_event.get("stream_id") or ""),
+            "implementation_started_event_id": str(
+                next(
+                    (
+                        event.get("event_id")
+                        for event in events
+                        if event.get("type") == "implementation_started"
+                        and event.get("attempt")
+                        == source_receipt["portal_attempt"]
+                    ),
+                    "",
+                )
+                or ""
+            ),
+            "protected_mutation_event_id": str(
+                next(
+                    (
+                        event.get("event_id")
+                        for event in events
+                        if event.get("type")
+                        == "implementation_protected_path_verification_lock_timeout"
+                        and event.get("attempt")
+                        == source_receipt["portal_attempt"]
+                    ),
+                    "",
+                )
+                or ""
+            ),
+            "preservation_event_id": str(
+                preservation_event.get("event_id") or ""
+            ),
+            "implementation_finished_event_id": str(
+                finished_event.get("event_id") or ""
+            ),
+            "protected_path_violation_digest": str(
+                source_receipt.get("protected_path_violation_digest") or ""
+            ),
+            "preservation_digest": _sha256_bytes(
+                _canonical_json(preservation)
+            ),
+            "source_retained_receipt_id": source_receipt_id,
+            "source_fingerprint_id": source_fingerprint_id,
+        }
+        receipt["receipt_id"] = _content_addressed_record(
+            receipt,
+            identity_field="receipt_id",
+        )
+        try:
+            DatabasePortalProtectedPathPreserved(receipt)
+        except ValueError as exc:
+            raise DatabasePortalBridgeError(
+                "verification-deferred preservation receipt is invalid"
+            ) from exc
         return receipt
 
     @staticmethod
@@ -21811,6 +22174,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA",
+    "DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
@@ -21825,8 +22189,10 @@ __all__ = (
     "DatabasePortalCandidateRetry",
     "DatabasePortalCapacityRetry",
     "DatabasePortalConsumedAttemptTerminal",
+    "DatabasePortalHistoricalFingerprintUnavailable",
     "DatabasePortalExecutionBridge",
     "DatabasePortalProtectedPathPreserved",
+    "DatabasePortalVerificationRecoveryDeferred",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",
     "database_portal_authoritative_repository_tree_id",
