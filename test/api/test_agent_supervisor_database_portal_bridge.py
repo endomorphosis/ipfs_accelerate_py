@@ -3474,6 +3474,33 @@ def test_bridge_does_not_continue_unverified_quota_fallback(
     assert caught.value.backoff_seconds == 300
 
 
+def test_bridge_defers_when_passes_end_before_projection_is_terminal(
+    tmp_path: Path,
+) -> None:
+    class IdlePortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": None,
+            }
+
+    portal = IdlePortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "portal_execution_incomplete"
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
 def test_bridge_does_not_infer_retryability_from_generic_failure_text(
     tmp_path: Path,
 ) -> None:

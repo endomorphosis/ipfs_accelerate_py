@@ -8331,6 +8331,81 @@ def test_submodule_durability_accepts_store_owned_by_linked_parent_worktree(
     ]
 
 
+def test_submodule_durability_accepts_declared_sibling_gitlink_checkout(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    sibling = tmp_path / "sibling-child"
+    _git(tmp_path, "clone", str(tmp_path / "child-source"), str(sibling))
+    _git(sibling, "config", "user.name", "Test User")
+    _git(sibling, "config", "user.email", "test@example.invalid")
+
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043S Verify sibling gitlink\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    branch_name = "implementation/ref-043-sibling"
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(sibling, "checkout", "-b", task_submodule_branch)
+    (sibling / "sibling.txt").write_text(
+        "durable in the declared gitlink checkout store\n",
+        encoding="utf-8",
+    )
+    _git(sibling, "add", "sibling.txt")
+    _git(sibling, "commit", "-m", "REF-043S: sibling child")
+    child_commit = _git(sibling, "rev-parse", "HEAD")
+    _git(sibling, "checkout", "main")
+
+    shutil.rmtree(submodule)
+    _git(sibling, "worktree", "add", str(submodule), task_submodule_branch)
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-043S: advance sibling gitlink")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    child_common_dir = daemon._git_common_dir(submodule)
+    root_common_dir = daemon._git_common_dir(repo)
+    assert child_common_dir is not None
+    assert root_common_dir is not None
+    with pytest.raises(ValueError):
+        child_common_dir.relative_to(root_common_dir)
+    assert daemon._resolve_commit_in_git_dir(child_common_dir, child_commit) == (
+        child_commit
+    )
+
+    receipt = daemon._changed_submodule_durability_preflight(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert receipt["verified"] is True
+    assert receipt["failures"] == []
+    assert receipt["paths"][0]["hops"][0]["target_store_layout"] == (
+        "declared_gitlink_checkout"
+    )
+    assert receipt["paths"][0]["hops"][0]["canonical_git_dir"] == str(
+        child_common_dir
+    )
+    assert receipt["paths"][0]["hops"][0]["canonical_object_available"] is True
+    assert receipt["paths"][0]["task_branch_contains_gitlink"] is True
+
+
 def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears(
     tmp_path: Path,
     monkeypatch,

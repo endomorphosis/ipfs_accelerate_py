@@ -20182,15 +20182,20 @@ class DatabasePortalExecutionBridge:
                         min(DATABASE_PORTAL_INFLIGHT_POLL_SECONDS, remaining)
                     )
                     continue
-            return self._acceptance_receipt(
-                attempt=attempt,
-                paths=paths,
-                binding=binding,
-                summaries=summaries,
-                summary_count=summary_count,
-                summaries_digest=(
-                    "sha256:" + summaries_hasher.copy().hexdigest()
-                ),
+            projection = self._verify_projection(paths, binding)
+            if _projection_status(projection) in _TERMINAL_STATUSES:
+                return self._acceptance_receipt(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                    summaries=summaries,
+                    summary_count=summary_count,
+                    summaries_digest=(
+                        "sha256:" + summaries_hasher.copy().hexdigest()
+                    ),
+                )
+            raise DatabasePortalBridgeDeferred(
+                "portal_execution_incomplete",
             )
         finally:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)

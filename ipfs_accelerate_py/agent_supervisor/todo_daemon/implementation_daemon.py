@@ -37736,8 +37736,11 @@ class PortalImplementationDaemon:
         the canonical Git-owned store used by the merge target.  For a linked
         parent worktree, Git may place that store beneath
         ``<common-dir>/worktrees/<id>/modules`` rather than directly beneath
-        ``<common-dir>/modules``.  The canonical checkout must use that same
-        store so the subsequent submodule merge cannot silently omit the path.
+        ``<common-dir>/modules``.  A file-mode gitlink or sibling clone may
+        instead keep objects in the live checkout's own store; that store is
+        durable when it already contains the exact gitlink commit.  The
+        canonical checkout must use that same store so the subsequent
+        submodule merge cannot silently omit the path.
         """
 
         expected_paths = sorted(changed_submodule_paths or ())
@@ -37858,6 +37861,7 @@ class PortalImplementationDaemon:
                 # otherwise unowned checkout still falls back to the expected
                 # configured store and therefore fails closed below.
                 target_store_owned = False
+                target_store_layout = ""
                 if child_common_dir is not None:
                     try:
                         child_common_dir.relative_to(root_common_dir)
@@ -37865,6 +37869,21 @@ class PortalImplementationDaemon:
                         pass
                     else:
                         target_store_owned = True
+                        target_store_layout = "linked_parent_worktree"
+                    # File-mode gitlinks and sibling clones keep objects in
+                    # the live checkout store, not <parent>/modules/<path>.
+                    # If that declared checkout already has the gitlink
+                    # commit, it is the merge target's durable store.
+                    if (
+                        not target_store_owned
+                        and self._resolve_commit_in_git_dir(
+                            child_common_dir,
+                            gitlink_commit,
+                        )
+                        == gitlink_commit
+                    ):
+                        target_store_owned = True
+                        target_store_layout = "declared_gitlink_checkout"
                 canonical_git_dir = (
                     child_common_dir
                     if target_store_owned and child_common_dir is not None
@@ -37890,7 +37909,9 @@ class PortalImplementationDaemon:
                 }
                 if canonical_git_dir != configured_git_dir:
                     hop["configured_git_dir"] = str(configured_git_dir)
-                    hop["target_store_layout"] = "linked_parent_worktree"
+                    hop["target_store_layout"] = (
+                        target_store_layout or "linked_parent_worktree"
+                    )
                 path_receipt["hops"].append(hop)
 
                 if canonical_commit != gitlink_commit:
