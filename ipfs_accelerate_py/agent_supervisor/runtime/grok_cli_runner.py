@@ -3116,54 +3116,84 @@ def _docker_runtime_receipt(docker_bin: str) -> dict[str, object]:
     }
 
 
+def _publish_provider_cli_logs(
+    docker_lease: Any,
+    *,
+    provider: str,
+    returncode: int | None,
+    captured_output: str = "",
+    backend: str = "",
+) -> None:
+    """Copy CLI output onto the supervisor-visible log volume.
+
+    Worktree and grok-sandbox runs publish captured stdout/stderr.  Docker
+    and Kubernetes opt-in backends also scrape ``docker logs`` / ``kubectl
+    logs`` so the supervisor is not blind to in-container errors.
+    """
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
+            PROVIDER_ISOLATION_DOCKER,
+            PROVIDER_ISOLATION_WORKTREE,
+            publish_provider_cli_logs,
+        )
+
+        selected = str(backend or "").strip()
+        identity: dict[str, str] = {}
+        docker_bin = ""
+        docker_config = ""
+        container = ""
+        if docker_lease is not None:
+            container = str(getattr(docker_lease, "container_name", "") or "")
+            cidfile = getattr(docker_lease, "cidfile", None)
+            if isinstance(cidfile, Path) and cidfile.is_file():
+                try:
+                    container = (
+                        cidfile.read_text(encoding="utf-8").strip() or container
+                    )
+                except OSError:
+                    pass
+            docker_bin = str(getattr(docker_lease, "docker_bin", "") or "")
+            docker_config = str(getattr(docker_lease, "docker_config", "") or "")
+            identity = {
+                "container_name": str(
+                    getattr(docker_lease, "container_name", "") or ""
+                ),
+                "container_id": container,
+            }
+            selected = selected or PROVIDER_ISOLATION_DOCKER
+        publish_provider_cli_logs(
+            backend=selected or PROVIDER_ISOLATION_WORKTREE,
+            provider=provider,
+            identity=identity,
+            returncode=returncode,
+            captured_output=captured_output,
+            docker_bin=docker_bin,
+            docker_host=_docker_isolation_host(),
+            docker_config=docker_config,
+            container_id=container,
+        )
+    except Exception:
+        return
+
+
 def _publish_docker_cli_logs(
     docker_lease: Any,
     *,
     provider: str,
     returncode: int | None,
     captured_output: str = "",
+    backend: str = "",
 ) -> None:
-    """Copy Docker CLI output onto the supervisor-visible log volume."""
+    """Compatibility wrapper around :func:`_publish_provider_cli_logs`."""
 
-    if docker_lease is None:
-        return
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
-            collect_container_cli_logs,
-            docker_logs_command,
-        )
-
-        container = str(getattr(docker_lease, "container_name", "") or "")
-        cidfile = getattr(docker_lease, "cidfile", None)
-        if isinstance(cidfile, Path) and cidfile.is_file():
-            try:
-                container = cidfile.read_text(encoding="utf-8").strip() or container
-            except OSError:
-                pass
-        docker_bin = str(getattr(docker_lease, "docker_bin", "") or "")
-        docker_config = str(getattr(docker_lease, "docker_config", "") or "")
-        identity = {
-            "container_name": str(getattr(docker_lease, "container_name", "") or ""),
-            "container_id": container,
-        }
-        log_command = None
-        if docker_bin and container:
-            log_command = docker_logs_command(
-                docker_bin=docker_bin,
-                docker_host=_docker_isolation_host(),
-                docker_config=docker_config,
-                container_id=container,
-            )
-        collect_container_cli_logs(
-            backend="docker",
-            provider=provider,
-            identity=identity,
-            returncode=returncode,
-            captured_output=captured_output,
-            log_command=log_command,
-        )
-    except Exception:
-        return
+    _publish_provider_cli_logs(
+        docker_lease,
+        provider=provider,
+        returncode=returncode,
+        captured_output=captured_output,
+        backend=backend,
+    )
 
 
 def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
@@ -10541,10 +10571,11 @@ def _run_codex_quota_fallback_in_docker(
             if effect_claim is not None:
                 docker_lease.mark_cas_terminal()
         docker_run_finished = True
-        _publish_docker_cli_logs(
+        _publish_provider_cli_logs(
             docker_lease,
             provider="grok",
             returncode=returncode,
+            backend=GROK_ISOLATION_DOCKER,
         )
         return returncode
     finally:
@@ -14642,11 +14673,12 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                     return 125
             docker_run_finished = True
-            _publish_docker_cli_logs(
+            _publish_provider_cli_logs(
                 docker_lease,
                 provider="grok",
                 returncode=child_returncode,
                 captured_output=error_bytes.decode("utf-8", errors="replace"),
+                backend=isolation_backend,
             )
             if error_bytes:
                 sys.stderr.buffer.write(error_bytes)
@@ -14712,10 +14744,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     )
                     return 125
             docker_run_finished = True
-            _publish_docker_cli_logs(
+            _publish_provider_cli_logs(
                 docker_lease,
                 provider="grok",
                 returncode=primary_returncode,
+                backend=isolation_backend,
             )
         except OSError as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)

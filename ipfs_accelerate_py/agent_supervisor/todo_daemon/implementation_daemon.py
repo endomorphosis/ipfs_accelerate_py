@@ -21603,6 +21603,9 @@ class PortalImplementationDaemon:
                 reject_group_writable=protected_command,
             )
         except OSError:
+            text, receipt_text = "", ""
+        cli_visibility = self._provider_cli_log_visibility(log_path)
+        if not text and not receipt_text and not cli_visibility:
             return {"exhausted": False, "providers": [], "reason": ""}
 
         def command_value(flag: str) -> str:
@@ -21638,10 +21641,13 @@ class PortalImplementationDaemon:
             protected_latched = False
         protected_provenance = bool(protected_command or protected_latched)
         if protected_provenance:
-            return self._protected_provider_effect_audit(
-                command_items=command_items,
-                receipt_text=receipt_text,
-                returncode=returncode,
+            return self._with_provider_cli_visibility(
+                self._protected_provider_effect_audit(
+                    command_items=command_items,
+                    receipt_text=receipt_text,
+                    returncode=returncode,
+                ),
+                cli_visibility,
             )
         if protected_provenance:
             audit: dict[str, Any] = {
@@ -21900,19 +21906,19 @@ class PortalImplementationDaemon:
             ),
         )
         if not classified["exhausted"]:
-            return classified
+            return self._with_provider_cli_visibility(classified, cli_visibility)
         if classified.get("failure_class") == "hard_quota_exhausted":
             classified["evidence"] = [
                 "runner_receipt:"
                 + str(classified.get("quota_probe_receipt_id") or "")
             ]
-            return classified
+            return self._with_provider_cli_visibility(classified, cli_visibility)
         if classified.get("quota_probe_receipt_id"):
             classified["evidence"] = [
                 "runner_receipt:"
                 + str(classified.get("quota_probe_receipt_id") or "")
             ]
-            return classified
+            return self._with_provider_cli_visibility(classified, cli_visibility)
         evidence = [
             line.strip()
             for line in text.splitlines()
@@ -21925,7 +21931,57 @@ class PortalImplementationDaemon:
             )
         ]
         classified["evidence"] = evidence[-4:]
-        return classified
+        return self._with_provider_cli_visibility(classified, cli_visibility)
+
+    def _provider_cli_log_visibility(self, log_path: Path) -> dict[str, Any]:
+        """Load grok/codex/claude/gemini CLI receipts beside the attempt log."""
+
+        from ..runtime.provider_isolation import (
+            load_provider_cli_receipts,
+            supervisor_cli_failure_projection,
+        )
+
+        stem = str(getattr(log_path, "stem", "") or "")
+        match = re.fullmatch(r"(.+)-attempt-(\d+)", stem)
+        task_id = match.group(1) if match else ""
+        attempt = match.group(2) if match else ""
+        receipts = load_provider_cli_receipts(
+            self.implementation_log_dir,
+            task_id=task_id,
+            attempt=attempt,
+        )
+        projection = supervisor_cli_failure_projection(receipts)
+        if not projection.get("provider_cli_receipts"):
+            return {}
+        return projection
+
+    @staticmethod
+    def _with_provider_cli_visibility(
+        payload: Mapping[str, Any],
+        visibility: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        result = dict(payload)
+        if not visibility:
+            return result
+        receipts = visibility.get("provider_cli_receipts") or ()
+        snippets = [
+            str(item)
+            for item in (visibility.get("cli_error_snippets") or ())
+            if str(item).strip()
+        ]
+        if receipts:
+            result["provider_cli_receipts"] = list(receipts)
+        if snippets:
+            result["cli_error_snippets"] = snippets[:16]
+            result["cli_error_count"] = int(
+                visibility.get("cli_error_count") or len(snippets)
+            )
+            reason = str(result.get("reason") or "").strip()
+            if snippets[0] and snippets[0] not in reason:
+                result["reason"] = (
+                    f"{reason}: {snippets[0][:240]}" if reason else snippets[0][:240]
+                )
+        return result
 
     def _current_implementation_provider_labels(self) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
@@ -66308,12 +66364,24 @@ class PortalImplementationDaemon:
         checkpoint_dir: Path,
     ) -> dict[str, str]:
         environment = self._implementation_untrusted_process_environment()
+        from ..runtime.provider_isolation import (
+            DEFAULT_PROVIDER_ISOLATION_BACKEND,
+            PROVIDER_CLI_LOG_DIR_ENV,
+            PROVIDER_ISOLATION_BACKEND_ENV,
+        )
+
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         environment.update({
             IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
             IMPLEMENTATION_TASK_ID_ENV: task.task_id,
             IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
             IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+            PROVIDER_CLI_LOG_DIR_ENV: str(self.implementation_log_dir),
         })
+        if not str(environment.get(PROVIDER_ISOLATION_BACKEND_ENV, "") or "").strip():
+            environment[PROVIDER_ISOLATION_BACKEND_ENV] = (
+                DEFAULT_PROVIDER_ISOLATION_BACKEND
+            )
         if (
             str(
                 os.environ.get(
@@ -66443,6 +66511,9 @@ class PortalImplementationDaemon:
             "failure_review",
             "next_attempt_prompt_addendum",
             "validation_environment_guidance",
+            "provider_cli_receipts",
+            "cli_error_snippets",
+            "cli_error_count",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
