@@ -23364,7 +23364,7 @@ class _GitGuardSyscallTrace:
 
 _ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
 _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
-ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 180.0
+ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 600.0
 _GIT_GUARD_PTRACE: Any | None = None
 _PTRACE_TRACEME: Final = 0
 _PTRACE_CONT: Final = 7
@@ -88724,6 +88724,8 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
     authorization_witness: dict[str, str]
     launch_git_guard_scope: Any | None = None
     launch_git_guard_active = False
+    launch_admission_bound_scope: Any | None = None
+    launch_admission_bound_active = False
 
     def retire_launch_git_guard(
         exception: tuple[Any, Any, Any] = (None, None, None),
@@ -88736,7 +88738,23 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             raise OperatorError("R30 parent launch Git guard scope is absent")
         launch_git_guard_scope.__exit__(*exception)
 
+    def retire_launch_admission_bound(
+        exception: tuple[Any, Any, Any] = (None, None, None),
+    ) -> None:
+        nonlocal launch_admission_bound_active
+        if not launch_admission_bound_active:
+            return
+        launch_admission_bound_active = False
+        if launch_admission_bound_scope is None:
+            raise OperatorError("launch admission deadline scope is absent")
+        launch_admission_bound_scope.__exit__(*exception)
+
     try:
+        launch_admission_bound_scope = _bounded_launch_admission(
+            timeout_seconds=ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS,
+        )
+        launch_admission_bound_scope.__enter__()
+        launch_admission_bound_active = True
         if _r30_launch_requires_git_guard(
             paths=paths,
             candidate_head=candidate_head,
@@ -88815,6 +88833,7 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                     "materialization"
                 ),
             )
+        retire_launch_admission_bound()
         pin = materialize_agent_implementation_control_plane_capsule(
             source_root=ROOT,
             capsule_parent=capsule_parent,
@@ -88951,6 +88970,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
     finally:
         body_error = sys.exc_info()[1]
         cleanup_errors: list[BaseException] = []
+        try:
+            retire_launch_admission_bound(sys.exc_info())
+        except BaseException as exc:
+            cleanup_errors.append(exc)
         try:
             retire_launch_git_guard(sys.exc_info())
         except BaseException as exc:
@@ -91823,6 +91846,10 @@ def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
             "sealed launch admission requires materialized control state"
         )
         return 1, report
+    admission_bound = _bounded_launch_admission(
+        timeout_seconds=ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS,
+    )
+    admission_bound.__enter__()
     try:
         candidate_head = _git("rev-parse", "HEAD")
         candidate_tree = _git("rev-parse", "HEAD^{tree}")
@@ -91907,6 +91934,8 @@ def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
             "error_type": type(exc).__name__,
         }
         return 1, report
+    finally:
+        admission_bound.__exit__(None, None, None)
     report["sealed_launch_admission"] = {
         "admitted": True,
         "admission_cid": admission["admission_cid"],
