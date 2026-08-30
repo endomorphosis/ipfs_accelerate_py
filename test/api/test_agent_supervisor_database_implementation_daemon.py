@@ -13,13 +13,23 @@ not duplicate provider/effect work.
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Callable
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
+    DatabaseCoordinationConflictError,
+    LeaseState,
+    ProcessSerializedDatabaseCoordinator,
+    open_database_coordinator,
+    open_process_serialized_database_coordinator,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    DatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -29,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_datasets_authoritative_operational_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    exclusive_file_lock,
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -106,7 +117,17 @@ def _open_daemon(
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
-    execution_path = tmp_path / "execution.duckdb"
+    execution_path = (
+        tmp_path / "execution.duckdb" if task_shard_count == 1 else None
+    )
+    state_dir = (
+        tmp_path / "state" / f"lane-{task_shard_index}"
+        if task_shard_count > 1
+        else None
+    )
+    state_prefix = (
+        f"dqp-lane-{task_shard_index}" if task_shard_count > 1 else ""
+    )
 
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
@@ -128,6 +149,8 @@ def _open_daemon(
         database_path=database_path,
         coordination_path=coordination_path,
         execution_path=execution_path,
+        state_dir=state_dir,
+        state_prefix=state_prefix,
         owner_session_id=session,
         authority_mode="embedded",
         task_source_kind="duckdb",
@@ -544,6 +567,304 @@ def test_embedded_writer_lock_rejects_a_concurrent_same_store_opener(
         assert replacement.owner_session_id == first.owner_session_id
     finally:
         replacement.close()
+
+
+def test_strict_lanes_use_distinct_sidecars_and_duplicate_lane_still_fences(
+    tmp_path: Path,
+) -> None:
+    task_source = DatabaseTaskSource(tmp_path / "control.duckdb")
+
+    def open_lane(index: int) -> DatabaseImplementationDaemon:
+        return DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=tmp_path / "coordination.duckdb",
+            state_dir=tmp_path / "state" / f"lane-{index}",
+            state_prefix=f"dqp-lane-{index}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_source=task_source,
+            task_shard_count=2,
+            task_shard_index=index,
+            strict_task_sharding=True,
+        )
+
+    first = open_lane(0)
+    second: DatabaseImplementationDaemon | None = None
+    try:
+        second = open_lane(1)
+        assert isinstance(
+            first.coordinator, ProcessSerializedDatabaseCoordinator
+        )
+        assert isinstance(
+            second.coordinator, ProcessSerializedDatabaseCoordinator
+        )
+        assert first.execution_path == (
+            tmp_path
+            / "state"
+            / "lane-0"
+            / "dqp-lane-0.execution.shard-0000-of-0002.duckdb"
+        )
+        assert second.execution_path == (
+            tmp_path
+            / "state"
+            / "lane-1"
+            / "dqp-lane-1.execution.shard-0001-of-0002.duckdb"
+        )
+        assert first.execution_path != second.execution_path
+        assert first._embedded_writer_lock_path != second._embedded_writer_lock_path
+        assert first._embedded_writer_lock_handle is not None
+        assert second._embedded_writer_lock_handle is not None
+
+        # A direct coordinator can open while both logical adapters are live:
+        # neither lane retains the shared DuckDB file lock between methods.
+        direct = open_database_coordinator(tmp_path / "coordination.duckdb")
+        direct.close()
+
+        first.materialize_population(_population(8))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first_future = pool.submit(first.claim_next)
+            second_future = pool.submit(second.claim_next)
+            first_claim = first_future.result(timeout=30)
+            second_claim = second_future.result(timeout=30)
+        assert first_claim is not None
+        assert second_claim is not None
+        assert first_claim.task_cid != second_claim.task_cid
+        assert first._task_home_shard_index(first_claim.task_alias) == 0
+        assert second._task_home_shard_index(second_claim.task_alias) == 1
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="active database writer",
+        ):
+            open_lane(0)
+    finally:
+        if second is not None:
+            second.close()
+        first.close()
+        task_source.close()
+
+
+def test_process_serialized_coordinator_keeps_fenced_callback_atomic(
+    tmp_path: Path,
+) -> None:
+    coordinator = open_process_serialized_database_coordinator(
+        tmp_path / "coordination.duckdb"
+    )
+    try:
+        coordinator.register_task(task_cid="task:one", task_id="ONE")
+        claim = coordinator.claim_task(
+            task_cid="task:one",
+            owner_session_id="session:one",
+        )
+        writer = coordinator.claim_resource(
+            resource_kind="database_writer",
+            resource_id="shared-control",
+            owner_session_id="session:one",
+            task_cid="task:one",
+        )
+        before = coordinator.lease_events()
+
+        def swallowed_reentry() -> dict[str, object]:
+            with pytest.raises(
+                DatabaseCoordinationConflictError,
+                match="must not re-enter",
+            ):
+                coordinator.release(writer.as_fenced_lease())
+            return {"status": "swallowed"}
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="attempted to re-enter",
+        ):
+            coordinator.execute_with_task_and_resource_fences(
+                claim,
+                writer,
+                swallowed_reentry,
+            )
+        assert coordinator.lease_events() == before
+        observed = coordinator.get_lease(writer.lease_id)
+        assert observed is not None
+        assert observed.state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_process_serialized_coordinator_types_lock_timeout(
+    tmp_path: Path,
+) -> None:
+    coordinator = open_process_serialized_database_coordinator(
+        tmp_path / "coordination.duckdb",
+        lock_timeout_seconds=0.05,
+    )
+    entered = Event()
+    release = Event()
+
+    def hold_serialization_lock() -> None:
+        with exclusive_file_lock(coordinator.serialization_lock_path):
+            entered.set()
+            assert release.wait(timeout=5)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            held = pool.submit(hold_serialization_lock)
+            assert entered.wait(timeout=5)
+            with pytest.raises(
+                DatabaseCoordinationConflictError,
+                match="process-serialized coordination authority",
+            ):
+                coordinator.lease_events()
+            release.set()
+            held.result(timeout=5)
+        assert coordinator.lease_events() == []
+    finally:
+        release.set()
+        coordinator.close()
+
+
+def test_process_serialized_coordinator_guards_claim_filter_and_close(
+    tmp_path: Path,
+) -> None:
+    coordinator = open_process_serialized_database_coordinator(
+        tmp_path / "coordination.duckdb"
+    )
+    coordinator.register_task(task_cid="task:one", task_id="ONE")
+    callback_entered = Event()
+    release_callback = Event()
+    close_started = Event()
+    close_finished = Event()
+
+    def accept_task_cid(_task_cid: str) -> bool:
+        callback_entered.set()
+        assert release_callback.wait(timeout=5)
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="must not re-enter",
+        ):
+            coordinator.lease_events()
+        return True
+
+    def close_coordinator() -> None:
+        close_started.set()
+        coordinator.close()
+        close_finished.set()
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            claim_future = pool.submit(
+                coordinator.claim_ready_task,
+                owner_session_id="session:one",
+                accept_task_cid=accept_task_cid,
+            )
+            assert callback_entered.wait(timeout=5)
+            close_future = pool.submit(close_coordinator)
+            assert close_started.wait(timeout=5)
+            assert not close_finished.wait(timeout=0.1)
+            release_callback.set()
+            with pytest.raises(
+                DatabaseCoordinationConflictError,
+                match="attempted to re-enter",
+            ):
+                claim_future.result(timeout=5)
+            close_future.result(timeout=5)
+        assert close_finished.is_set()
+        assert coordinator.is_open is False
+    finally:
+        release_callback.set()
+        coordinator.close()
+
+
+def test_multi_lane_sidecar_binding_rejects_unsafe_or_inconsistent_inputs(
+    tmp_path: Path,
+) -> None:
+    base = {
+        "database_path": tmp_path / "control.duckdb",
+        "coordination_path": tmp_path / "coordination.duckdb",
+        "authority_mode": "embedded",
+        "task_source_kind": "duckdb",
+        "install_schema": False,
+        "task_shard_count": 2,
+        "task_shard_index": 0,
+    }
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="strict task sharding",
+    ):
+        DatabaseImplementationDaemon(**base)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="sealed state_dir/state_prefix",
+    ):
+        DatabaseImplementationDaemon(**base, strict_task_sharding=True)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="safe path component",
+    ):
+        DatabaseImplementationDaemon(
+            **base,
+            strict_task_sharding=True,
+            state_dir=tmp_path / "state",
+            state_prefix="../lane-0",
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="does not match sealed lane binding",
+    ):
+        DatabaseImplementationDaemon(
+            **base,
+            strict_task_sharding=True,
+            state_dir=tmp_path / "state",
+            state_prefix="lane-0",
+            execution_path=tmp_path / "wrong.duckdb",
+        )
+    assert not (tmp_path / "wrong.duckdb").exists()
+
+
+def test_single_lane_preserves_control_adjacent_execution_sidecar(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    daemon = DatabaseImplementationDaemon(
+        database_path=control_path,
+        coordination_path=tmp_path / "coordination.duckdb",
+        state_dir=tmp_path / "state",
+        state_prefix="legacy-lane",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        install_schema=False,
+    )
+    try:
+        assert daemon.execution_path == tmp_path / "control.execution.duckdb"
+        assert not daemon.execution_path.exists()
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("task_shard_count", 2.5, "positive integer"),
+        ("task_shard_count", "2", "positive integer"),
+        ("task_shard_index", 0.5, "must be an integer"),
+        ("task_shard_index", "0", "must be an integer"),
+    ],
+)
+def test_shard_binding_rejects_non_integral_values_without_truncation(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    kwargs: dict[str, object] = {
+        "database_path": tmp_path / "control.duckdb",
+        "authority_mode": "embedded",
+        "task_source_kind": "duckdb",
+        "install_schema": False,
+        "task_shard_count": 1,
+        "task_shard_index": 0,
+    }
+    kwargs[field] = value
+    with pytest.raises(ValueError, match=message):
+        DatabaseImplementationDaemon(**kwargs)
 
 
 def test_effect_phase_resume_skips_both_provider_and_effect(tmp_path: Path) -> None:
@@ -1698,6 +2019,134 @@ def test_runner_builds_database_daemon_without_json_projections(
         assert result["markdown_status_writes"] == 0
     finally:
         daemon.close()
+
+
+def test_database_runner_passes_exact_strict_lane_binding(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state" / "lane-1"
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(state_dir),
+            "--state-prefix",
+            "dqp-lane-1",
+            "--task-shard-count",
+            "3",
+            "--task-shard-index",
+            "1",
+            "--strict-task-sharding",
+            "--once",
+        ]
+    )
+    daemon = build_database_implementation_daemon_from_args(args)
+    try:
+        assert daemon.task_shard_count == 3
+        assert daemon.task_shard_index == 1
+        assert daemon.strict_task_sharding is True
+        assert daemon.execution_state_dir == state_dir
+        assert daemon.execution_state_prefix == "dqp-lane-1"
+        assert daemon.execution_path == (
+            state_dir / "dqp-lane-1.execution.shard-0001-of-0003.duckdb"
+        )
+    finally:
+        daemon.close()
+
+
+def test_portal_runner_passes_exact_strict_lane_binding(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state" / "lane-2"
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(state_dir),
+            "--state-prefix",
+            "dqp-lane-2",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
+            "--strict-task-sharding",
+            "--once",
+        ]
+    )
+    daemon, _context = build_portal_implementation_daemon_from_args(
+        args,
+        repo_root=tmp_path,
+    )
+    try:
+        assert daemon.task_shard_count == 4
+        assert daemon.task_shard_index == 2
+        assert daemon.strict_task_sharding is True
+        assert daemon.execution_state_dir == state_dir
+        assert daemon.execution_state_prefix == "dqp-lane-2"
+        assert daemon.execution_path == (
+            state_dir / "dqp-lane-2.execution.shard-0002-of-0004.duckdb"
+        )
+    finally:
+        daemon.close()
+
+
+def test_direct_cli_passes_exact_strict_lane_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon as daemon_module,
+    )
+
+    captured: dict[str, object] = {}
+
+    class RecordingDatabaseDaemon:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run_once(self) -> dict[str, object]:
+            return {"unchanged": True, "selection_idle_reason": "test"}
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        daemon_module,
+        "DatabaseImplementationDaemon",
+        RecordingDatabaseDaemon,
+    )
+    state_dir = tmp_path / "state" / "lane-3"
+    daemon_module.main(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(state_dir),
+            "--state-prefix",
+            "dqp-lane-3",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "3",
+            "--strict-task-sharding",
+            "--once",
+        ]
+    )
+    assert captured["state_dir"] == state_dir
+    assert captured["state_prefix"] == "dqp-lane-3"
+    assert captured["task_shard_count"] == 4
+    assert captured["task_shard_index"] == 3
+    assert captured["strict_task_sharding"] is True
 
 
 def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:

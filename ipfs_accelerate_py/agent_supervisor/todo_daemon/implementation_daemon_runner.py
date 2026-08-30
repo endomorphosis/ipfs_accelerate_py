@@ -1359,6 +1359,8 @@ def build_portal_implementation_daemon_from_args(
         daemon: object = DatabaseImplementationDaemon(
             database_path=database_path,
             coordination_path=db_paths["coordination_path"],
+            state_dir=Path(parsed.state_dir),
+            state_prefix=str(parsed.state_prefix),
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -1373,10 +1375,10 @@ def build_portal_implementation_daemon_from_args(
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
-            task_shard_count=int(getattr(parsed, "task_shard_count", 1) or 1),
-            task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
-            strict_task_sharding=bool(
-                getattr(parsed, "strict_task_sharding", False)
+            task_shard_count=getattr(parsed, "task_shard_count", 1),
+            task_shard_index=getattr(parsed, "task_shard_index", 0),
+            strict_task_sharding=getattr(
+                parsed, "strict_task_sharding", False
             ),
         )
         bind_database_portal_execution_from_args(
@@ -1509,6 +1511,8 @@ def build_database_implementation_daemon_from_args(
     return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
+        state_dir=Path(parsed.state_dir),
+        state_prefix=str(parsed.state_prefix),
         owner_session_id=owner_session_id
         or str(getattr(parsed, "owner_session_id", "") or ""),
         authority_mode=authority_mode,
@@ -1523,6 +1527,9 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        task_shard_count=getattr(parsed, "task_shard_count", 1),
+        task_shard_index=getattr(parsed, "task_shard_index", 0),
+        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
     )
 
 

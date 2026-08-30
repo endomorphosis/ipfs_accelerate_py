@@ -67553,6 +67553,100 @@ def _database_daemon_logical_owner_id(
     return f"embedded-store:{hashlib.sha256(payload).hexdigest()[:32]}"
 
 
+_DATABASE_DAEMON_STATE_PREFIX_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z"
+)
+
+
+def _database_daemon_task_shard_binding(
+    *,
+    task_shard_count: int,
+    task_shard_index: int,
+    strict_task_sharding: bool,
+) -> tuple[int, int, bool]:
+    """Validate one exact database-daemon shard binding.
+
+    Database implementation lanes are independent writers.  Silently
+    normalizing a zero count or a truthy string would therefore change both
+    task ownership and execution-sidecar ownership, so these values are
+    intentionally validated rather than coerced to a fallback.
+    """
+
+    if isinstance(task_shard_count, bool) or not isinstance(task_shard_count, int):
+        raise ValueError("task_shard_count must be a positive integer")
+    if isinstance(task_shard_index, bool) or not isinstance(task_shard_index, int):
+        raise ValueError("task_shard_index must be an integer")
+    shard_count = task_shard_count
+    shard_index = task_shard_index
+    if shard_count < 1:
+        raise ValueError("task_shard_count must be a positive integer")
+    if shard_index < 0 or shard_index >= shard_count:
+        raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+    if not isinstance(strict_task_sharding, bool):
+        raise ValueError("strict_task_sharding must be a boolean")
+    strict = strict_task_sharding
+    if shard_count > 1 and not strict:
+        raise DatabaseImplementationAuthorityError(
+            "multi-lane database execution requires strict task sharding"
+        )
+    return shard_count, shard_index, strict
+
+
+def _database_daemon_lane_execution_path(
+    *,
+    state_dir: Path | str | None,
+    state_prefix: str,
+    task_shard_count: int,
+    task_shard_index: int,
+) -> Path | None:
+    """Return the deterministic execution sidecar for a strict live lane.
+
+    A single lane retains its historical control-adjacent sidecar.  Multiple
+    live writers must instead be bound to an absolute sealed state directory
+    and a path-component-only state prefix.  Including the complete shard
+    tuple in the filename makes two indices distinct even if an operator
+    accidentally repeats a prefix.
+    """
+
+    prefix = str(state_prefix or "")
+    has_state_dir = state_dir is not None
+    has_state_prefix = bool(prefix)
+    if has_state_dir != has_state_prefix:
+        raise DatabaseImplementationAuthorityError(
+            "database lane binding requires both state_dir and state_prefix"
+        )
+    if task_shard_count <= 1:
+        return None
+    if not has_state_dir:
+        raise DatabaseImplementationAuthorityError(
+            "multi-lane database execution requires sealed state_dir/state_prefix"
+        )
+    if not _DATABASE_DAEMON_STATE_PREFIX_PATTERN.fullmatch(prefix):
+        raise DatabaseImplementationAuthorityError(
+            "database lane state_prefix must be one safe path component"
+        )
+    lane_state_dir = Path(state_dir)
+    if not lane_state_dir.is_absolute():
+        raise DatabaseImplementationAuthorityError(
+            "multi-lane database execution requires an absolute state_dir"
+        )
+    lane_state_dir = lane_state_dir.resolve(strict=False)
+    if lane_state_dir == Path(lane_state_dir.anchor):
+        raise DatabaseImplementationAuthorityError(
+            "multi-lane database execution refuses a filesystem-root state_dir"
+        )
+    filename = (
+        f"{prefix}.execution.shard-{task_shard_index:04d}"
+        f"-of-{task_shard_count:04d}.duckdb"
+    )
+    execution_path = (lane_state_dir / filename).resolve(strict=False)
+    if execution_path.parent != lane_state_dir:
+        raise DatabaseImplementationAuthorityError(
+            "database lane execution sidecar escaped its sealed state_dir"
+        )
+    return execution_path
+
+
 def _phase_rank(phase: str) -> int:
     try:
         return _ATTEMPT_PHASE_ORDER.index(str(phase or "").strip())
@@ -67646,6 +67740,8 @@ class DatabaseImplementationDaemon:
         database_path: Path | str,
         coordination_path: Path | str | None = None,
         execution_path: Path | str | None = None,
+        state_dir: Path | str | None = None,
+        state_prefix: str = "",
         owner_session_id: str = "",
         authority_mode: str = "quack",
         task_source_kind: str = "duckdb",
@@ -67670,6 +67766,35 @@ class DatabaseImplementationDaemon:
         task_shard_index: int = 0,
         strict_task_sharding: bool = False,
     ) -> None:
+        (
+            self.task_shard_count,
+            self.task_shard_index,
+            self.strict_task_sharding,
+        ) = _database_daemon_task_shard_binding(
+            task_shard_count=task_shard_count,
+            task_shard_index=task_shard_index,
+            strict_task_sharding=strict_task_sharding,
+        )
+        lane_execution_path = _database_daemon_lane_execution_path(
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+            task_shard_count=self.task_shard_count,
+            task_shard_index=self.task_shard_index,
+        )
+        if lane_execution_path is not None and execution_path is not None:
+            configured_execution_path = Path(execution_path)
+            if not configured_execution_path.is_absolute():
+                raise DatabaseImplementationAuthorityError(
+                    "multi-lane database execution_path must be absolute"
+                )
+            if configured_execution_path.resolve(strict=False) != lane_execution_path:
+                raise DatabaseImplementationAuthorityError(
+                    "configured execution_path does not match sealed lane binding"
+                )
+        self.execution_state_dir = (
+            Path(state_dir).resolve(strict=False) if state_dir is not None else None
+        )
+        self.execution_state_prefix = str(state_prefix or "")
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
         )
@@ -67708,7 +67833,21 @@ class DatabaseImplementationDaemon:
                 if coordination_path is not None
                 else str(database_path)
             )
-            if execution_path is not None:
+            if coordination_path is not None:
+                self._strict_lane_coordination_path = Path(
+                    coordination_path
+                ).absolute()
+            elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
+                self._strict_lane_coordination_path = control_path.with_name(
+                    f"{control_path.stem}.coordination.duckdb"
+                ).absolute()
+            else:
+                self._strict_lane_coordination_path = Path(
+                    "control.coordination.duckdb"
+                ).absolute()
+            if lane_execution_path is not None:
+                self.execution_path = lane_execution_path
+            elif execution_path is not None:
                 self.execution_path = Path(execution_path)
             elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
                 self.execution_path = control_path.with_name(
@@ -67726,11 +67865,16 @@ class DatabaseImplementationDaemon:
                     f"{self.database_path.stem}.coordination.duckdb"
                 )
             ).absolute()
+            self._strict_lane_coordination_path = self.coordination_path
             self.execution_path = Path(
-                execution_path
-                if execution_path is not None
-                else self.database_path.with_name(
-                    f"{self.database_path.stem}.execution.duckdb"
+                lane_execution_path
+                if lane_execution_path is not None
+                else (
+                    execution_path
+                    if execution_path is not None
+                    else self.database_path.with_name(
+                        f"{self.database_path.stem}.execution.duckdb"
+                    )
                 )
             ).absolute()
             self._store_target = self.execution_path
@@ -67741,11 +67885,6 @@ class DatabaseImplementationDaemon:
             "",
             str(task_prefix or ""),
         ).strip()
-        self.task_shard_count = max(1, int(task_shard_count or 1))
-        self.task_shard_index = int(task_shard_index or 0)
-        if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
-            raise ValueError("task_shard_index must be in range [0, task_shard_count)")
-        self.strict_task_sharding = bool(strict_task_sharding)
         self.process_instance_id = _database_daemon_new_id("process")
         self.owner_session_id = str(
             owner_session_id
@@ -67878,7 +68017,10 @@ class DatabaseImplementationDaemon:
         with self._lock:
             if self._connection is not None:
                 return self
-            from ..merge.database_coordination import open_database_coordinator
+            from ..merge.database_coordination import (
+                open_database_coordinator,
+                open_process_serialized_database_coordinator,
+            )
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import open_duckdb_connection
 
@@ -67889,6 +68031,45 @@ class DatabaseImplementationDaemon:
                 self._connection = open_duckdb_connection(self.execution_path)
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
+                lane_metadata = {
+                    "execution_state_dir": str(self.execution_state_dir or ""),
+                    "execution_state_prefix": self.execution_state_prefix,
+                    "task_shard_count": str(self.task_shard_count),
+                    "task_shard_index": str(self.task_shard_index),
+                    "strict_task_sharding": (
+                        "true" if self.strict_task_sharding else "false"
+                    ),
+                }
+                if self.task_shard_count > 1:
+                    existing_lane_metadata = {
+                        str(key): str(value)
+                        for key, value in self._connection.execute(
+                            """
+                            SELECT key, value
+                            FROM daemon_execution_metadata
+                            WHERE key IN (
+                                'execution_state_dir',
+                                'execution_state_prefix',
+                                'task_shard_count',
+                                'task_shard_index',
+                                'strict_task_sharding'
+                            )
+                            """
+                        ).fetchall()
+                    }
+                    if (
+                        existing_lane_metadata
+                        and existing_lane_metadata != lane_metadata
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "execution sidecar lane metadata does not match "
+                            "the sealed state_dir/state_prefix and shard binding"
+                        )
+                lane_metadata_items = (
+                    tuple(lane_metadata.items())
+                    if self.task_shard_count > 1
+                    else ()
+                )
                 for key, value in (
                     ("interface", self.INTERFACE),
                     ("schema", self.SCHEMA),
@@ -67912,6 +68093,7 @@ class DatabaseImplementationDaemon:
                             or ""
                         ),
                     ),
+                    *lane_metadata_items,
                 ):
                     self._connection.execute(
                         """
@@ -67944,20 +68126,37 @@ class DatabaseImplementationDaemon:
                         # sidecar. The Quack-owned control file is the task
                         # board, not the coordinator DDL surface.
                         coord_target = (
-                            self.database_path.with_name(
-                                f"{self.database_path.stem}.coordination.duckdb"
+                            self._strict_lane_coordination_path
+                            if self.task_shard_count > 1
+                            else (
+                                self.database_path.with_name(
+                                    f"{self.database_path.stem}.coordination.duckdb"
+                                )
+                                if self.database_path.suffix.lower()
+                                in {".duckdb", ".ddb"}
+                                else Path("control.coordination.duckdb")
                             )
-                            if self.database_path.suffix.lower()
-                            in {".duckdb", ".ddb"}
-                            else Path("control.coordination.duckdb")
                         )
                     else:
                         coord_target = self.coordination_path
-                    self._coordinator = open_database_coordinator(
-                        coord_target,
-                        clock_ms=self._clock_ms,
-                        default_lease_ms=self.lease_ms,
-                    )
+                    if self.task_shard_count > 1:
+                        # Strict lanes retain one shared dependency/claim/fence
+                        # authority.  The adapter releases DuckDB's exclusive
+                        # file handle after every complete coordinator method
+                        # instead of splitting that authority per lane.
+                        self._coordinator = (
+                            open_process_serialized_database_coordinator(
+                                coord_target,
+                                clock_ms=self._clock_ms,
+                                default_lease_ms=self.lease_ms,
+                            )
+                        )
+                    else:
+                        self._coordinator = open_database_coordinator(
+                            coord_target,
+                            clock_ms=self._clock_ms,
+                            default_lease_ms=self.lease_ms,
+                        )
                 self._closed = False
                 return self
             except Exception:
@@ -72063,6 +72262,8 @@ def main(argv: list[str] | None = None) -> None:
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
             coordination_path=getattr(args, "coordination_path", None),
+            state_dir=Path(args.state_dir),
+            state_prefix=str(args.state_prefix),
             owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -72077,6 +72278,9 @@ def main(argv: list[str] | None = None) -> None:
             queue_path=None,
             require_real_execution=bool(args.implement),
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
+            task_shard_count=args.task_shard_count,
+            task_shard_index=args.task_shard_index,
+            strict_task_sharding=args.strict_task_sharding,
         )
         bind_database_portal_execution_from_args(
             daemon,

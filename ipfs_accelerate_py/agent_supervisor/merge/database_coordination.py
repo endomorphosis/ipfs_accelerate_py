@@ -34,6 +34,7 @@ import json
 import threading
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -43,6 +44,7 @@ from typing import Any, ClassVar, Final
 
 from ..task_sources.duckdb_state import (
     connect_duckdb_with_policy,
+    exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
 )
@@ -7035,6 +7037,297 @@ class DatabaseCoordinator:
             return events
 
 
+_PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
+    {
+        "register_task",
+        "mark_task_complete",
+        "coordination_registry_projection",
+        "claimability",
+        "get_lease",
+        "list_active_leases",
+        "acquire",
+        "renew",
+        "release",
+        "takeover",
+        "protect_write",
+        "protect_task_claim",
+        "execute_with_task_and_resource_fences",
+        "expire_task_claim",
+        "prepare_task_completion",
+        "complete_task_claim",
+        "get_prepared_task_completion",
+        "list_prepared_task_completions",
+        "list_unsettled_task_completions",
+        "recover_prepared_task_completion",
+        "reconcile_promoted_task_completion",
+        "abort_prepared_task_completion",
+        "settle_task_claim",
+        "fail_task_claim",
+        "rearm_failed_task",
+        "claim_task",
+        "claim_ready_task",
+        "get_task_claim",
+        "get_task_attempt",
+        "claim_resource",
+        "acquire_maintenance_lease",
+        "get_maintenance_lease",
+        "lease_events",
+    }
+)
+_PROCESS_SERIALIZED_COORDINATOR_CALLBACKS_LOCK = threading.RLock()
+_PROCESS_SERIALIZED_COORDINATOR_CALLBACKS: dict[
+    str, tuple["ProcessSerializedDatabaseCoordinator", int]
+] = {}
+
+
+class ProcessSerializedDatabaseCoordinator:
+    """Short-lived adapter over one shared :class:`DatabaseCoordinator`.
+
+    DuckDB's normal exclusive file connection is intentionally retained.  The
+    adapter adds an outer process-shared flock, opens the landed coordinator
+    only for one complete public operation, then closes it before releasing
+    the flock.  Multiple strict implementation lanes therefore share one
+    fence/dependency/completion authority without retaining competing DuckDB
+    file handles between operations.
+
+    This is an execution adapter, not a second coordinator contract.  The
+    explicit method allowlist fails closed when the underlying authority grows
+    a new surface that has not been reviewed for detached return values.
+    """
+
+    INTERFACE: ClassVar[str] = DATABASE_COORDINATOR_INTERFACE
+    SCHEMA: ClassVar[str] = DATABASE_COORDINATION_SCHEMA
+
+    def __init__(
+        self,
+        database_path: Path | str,
+        *,
+        clock_ms: ClockMs | None = None,
+        default_lease_ms: int = DEFAULT_LEASE_MS,
+        lock_timeout_seconds: float = 30.0,
+    ) -> None:
+        if is_quack_transport_target(database_path):
+            raise DatabaseCoordinationError(
+                "process-serialized coordinator requires a local DuckDB authority"
+            )
+        self._path = Path(database_path).absolute()
+        self._clock_ms = clock_ms
+        self._default_lease_ms = _lease_duration_ms(int(default_lease_ms))
+        self._lock_timeout_seconds = float(lock_timeout_seconds)
+        if self._lock_timeout_seconds <= 0:
+            raise DatabaseCoordinationBoundsError(
+                "serialized coordinator lock timeout must be positive"
+            )
+        self._serialization_lock_path = self._path.with_name(
+            f".{self._path.name}.serialized-coordinator.lock"
+        )
+        self._state_lock = threading.RLock()
+        self._closed = True
+        self._callback_reentry_detected = False
+
+    @property
+    def database_path(self) -> Path:
+        return self._path
+
+    @property
+    def serialization_lock_path(self) -> Path:
+        return self._serialization_lock_path
+
+    @property
+    def is_open(self) -> bool:
+        with self._state_lock:
+            return not self._closed
+
+    def open(self) -> "ProcessSerializedDatabaseCoordinator":
+        with self._state_lock:
+            self._reject_callback_reentry()
+            if not self._closed:
+                return self
+            # Install/verify the existing coordinator schema once without
+            # retaining its DuckDB connection after this logical adapter
+            # opens.  Holding the lifecycle lock prevents a concurrent close
+            # from being lost between schema verification and the state flip.
+            with self._serialization_lock():
+                coordinator_stack, _coordinator = self._coordinator_context()
+                with coordinator_stack:
+                    pass
+            self._closed = False
+        return self
+
+    def _serialization_lock(self) -> ExitStack:
+        """Enter the outer flock and translate acquisition timeout exactly."""
+
+        stack = ExitStack()
+        try:
+            stack.enter_context(
+                exclusive_file_lock(
+                    self._serialization_lock_path,
+                    timeout_seconds=self._lock_timeout_seconds,
+                )
+            )
+        except TimeoutError as exc:
+            stack.close()
+            raise DatabaseCoordinationConflictError(
+                "timed out acquiring process-serialized coordination authority"
+            ) from exc
+        return stack
+
+    def _coordinator_context(
+        self,
+    ) -> tuple[ExitStack, DatabaseCoordinator]:
+        """Open the landed coordinator and type a native-lock conflict."""
+
+        stack = ExitStack()
+        coordinator = DatabaseCoordinator(
+            self._path,
+            clock_ms=self._clock_ms,
+            default_lease_ms=self._default_lease_ms,
+        )
+        try:
+            opened = stack.enter_context(coordinator)
+        except TimeoutError as exc:
+            stack.close()
+            raise DatabaseCoordinationConflictError(
+                "timed out opening shared coordination authority"
+            ) from exc
+        return stack, opened
+
+    def close(self) -> None:
+        with self._state_lock:
+            self._reject_callback_reentry(same_adapter_only=True)
+            self._closed = True
+
+    def __enter__(self) -> "ProcessSerializedDatabaseCoordinator":
+        return self.open()
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def _begin_callback(self) -> None:
+        key = str(self._path.resolve(strict=False))
+        thread_id = threading.get_ident()
+        with _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS_LOCK:
+            active = _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS.get(key)
+            if active is not None:
+                owner, _owner_thread_id = active
+                owner._callback_reentry_detected = True
+                raise DatabaseCoordinationConflictError(
+                    "fenced callback must not re-enter serialized coordinator"
+                )
+            self._callback_reentry_detected = False
+            _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS[key] = (self, thread_id)
+
+    def _reject_callback_reentry(self, *, same_adapter_only: bool = False) -> None:
+        key = str(self._path.resolve(strict=False))
+        thread_id = threading.get_ident()
+        with _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS_LOCK:
+            active = _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS.get(key)
+            if active is None:
+                return
+            owner, owner_thread_id = active
+            # Calls from another thread are ordinary concurrent operations;
+            # the outer flock waits until the callback transaction completes.
+            # Only a callback's own call stack is coordinator re-entry.
+            if owner_thread_id != thread_id:
+                return
+            if same_adapter_only and owner is not self:
+                return
+            owner._callback_reentry_detected = True
+            raise DatabaseCoordinationConflictError(
+                "coordinator callback must not re-enter serialized coordinator"
+            )
+
+    def _end_callback(self) -> None:
+        key = str(self._path.resolve(strict=False))
+        with _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS_LOCK:
+            active = _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS.get(key)
+            if active is not None and active[0] is self:
+                del _PROCESS_SERIALIZED_COORDINATOR_CALLBACKS[key]
+
+    def _guard_callback(self, callback: Callable[..., Any]) -> Callable[..., Any]:
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            self._begin_callback()
+            try:
+                result = callback(*args, **kwargs)
+                if self._callback_reentry_detected:
+                    raise DatabaseCoordinationConflictError(
+                        "fenced callback attempted to re-enter serialized coordinator"
+                    )
+                return result
+            finally:
+                self._end_callback()
+
+        return guarded
+
+    def _invoke(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
+        with self._state_lock:
+            self._reject_callback_reentry()
+            if self._closed:
+                raise DatabaseCoordinationNotOpenError(
+                    "process-serialized database coordinator is not open"
+                )
+
+            call_args = args
+            call_kwargs = dict(kwargs)
+            if method_name == "execute_with_task_and_resource_fences":
+                if len(call_args) >= 3:
+                    mutable_args = list(call_args)
+                    mutable_args[2] = self._guard_callback(mutable_args[2])
+                    call_args = tuple(mutable_args)
+                elif "callback" in call_kwargs:
+                    call_kwargs["callback"] = self._guard_callback(
+                        call_kwargs["callback"]
+                    )
+                else:
+                    raise TypeError(
+                        "execute_with_task_and_resource_fences requires callback"
+                    )
+            elif method_name == "claim_ready_task":
+                accept_task_cid = call_kwargs.get("accept_task_cid")
+                if accept_task_cid is not None:
+                    call_kwargs["accept_task_cid"] = self._guard_callback(
+                        accept_task_cid
+                    )
+
+            # Keep the logical adapter open for the whole operation.  A close
+            # from another thread waits for this complete transaction, while
+            # same-thread callback re-entry is rejected above.
+            with self._serialization_lock():
+                coordinator_stack, coordinator = self._coordinator_context()
+                with coordinator_stack:
+                    method = getattr(coordinator, method_name)
+                    return method(*call_args, **call_kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        if name not in _PROCESS_SERIALIZED_COORDINATOR_METHODS:
+            raise AttributeError(name)
+
+        def invoke(*args: Any, **kwargs: Any) -> Any:
+            return self._invoke(name, *args, **kwargs)
+
+        return invoke
+
+
+def open_process_serialized_database_coordinator(
+    database_path: Path | str,
+    *,
+    clock_ms: ClockMs | None = None,
+    default_lease_ms: int = DEFAULT_LEASE_MS,
+    lock_timeout_seconds: float = 30.0,
+) -> ProcessSerializedDatabaseCoordinator:
+    """Open a short-lived-operation adapter over one coordinator file."""
+
+    return ProcessSerializedDatabaseCoordinator(
+        database_path,
+        clock_ms=clock_ms,
+        default_lease_ms=default_lease_ms,
+        lock_timeout_seconds=lock_timeout_seconds,
+    ).open()
+
+
 def open_database_coordinator(
     database_path: Path | str,
     *,
@@ -7138,6 +7431,7 @@ __all__ = [
     "MaintenanceLease",
     "TaskAttempt",
     "DatabaseCoordinator",
+    "ProcessSerializedDatabaseCoordinator",
     "DatabaseCoordinationError",
     "DatabaseCoordinationConflictError",
     "DatabaseCoordinationExpiredError",
@@ -7149,5 +7443,6 @@ __all__ = [
     "duckdb_available",
     "exclusive_scope_key",
     "open_database_coordinator",
+    "open_process_serialized_database_coordinator",
     "read_coordination_registry_projection",
 ]
