@@ -121852,6 +121852,23 @@ class DatabaseImplementationDaemon:
             "database_portal_post_commit_candidate_recovery:"
             + str(seed["receipt_id"])
         )[:2048]
+        carried_route_fields = (
+            set(receipt) & _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+        )
+        if not self._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields=set(receipt) - carried_route_fields,
+            task=current,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery source carries no exact execution-route "
+                "lineage for its typed authority"
+            )
+        route_lineage = {
+            field: receipt[field]
+            for field in _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+            if field in carried_route_fields
+        }
         transition_receipt = {
             "operation": "database_portal_post_commit_candidate_recovery",
             "attempt_id": attempt.attempt_id,
@@ -121873,6 +121890,7 @@ class DatabaseImplementationDaemon:
             "control_expected_status": "quarantined",
             "control_expected_revision": int(current.revision),
             "post_commit_candidate_recovery_seed": dict(seed),
+            **route_lineage,
         }
         result = guarded(
             task_cid=str(current.task_cid),
