@@ -12070,6 +12070,17 @@ def run_supervisor_tracks(
                         " ".join(heartbeat_parts),
                     )
                     if supervisor_fields.get("restart_supervisor"):
+                        if (
+                            supervisor_fields.get(
+                                "supervisor_status_generation_reason"
+                            )
+                            == "status_missing"
+                        ):
+                            # A live wrapper child with a one-sample empty
+                            # status file is a torn heartbeat, not a dead
+                            # generation. Restarting it SIGTERMs sibling
+                            # lanes when the process tree cannot be fenced.
+                            continue
                         daemon_pid = daemon_fields.get("daemon_pid")
                         _emit(
                             output,
