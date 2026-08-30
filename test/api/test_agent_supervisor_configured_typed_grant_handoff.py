@@ -4254,6 +4254,56 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert edges == 3
 
 
+def test_aseh_post_admission_bounds_parallel_scope_identity_flicker() -> None:
+    scoped = {
+        "healthy": False,
+        "blocked": True,
+        "stuck": False,
+        "terminal": False,
+        "scheduler_alive": True,
+        "owner_ready": True,
+        "broker_ready": True,
+        "blocked_recovery_admitted": False,
+        "blocked_recovery_scope": "parallel_startup",
+    }
+    edges = 0
+    for _index in range(2):
+        action, reason, edges = aseh_operator._post_admission_health_action(
+            scoped,
+            prior_available=True,
+            current_available=True,
+            unhealthy_edges=edges,
+        )
+        assert (action, reason) == ("continue", "")
+    action, reason, edges = aseh_operator._post_admission_health_action(
+        scoped,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=edges,
+    )
+    assert (action, reason, edges) == (
+        "fail",
+        "authoritative_board_blocked",
+        3,
+    )
+
+    working = {**scoped, "blocked_recovery_scope": "parallel_work"}
+    assert aseh_operator._post_admission_health_action(
+        working,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("continue", "")
+
+    halted = {**scoped, "blocked_recovery_scope": ""}
+    assert aseh_operator._post_admission_health_action(
+        halted,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_board_blocked")
+
+
 def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     lane_only = {
         "healthy": False,
