@@ -43,6 +43,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA,
     DATABASE_RETRY_BUDGET_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
+    DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT,
     DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
@@ -741,6 +742,168 @@ def test_later_session_rearms_dead_unknown_outcome_block(tmp_path: Path) -> None
         assert len(provider_calls) == 1
     finally:
         successor.close()
+
+
+def test_crash_reconciler_preserves_dispatch_process_for_automatic_rearm(
+    tmp_path: Path,
+) -> None:
+    first = _open_daemon(
+        tmp_path,
+        session="session:unknown-dispatch-crash",
+        max_task_attempts=2,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        dispatch_process = first.process_instance_id
+        first._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        claimed = first.task_source.get(attempt.task_cid)
+        assert claimed is not None and claimed.status == "in_progress"
+        assert (
+            claimed.body["completion_receipt"]["process_instance_id"]
+            == dispatch_process
+        )
+    finally:
+        first.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:unknown-dispatch-crash",
+        max_task_attempts=2,
+    )
+    try:
+        running = successor.get_attempt(attempt.attempt_id)
+        assert running is not None and running.status == "running"
+        assert successor.process_instance_id != dispatch_process
+
+        failed, receipt = successor._finalize_failed_attempt(
+            running,
+            reason="provider_dispatch_outcome_unknown",
+            force_block=True,
+            unknown_authority=True,
+        )
+
+        assert failed.status == "failed"
+        assert receipt["process_instance_id"] == dispatch_process
+        assert receipt["reconciled_by_process_instance_id"] == (
+            successor.process_instance_id
+        )
+        blocked = successor.task_source.get(attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rearms) == 1
+        assert rearms[0]["task_cid"] == attempt.task_cid
+        rearmed = successor.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        assert rearmed.body["completion_receipt"]["operation"] == (
+            DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+        )
+    finally:
+        successor.close()
+
+
+def test_unknown_outcome_rearm_limit_survives_claim_and_block_revisions(
+    tmp_path: Path,
+) -> None:
+    population = _population(1)
+    seed = _open_daemon(
+        tmp_path,
+        session="session:durable-unknown-rearm-limit",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(population)
+    finally:
+        seed.close()
+
+    for expected_count in range(1, DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT + 1):
+        blocker = _open_daemon(
+            tmp_path,
+            session="session:durable-unknown-rearm-limit",
+            max_task_attempts=2,
+        )
+        try:
+            attempt = blocker.claim_next()
+            assert attempt is not None
+            blocker._begin_callback_dispatch(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            _failed, receipt = blocker._finalize_failed_attempt(
+                attempt,
+                reason="provider_dispatch_outcome_unknown",
+                force_block=True,
+                unknown_authority=True,
+            )
+            prior_count = expected_count - 1
+            if prior_count:
+                assert receipt["unknown_outcome_rearm_count"] == prior_count
+        finally:
+            blocker.close()
+
+        successor = _open_daemon(
+            tmp_path,
+            session="session:durable-unknown-rearm-limit",
+            max_task_attempts=2,
+        )
+        try:
+            rearms = successor.reconcile_blocked_unknown_outcome_tasks()
+            assert len(rearms) == 1
+            task = successor.task_source.get("task:cid:001")
+            assert task is not None and task.status == "retrying"
+            assert task.body["completion_receipt"][
+                "unknown_outcome_rearm_count"
+            ] == expected_count
+        finally:
+            successor.close()
+
+    final_blocker = _open_daemon(
+        tmp_path,
+        session="session:durable-unknown-rearm-limit",
+        max_task_attempts=2,
+    )
+    try:
+        final_attempt = final_blocker.claim_next()
+        assert final_attempt is not None
+        final_blocker._begin_callback_dispatch(
+            final_attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{final_attempt.attempt_id}",
+        )
+        _failed, final_receipt = final_blocker._finalize_failed_attempt(
+            final_attempt,
+            reason="provider_dispatch_outcome_unknown",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert final_receipt["unknown_outcome_rearm_count"] == (
+            DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        )
+    finally:
+        final_blocker.close()
+
+    terminal = _open_daemon(
+        tmp_path,
+        session="session:durable-unknown-rearm-limit",
+        max_task_attempts=2,
+    )
+    try:
+        assert terminal.reconcile_blocked_unknown_outcome_tasks() == []
+        task = terminal.task_source.get("task:cid:001")
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"][
+            "unknown_outcome_rearm_count"
+        ] == DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+    finally:
+        terminal.close()
 
 
 def test_later_process_rearms_exhausted_portal_provider_failure(

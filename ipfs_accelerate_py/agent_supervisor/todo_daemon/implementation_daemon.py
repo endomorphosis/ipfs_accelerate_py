@@ -68968,6 +68968,33 @@ class DatabaseImplementationDaemon:
             "process_instance_id": self.process_instance_id,
             "owner_session_id": self.owner_session_id,
         }
+        prior_receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        if (
+            prior_receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and str(prior_receipt.get("validation_spec_cid") or "")
+            == receipt["validation_spec_cid"]
+            and "unknown_outcome_rearm_count" in prior_receipt
+        ):
+            raw_rearm_count = prior_receipt.get(
+                "unknown_outcome_rearm_count"
+            )
+            try:
+                if isinstance(raw_rearm_count, bool):
+                    raise ValueError("boolean rearm count")
+                prior_rearm_count = int(raw_rearm_count)
+                if prior_rearm_count < 0:
+                    raise ValueError("negative rearm count")
+            except (TypeError, ValueError):
+                # A malformed safety budget cannot reset itself to zero.  Pin
+                # it at the limit so reconciliation remains fail closed.
+                receipt["unknown_outcome_rearm_count"] = (
+                    DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+                )
+                receipt["unknown_outcome_rearm_count_malformed"] = True
+            else:
+                receipt["unknown_outcome_rearm_count"] = prior_rearm_count
         if attempt is not None:
             receipt.update(
                 {
@@ -69073,6 +69100,49 @@ class DatabaseImplementationDaemon:
                 attempt=current,
                 reason=reason,
             )
+            # A successor process may be the first observer able to prove
+            # that a pre-crash provider/effect dispatch has no admissible
+            # terminal evidence.  Preserve the process that actually claimed
+            # and dispatched the exact fenced attempt as the blocking process;
+            # otherwise the successor records itself here and can never use
+            # the existing later-process rearm path without another unrelated
+            # daemon restart.  Every binding below must match before the
+            # origin is transferred.  Ambiguous records retain the current
+            # process identity and therefore remain safely blocked.
+            dispatch_origin_candidate = bool(
+                force_block
+                and task_receipt.get("schema")
+                == DATABASE_RETRY_BUDGET_SCHEMA
+                and str(task_receipt.get("attempt_id") or "")
+                == current.attempt_id
+                and str(task_receipt.get("claim_id") or "")
+                == current.claim_id
+                and bool(
+                    str(task_receipt.get("process_instance_id") or "").strip()
+                )
+            )
+            try:
+                dispatch_origin_matches = bool(
+                    dispatch_origin_candidate
+                    and int(task_receipt.get("fencing_token") or -1)
+                    == int(current.fencing_token)
+                    and int(task_receipt.get("fence_epoch") or -1)
+                    == int(current.fence_epoch)
+                )
+            except (TypeError, ValueError):
+                dispatch_origin_matches = False
+            if dispatch_origin_matches:
+                receipt["process_instance_id"] = str(
+                    task_receipt["process_instance_id"]
+                )
+                receipt["owner_session_id"] = str(
+                    task_receipt.get("owner_session_id")
+                    or current.owner_session_id
+                )
+                if self.process_instance_id != receipt["process_instance_id"]:
+                    receipt["reconciled_by_process_instance_id"] = (
+                        self.process_instance_id
+                    )
         else:
             # A replacement revision/validation epoch owns the canonical row.
             # Retire only this stale attempt and never debit or block the new
@@ -69281,12 +69351,17 @@ class DatabaseImplementationDaemon:
                 continue
             if str(task.task_cid) in running_cids:
                 continue
+            raw_prior_rearms = receipt.get("unknown_outcome_rearm_count", 0)
             try:
-                prior_rearms = int(
-                    receipt.get("unknown_outcome_rearm_count") or 0
-                )
+                if isinstance(raw_prior_rearms, bool):
+                    raise ValueError("boolean rearm count")
+                prior_rearms = int(raw_prior_rearms)
+                if prior_rearms < 0:
+                    raise ValueError("negative rearm count")
             except (TypeError, ValueError):
-                prior_rearms = 0
+                # Malformed retry authority is never permission for another
+                # external dispatch.
+                continue
             if prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
                 continue
             claim_id = str(receipt.get("claim_id") or "")
