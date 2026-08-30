@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import stat
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -51,6 +53,7 @@ def _managed_program(
     state_dir: Path,
     *,
     port: int = 25123,
+    schema_revision: str = "1",
 ) -> runner.DatabaseProgramConfig:
     return runner.DatabaseProgramConfig.from_mapping(
         {
@@ -60,7 +63,7 @@ def _managed_program(
             "quack_endpoint": f"quack:127.0.0.1:{port}",
             "store_id": "state/control.duckdb",
             "store_generation": "logical-g1",
-            "schema_revision": "1",
+            "schema_revision": schema_revision,
             "failover_policy": "fail_closed",
             "owner_management": _owner_policy(state_dir),
         }
@@ -75,21 +78,33 @@ def _write_owner_status(
     generation: int,
     lifecycle: str,
     repository_id: str = "repository:sealed-authority",
+    database_uuid: str = "database-uuid-1",
+    schema_fingerprint: str = "sha256:" + "1" * 64,
+    server_id: str | None = None,
+    extension_fingerprint: str = "sha256:" + "a" * 64,
+    started_at: str = "2026-08-30T00:00:00Z",
+    revision: int = 1,
 ) -> dict[str, object]:
     assert program.owner_management is not None
     state_dir = Path(program.owner_management.owner_state_dir)
     identity: dict[str, object] = {
-        "server_id": f"server-{generation}",
+        "server_id": server_id or f"server-{generation}",
         "store_id": program.store_id,
-        "database_uuid": "database-uuid-1",
+        "database_uuid": database_uuid,
         "schema_revision": int(program.schema_revision),
-        "schema_fingerprint": "sha256:" + "1" * 64,
+        "schema_fingerprint": schema_fingerprint,
         "generation": generation,
+        "fence_epoch": generation,
+        "revision": revision,
         "process_birth": birth.to_dict(),
         "process_birth_id": process_birth_id(birth),
         "listen_uri": program.quack_endpoint,
+        "extension_fingerprint": extension_fingerprint,
+        "credential_generation": 1,
         "secret_handle": program.endpoint_secret_handle,
         "repository_id": repository_id,
+        "startup_epoch": generation,
+        "started_at": started_at,
         "status": lifecycle,
     }
     storage_schema_fingerprint = "baguqeera" + "2" * 56
@@ -342,6 +357,24 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
     }
 
 
+def test_managed_owner_rejects_extension_fingerprint_drift(
+    tmp_path: Path,
+) -> None:
+    lifecycle, program = _concrete_lifecycle(tmp_path)
+    status_path = Path(program.owner_management.owner_state_dir) / (
+        "quack-state-server.status.json"
+    )
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["identity"]["extension_fingerprint"] = "sha256:" + "b" * 64
+    status_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(
+        runner._StableArtifactReadError,
+        match="differs from the configured authority",
+    ):
+        lifecycle._status_identity()
+
+
 def test_proven_dead_owner_status_can_seed_a_new_sealed_endpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -553,6 +586,268 @@ def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(
     assert environment[runner.STATE_ENDPOINT_SECRET_HANDLE_ENV] == (
         program.endpoint_secret_handle
     )
+
+
+def test_managed_watchdog_restart_preserves_marker_and_closes_crashed_ready_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise watchdog -> child lease -> stale-row reconciliation end to end."""
+
+    duckdb = pytest.importorskip("duckdb")
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        OwnerMarker,
+        _schema_fingerprint_digest,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        install_control_plane_schema,
+    )
+
+    repo = tmp_path.resolve()
+    database = repo / "state" / "control.duckdb"
+    database.parent.mkdir(parents=True)
+    install_control_plane_schema(database, owner_id="managed-crash-restart-test")
+    connection = duckdb.connect(str(database))
+    try:
+        metadata = dict(
+            connection.execute(
+                "SELECT key, value FROM control_plane_metadata"
+            ).fetchall()
+        )
+        database_uuid = str(metadata["database_uuid"])
+        schema_revision = str(metadata["schema_version"])
+        schema_fingerprint = _schema_fingerprint_digest(
+            str(metadata["schema_fingerprint"])
+        )
+        dead_birth = ProcessBirthIdentity(
+            pid=999_999_991,
+            start_time_ticks=77,
+            boot_id="managed-crashed-owner",
+            parent_pid=1,
+        )
+        dead_birth_id = process_birth_id(dead_birth)
+        connection.execute(
+            """
+            INSERT INTO store_generations (
+                generation, schema_revision, fence_epoch, revision,
+                database_uuid, birth_id, created_at, extension_schema,
+                extension_json
+            ) VALUES (7, ?, 7, 0, ?, ?, '2026-08-30T00:00:00Z', '', '{}')
+            """,
+            [int(schema_revision), database_uuid, dead_birth_id],
+        )
+        connection.execute(
+            """
+            INSERT INTO state_servers (
+                server_id, store_id, database_uuid, process_birth_id,
+                listen_uri, extension_fingerprint, schema_revision, generation,
+                started_at, stopped_at, status, revision, extension_schema,
+                extension_json
+            ) VALUES (
+                'server-crashed-ready', 'state/control.duckdb', ?, ?,
+                'quack:127.0.0.1:25123', ?, ?, 7,
+                '2026-08-30T00:00:00Z', NULL, 'ready', 1, '', '{}'
+            )
+            """,
+            [
+                database_uuid,
+                dead_birth_id,
+                "sha256:" + "a" * 64,
+                int(schema_revision),
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO server_epochs (
+                server_id, epoch, fence_epoch, started_at, ended_at
+            ) VALUES (
+                'server-crashed-ready', 7, 7,
+                '2026-08-30T00:00:00Z', NULL
+            )
+            """
+        )
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+
+    state_dir = database.parent / "quack-owner"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+    program = _managed_program(
+        state_dir,
+        port=port,
+        schema_revision=schema_revision,
+    )
+    connection = duckdb.connect(str(database))
+    try:
+        connection.execute(
+            "UPDATE state_servers SET listen_uri = ? "
+            "WHERE server_id = 'server-crashed-ready'",
+            [program.quack_endpoint],
+        )
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    prior_identity = _write_owner_status(
+        repo=repo,
+        program=program,
+        birth=dead_birth,
+        generation=7,
+        lifecycle="ready",
+        database_uuid=database_uuid,
+        schema_fingerprint=schema_fingerprint,
+        server_id="server-crashed-ready",
+        extension_fingerprint="sha256:" + "a" * 64,
+        started_at="2026-08-30T00:00:00Z",
+        revision=1,
+    )
+    marker_path = database.with_name(f".{database.name}.state-owner.json")
+    marker = OwnerMarker(
+        server_id="server-crashed-ready",
+        process_birth=dead_birth,
+        database_path=str(database),
+        started_at="2026-08-30T00:00:00Z",
+        fence_token="crashed-owner-fence",
+        generation=7,
+    )
+    marker_path.write_text(
+        json.dumps(marker.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        prior_row = connection.execute(
+            """
+            SELECT server_id, database_uuid, process_birth_id, listen_uri,
+                   extension_fingerprint, schema_revision, generation,
+                   started_at, status, revision
+            FROM state_servers WHERE server_id = 'server-crashed-ready'
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+    assert prior_row == (
+        prior_identity["server_id"],
+        prior_identity["database_uuid"],
+        prior_identity["process_birth_id"],
+        prior_identity["listen_uri"],
+        prior_identity["extension_fingerprint"],
+        prior_identity["schema_revision"],
+        prior_identity["generation"],
+        prior_identity["started_at"],
+        prior_identity["status"],
+        prior_identity["revision"],
+    )
+    assert marker.server_id == prior_identity["server_id"]
+    assert process_birth_id(marker.process_birth) == prior_identity[
+        "process_birth_id"
+    ]
+    assert marker.started_at == prior_identity["started_at"]
+    assert marker.generation == prior_identity["generation"]
+
+    package_root = Path(__file__).resolve().parents[2]
+    entry = repo / "managed-fake-quack-owner.py"
+    entry.write_text(
+        "\n".join(
+            (
+                "import argparse, signal, sys, time",
+                f"sys.path.insert(0, {str(package_root)!r})",
+                "from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server, FakeQuackTransport",
+                "from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import probe_quack_capabilities",
+                "p=argparse.ArgumentParser()",
+                "p.add_argument('--database', required=True)",
+                "p.add_argument('--state-dir', required=True)",
+                "p.add_argument('--host', required=True)",
+                "p.add_argument('--port', required=True, type=int)",
+                "p.add_argument('--store-id', required=True)",
+                "p.add_argument('--repository-id', required=True)",
+                "p.add_argument('--secret-handle', required=True)",
+                "p.add_argument('--json', action='store_true')",
+                "p.add_argument('command')",
+                "a=p.parse_args()",
+                "s=build_server(database_path=a.database, state_dir=a.state_dir, host=a.host, port=a.port, store_id=a.store_id, repository_id=a.repository_id, secret_handle=a.secret_handle, transport=FakeQuackTransport(), capability_probe=lambda **k: probe_quack_capabilities(allow_network_install=False, allow_local_load=True, use_cache=False))",
+                "s.start()",
+                "stop={'value': False}",
+                "def request_stop(*_args): stop['value']=True",
+                "signal.signal(signal.SIGINT, request_stop)",
+                "signal.signal(signal.SIGTERM, request_stop)",
+                "while not stop['value']: time.sleep(0.02)",
+                "s.stop()",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    lifecycle = runner.ManagedLocalQuackOwnerLifecycle(
+        program=program,
+        repo_root=repo,
+        python_executable=sys.executable,
+        owner_entry_path=entry,
+    )
+    dead = lifecycle._read_owner_observation(authenticate_alive=False)
+    assert dead.provably_dead is True
+    assert dead.binding is not None
+    assert dead.binding.server_id == prior_identity["server_id"]
+
+    def status_bound_readiness(owner: SpawnedQuackOwner) -> AuthenticatedReadiness:
+        deadline = time.monotonic() + 5.0
+        status_path = state_dir / "quack-state-server.status.json"
+        while time.monotonic() < deadline:
+            if owner.process is not None and owner.process.poll() is not None:
+                raise AssertionError("managed child exited before ready status")
+            try:
+                payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                time.sleep(0.02)
+                continue
+            identity = payload.get("identity")
+            if (
+                payload.get("lifecycle") == "ready"
+                and isinstance(identity, dict)
+                and int(identity.get("generation") or 0) == 8
+            ):
+                return AuthenticatedReadiness(
+                    authenticated=True,
+                    ready=True,
+                    process_birth_id=owner.birth_id,
+                    binding=lifecycle._binding_from_identity(identity),
+                )
+            time.sleep(0.02)
+        raise AssertionError("managed child did not publish generation 8")
+
+    monkeypatch.setattr(
+        lifecycle._watchdog,
+        "_readiness_probe",
+        status_bound_readiness,
+    )
+    restarted = lifecycle._watchdog.ensure(dead)
+    assert restarted.disposition is WatchdogDisposition.RESTARTED
+    assert restarted.recovered is True
+    assert restarted.binding is not None
+    assert restarted.binding.generation == 8
+
+    stopped = lifecycle._watchdog.stop()
+    assert stopped.termination is not None
+    assert stopped.termination.termination_confirmed is True
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        rows = connection.execute(
+            """
+            SELECT server_id, generation, status, stopped_at, revision
+            FROM state_servers
+            WHERE generation IN (7, 8)
+            ORDER BY generation
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [(row[0], row[1], row[2]) for row in rows] == [
+        ("server-crashed-ready", 7, "stopped"),
+        (restarted.binding.server_id, 8, "stopped"),
+    ]
+    assert all(row[3] is not None for row in rows)
+    assert rows[0][4] == 2
 
 
 def test_managed_owner_waits_through_transient_endpoint_bind_collision(

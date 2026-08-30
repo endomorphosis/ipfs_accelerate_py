@@ -1253,6 +1253,13 @@ class ManagedLocalQuackOwnerLifecycle:
             raise DatabaseProgramConfigError(
                 "managed Quack recovery requires an exact repository identity"
             )
+        self._extension_fingerprint = str(
+            baseline_identity.get("extension_fingerprint") or ""
+        ).strip()
+        if not self._extension_fingerprint:
+            raise DatabaseProgramConfigError(
+                "managed Quack recovery requires an exact extension fingerprint"
+            )
         self._birth_from_identity(baseline_identity)
         baseline_binding = self._binding_from_identity(baseline_identity)
         self._watchdog = QuackOwnerWatchdog(
@@ -1350,6 +1357,11 @@ class ManagedLocalQuackOwnerLifecycle:
                 "managed owner status has no exact identity"
             )
         expected_repository_id = getattr(self, "_repository_id", "")
+        expected_extension_fingerprint = getattr(
+            self,
+            "_extension_fingerprint",
+            "",
+        )
         base_identity_differs = (
             status.get("schema")
             != "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
@@ -1369,6 +1381,11 @@ class ManagedLocalQuackOwnerLifecycle:
             or (
                 expected_repository_id
                 and identity.get("repository_id") != expected_repository_id
+            )
+            or (
+                expected_extension_fingerprint
+                and identity.get("extension_fingerprint")
+                != expected_extension_fingerprint
             )
         )
         endpoint_differs = (
@@ -1699,26 +1716,16 @@ class ManagedLocalQuackOwnerLifecycle:
             QuackOwnerStartAbsentError,
             SpawnedQuackOwner,
         )
-        from .quack_state_server import reclaim_stale_owner_marker
 
         self._assert_database_unchanged()
         self._clear_stale_stop_control()
-        marker = self.database_path.with_name(
-            f".{self.database_path.name}.state-owner.json"
-        )
-        reclaimed = reclaim_stale_owner_marker(
-            marker_path=marker,
-            lock_path=self.database_path.with_name(
-                f".{self.database_path.name}.state-owner.lock"
-            ),
-        )
-        if not (
-            reclaimed.get("reclaimed") is True
-            or reclaimed.get("reason") == "no_marker"
-        ):
-            raise DatabaseProgramConfigError(
-                "managed owner stale lease could not be reclaimed safely"
-            )
+        # Preserve a proved-dead marker for the child owner's fenced startup.
+        # ExclusiveOwnerLease acquires the canonical database lock, rechecks
+        # exact process birth, and reconciles the matching stale state_servers
+        # row before it publishes the successor generation.  Pre-deleting the
+        # marker here would erase the only identity that safely binds that
+        # reconciliation.  A concurrent live or unknown owner still wins the
+        # child lock/liveness check and causes startup to fail closed.
         uri = quack_transport_uri(self.program.quack_endpoint)
         match = re.fullmatch(
             r"quack:(?://)?(127\.0\.0\.1|localhost):(\d{1,5})",
@@ -3181,7 +3188,7 @@ def configured_board_live_seal_launch_profile(
                         _profile_option_values(source.extra_args, "--task-shard-index")
                     ),
                 }
-                for item, source in zip(projected_tracks, tracks)
+                for item, source in zip(projected_tracks, tracks, strict=True)
             ],
         },
         "launch_policy": {

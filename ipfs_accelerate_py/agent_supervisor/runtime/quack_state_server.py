@@ -36,12 +36,13 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Final, Protocol
+from typing import Any, ClassVar, Final, Iterator, Protocol
 
 from ..merge.worktree_lifecycle import (
     OwnerLiveness,
@@ -75,9 +76,8 @@ from ..task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
 from ..task_sources.duckdb_state import (
-    DUCKDB_CONNECTION_POLICY_SETTINGS,
     DEFAULT_MEMORY_LIMIT,
-    DuckDBConnection,
+    DUCKDB_CONNECTION_POLICY_SETTINGS,
     QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
     QUACK_MUTATION_DOMAIN_EVENT_INSERT,
     QUACK_MUTATION_EVIDENCE_DELETE,
@@ -91,14 +91,15 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_VALIDATION_RECORD,
     QUACK_MUTATION_VALIDATION_RESULT_INSERT,
     QUACK_MUTATION_VALIDATION_RUN_INSERT,
+    QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
     QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
     QUACK_OWNER_MUTATION_MAX_STEPS,
-    QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
-    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
+    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
+    DuckDBConnection,
     open_duckdb_connection,
     quack_owner_mutation_content_id,
     quack_owner_mutation_mac,
@@ -123,6 +124,12 @@ STATE_SERVER_IDENTITY_INTERFACE: Final = "StateServerIdentity@1"
 QUACK_STATE_SERVER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
 )
+STATE_SERVER_LIFECYCLE_INSPECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/state-server-lifecycle-inspection@1"
+)
+STALE_STATE_SERVER_RECONCILIATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/stale-state-server-reconciliation@1"
+)
 STATE_SERVER_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/state-server-identity@1"
 )
@@ -143,6 +150,7 @@ DEFAULT_SECRET_HANDLE_PREFIX: Final = "handle:quack-token"
 TOKEN_FILENAME_SUFFIX: Final = ".quack-token"
 OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
+OWNER_MARKER_MAX_BYTES: Final[int] = 64 * 1024
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
 READ_REPLICA_NAME_INFIX: Final = ".read-replica"
@@ -316,6 +324,15 @@ class QuackStateServerOwnershipError(QuackStateServerError):
     """Another live owner holds exclusive database ownership."""
 
 
+class QuackStateServerOfflineFenceError(QuackStateServerOwnershipError):
+    """An offline read fence cannot be admitted without risking an owner."""
+
+    def __init__(self, reason: str, *, owner_liveness: str = "unknown") -> None:
+        self.reason = str(reason)
+        self.owner_liveness = str(owner_liveness)
+        super().__init__(self.reason)
+
+
 class QuackStateServerBindError(QuackStateServerError):
     """Bind address is not admitted by policy."""
 
@@ -379,6 +396,15 @@ def _utc_iso(moment: datetime | None = None) -> str:
 def _sha256_text(value: str) -> str:
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
+
+
+def _process_birth_id(birth: ProcessBirthIdentity) -> str:
+    """Return the stable public identifier used by ``state_servers`` rows."""
+
+    material = (
+        f"{birth.pid}:{birth.start_time_ticks}:{birth.boot_id}:{birth.parent_pid}"
+    )
+    return f"birth:{_sha256_text(material)[7:39]}"
 
 
 def _schema_fingerprint_digest(value: str) -> str:
@@ -495,6 +521,46 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _read_bounded_regular_json_object(
+    path: Path,
+    *,
+    max_bytes: int,
+) -> tuple[dict[str, Any] | None, str]:
+    """Read one bounded regular JSON object through one no-follow descriptor."""
+
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError:
+        return None, "absent"
+    except OSError:
+        return None, "unsafe"
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            return None, "unsafe"
+        if info.st_size > max_bytes:
+            return None, "too_large"
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            raw = handle.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None, "too_large"
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(
+            raw,
+            object_pairs_hook=_mutation_duplicate_guard,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON number: {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None, "malformed"
+    if not isinstance(payload, dict):
+        return None, "malformed"
+    return payload, "ok"
 
 
 def _mutation_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -835,11 +901,7 @@ class StateServerIdentity:
 
     @property
     def process_birth_id(self) -> str:
-        birth = self.process_birth
-        material = (
-            f"{birth.pid}:{birth.start_time_ticks}:{birth.boot_id}:{birth.parent_pid}"
-        )
-        return f"birth:{_sha256_text(material)[7:39]}"
+        return _process_birth_id(self.process_birth)
 
     def store_identity(self) -> ControlPlaneStoreIdentity:
         return ControlPlaneStoreIdentity(
@@ -1225,6 +1287,8 @@ class ExclusiveOwnerLease:
         self._handle: Any | None = None
         self._marker: OwnerMarker | None = None
         self._fence_token: str = ""
+        self._reclaimed_marker: OwnerMarker | None = None
+        self._reclaimed_liveness: OwnerLiveness | None = None
 
     @property
     def fence_token(self) -> str:
@@ -1233,6 +1297,16 @@ class ExclusiveOwnerLease:
     @property
     def marker(self) -> OwnerMarker | None:
         return self._marker
+
+    @property
+    def reclaimed_marker(self) -> OwnerMarker | None:
+        """Exact prior marker whose dead process was proved under this lock."""
+
+        return self._reclaimed_marker
+
+    @property
+    def reclaimed_liveness(self) -> OwnerLiveness | None:
+        return self._reclaimed_liveness
 
     def _read_marker(self) -> OwnerMarker | None:
         payload = _read_json(self.marker_path)
@@ -1254,6 +1328,9 @@ class ExclusiveOwnerLease:
         if self._handle is not None:
             raise QuackStateServerOwnershipError("owner lease already held in-process")
 
+        self._reclaimed_marker = None
+        self._reclaimed_liveness = None
+
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         handle = self.lock_path.open("a+b")
         try:
@@ -1269,6 +1346,21 @@ class ExclusiveOwnerLease:
         # Lock held: evaluate marker for live vs stale owner.
         existing = self._read_marker()
         if existing is not None and existing.process_birth.pid > 0:
+            try:
+                same_database = (
+                    Path(existing.database_path).expanduser().resolve()
+                    == Path(database_path).expanduser().resolve()
+                )
+            except OSError:
+                same_database = False
+            if not same_database:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                finally:
+                    handle.close()
+                raise QuackStateServerOwnershipError(
+                    "state-owner marker database identity differs; refuse reclaim"
+                )
             liveness = self._liveness(existing.process_birth)
             if liveness is OwnerLiveness.ALIVE:
                 # Another process holds the semantic owner even if we raced the lock.
@@ -1290,6 +1382,8 @@ class ExclusiveOwnerLease:
                     "state-owner marker liveness is unknown; refuse reclaim"
                 )
             # DEAD: stale marker recovery continues under our exclusive lock.
+            self._reclaimed_marker = existing
+            self._reclaimed_liveness = OwnerLiveness.DEAD
 
         fence = secrets.token_hex(16)
         marker = OwnerMarker(
@@ -1306,23 +1400,40 @@ class ExclusiveOwnerLease:
         self._fence_token = fence
         return marker
 
-    def release(self, *, fence_token: str | None = None) -> None:
+    def release(
+        self,
+        *,
+        fence_token: str | None = None,
+        restore_reclaimed_marker: bool = False,
+        preserve_current_marker: bool = False,
+    ) -> None:
         if self._handle is None:
             return
         expected = fence_token if fence_token is not None else self._fence_token
         current = self._read_marker()
+        reclaimed = self._reclaimed_marker
         if current is not None and expected and current.fence_token != expected:
             raise QuackStateServerControlError(
                 "stop fence token does not match owner marker"
             )
         try:
-            if current is not None and (
+            if current is not None and not preserve_current_marker and (
                 not expected or current.fence_token == expected
             ):
                 try:
                     self.marker_path.unlink()
                 except FileNotFoundError:
                     pass
+            if (
+                restore_reclaimed_marker
+                and not preserve_current_marker
+                and reclaimed is not None
+            ):
+                _atomic_write_json(
+                    self.marker_path,
+                    reclaimed.to_dict(),
+                    mode=0o600,
+                )
         finally:
             try:
                 fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
@@ -1331,6 +1442,8 @@ class ExclusiveOwnerLease:
                 self._handle = None
                 self._marker = None
                 self._fence_token = ""
+                self._reclaimed_marker = None
+                self._reclaimed_liveness = None
 
 
 # ---------------------------------------------------------------------------
@@ -1699,6 +1812,9 @@ class QuackStateServer:
         default_factory=dict, init=False, repr=False
     )
     _read_replica_refresh_sequence: int = field(default=0, init=False, repr=False)
+    _lifecycle_reconciliation: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
@@ -2598,6 +2714,311 @@ class QuackStateServer:
             )
         except Exception:
             pass
+
+    def _close_failed_start_identity(
+        self,
+        connection: Any,
+        identity: StateServerIdentity,
+    ) -> dict[str, Any]:
+        """Transactionally close only this failed startup generation."""
+
+        stopped_at = _utc_iso()
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            row = connection.execute(
+                """
+                SELECT database_uuid, process_birth_id, generation, status,
+                       stopped_at, revision
+                FROM state_servers
+                WHERE server_id = ?
+                """,
+                [identity.server_id],
+            ).fetchone()
+            if row is None:
+                raise QuackStateServerMigrationError(
+                    "failed startup identity row is unavailable"
+                )
+            observed = (
+                tuple(row.values()) if isinstance(row, Mapping) else tuple(row)
+            )
+            if (
+                str(observed[0]) != identity.database_uuid
+                or str(observed[1]) != identity.process_birth_id
+                or int(observed[2]) != int(identity.generation)
+            ):
+                raise QuackStateServerMigrationError(
+                    "failed startup identity row differs from the current owner"
+                )
+            prior_status = str(observed[3])
+            prior_stopped_at = observed[4]
+            prior_revision = int(observed[5])
+            if prior_status in {"starting", "ready"} and prior_stopped_at is None:
+                updated = connection.execute(
+                    """
+                    UPDATE state_servers
+                    SET status = 'stopped', stopped_at = ?, revision = revision + 1
+                    WHERE server_id = ? AND database_uuid = ?
+                      AND process_birth_id = ? AND generation = ?
+                      AND status = ? AND stopped_at IS NULL
+                    RETURNING status, stopped_at, revision
+                    """,
+                    [
+                        stopped_at,
+                        identity.server_id,
+                        identity.database_uuid,
+                        identity.process_birth_id,
+                        identity.generation,
+                        prior_status,
+                    ],
+                ).fetchone()
+                if updated is None:
+                    raise QuackStateServerMigrationError(
+                        "failed startup identity closure lost its exact CAS"
+                    )
+                final_status = str(updated[0])
+                final_stopped_at = updated[1]
+                final_revision = int(updated[2])
+            elif prior_status == "stopped" and prior_stopped_at is not None:
+                final_status = prior_status
+                final_stopped_at = prior_stopped_at
+                final_revision = prior_revision
+            else:
+                raise QuackStateServerMigrationError(
+                    "failed startup identity has an inadmissible lifecycle"
+                )
+            connection.execute(
+                """
+                UPDATE server_epochs
+                SET ended_at = COALESCE(ended_at, ?)
+                WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
+                """,
+                [
+                    stopped_at,
+                    identity.server_id,
+                    identity.startup_epoch or identity.generation,
+                    identity.fence_epoch,
+                ],
+            )
+            verified = connection.execute(
+                """
+                SELECT status, stopped_at, revision
+                FROM state_servers
+                WHERE server_id = ? AND database_uuid = ?
+                  AND process_birth_id = ? AND generation = ?
+                """,
+                [
+                    identity.server_id,
+                    identity.database_uuid,
+                    identity.process_birth_id,
+                    identity.generation,
+                ],
+            ).fetchone()
+            if (
+                verified is None
+                or str(verified[0]) != "stopped"
+                or verified[1] is None
+                or int(verified[2]) != final_revision
+                or final_status != "stopped"
+                or final_stopped_at is None
+            ):
+                raise QuackStateServerMigrationError(
+                    "failed startup identity closure did not verify"
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        connection.execute("CHECKPOINT")
+        return {
+            "server_id": identity.server_id,
+            "generation": int(identity.generation),
+            "status": "stopped",
+            "stopped_at": str(final_stopped_at),
+            "revision": int(final_revision),
+        }
+
+    def _reconcile_dead_prior_server(
+        self,
+        connection: Any,
+        *,
+        owner: ExclusiveOwnerLease,
+        database_uuid: str,
+    ) -> dict[str, Any]:
+        """Close one exact stale generation proved dead by owner acquisition.
+
+        The update is deliberately narrower than a blanket ``status`` sweep.
+        It requires the old marker's exact server/process identity, a DEAD
+        liveness result observed while acquiring the sole-writer lock, and the
+        new owner's still-current fence.  Live and unknown owners are rejected
+        by :meth:`ExclusiveOwnerLease.acquire` before the database is opened.
+        """
+
+        prior = owner.reclaimed_marker
+        current = owner.marker
+        receipt: dict[str, Any] = {
+            "schema": STALE_STATE_SERVER_RECONCILIATION_SCHEMA,
+            "reconciled": False,
+            "database_uuid": str(database_uuid),
+            "current_server_id": current.server_id if current is not None else "",
+            "fence_token_digest": (
+                _sha256_text(owner.fence_token) if owner.fence_token else ""
+            ),
+        }
+        if prior is None:
+            receipt["reason"] = "no_proved_dead_prior_owner"
+            return receipt
+        if owner.reclaimed_liveness is not OwnerLiveness.DEAD:
+            raise QuackStateServerOwnershipError(
+                "prior owner is not proved dead; lifecycle reconciliation refused"
+            )
+        if (
+            current is None
+            or not owner.fence_token
+            or current.fence_token != owner.fence_token
+        ):
+            raise QuackStateServerControlError(
+                "current owner fence changed before lifecycle reconciliation"
+            )
+        try:
+            same_database = (
+                Path(prior.database_path).expanduser().resolve()
+                == self.config.database_path
+            )
+        except OSError:
+            same_database = False
+        if not same_database:
+            raise QuackStateServerOwnershipError(
+                "prior owner database identity differs; lifecycle reconciliation refused"
+            )
+
+        prior_birth_id = _process_birth_id(prior.process_birth)
+        row = connection.execute(
+            """
+            SELECT database_uuid, process_birth_id, generation, status,
+                   stopped_at, revision
+            FROM state_servers
+            WHERE server_id = ?
+            """,
+            [prior.server_id],
+        ).fetchone()
+        receipt.update(
+            {
+                "prior_server_id": prior.server_id,
+                "prior_process_birth_id": prior_birth_id,
+            }
+        )
+        if row is None:
+            receipt["reason"] = "prior_server_row_absent"
+            return receipt
+        if isinstance(row, Mapping):
+            observed_database_uuid = str(row.get("database_uuid") or "")
+            observed_birth_id = str(row.get("process_birth_id") or "")
+            generation = int(row.get("generation") or 0)
+            status = str(row.get("status") or "")
+            stopped_at = row.get("stopped_at")
+            revision = int(row.get("revision") or 0)
+        else:
+            observed_database_uuid = str(row[0])
+            observed_birth_id = str(row[1])
+            generation = int(row[2])
+            status = str(row[3])
+            stopped_at = row[4]
+            revision = int(row[5])
+        receipt.update(
+            {
+                "prior_generation": generation,
+                "prior_status": status,
+                "prior_revision": revision,
+            }
+        )
+        if observed_database_uuid != str(database_uuid):
+            raise QuackStateServerOwnershipError(
+                "prior state-server database identity differs; reconciliation refused"
+            )
+        if observed_birth_id != prior_birth_id:
+            raise QuackStateServerOwnershipError(
+                "prior state-server process birth differs; reconciliation refused"
+            )
+        if status not in {"starting", "ready"} or stopped_at is not None:
+            receipt["reason"] = "prior_server_already_terminal"
+            return receipt
+
+        reconciled_at = _utc_iso()
+        try:
+            connection.execute("BEGIN TRANSACTION")
+            connection.execute(
+                """
+                UPDATE state_servers
+                SET status = 'stopped', stopped_at = ?, revision = revision + 1
+                WHERE server_id = ? AND database_uuid = ?
+                  AND process_birth_id = ? AND generation = ?
+                  AND status IN ('starting', 'ready') AND stopped_at IS NULL
+                """,
+                [
+                    reconciled_at,
+                    prior.server_id,
+                    database_uuid,
+                    prior_birth_id,
+                    generation,
+                ],
+            )
+            connection.execute(
+                """
+                UPDATE server_epochs
+                SET ended_at = ?
+                WHERE server_id = ? AND ended_at IS NULL
+                """,
+                [reconciled_at, prior.server_id],
+            )
+            verified = connection.execute(
+                """
+                SELECT status, stopped_at, revision
+                FROM state_servers
+                WHERE server_id = ? AND database_uuid = ?
+                  AND process_birth_id = ? AND generation = ?
+                """,
+                [prior.server_id, database_uuid, prior_birth_id, generation],
+            ).fetchone()
+            if verified is None:
+                raise QuackStateServerMigrationError(
+                    "reconciled state-server row disappeared before commit"
+                )
+            if isinstance(verified, Mapping):
+                verified_status = str(verified.get("status") or "")
+                verified_stopped_at = verified.get("stopped_at")
+                verified_revision = int(verified.get("revision") or 0)
+            else:
+                verified_status = str(verified[0])
+                verified_stopped_at = verified[1]
+                verified_revision = int(verified[2])
+            if (
+                verified_status != "stopped"
+                or verified_stopped_at is None
+                or verified_revision != revision + 1
+            ):
+                raise QuackStateServerMigrationError(
+                    "stale state-server lifecycle update did not verify exactly"
+                )
+            connection.execute("COMMIT")
+        except Exception:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        receipt.update(
+            {
+                "reconciled": True,
+                "reason": "proved_dead_prior_owner_closed",
+                "status": "stopped",
+                "stopped_at": str(verified_stopped_at),
+                "revision": verified_revision,
+            }
+        )
+        return receipt
 
     # -- closed owner-mutation inbox --------------------------------------
 
@@ -3649,6 +4070,7 @@ class QuackStateServer:
                 raise QuackStateServerError("server is starting without identity")
 
             self._lifecycle = ServerLifecycle.STARTING
+            self._lifecycle_reconciliation = {}
             self.config.state_dir.mkdir(parents=True, exist_ok=True)
             self.config.database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -3725,6 +4147,17 @@ class QuackStateServer:
                         f"(schema_version={schema_revision})"
                     )
 
+                self._lifecycle_reconciliation = self._reconcile_dead_prior_server(
+                    connection,
+                    owner=owner,
+                    database_uuid=database_uuid,
+                )
+                if self._lifecycle_reconciliation.get("reconciled") is True:
+                    self._log(
+                        "reconciled proved-dead prior state-owner "
+                        f"server_id={self._lifecycle_reconciliation['prior_server_id']}"
+                    )
+
                 generation = self._next_generation(connection)
                 port = int(self.config.port) or _allocate_loopback_port(
                     self.config.host
@@ -3799,10 +4232,27 @@ class QuackStateServer:
                 raise
 
     def _emergency_cleanup(self) -> None:
+        identity_closed = self._identity is None
         try:
             self._stop_transport_connection(observe_closed=True)
         except Exception:
             pass
+        if self._connection is not None and self._identity is not None:
+            try:
+                closed = self._close_failed_start_identity(
+                    self._connection,
+                    self._identity,
+                )
+            except Exception as exc:
+                self._log(
+                    "failed-start lifecycle closure warning: "
+                    f"{type(exc).__name__}"
+                )
+            else:
+                identity_closed = True
+                self._identity = self._identity.with_status(
+                    str(closed["status"])
+                )
         try:
             if self._connection is not None and hasattr(self._connection, "close"):
                 self._connection.close()
@@ -3816,7 +4266,15 @@ class QuackStateServer:
             pass
         try:
             if self._owner is not None:
-                self._owner.release()
+                # Restore the proved-dead predecessor only after this failed
+                # generation is either absent or transactionally closed.  If
+                # closure could not be proved, retain the exact current marker
+                # for a later fenced reconciliation instead of misbinding the
+                # predecessor to a newer nonterminal row.
+                if identity_closed:
+                    self._owner.release(restore_reclaimed_marker=True)
+                else:
+                    self._owner.release(preserve_current_marker=True)
         except Exception:
             pass
         self._owner = None
@@ -4077,6 +4535,7 @@ class QuackStateServer:
                 ),
                 "storage_schema_fingerprint": storage_schema_fingerprint,
                 "read_replica": dict(self._read_replica_observation),
+                "lifecycle_reconciliation": dict(self._lifecycle_reconciliation),
                 "owner_marker_path": str(self.owner_marker_path()),
                 "status_path": str(self.status_path()),
             }
@@ -4157,6 +4616,227 @@ class QuackStateServer:
         if _contains_token_material(argv, token):
             raise QuackStateServerTokenError("argv would contain auth token")
         return argv
+
+
+@contextmanager
+def offline_state_server_fence(
+    *,
+    database_path: Path | str,
+    liveness: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    connection_factory: Callable[[Path], Any] | None = None,
+) -> Iterator[Any]:
+    """Yield the policy read-only DB while holding the canonical owner fence.
+
+    The lock, bounded no-follow marker read, exact marker/database binding, and
+    process-birth liveness decision remain valid for the full context.  This
+    is the only supported direct-file window for trusted offline migration or
+    inspection.  Live and unknown owners fail before the database is opened.
+    """
+
+    database = Path(database_path).expanduser().resolve()
+    if not database.is_file():
+        raise QuackStateServerOfflineFenceError(
+            "database_absent",
+            owner_liveness="absent",
+        )
+    marker_path = database.with_name(f".{database.name}{OWNER_MARKER_SUFFIX}")
+    lock_path = database.with_name(f".{database.name}{OWNER_LOCK_SUFFIX}")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+    except OSError as exc:
+        raise QuackStateServerOfflineFenceError(
+            "owner_lock_unsafe",
+            owner_liveness="unknown",
+        ) from exc
+    lock_info = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(lock_info.st_mode)
+        or lock_info.st_nlink != 1
+        or lock_info.st_uid != os.geteuid()
+    ):
+        os.close(descriptor)
+        raise QuackStateServerOfflineFenceError(
+            "owner_lock_unsafe",
+            owner_liveness="unknown",
+        )
+    handle = os.fdopen(descriptor, "a+b", buffering=0)
+    connection: Any | None = None
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise QuackStateServerOfflineFenceError(
+                "owner_lock_held",
+                owner_liveness="unknown",
+            ) from exc
+        marker_payload, marker_read = _read_bounded_regular_json_object(
+            marker_path,
+            max_bytes=OWNER_MARKER_MAX_BYTES,
+        )
+        if marker_read not in {"absent", "ok"}:
+            raise QuackStateServerOfflineFenceError(
+                f"owner_marker_{marker_read}",
+                owner_liveness="unknown",
+            )
+        if marker_payload is not None:
+            try:
+                marker = OwnerMarker.from_dict(marker_payload)
+            except (TypeError, ValueError, KeyError) as exc:
+                raise QuackStateServerOfflineFenceError(
+                    "owner_marker_malformed",
+                    owner_liveness="unknown",
+                ) from exc
+            try:
+                same_database = (
+                    Path(marker.database_path).expanduser().resolve() == database
+                )
+            except OSError:
+                same_database = False
+            if not same_database:
+                raise QuackStateServerOfflineFenceError(
+                    "owner_marker_database_mismatch",
+                    owner_liveness="unknown",
+                )
+            observed = (liveness or owner_liveness)(marker.process_birth)
+            if observed is OwnerLiveness.ALIVE:
+                raise QuackStateServerOfflineFenceError(
+                    "owner_process_alive",
+                    owner_liveness="alive",
+                )
+            if observed is OwnerLiveness.UNKNOWN:
+                raise QuackStateServerOfflineFenceError(
+                    "owner_liveness_unknown",
+                    owner_liveness="unknown",
+                )
+        if connection_factory is not None:
+            connection = connection_factory(database)
+        else:
+            import duckdb
+
+            connection = duckdb.connect(
+                str(database),
+                read_only=True,
+                config={
+                    name: value
+                    for name, value, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
+                },
+            )
+        yield connection
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
+def inspect_state_server_lifecycle(
+    *,
+    database_path: Path | str,
+    liveness: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    connection_factory: Callable[[Path], Any] | None = None,
+    offline_inspect: Callable[[Any], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Read the latest authoritative lifecycle row under the owner fence.
+
+    This is the stopped-owner status path.  It never falls back to JSON and it
+    never opens the database while the canonical lock is held by another owner
+    or a marker's process is live/unknown.  The inspection itself holds that
+    lock so a new owner cannot start during the bounded read-only window.
+    """
+
+    database = Path(database_path).expanduser().resolve()
+    base: dict[str, Any] = {
+        "schema": STATE_SERVER_LIFECYCLE_INSPECTION_SCHEMA,
+        "database_path": str(database),
+        "authoritative": True,
+        "available": False,
+        "owner_liveness": "absent",
+        "latest": None,
+    }
+    offline_projection: dict[str, Any] | None = None
+    try:
+        with offline_state_server_fence(
+            database_path=database,
+            liveness=liveness,
+            connection_factory=connection_factory,
+        ) as connection:
+            row = connection.execute(
+                """
+                SELECT server_id, store_id, database_uuid, process_birth_id,
+                       listen_uri, extension_fingerprint, schema_revision,
+                       generation, started_at, stopped_at, status, revision
+                FROM state_servers
+                ORDER BY generation DESC, started_at DESC, server_id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if offline_inspect is not None:
+                projected = offline_inspect(connection)
+                if not isinstance(projected, Mapping):
+                    raise TypeError("offline inspector must return a mapping")
+                offline_projection = dict(projected)
+    except QuackStateServerOfflineFenceError as exc:
+        return {
+            **base,
+            "owner_liveness": exc.owner_liveness,
+            "reason": exc.reason,
+        }
+    except Exception as exc:
+        return {
+            **base,
+            "reason": "authoritative_lifecycle_read_failed",
+            "error_class": type(exc).__name__,
+        }
+
+    latest = None
+    if row is not None:
+        keys = (
+            "server_id",
+            "store_id",
+            "database_uuid",
+            "process_birth_id",
+            "listen_uri",
+            "extension_fingerprint",
+            "schema_revision",
+            "generation",
+            "started_at",
+            "stopped_at",
+            "status",
+            "revision",
+        )
+        latest = (
+            {key: row.get(key) for key in keys}
+            if isinstance(row, Mapping)
+            else dict(zip(keys, row, strict=True))
+        )
+        for key in ("schema_revision", "generation", "revision"):
+            latest[key] = int(latest[key])
+        for key in (
+            "server_id",
+            "store_id",
+            "database_uuid",
+            "process_birth_id",
+            "listen_uri",
+            "extension_fingerprint",
+            "status",
+        ):
+            latest[key] = str(latest[key])
+        for key in ("started_at", "stopped_at"):
+            latest[key] = None if latest[key] is None else str(latest[key])
+    result = {**base, "available": True, "reason": "ok", "latest": latest}
+    if offline_inspect is not None:
+        result["offline_projection"] = offline_projection
+    return result
 
 
 def reclaim_stale_owner_marker(
@@ -4289,17 +4969,22 @@ __all__ = (
     "QuackStateServerError",
     "QuackStateServerMigrationError",
     "QuackStateServerNotRunningError",
+    "QuackStateServerOfflineFenceError",
     "QuackStateServerOwnershipError",
     "QuackStateServerReadyError",
     "QuackStateServerTokenError",
     "RemoteBindPolicy",
     "STATE_SERVER_IDENTITY_INTERFACE",
+    "STATE_SERVER_LIFECYCLE_INSPECTION_SCHEMA",
+    "STALE_STATE_SERVER_RECONCILIATION_SCHEMA",
     "ServerLifecycle",
     "StateServerIdentity",
     "TokenVault",
     "assert_bind_admitted",
     "build_server",
+    "inspect_state_server_lifecycle",
     "listen_uri",
+    "offline_state_server_fence",
     "provider_safe_environment",
     "reclaim_stale_owner_marker",
     "sanitize_for_export",

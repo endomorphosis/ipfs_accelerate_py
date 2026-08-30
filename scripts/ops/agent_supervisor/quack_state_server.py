@@ -349,17 +349,108 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "status":
             _ensure_repo_path()
             database, state_dir = _require_paths(args)
+            from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+                inspect_state_server_lifecycle,
+            )
+
             status_path = Path(state_dir) / "quack-state-server.status.json"
             if status_path.is_file():
                 payload = json.loads(status_path.read_text(encoding="utf-8"))
+                identity = payload.get("identity")
+                birth_payload = (
+                    identity.get("process_birth")
+                    if isinstance(identity, Mapping)
+                    else None
+                )
+                projection_liveness = "absent"
+                if isinstance(birth_payload, Mapping):
+                    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+                        ProcessBirthIdentity,
+                        owner_liveness,
+                    )
+
+                    try:
+                        observed = owner_liveness(
+                            ProcessBirthIdentity.from_dict(birth_payload)
+                        )
+                    except Exception:
+                        projection_liveness = "unknown"
+                    else:
+                        projection_liveness = observed.value
+                if projection_liveness == "alive":
+                    lifecycle = {
+                        "available": False,
+                        "reason": "deferred_to_authenticated_live_owner",
+                        "direct_database_file_open": False,
+                    }
+                elif projection_liveness == "unknown":
+                    lifecycle = {
+                        "available": False,
+                        "reason": "owner_liveness_unknown",
+                        "direct_database_file_open": False,
+                    }
+                else:
+                    lifecycle = inspect_state_server_lifecycle(
+                        database_path=database
+                    )
+                latest = lifecycle.get("latest")
+                consistent: bool | None = None
+                if lifecycle.get("available") is True:
+                    if isinstance(latest, Mapping) and isinstance(identity, Mapping):
+                        consistent = all(
+                            str(latest.get(key)) == str(identity.get(key))
+                            for key in (
+                                "server_id",
+                                "store_id",
+                                "database_uuid",
+                                "process_birth_id",
+                                "listen_uri",
+                                "extension_fingerprint",
+                                "schema_revision",
+                                "generation",
+                                "started_at",
+                            )
+                        ) and (
+                            str(latest.get("status") or "")
+                            == str(payload.get("lifecycle") or "")
+                            == str(identity.get("status") or "")
+                        )
+                        if str(latest.get("status") or "") == "stopped":
+                            try:
+                                revisions_current = int(latest.get("revision")) >= int(
+                                    identity.get("revision")
+                                )
+                            except (TypeError, ValueError):
+                                revisions_current = False
+                            consistent = (
+                                consistent
+                                and revisions_current
+                                and latest.get("stopped_at") is not None
+                            )
+                    else:
+                        consistent = latest is None and identity in (None, {})
+                payload["authoritative_lifecycle"] = lifecycle
+                payload["lifecycle_consistent"] = consistent
+                if consistent is False:
+                    payload["ready"] = False
+                    payload["reason_code"] = "status_projection_lifecycle_mismatch"
                 _emit(payload, as_json=True)
-                return EXIT_SUCCESS
+                return EXIT_FAILURE if consistent is False else EXIT_SUCCESS
+            lifecycle = inspect_state_server_lifecycle(database_path=database)
+            latest = lifecycle.get("latest")
+            observed_status = (
+                str(latest.get("status") or "stopped")
+                if isinstance(latest, Mapping)
+                else "stopped"
+            )
             _emit(
                 {
-                    "lifecycle": "stopped",
+                    "lifecycle": observed_status,
                     "database_path": str(database),
                     "state_dir": str(state_dir),
                     "ready": False,
+                    "authoritative_lifecycle": lifecycle,
+                    "lifecycle_consistent": lifecycle.get("available") is True,
                 },
                 as_json=True,
             )
