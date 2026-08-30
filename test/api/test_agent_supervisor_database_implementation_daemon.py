@@ -14077,6 +14077,324 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_landed() 
     }
 
 
+def _git_repo_with_gitlink(
+    tmp_path: Path,
+    *,
+    gitlink_path: str = "external/child",
+    blob_path: str | None = "receipt.json",
+    gitlink_commit: str = "aa" * 20,
+) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Daemon Test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "daemon-test@example.invalid"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if blob_path:
+        output = repo / blob_path
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("landed\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", blob_path],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    gitlink_dir = (repo / gitlink_path).parent
+    gitlink_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{gitlink_commit},{gitlink_path}",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "land gitlink output"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    missing = subprocess.run(
+        ["git", "cat-file", "-e", f"HEAD:{gitlink_path}"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing.returncode != 0
+    return repo
+
+
+def test_git_tree_contains_gitlink_without_parent_object(tmp_path: Path) -> None:
+    repo = _git_repo_with_gitlink(tmp_path)
+    daemon = SimpleNamespace(
+        repo_root=repo,
+        merge_target_ref="HEAD",
+    )
+    daemon._git_tree_entry_kind = lambda relative: (
+        DatabaseImplementationDaemon._git_tree_entry_kind(daemon, relative)
+    )
+    assert (
+        DatabaseImplementationDaemon._git_tree_entry_kind(
+            daemon, "external/child"
+        )
+        == "commit"
+    )
+    assert DatabaseImplementationDaemon._git_tree_contains_path(
+        daemon, "external/child"
+    )
+    assert (
+        DatabaseImplementationDaemon._git_tree_entry_kind(
+            daemon, "receipt.json"
+        )
+        == "blob"
+    )
+
+
+def test_gitlink_only_outputs_are_not_landed_without_merge_proof(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_gitlink(tmp_path, blob_path=None)
+    task = SimpleNamespace(
+        task_cid="task:pcpr-000",
+        task_alias="PCPR-000",
+        outputs=("external/child",),
+        body={},
+    )
+    daemon = SimpleNamespace(
+        repo_root=repo,
+        merge_target_ref="HEAD",
+        merge_queue=None,
+        _task_declared_output_paths=lambda current: (
+            DatabaseImplementationDaemon._task_declared_output_paths(current)
+        ),
+        _git_tree_entry_kind=lambda relative: (
+            DatabaseImplementationDaemon._git_tree_entry_kind(daemon, relative)
+        ),
+        _completed_merge_proves_task=lambda current: (
+            DatabaseImplementationDaemon._completed_merge_proves_task(
+                daemon, current
+            )
+        ),
+    )
+    assert (
+        DatabaseImplementationDaemon._task_outputs_landed_on_target(daemon, task)
+        is False
+    )
+
+
+def test_gitlink_plus_blob_outputs_count_as_landed(tmp_path: Path) -> None:
+    repo = _git_repo_with_gitlink(tmp_path)
+    task = SimpleNamespace(
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+        outputs=("external/child", "receipt.json"),
+        body={},
+    )
+    daemon = SimpleNamespace(
+        repo_root=repo,
+        merge_target_ref="HEAD",
+        merge_queue=None,
+        _task_declared_output_paths=lambda current: (
+            DatabaseImplementationDaemon._task_declared_output_paths(current)
+        ),
+        _git_tree_entry_kind=lambda relative: (
+            DatabaseImplementationDaemon._git_tree_entry_kind(daemon, relative)
+        ),
+        _completed_merge_proves_task=lambda current: False,
+    )
+    assert (
+        DatabaseImplementationDaemon._task_outputs_landed_on_target(daemon, task)
+        is True
+    )
+
+
+def test_gitlink_only_outputs_land_with_completed_merge_request(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_gitlink(tmp_path, blob_path=None)
+    task = SimpleNamespace(
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+        outputs=("external/child",),
+        body={},
+    )
+    request = SimpleNamespace(
+        status="completed",
+        task_id="PCPR-001",
+        commit_sha="bb" * 20,
+    )
+    daemon = SimpleNamespace(
+        repo_root=repo,
+        merge_target_ref="HEAD",
+        merge_queue=SimpleNamespace(completed_requests=lambda limit=32: (request,)),
+        _task_declared_output_paths=lambda current: (
+            DatabaseImplementationDaemon._task_declared_output_paths(current)
+        ),
+        _git_tree_entry_kind=lambda relative: (
+            DatabaseImplementationDaemon._git_tree_entry_kind(daemon, relative)
+        ),
+        _completed_merge_proves_task=lambda current: (
+            DatabaseImplementationDaemon._completed_merge_proves_task(
+                daemon, current
+            )
+        ),
+    )
+    assert (
+        DatabaseImplementationDaemon._task_outputs_landed_on_target(daemon, task)
+        is True
+    )
+
+
+def test_reconcile_landed_merged_tasks_completes_retrying_without_control_receipt() -> None:
+    cas: list[dict[str, object]] = []
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcpr-001",
+            task_alias="PCPR-001",
+            status="retrying",
+            revision=7,
+            body={},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            selected = (
+                {str(status).strip().lower()}
+                if isinstance(status, str)
+                else {str(item).strip().lower() for item in (status or ())}
+            )
+            tasks = (self.task,) if self.task.status in selected else ()
+            return SimpleNamespace(tasks=tasks)
+
+        def get(self, _cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            return None
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        merge_target_ref="HEAD",
+        task_source=source,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-001.json",
+        ),
+        _record_event=lambda *_args, **_kwargs: None,
+    )
+
+    def cas_status(
+        task_cid,
+        *,
+        expected_revision,
+        new_status,
+        receipt,
+        evidence_digests,
+        expected_control_receipt=None,
+    ):
+        cas.append(
+            {
+                "task_cid": task_cid,
+                "expected_revision": expected_revision,
+                "new_status": new_status,
+                "evidence_digests": list(evidence_digests),
+                "expected_control_receipt": expected_control_receipt,
+                "receipt_operation": dict(receipt).get("operation"),
+            }
+        )
+        source.task.status = new_status
+        source.task.revision = int(expected_revision) + 1
+        return None
+
+    daemon._cas_task_status_database = cas_status
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+    assert len(outcomes) == 1
+    assert outcomes[0]["completed"] is True
+    assert outcomes[0]["task_alias"] == "PCPR-001"
+    assert cas[0]["new_status"] == "completed"
+    assert cas[0]["expected_control_receipt"] is None
+    assert cas[0]["receipt_operation"] == "database_landed_merge_repair"
+
+
+def test_resume_without_process_crash_completes_landed_missing_receipt() -> None:
+    attempt = SimpleNamespace(
+        attempt_id="attempt:1",
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+    )
+    task = SimpleNamespace(
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+        status="in_progress",
+        revision=3,
+        body={},
+    )
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(get=lambda _cid: task),
+        resume_attempt=lambda _attempt: (_ for _ in ()).throw(
+            DatabaseImplementationAuthorityError(
+                "shared control task has no exact attempt receipt"
+            )
+        ),
+        _complete_landed_quarantined_task=lambda _task: {
+            "task_cid": "task:pcpr-001",
+            "task_alias": "PCPR-001",
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+        },
+    )
+
+    result = DatabaseImplementationDaemon._resume_attempt_without_process_crash(
+        daemon,
+        attempt,
+    )
+    assert result["resumed"] is True
+    assert result["landed_outputs_completed"] is True
+    assert result["status"] == "completed"
+
+
 def test_reconcile_landed_merged_tasks_requires_fresh_portal_after_operator_recovery() -> None:
     requirement = typed_database_blocked_retry_revalidation_requirement(
         task_cid="task:pcsm-013",

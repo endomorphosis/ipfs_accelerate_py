@@ -118248,6 +118248,24 @@ class DatabaseImplementationDaemon:
                 DatabaseCoordinationExpiredError,
             )
 
+            if isinstance(exc, DatabaseImplementationAuthorityError):
+                # A successful merge can rotate the shared control receipt
+                # away from the exact claim tuple.  If the declared outputs
+                # are already on the merge target, complete instead of
+                # burning the supervisor restart budget.
+                task = self.task_source.get(attempt.task_cid)
+                if task is not None:
+                    landed = self._complete_landed_quarantined_task(task)
+                    if landed and landed.get("completed") is True:
+                        return {
+                            "resumed": True,
+                            "landed_outputs_completed": True,
+                            "portal_retryable_failure": False,
+                            "attempt_id": attempt.attempt_id,
+                            "task_alias": attempt.task_alias,
+                            "status": "completed",
+                            **landed,
+                        }
             if isinstance(
                 exc,
                 (
@@ -118849,32 +118867,102 @@ class DatabaseImplementationDaemon:
         # certify only the safe subset as complete.
         return () if invalid_path_declared else tuple(paths)
 
-    def _git_tree_contains_path(self, relative: str) -> bool:
+    def _git_tree_entry_kind(self, relative: str) -> str | None:
+        """Return the merge-target tree entry kind without fetching objects.
+
+        ``git cat-file -e <ref>:<path>`` follows gitlinks into the commit
+        object.  A sibling submodule store then fails closed and can even
+        trigger a remote fetch.  ``ls-tree`` only inspects the parent tree
+        entry, so blobs, trees, and gitlinks are visible when the path is
+        present on the merge target.
+        """
+
         if self.repo_root is None or not relative:
-            return False
+            return None
+        posix = relative.replace("\\", "/")
+        if (
+            not posix
+            or posix.startswith("/")
+            or posix.startswith("~")
+            or ".." in Path(posix).parts
+        ):
+            return None
         result = subprocess.run(
             [
                 "git",
-                "cat-file",
-                "-e",
-                f"{self.merge_target_ref}:{relative}",
+                "ls-tree",
+                "--full-name",
+                "-z",
+                self.merge_target_ref,
+                "--",
+                posix,
             ],
             cwd=self.repo_root,
             text=True,
             capture_output=True,
             check=False,
         )
-        return result.returncode == 0
+        if result.returncode != 0 or not result.stdout:
+            return None
+        record = result.stdout.split("\0", 1)[0]
+        if not record:
+            return None
+        meta, _sep, path = record.partition("\t")
+        if path != posix:
+            return None
+        parts = meta.split()
+        if len(parts) < 2:
+            return None
+        kind = parts[1]
+        if kind not in {"blob", "tree", "commit"}:
+            return None
+        return kind
+
+    def _git_tree_contains_path(self, relative: str) -> bool:
+        return self._git_tree_entry_kind(relative) is not None
+
+    def _completed_merge_proves_task(self, task: Any) -> bool:
+        """True when this exact task already has a completed merge request."""
+
+        alias = str(getattr(task, "task_alias", "") or "")
+        queue = getattr(self, "merge_queue", None)
+        completed_requests = getattr(queue, "completed_requests", None)
+        if not alias or not callable(completed_requests):
+            return False
+        try:
+            rows = completed_requests(limit=32)
+        except Exception:
+            return False
+        for request in rows or ():
+            if str(getattr(request, "status", "") or "") != "completed":
+                continue
+            if str(getattr(request, "task_id", "") or "") != alias:
+                continue
+            commit = str(getattr(request, "commit_sha", "") or "")
+            if re.fullmatch(r"[0-9a-f]{40}", commit):
+                return True
+        return False
 
     def _task_outputs_landed_on_target(self, task: Any) -> bool:
-        """True when every declared output blob exists on the merge target."""
+        """True when every declared output exists on the merge target.
+
+        Gitlink (mode 160000) paths count as present from the parent tree
+        entry.  A gitlink-only declaration is not enough: a sibling task can
+        land the same submodule.  Those rows need an exact completed merge
+        request, or a non-gitlink declared output that also landed.
+        """
 
         if self.repo_root is None:
             return False
         paths = self._task_declared_output_paths(task)
         if not paths:
             return False
-        return all(self._git_tree_contains_path(path) for path in paths)
+        kinds = [self._git_tree_entry_kind(path) for path in paths]
+        if any(kind is None for kind in kinds):
+            return False
+        if all(kind == "commit" for kind in kinds):
+            return self._completed_merge_proves_task(task)
+        return True
 
     def _landed_merge_repair_proof(
         self,
@@ -118983,7 +119071,12 @@ class DatabaseImplementationDaemon:
         if current is None:
             return None
         status = str(getattr(current, "status", "") or "").strip().lower()
-        if status not in {"quarantined", "retrying", "blocked"}:
+        if status not in {
+            "quarantined",
+            "retrying",
+            "blocked",
+            "in_progress",
+        }:
             return None
         if DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
             self,
@@ -118997,17 +119090,21 @@ class DatabaseImplementationDaemon:
             else None
         )
         if not isinstance(control_receipt, Mapping):
-            return None
+            control_receipt = None
         if not self._task_outputs_landed_on_target(current):
             return None
         proof, digest = self._landed_merge_repair_proof(current)
-        self.task_source.record_validation_result(
-            task_cid=task_cid,
-            outcome="passed",
-            evidence_digest=digest,
-            argv=["database-landed-merge-repair"],
-            body=proof,
+        record_validation = getattr(
+            self.task_source, "record_validation_result", None
         )
+        if callable(record_validation):
+            record_validation(
+                task_cid=task_cid,
+                outcome="passed",
+                evidence_digest=digest,
+                argv=["database-landed-merge-repair"],
+                body=proof,
+            )
         refreshed = self.task_source.get(task_cid)
         if refreshed is None:
             raise DatabaseImplementationAuthorityError(
@@ -119022,24 +119119,29 @@ class DatabaseImplementationDaemon:
             if isinstance(refreshed_body, Mapping)
             else None
         )
-        if (
-            refreshed_status != status
-            or not isinstance(refreshed_receipt, Mapping)
-            or dict(refreshed_receipt) != dict(control_receipt)
-            or DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
-                self,
-                refreshed,
-            )
+        if not isinstance(refreshed_receipt, Mapping):
+            refreshed_receipt = None
+        if refreshed_status != status:
+            return None
+        if DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            self,
+            refreshed,
         ):
             return None
-        self._cas_task_status_database(
-            refreshed.task_cid,
-            expected_revision=int(refreshed.revision),
-            new_status="completed",
-            receipt={**proof, "evidence_digest": digest},
-            expected_control_receipt=refreshed_receipt,
-            evidence_digests=[digest],
-        )
+        if control_receipt is not None and (
+            refreshed_receipt is None
+            or dict(refreshed_receipt) != dict(control_receipt)
+        ):
+            return None
+        cas_kwargs: dict[str, Any] = {
+            "expected_revision": int(refreshed.revision),
+            "new_status": "completed",
+            "receipt": {**proof, "evidence_digest": digest},
+            "evidence_digests": [digest],
+        }
+        if refreshed_receipt is not None:
+            cas_kwargs["expected_control_receipt"] = refreshed_receipt
+        self._cas_task_status_database(refreshed.task_cid, **cas_kwargs)
         self._record_event(
             "landed_merge_repaired",
             task_cid=str(refreshed.task_cid),
@@ -119071,7 +119173,7 @@ class DatabaseImplementationDaemon:
         if not callable(list_tasks):
             return []
         page = list_tasks(
-            status=("quarantined", "retrying", "blocked"),
+            status=("quarantined", "retrying", "blocked", "in_progress"),
             limit=TASK_SOURCE_QUERY_LIMIT,
         )
         tasks = tuple(getattr(page, "tasks", ()) or ())
