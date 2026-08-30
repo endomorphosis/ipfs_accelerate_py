@@ -1,0 +1,494 @@
+{
+  "authority": false,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "bypass_detection_reference": {
+    "kinds": [
+      "compatibility_bypass",
+      "control_bypass"
+    ],
+    "module": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_authority.py",
+    "note": "Detector classifies classified adapter edges as false positives; inventory does not authorize remediation."
+  },
+  "canonical_paths": [
+    {
+      "disposition": "allowed_owner",
+      "exists_on_disk": true,
+      "id": "CP-001",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "summary": "Transport-neutral mutation admission; all operator control ops execute here.",
+      "symbols": [
+        "SupervisorControlService"
+      ]
+    },
+    {
+      "disposition": "compatibility_adapter",
+      "exists_on_disk": true,
+      "id": "CP-002",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_cli.py",
+      "summary": "CLI adapter builds OperationRequest and invokes SupervisorControlService.",
+      "symbols": [
+        "register_agent_cli",
+        "run_agent_cli"
+      ]
+    },
+    {
+      "disposition": "compatibility_adapter",
+      "exists_on_disk": true,
+      "id": "CP-003",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+      "summary": "MCP catalog tools resolve SupervisorControlService only on invoke.",
+      "symbols": [
+        "configure_agent_supervisor_control",
+        "_resolve_service"
+      ]
+    },
+    {
+      "disposition": "allowed_owner",
+      "exists_on_disk": true,
+      "id": "CP-004",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "summary": "Exclusive authenticated owner of control.duckdb; concurrent workers use Quack clients.",
+      "symbols": [
+        "QuackStateServer",
+        "QuackStateServer@1"
+      ]
+    },
+    {
+      "disposition": "allowed_owner",
+      "exists_on_disk": true,
+      "id": "CP-005",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "summary": "Typed client; arbitrary execute_sql fails closed; named templates only.",
+      "symbols": [
+        "QuackStateClient"
+      ]
+    },
+    {
+      "disposition": "allowed_owner",
+      "exists_on_disk": true,
+      "id": "CP-006",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "summary": "Operational taskboard authority over IntentRepository / Quack.",
+      "symbols": [
+        "DatabaseTaskSource",
+        "DatabaseTaskSource@1"
+      ]
+    },
+    {
+      "disposition": "allowed_owner",
+      "exists_on_disk": true,
+      "id": "CP-007",
+      "kind": "canonical_path",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "summary": "Production repository mode is Quack; never falls back to direct control.duckdb file writes.",
+      "symbols": [
+        "RepositoryAuthorityMode",
+        "QUACK"
+      ]
+    }
+  ],
+  "canonical_write_path": {
+    "path_ids": [
+      "CP-001",
+      "CP-002",
+      "CP-003",
+      "CP-004",
+      "CP-005",
+      "CP-006",
+      "CP-007"
+    ],
+    "summary": "Transport adapter builds OperationRequest → SupervisorControlService.execute → backend → exclusive QuackStateServer@1 owner → IntentRepository/DatabaseTaskSource@1 → control.duckdb"
+  },
+  "completion_authoritative": false,
+  "controller_bypasses": [
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-001",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/facade.py",
+      "summary": "Prompt-first Supervisor facade composes product lifecycle beside the SCS closed catalog; dormant without production intent factory.",
+      "symbols": [
+        "Supervisor",
+        "SupervisorRun"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-002",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+      "summary": "ipfs-accelerate supervisor CLI dispatches to facade rather than control_cli OperationRequest path.",
+      "symbols": [
+        "register_supervisor_cli"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-003",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/prompt_entrypoints.py",
+      "summary": "Second MCP surface over Supervisor facade, parallel to native SCS catalog tools.",
+      "symbols": [
+        "PROMPT_LIFECYCLE_TOOLS"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-004",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/external_handoff.py",
+      "summary": "External handoff MCP tools operate outside the closed control-catalog mutation path.",
+      "symbols": [
+        "external_handoff"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-005",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/plan_materializer.py",
+      "summary": "Plan materializer writes task sources directly during bootstrap admission.",
+      "symbols": [
+        "PromptProgramMaterializer"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "CB-006",
+      "kind": "controller_bypass",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "summary": "Prompt workflow CLI/materialize can orchestrate board writes without SCS mutation ops.",
+      "symbols": [
+        "prompt_workflow"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "forbidden_if_used",
+      "exists_on_disk": true,
+      "id": "CB-007",
+      "kind": "controller_bypass",
+      "path": "docs/architecture/agent_supervisor/FOR_AGENTS.md",
+      "summary": "Policy forbids ad-hoc shell orchestration that bypasses SupervisorControlService.",
+      "symbols": [
+        "SupervisorControlService"
+      ]
+    }
+  ],
+  "declared_outputs": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json",
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-002.json"
+  ],
+  "deferred_hazards": [
+    {
+      "anchor": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "legacy_contextpack_candidates",
+      "kind": "deferred_hazard",
+      "summary": "Accelerator ContextPacker remains non-production; datasets owns ContextPack identity."
+    },
+    {
+      "anchor": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "noncanonical_in_memory_event_helpers",
+      "kind": "deferred_hazard",
+      "summary": "Compatibility in-memory/JSONL event helpers are not canonical durable publication beside DatabaseEventLog@1."
+    },
+    {
+      "anchor": "control/ and entrypoints/ adapters",
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "duplicate_adapters",
+      "kind": "deferred_hazard",
+      "summary": "CLI/MCP/facade adapters must remain thin transports over one control plane."
+    },
+    {
+      "anchor": "runtime event and artifact stores",
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "retention_tombstone_gaps",
+      "kind": "deferred_hazard",
+      "summary": "Event/artifact retention and tombstone policy gaps are recorded for later disposition."
+    }
+  ],
+  "direct_duckdb_writers": [
+    {
+      "classification": "immutable_evidence",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+      "path_template": "{artifact}.json + sidecar {artifact}.duckdb",
+      "sink_id": "artifact-store-json-duckdb"
+    },
+    {
+      "classification": "cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/todo_vector_index.py",
+      "path_template": "{bundle_index}.json + {bundle_index}.duckdb",
+      "sink_id": "bundle-index-duckdb-sidecar"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "path_template": "{path}.duckdb + .{name}.lock (+ optional legacy .sqlite3)",
+      "sink_id": "duckdb-state-primitives"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+      "path_template": "{state_root}/tasks.duckdb (caller-supplied path)",
+      "sink_id": "duckdb-task-source"
+    },
+    {
+      "classification": "cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "path_template": "{root}/formal_verification_cache.duckdb",
+      "sink_id": "formal-verification-cache-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "path_template": "{state_root}/coordination.duckdb",
+      "sink_id": "lease-coordination-duckdb"
+    },
+    {
+      "classification": "cache",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legacy_landed_result_cache.py",
+      "path_template": "{root}/legacy_landed_review_results.duckdb",
+      "sink_id": "legacy-landed-review-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+      "path_template": "{queue_dir}/merge_queue.duckdb (+ legacy merge_queue.sqlite3)",
+      "sink_id": "merge-queue-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+      "path_template": "{state_dir}/merge_resolver.duckdb (+ legacy .sqlite3)",
+      "sink_id": "merge-resolver-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/proof_carrying_planner.py",
+      "path_template": "{store}/proof_carrying_workflow.duckdb (+ JSON twin)",
+      "sink_id": "proof-carrying-workflow-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+      "path_template": "{root}/proof_scheduler.duckdb",
+      "sink_id": "proof-scheduler-duckdb"
+    },
+    {
+      "classification": "authority",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "path_template": "{output_policy.duckdb_path} via DuckDBTaskSource",
+      "sink_id": "prompt-workflow-duckdb-materialization"
+    },
+    {
+      "classification": "immutable_evidence",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "path_template": "{root}/prover_evidence.duckdb (+ .json projection)",
+      "sink_id": "prover-evidence-duckdb"
+    }
+  ],
+  "direct_state_writes": [
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-001",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+      "summary": "Embedded single-writer DuckDB task adapter; rejects Quack transport and writes under flock.",
+      "symbols": [
+        "DuckDBTaskSource",
+        "materialize"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-002",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/plan_materializer.py",
+      "summary": "Bootstrap materialization writes DuckDB task projections outside SupervisorControlService mutations.",
+      "symbols": [
+        "PromptProgramMaterializer",
+        "DuckDBTaskSource"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-003",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "summary": "Prompt workflow can materialize DuckDB/Markdown projections without SCS mutation ops.",
+      "symbols": [
+        "_materialize_duckdb",
+        "DuckDBTaskSource"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-004",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "summary": "File-path IntentRepository opens DuckDB with flock; Quack bound_connection mode remains canonical for live owners.",
+      "symbols": [
+        "IntentRepository"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-005",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "summary": "Embedded/exclusive repository modes open control.duckdb directly for offline/maintenance; Quack mode never falls back.",
+      "symbols": [
+        "EmbeddedStateRepository",
+        "RepositoryAuthorityMode"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-006",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "summary": "Per-board control-plane DuckDB catalog/artifact writes outside concurrent Quack owner path.",
+      "symbols": [
+        "BoardControlPlane",
+        "open_board_control_plane"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-007",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/markdown_task_source.py",
+      "summary": "Markdown *.todo.md board projections remain writable orchestration sinks; not completion authority.",
+      "symbols": [
+        "MarkdownTaskSource"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-008",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_tracker.py",
+      "summary": "Objective heap markdown writers are projections; not mutation authority for live Quack boards.",
+      "symbols": [
+        "ObjectiveTracker"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-009",
+      "kind": "direct_state_write",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+      "summary": "Runtime JSONL event helpers append beside DatabaseEventLog@1; not canonical durable publication alone.",
+      "symbols": [
+        "event_log"
+      ]
+    },
+    {
+      "campaign_expansion": false,
+      "direct_duckdb_writer_count": 13,
+      "disposition": "record_only",
+      "exists_on_disk": true,
+      "id": "DSW-010",
+      "kind": "direct_state_write",
+      "path": "docs/architecture/AGENT_SUPERVISOR_STATE_SINK_INVENTORY.md",
+      "summary": "Prior DQP inventory lists 13 direct DuckDB writer modules that must eventually funnel through Quack ownership where authoritative.",
+      "symbols": [
+        "SupervisorStateSinkInventory@1"
+      ]
+    }
+  ],
+  "goal_id": "DOEP-G010.S1",
+  "negative_assertions": [
+    "Markdown boards and objective heaps are projections, not completion authority.",
+    "Provider subprocesses must not receive the Quack mutation credential.",
+    "Sibling supervisors exchange events and receipts; they must not write peer databases.",
+    "Worker or model assertion alone is insufficient for task completion.",
+    "This inventory creates no competing objective, planner, task, event, or state subsystem."
+  ],
+  "no_competing_subsystem_created": true,
+  "observed_at": "2026-08-30T02:41:06Z",
+  "owning_repository": "ipfs_accelerate_py",
+  "parent_goal_id": "DOEP-G010",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "promotion_eligible": false,
+  "related_prior_inventories": [
+    "docs/architecture/AGENT_SUPERVISOR_STATE_SINK_INVENTORY.md",
+    "docs/architecture/agent_supervisor/DOEP_AUTHORITY_ADR.md",
+    "docs/architecture/agent_supervisor/CONTROL_PLANE.md",
+    "docs/architecture/agent_supervisor/DUCKDB_QUACK_THREAT_MODEL.md"
+  ],
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-direct-state-write-inventory@1",
+  "task_cid": "sha256:a7f00461b76661ed402eb94cb98284e2f270c92d4d1803c40f3013b719c256b0",
+  "task_id": "DOEP-002",
+  "title": "Inventory direct-state-write and controller bypasses",
+  "worker_completion_insufficient": true
+}

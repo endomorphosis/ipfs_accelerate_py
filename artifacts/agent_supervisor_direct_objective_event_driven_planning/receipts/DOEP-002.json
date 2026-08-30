@@ -1,0 +1,129 @@
+{
+  "authority": {
+    "canonical_semantic_identity": "ipfs_datasets_py",
+    "ducklake_authority": false,
+    "exact_bytes_cid_storage": "ipfs_kit_py",
+    "inventoried": [
+      "canonical_paths",
+      "direct_state_writes",
+      "controller_bypasses",
+      "deferred_hazards",
+      "direct_duckdb_writers"
+    ],
+    "model_output_is_completion_authority": false,
+    "operational_admission": "ipfs_accelerate_py"
+  },
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "changed_paths": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json",
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-002.json"
+  ],
+  "completion_authoritative": false,
+  "expected_outputs": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json",
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-002.json"
+  ],
+  "goal_id": "DOEP-G010.S1",
+  "no_competing_subsystem_created": true,
+  "observed_at": "2026-08-30T02:41:06Z",
+  "outputs_present": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-002.json": true,
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py": true
+  },
+  "parent_goal_id": "DOEP-G010",
+  "path_digests": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json": "sha256:a8ae8d882d9a19453a880296e17b00cf0b8746431a3564b60b94685d9e8f28a7",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json": "sha256:cd7b1d3e25677b275281cfe559d1e31eae30f262b5c8c6e3a0fbf329c16c0356",
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py": "sha256:1064c79604565509e6d232087f31dc13c877506117af10fbcca70b5f306146d5"
+  },
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "promotion_eligible": false,
+  "required_evidence": {
+    "changed_path_digest": "sha256:3af098be52336b3c30ca12bc221af8f7f8173cadf141e9353c13b89e3f09b9fb",
+    "limitations": [
+      "Candidate inventory receipt only; independent fenced supervisor admission is required.",
+      "Worker or model assertion alone is insufficient for task completion.",
+      "Direct-state-write and controller-bypass findings are recorded only; they do not expand the sealed DOEP campaign.",
+      "Digests bind the exact declared non-receipt outputs at observation time.",
+      "Prior DQP state-sink inventory is reused as evidence; this task does not migrate sinks."
+    ],
+    "receipt_cid": {
+      "reason": "ipfs CLI absent from sealed validation PATH; SHA-256 is not substituted for a CID.",
+      "status": "unavailable"
+    },
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "proof_reason": "Inventory-only task; no source mutation and no formal proof obligation selected.",
+      "proof_selection": "verified_empty",
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+        "-q"
+      ]
+    },
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "rollback": {
+    "destructive_effects": false,
+    "procedure": "Revert the four declared DOEP-002 outputs and invalidate consumers of this inventory; do not alter inventoried authority modules or protected plan documents."
+  },
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  },
+  "task_cid": "sha256:a7f00461b76661ed402eb94cb98284e2f270c92d4d1803c40f3013b719c256b0",
+  "task_id": "DOEP-002",
+  "title": "Inventory direct-state-write and controller bypasses",
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "worker_completion_insufficient": true,
+  "write_scope": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/direct_state_writes.json",
+    "test/api/doep/test_doep_002_inventory_direct_state_write_and_controller_bypasses.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-002.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-002.json"
+  ]
+}
