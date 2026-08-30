@@ -1885,7 +1885,11 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
     return server, paths, program, identity, ready
 
 
-def _recover_poisoned_owner_connection(server: Any) -> bool:
+def _recover_poisoned_owner_connection(
+    server: Any,
+    *,
+    force: bool = False,
+) -> bool:
     """Replace a poisoned exclusive owner handle without SIGTERM'ing SPAR.
 
     A single interrupted typed-client transaction marks the shared DuckDB
@@ -1901,16 +1905,16 @@ def _recover_poisoned_owner_connection(server: Any) -> bool:
     connection = getattr(server, "_connection", None)
     lock = getattr(server, "_owner_transaction_lock", None)
     path = getattr(connection, "path", None)
-    if (
-        connection is None
-        or lock is None
-        or path is None
-        or getattr(connection, "_poisoned", False) is not True
-    ):
+    if connection is None or lock is None or path is None:
+        return False
+    if not force and getattr(connection, "_poisoned", False) is not True:
         return False
     with lock:
         current = getattr(server, "_connection", None)
-        if current is None or getattr(current, "_poisoned", False) is not True:
+        current_path = getattr(current, "path", None)
+        if current is None or current_path is None:
+            return False
+        if not force and getattr(current, "_poisoned", False) is not True:
             return False
         close = getattr(current, "close", None)
         if callable(close):
@@ -2861,7 +2865,10 @@ class _OwnerProjectionMonitor:
             except BaseException as exc:
                 recovered = False
                 try:
-                    recovered = _recover_poisoned_owner_connection(self.server)
+                    recovered = _recover_poisoned_owner_connection(
+                        self.server,
+                        force=True,
+                    )
                 except Exception:
                     recovered = False
                 if initial and not recovered:
