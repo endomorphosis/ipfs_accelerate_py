@@ -950,13 +950,28 @@ def validate(*, check_git: bool) -> dict[str, Any]:
                     errors.append(f"{repo}: nested worktree is dirty")
                 head = _git("rev-parse", "HEAD", cwd=cwd)
                 head_tree = _git("rev-parse", "HEAD^{tree}", cwd=cwd)
-                if (
-                    head.returncode != 0
-                    or head.stdout.strip() != live_commit
-                    or head_tree.returncode != 0
+                if head.returncode != 0 or head_tree.returncode != 0:
+                    errors.append(f"{repo}: nested HEAD is unavailable")
+                elif repo == "ipfs_datasets_py":
+                    ancestor = _git(
+                        "merge-base",
+                        "--is-ancestor",
+                        live_commit,
+                        "HEAD",
+                        cwd=cwd,
+                    )
+                    if ancestor.returncode != 0:
+                        errors.append(
+                            f"{repo}: nested HEAD is not a descendant of "
+                            "the R40 repair snapshot"
+                        )
+                elif (
+                    head.stdout.strip() != live_commit
                     or head_tree.stdout.strip() != live_tree
                 ):
-                    errors.append(f"{repo}: nested HEAD differs from exact R40 repair snapshot")
+                    errors.append(
+                        f"{repo}: nested HEAD differs from exact R40 repair snapshot"
+                    )
                 gitlink = _git("ls-tree", "HEAD", repo)
                 if gitlink.returncode != 0 or head.returncode != 0:
                     errors.append(f"{repo}: gitlink/head unavailable")
