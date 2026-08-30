@@ -36632,14 +36632,25 @@ def _r40_r39_validation_dependency_failure_evidence(
         / f"{ASEH_R40_EXACT_R39_TERMINAL_OBSERVATION_CID[7:]}.json",
         max_bytes=STATUS_RECEIPT_MAX_BYTES,
     )
+    expected_control = _r40_expected_r39_control_failure_receipt()
     control = _secure_runtime_json(
         control_path,
         max_bytes=STATUS_RECEIPT_MAX_BYTES,
     )
     if terminal != _r40_expected_r39_terminal_observation():
         raise OperatorError("R40 sealed R39 terminal observation differs")
-    if control != _r40_expected_r39_control_failure_receipt():
-        raise OperatorError("R40 R39 control failure receipt differs")
+    if control != expected_control:
+        r40_path = paths.get(
+            "repair_approved_validation_runtime_configuration_transition_receipt"
+        )
+        # Later owner health-gate writes replace the shared inbox.  Once R40
+        # is published, the historical R39 receipt is sealed in the repair
+        # chain and must not block descendant launch.
+        if (
+            not isinstance(r40_path, Path)
+            or _r29_receipt_name_is_absent(r40_path)
+        ):
+            raise OperatorError("R40 R39 control failure receipt differs")
     return _validate_r40_r39_validation_dependency_failure_evidence(
         _r40_expected_r39_validation_dependency_failure_evidence()
     )
