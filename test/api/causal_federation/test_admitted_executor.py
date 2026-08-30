@@ -687,6 +687,116 @@ def test_execution_route_policy_fails_closed_on_population_and_task_drift() -> N
         )
 
 
+def test_owner_restart_preserves_equal_revision_carried_execution_route() -> None:
+    """A resealed owner must not rotate an exact in-flight task route.
+
+    Owner generations are independently revisioned, so both policies can be
+    sealed at source revision one.  The advanced task receipt is the exact
+    historical-lineage authority in that case.
+    """
+
+    original = TaskRecord(
+        task_cid="task:test-route:restart",
+        task_alias="CASF-ROUTE-RESTART",
+        goal_cid="goal:test-route",
+        plan_cid="plan:test-execution-route",
+        ordinal=0,
+        status="ready",
+        revision=1,
+    )
+
+    def snapshot(*, projection_cid: str) -> TaskSourceSnapshot:
+        return TaskSourceSnapshot(
+            source_schema="test-task-source@1",
+            schema_version=1,
+            plan_root_cid=original.plan_cid,
+            repository_tree_id="tree:test-execution-route",
+            projection_cid=projection_cid,
+            formal_plan_id=original.plan_cid,
+            source_identity="source:test-execution-route",
+            revision=1,
+            event_cursor=0,
+            goal_count=1,
+            task_count=1,
+            dependency_count=0,
+            terminal=False,
+            objective_count=1,
+            plan_count=1,
+        )
+
+    original_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot(projection_cid="projection:before-owner-restart"),
+        tasks=(original,),
+        execution_modes={
+            original.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE,
+        },
+    )
+    carried_route = original_policy.binding_for_task(original).to_dict()
+    current = replace(
+        original,
+        revision=2,
+        status="retrying",
+        body={
+            "completion_receipt": {
+                "operation": "database_portal_validation_retry",
+                "execution_route_binding": carried_route,
+                "execution_route_policy_id": original_policy.policy_id,
+                "execution_route_origin_revision": original.revision,
+            }
+        },
+    )
+    restarted_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot(projection_cid="projection:after-owner-restart"),
+        tasks=(current,),
+        execution_modes={
+            current.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE,
+        },
+    )
+    assert restarted_policy.policy_id != original_policy.policy_id
+    assert restarted_policy.source_revision == original_policy.source_revision
+    assert restarted_policy.entries[0].task_revision == current.revision
+
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._execution_route_policy = restarted_policy  # type: ignore[attr-defined]
+    adapter._require_execution_route_plan_root = (  # type: ignore[method-assign]
+        lambda: restarted_policy
+    )
+
+    # Although the freshly sealed entry equals the current task revision, a
+    # retry claim must keep the exact older binding carried by DuckDB.
+    assert dict(adapter.execution_route_binding_for_task(current)) == carried_route
+    assert (
+        dict(
+            adapter.validate_execution_route_binding(
+                carried_route,
+                task=current,
+                allow_claim_revision=True,
+            )
+        )
+        == carried_route
+    )
+    assert restarted_policy.binding_for_task(current).to_dict() != carried_route
+
+    with pytest.raises(TaskSourceIntegrityError, match="launch policy lineage"):
+        adapter.validate_execution_route_binding(
+            {
+                **carried_route,
+                "source_revision": restarted_policy.source_revision + 1,
+            },
+            task=current,
+            allow_claim_revision=True,
+        )
+    with pytest.raises(TaskSourceIntegrityError, match="launch policy lineage"):
+        adapter.validate_execution_route_binding(
+            {
+                **carried_route,
+                "policy_id": "policy:forged-equal-revision-lineage",
+            },
+            task=current,
+            allow_claim_revision=True,
+        )
+
+
 def test_status_cas_preserves_execution_route_across_requeue() -> None:
     policy = _execution_route_policy(
         "CASF-REQUEUE",
