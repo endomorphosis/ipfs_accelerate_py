@@ -6026,6 +6026,151 @@ def test_docker_create_positive_grammar_admits_canonical_vendor_command_only(
             )
 
 
+def test_docker_mount_emits_resolved_source_not_symlink(tmp_path: Path) -> None:
+    real = tmp_path / "grok-1.0.13-linux-aarch64"
+    real.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    real.chmod(0o700)
+    link = tmp_path / "grok"
+    link.symlink_to(real)
+    destination = Path("/opt/ipfs-accelerate/grok")
+
+    mount = grok_cli_runner._docker_mount(
+        link,
+        destination=destination,
+        read_only=True,
+    )
+
+    assert mount == [
+        "--mount",
+        f"type=bind,src={real.resolve()},dst={destination},readonly",
+    ]
+
+
+def _canonical_grok_docker_create_argv(tmp_path: Path) -> dict[str, object]:
+    workspace = tmp_path / "workspace"
+    lease_root = tmp_path / "asref-grok-container-socket-mask"
+    docker_config = lease_root / "docker-config"
+    grok_home = tmp_path / "asref-grok-home-socket-mask"
+    prompt_path = tmp_path / "asref-grok-prompt-socket-mask"
+    grok_bin = tmp_path / "grok-fixture"
+    mask_root = lease_root / "provider-masks"
+    for directory in (workspace, lease_root, grok_home):
+        directory.mkdir(mode=0o700)
+    docker_config.mkdir(mode=0o700)
+    grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    grok_bin.chmod(0o700)
+    prompt_path.write_text("prompt\n", encoding="utf-8")
+    image = "sha256:" + "a" * 64
+    container_name = "ipfs-accelerate-grok-1-" + "c" * 32
+    cidfile = lease_root / "container.cid"
+    command = grok_cli_runner._docker_grok_command(
+        grok_command=[str(grok_bin), "-p", "hi"],
+        grok_bin=grok_bin,
+        workspace=workspace,
+        prompt_path=prompt_path,
+        grok_home=grok_home,
+        base_env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        child_env={"PATH": "/usr/bin:/bin", "HOME": str(grok_home)},
+        denied_paths=(
+            Path("/var/run/docker.sock"),
+            Path("/run/docker.sock"),
+        ),
+        mask_root=mask_root,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        docker_bin="/usr/bin/docker",
+        isolation_image=image,
+    )
+    return {
+        "command": command,
+        "identity_arguments": {
+            "provider": "grok",
+            "docker_bin": "/usr/bin/docker",
+            "docker_config": docker_config,
+            "container_name": container_name,
+            "cidfile": cidfile,
+            "cwd": workspace,
+            "environment_id": "sha256:" + "1" * 64,
+            "expected_image": image,
+        },
+        "grok_bin": grok_bin,
+        "lease_root": lease_root,
+    }
+
+
+def test_docker_create_identity_admits_provider_mask_over_docker_socket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp_path.chmod(0o700)
+    monkeypatch.setattr(
+        grok_cli_runner.tempfile,
+        "gettempdir",
+        lambda: str(tmp_path),
+    )
+    fixture = _canonical_grok_docker_create_argv(tmp_path)
+    grok_bin = fixture["grok_bin"]
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_trusted_grok_bin",
+        lambda **_kwargs: str(grok_bin.resolve()),
+    )
+    command = fixture["command"]
+    mounts = [
+        command[index + 1]
+        for index, value in enumerate(command[:-1])
+        if value == "--mount"
+    ]
+
+    assert any(
+        f"dst={Path('/var/run/docker.sock')}" in mount
+        or f"dst={Path('/run/docker.sock')}" in mount
+        for mount in mounts
+    )
+    grok_cli_runner._docker_create_command_identity(
+        **fixture["identity_arguments"],
+        argv=command,
+    )
+
+
+def test_docker_create_identity_rejects_real_docker_socket_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    socket_path = Path("/run/docker.sock")
+    if not socket_path.exists():
+        pytest.skip("host docker socket is required for this identity check")
+    tmp_path.chmod(0o700)
+    monkeypatch.setattr(
+        grok_cli_runner.tempfile,
+        "gettempdir",
+        lambda: str(tmp_path),
+    )
+    fixture = _canonical_grok_docker_create_argv(tmp_path)
+    grok_bin = fixture["grok_bin"]
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_resolve_trusted_grok_bin",
+        lambda **_kwargs: str(grok_bin.resolve()),
+    )
+    command = list(fixture["command"])
+    image = fixture["identity_arguments"]["expected_image"]
+    image_index = command.index(image)
+    mutated = [
+        *command[:image_index],
+        "--mount",
+        f"type=bind,src={socket_path},dst={socket_path},readonly",
+        *command[image_index:],
+    ]
+
+    with pytest.raises(ValueError, match="mount path is unsafe"):
+        grok_cli_runner._docker_create_command_identity(
+            **fixture["identity_arguments"],
+            argv=mutated,
+        )
+
+
 def test_router_codex_vendor_pair_requires_two_common_executables(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
