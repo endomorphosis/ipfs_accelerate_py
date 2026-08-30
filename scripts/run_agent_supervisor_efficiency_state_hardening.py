@@ -91686,6 +91686,21 @@ def _post_admission_health_action(
             # the transient outage counter independent so an admitted repair
             # period cannot consume a later one/two-sample outage allowance.
             return "continue", "", 0
+        if receipt.get("blocked_recovery_scope") in {
+            "parallel_startup",
+            "parallel_work",
+        }:
+            # Parallel remaining work already established the scope. A
+            # two-sample identity or broker flicker must not SIGTERM the
+            # live board as if it were a board-wide halt.
+            next_edges = unhealthy_edges + 1
+            if next_edges > 2:
+                return (
+                    "fail",
+                    "authoritative_board_blocked",
+                    next_edges,
+                )
+            return "continue", "", next_edges
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
