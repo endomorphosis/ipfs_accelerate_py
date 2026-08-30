@@ -680,8 +680,11 @@ def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:
         if system_install
         else resolved_stat.st_uid == os.getuid()
     )
+    named_grok = (
+        candidate.name.casefold() in {"grok", "grok.exe"} or versioned_download
+    )
     if (
-        candidate.name.casefold() not in {"grok", "grok.exe"}
+        not named_grok
         or not resolved.is_file()
         or not os.access(resolved, os.X_OK)
         or resolved_stat.st_mode & 0o022
