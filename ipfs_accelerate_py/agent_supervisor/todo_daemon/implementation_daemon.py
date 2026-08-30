@@ -72369,6 +72369,8 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "authentication_failed",
         "database claim validation retry seed failed verification",
         "Portal completion lacks a verified task_completed event",
+        "Portal terminal replay lacks a task-bound implementation event",
+        "Portal terminal implementation summary is empty",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72382,12 +72384,16 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "authentication_failed",
         "database claim validation retry seed failed verification",
         "Portal completion lacks a verified task_completed event",
+        "Portal terminal replay lacks a task-bound implementation event",
+        "Portal terminal implementation summary is empty",
     }
 )
 _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
     {
         "database claim validation retry seed failed verification",
         "Portal completion lacks a verified task_completed event",
+        "Portal terminal replay lacks a task-bound implementation event",
+        "Portal terminal implementation summary is empty",
     }
 )
 _MERGE_QUEUE_LANDED_COMPLETION_SCHEMA = (
@@ -79750,6 +79756,8 @@ class DatabaseImplementationDaemon:
         ):
             return "quack_attach_contended"
         from .database_portal_bridge import (
+            DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON,
+            DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON,
             DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON,
             DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON,
         )
@@ -79758,6 +79766,10 @@ class DatabaseImplementationDaemon:
             return DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON
         if DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON in reason:
             return DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON
+        if DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON in reason:
+            return DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON
+        if DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON in reason:
+            return DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
@@ -79981,33 +79993,62 @@ class DatabaseImplementationDaemon:
                 add(nested_task.get(key))
         return identities
 
+    def _merge_train_repo_root(self) -> Path | None:
+        """Prefer the bound merge-train checkout over a lane worktree."""
+
+        bound = getattr(self, "_merge_repo_root", None)
+        if isinstance(bound, Path):
+            return bound
+        return self.repo_root
+
+    def _merge_train_target_refs(self) -> tuple[str, ...]:
+        """Refs that prove a merge-queue commit already landed."""
+
+        branch = str(
+            getattr(self, "_merge_target_branch", "")
+            or self.merge_target_ref
+            or "HEAD"
+        ).strip() or "HEAD"
+        refs: list[str] = [branch]
+        if branch != "HEAD" and not branch.startswith("refs/"):
+            refs.append(f"refs/heads/{branch}")
+        if "HEAD" not in refs:
+            refs.append("HEAD")
+        return tuple(dict.fromkeys(refs))
+
     def _git_commit_is_on_target(self, commit: str) -> bool:
         """True when ``commit`` is an ancestor of the configured merge target."""
 
-        if self.repo_root is None or not commit:
+        repo = self._merge_train_repo_root()
+        if repo is None or not commit:
             return False
         if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
             return False
-        result = subprocess.run(
-            [
-                "git",
-                "merge-base",
-                "--is-ancestor",
-                commit,
-                self.merge_target_ref,
-            ],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        return result.returncode == 0
+        for ref in self._merge_train_target_refs():
+            result = subprocess.run(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    commit,
+                    ref,
+                ],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return True
+        return False
 
     def _completed_merge_queue_commits_by_task(self) -> dict[str, str]:
         """Map task alias/CID to the newest completed merge-queue commit."""
 
         mapping: dict[str, str] = {}
-        queue = getattr(self, "merge_queue", None)
+        queue = getattr(self, "_merge_queue", None) or getattr(
+            self, "merge_queue", None
+        )
         completed_dir = getattr(queue, "completed_dir", None)
         if not isinstance(completed_dir, Path) or not completed_dir.is_dir():
             return mapping
@@ -80053,7 +80094,7 @@ class DatabaseImplementationDaemon:
         """
 
         self._require_execution_authority("merge-queue landed completion")
-        if self.repo_root is None:
+        if self._merge_train_repo_root() is None:
             return []
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
@@ -80144,6 +80185,7 @@ class DatabaseImplementationDaemon:
         """
 
         self._require_execution_authority("false terminal portal unstall")
+        landed = self._completed_merge_queue_commits_by_task()
         page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         outcomes: list[dict[str, Any]] = []
         for task in page.tasks:
@@ -80166,6 +80208,11 @@ class DatabaseImplementationDaemon:
                 continue
             reason = self._database_portal_reason(receipt.get("reason"))
             if reason not in _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS:
+                continue
+            alias = str(getattr(task, "task_alias", "") or "")
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            landed_commit = landed.get(task_cid) or landed.get(alias)
+            if landed_commit and self._git_commit_is_on_target(landed_commit):
                 continue
             try:
                 self._cas_task_status_database(
@@ -89976,7 +90023,9 @@ class DatabaseImplementationDaemon:
                 self.metadata = metadata if isinstance(metadata, Mapping) else {}
 
         snapshots: list[Any] = []
-        queue = getattr(self, "merge_queue", None)
+        queue = getattr(self, "_merge_queue", None) or getattr(
+            self, "merge_queue", None
+        )
         completed_dir = getattr(queue, "completed_dir", None)
         if isinstance(completed_dir, Path) and completed_dir.is_dir():
             files = sorted(

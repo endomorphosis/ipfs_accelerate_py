@@ -103,6 +103,12 @@ DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON: Final[str] = (
 DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON: Final[str] = (
     "Portal completion lacks a verified task_completed event"
 )
+DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON: Final[str] = (
+    "Portal terminal replay lacks a task-bound implementation event"
+)
+DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON: Final[str] = (
+    "Portal terminal implementation summary is empty"
+)
 DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-pooled-worktree-create-recovery@1"
@@ -5272,14 +5278,14 @@ class DatabasePortalExecutionBridge:
         )
         if implementation_event is None:
             raise DatabasePortalBridgeError(
-                "Portal terminal replay lacks a task-bound implementation event"
+                DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON
             )
         implementation = _bounded_portal_implementation(
             implementation_event
         )
         if not implementation:
             raise DatabasePortalBridgeError(
-                "Portal terminal implementation summary is empty"
+                DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON
             )
         return {"implementation": implementation}
 
@@ -9753,6 +9759,8 @@ __all__ = (
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_VERIFICATION_FAILED_REASON",
     "DATABASE_PORTAL_MISSING_TASK_COMPLETED_EVENT_REASON",
+    "DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON",
+    "DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
