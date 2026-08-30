@@ -1331,7 +1331,66 @@ migration-inventory, or dependency-seal surface selects M23 before M22;
 partial or malformed declarations fail closed. This control commit does not
 materialize, start Quack, run preflight, launch workers, or mutate M22.
 
-## 32. Current limitations at seal time
+## 32. M24 sidecar-reopen repair successor
+
+M23 launched four strict worktree lanes and established the intended
+lane-local execution-sidecar topology around one shared DuckDB task authority
+serialized through Quack. Lane 0 claimed SAWM-008 and reached provider
+dispatch. Lanes 1--3 then exposed a bounded
+control-plane defect: DuckDB mapping rows were iterated as two column names
+when a lane sidecar reopened, so an exact valid binding was falsely rejected.
+No worker result, completion, effect, commit, merge, or proof authority was
+admitted from that launch.
+
+The repair is sealed by commits
+`6f8804ec7fd645bf74e393972eb75561ac8b833f` and
+`b4ca95995a44e28d7b4b6c822464a353d7ef5ef3` (tree
+`6a3f588d1272f30f5aaf226d9507898e034a9361`). It parses mapping rows by
+their exact closed keys, rejects malformed or duplicate bindings, and fails
+closed when binding rows are removed from an existing sidecar. The focused
+implementation-daemon suite passes 52/52 tests.
+
+Generation 23 stopped cleanly at `2026-08-30T07:39:38Z`. Its final control
+and coordination stores remain immutable historical inputs with hashes
+`17aa029910894b499c0e56e4e67e7d042e1bdd209fd97347ca9a8736f5f69225`
+and
+`1a68c7f8c29c148e7c686d62bd23ff75c9dba07e8642a3057196a0eb1f1b6b42`.
+The partial SAWM-008 worktree, lane sidecars, logs, stale read replica, stopped
+status, and M23 receipt stay in `run-r2-m23`; none is copied or promoted as
+M24 implementation evidence.
+
+It did not demonstrate parallel task implementation before that defect. M24
+repairs the control plane; parallel task progress remains a launch observation
+that must be demonstrated, not inferred from the configured topology.
+
+M24 stages only exact stopped copies of the control and coordination stores.
+It records the interrupted SAWM-008 attempt as
+`interrupted_during_provider_dispatch_before_authoritative_provider_receipt`,
+with zero authoritative provider invocations, effects, commits, merges, or
+accepted completions. It then performs the control CAS
+`in_progress@3 -> blocked@4 -> retrying@5` and the matching coordination
+settlement/rearm at the fixed admitted time `2026-08-30T07:45:00Z`.
+
+M24's fresh target and unchanged four-lane contract are:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m24/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m24/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m24
+Quack port    24067
+generation    24
+plan revision 25
+event cursor  249
+coord events  1407
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+provider cap  at least 4
+```
+
+Key presence on any scheduler, migration-inventory, or dependency-seal
+surface selects M24 before M23. Partial or malformed declaration fails closed.
+The materializer publishes its receipt last and never rewrites M23 history.
+
+## 33. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

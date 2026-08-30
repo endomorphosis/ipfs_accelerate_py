@@ -3197,6 +3197,203 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m24_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M24 on any declaration surface, including partial state."""
+
+    key = "multi_lane_sidecar_reopen_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m24_sidecar_reopen_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M24's exact sidecar-reopen repair and four-lane successor."""
+
+    key = "multi_lane_sidecar_reopen_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m24_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M24 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m24_sidecar_reopen_authority()
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M24 sidecar-reopen successor authority is only partially declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M24 sidecar-reopen authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M24 sidecar-reopen authority CID is not exact")
+
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m24"
+        )
+        target_store = f"{target_root}/control.duckdb"
+        required = {
+            "schema": (
+                "sawm/multi-lane-sidecar-reopen-successor-"
+                "materialization-authorization@1"
+            ),
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M24",
+            "migration_kind": key,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m23/control.duckdb"
+            ),
+            "target_store_id": target_store,
+            "target_coordination_store_id": (
+                f"{target_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": target_root,
+            "target_generation": 24,
+            "target_quack_port": 24_067,
+            "target_plan_revision": 25,
+            "target_event_watermark": 249,
+            "target_coordination_event_count": 1_407,
+            "task_revision_changes": 2,
+            "task_status_changes": 2,
+            "coordination_semantic_changes": 2,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append("M24 sidecar-reopen successor authority is not exact")
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m24_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M24 exact control/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        lanes = scheduler.get("lanes")
+        provider = scheduler.get("provider", {})
+        lane_identity = (
+            [
+                (
+                    lane.get("index"),
+                    lane.get("name"),
+                    lane.get("strict_shard_remainder"),
+                    lane.get("initial_task_ids"),
+                )
+                for lane in lanes
+            ]
+            if type(lanes) is list
+            and all(type(lane) is dict for lane in lanes)
+            else None
+        )
+        provider_cap = (
+            provider.get("max_concurrency")
+            if isinstance(provider, Mapping)
+            else None
+        )
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "24",
+                "quack:127.0.0.1:24067",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_067,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M24 target/runtime binding is not exact")
+        if require_active_runtime and (
+            type(scheduler.get("max_lanes")) is not int
+            or scheduler.get("max_lanes") != 4
+            or scheduler.get("strict_task_sharding") is not True
+            or scheduler.get("idle_lane_work_stealing") != ""
+            or lane_identity
+            != [
+                (0, "sawm-lane-0", 0, ["SAWM-008"]),
+                (1, "sawm-lane-1", 1, ["SAWM-006", "SAWM-010"]),
+                (2, "sawm-lane-2", 2, ["SAWM-015"]),
+                (3, "sawm-lane-3", 3, ["SAWM-012"]),
+            ]
+            or any(
+                type(value) is not int
+                for lane in (lanes if type(lanes) is list else ())
+                if type(lane) is dict
+                for value in (
+                    lane.get("index"),
+                    lane.get("strict_shard_remainder"),
+                )
+            )
+            or type(provider_cap) is not int
+            or provider_cap < 4
+        ):
+            errors.append("scheduler M24 strict four-lane contract is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M24 sidecar-reopen successor authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m23_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3283,6 +3480,14 @@ def _m23_multi_lane_successor_errors(
 
         try:
             current_head = _git(root, "rev-parse", "HEAD")
+            if not require_active_runtime and _m24_successor_declared(
+                scheduler, seal, migration
+            ):
+                current_head = str(
+                    materializer._expected_m24_sidecar_reopen_authority()[
+                        "prior_source_head"
+                    ]
+                )
             materializer._assert_m23_source_delta(
                 root,
                 {
@@ -6932,6 +7137,54 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m24_key = "multi_lane_sidecar_reopen_successor_materialization"
+    m24_presence = (
+        m24_key in scheduler,
+        m24_key in migration,
+        f"{m24_key}_cid" in seal,
+    )
+    if any(m24_presence):
+        if not all(m24_presence):
+            return effective, ["active M24 nested-source authority is partial"]
+        scheduled = scheduler.get(m24_key)
+        migrated = migration.get(m24_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M24 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m24_key}_cid") != claimed_cid:
+            return effective, ["active M24 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("prior_datasets_gitlink") or ""),
+                str(scheduled.get("prior_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("prior_kit_gitlink") or ""),
+                str(scheduled.get("prior_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M24 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m23_key = "multi_lane_successor_materialization"
     m23_presence = (
         m23_key in scheduler,
@@ -7056,6 +7309,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m24_key = "multi_lane_sidecar_reopen_successor_materialization"
+        m24_presence = (
+            m24_key in scheduler_probe,
+            m24_key in migration_probe,
+            f"{m24_key}_cid" in seal,
+        )
         m23_key = "multi_lane_successor_materialization"
         m23_presence = (
             m23_key in scheduler_probe,
@@ -7088,7 +7347,46 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m23_presence):
+        if any(m24_presence):
+            scheduled = scheduler_probe.get(m24_key)
+            migrated = migration_probe.get(m24_key)
+            if (
+                not all(m24_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m24_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M24 authority is partial or differs across source controls"
+                ]
+            else:
+                expected_paths = set(
+                    str(path)
+                    for path in scheduled.get("operator_control_paths", ())
+                )
+                expected = {path: "M" for path in expected_paths}
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(scheduled.get("repair_source_commit")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = (
+                    []
+                    if observed == expected and working.issubset(expected_paths)
+                    else ["M24 status-qualified bounded source delta differs"]
+                )
+        elif any(m23_presence):
             scheduled = scheduler_probe.get(m23_key)
             migrated = migration_probe.get(m23_key)
             if (
@@ -7620,7 +7918,88 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if _m23_successor_declared(scheduler, seal, migration):
+        if _m24_successor_declared(scheduler, seal, migration):
+            protocol_errors.extend(
+                _m24_sidecar_reopen_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m23_multi_lane_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m22_live_preflight_receipt_compatibility_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m21_generation_realization_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m20_test_isolation_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif _m23_successor_declared(scheduler, seal, migration):
             protocol_errors.extend(
                 _m23_multi_lane_successor_errors(
                     scheduler, seal, migration, root=root
@@ -7971,6 +8350,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "multi_lane_sidecar_reopen_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M24 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "multi_lane_successor_materialization",
