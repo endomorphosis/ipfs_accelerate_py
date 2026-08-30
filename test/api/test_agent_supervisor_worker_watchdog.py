@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon,
+    implementation_supervisor,
     supervisor,
     supervisor_runtime,
 )
@@ -227,6 +228,43 @@ def _readdress_receipt(status: dict[str, Any]) -> None:
     receipt["receipt_id"] = content_identity(body)
 
 
+def _ordinary_fence_status(tmp_path: Path, *, pid: int = 4242) -> dict[str, Any]:
+    """Return one exact synthetic ordinary birth for fail-closed tests."""
+
+    workspace = str((tmp_path / "ordinary-fence-worktree").resolve())
+    status: dict[str, Any] = {
+        "active_task_id": "PCTDD-ORDINARY-FENCE",
+        "active_attempt": 3,
+        "active_task_cid": "baguqeera" + "f" * 48,
+        "active_worktree_path": workspace,
+        "active_phase": "implementing",
+        "implementation_in_progress": True,
+    }
+    receipt_body = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "ordinary-provider-runner-birth@1"
+        ),
+        "task_id": status["active_task_id"],
+        "attempt": status["active_attempt"],
+        "task_revision_cid": status["active_task_cid"],
+        "workspace_path": workspace,
+        "owner_pid": 3131,
+        "owner_start_ticks": 7171,
+        "pid": pid,
+        "start_time_ticks": 8181,
+        "boot_id": "11111111-2222-3333-4444-555555555555",
+        "process_group_id": pid,
+        "session_id": pid,
+        "argv_sha256": "sha256:" + "a" * 64,
+    }
+    status["active_provider_runner"] = {
+        **receipt_body,
+        "receipt_id": content_identity(receipt_body),
+    }
+    return status
+
+
 def _fake_control_plane(command: list[str]) -> SimpleNamespace:
     route_index = command.index("--agent-implementation-route-json")
     binding = json.loads(command[route_index + 1])
@@ -275,6 +313,65 @@ def _birth_callback_case(
         state,
         task=SimpleNamespace(task_id=status["active_task_id"]),
         attempt=status["active_attempt"],
+        command=command,
+        workspace_path=workspace,
+    )
+    assert callback is not None
+    return daemon, state, command, workspace, callback
+
+
+def _ordinary_birth_callback_case(
+    tmp_path: Path,
+) -> tuple[
+    PortalImplementationDaemon,
+    PortalTaskState,
+    list[str],
+    Path,
+    Any,
+]:
+    workspace = tmp_path / "ordinary-task-worktree"
+    workspace.mkdir(exist_ok=True)
+    runner = tmp_path / "grok_cli_runner.py"
+    runner.write_text(
+        "import os,sys,time\n"
+        "marker=os.environ.get('WATCHDOG_TEST_MARKER','')\n"
+        "if marker:\n"
+        " open(marker,'w',encoding='utf-8').write(sys.stdin.read())\n"
+        "else:\n"
+        " time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    task_id = "PCTDD-ORDINARY-001"
+    attempt = 2
+    revision = "baguqeera" + "e" * 48
+    state = PortalTaskState(
+        active_task_id=task_id,
+        active_attempt=attempt,
+        active_task_cid=revision,
+        active_phase="implementing",
+        active_phase_started_at=(
+            datetime.now(UTC) - timedelta(minutes=10)
+        ).isoformat(),
+        active_phase_detail="provider_launch_birth",
+        active_worktree_path=str(workspace.resolve()),
+        implementation_in_progress=True,
+    )
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.state_path = tmp_path / "ordinary-state.json"
+    daemon._scoped_control_plane_launch = None
+    daemon._canonical_ref = lambda _task: revision
+    command = [
+        sys.executable,
+        str(runner),
+        "--workspace",
+        str(workspace.resolve()),
+        "--agent-implementation-route-json",
+        '{"private_locator":"must-not-be-persisted"}',
+    ]
+    callback = daemon._provider_runner_started_callback(
+        state,
+        task=SimpleNamespace(task_id=task_id),
+        attempt=attempt,
         command=command,
         workspace_path=workspace,
     )
@@ -1164,27 +1261,612 @@ def test_scoped_fresh_callback_rejects_locator_drift(
         )
 
 
-def test_unsealed_route_json_keeps_existing_launch_behavior() -> None:
-    daemon = object.__new__(PortalImplementationDaemon)
-    daemon._scoped_control_plane_launch = SimpleNamespace(
-        executable_path="/proc/self/fd/99"
+def test_unsealed_route_json_requires_ordinary_birth_receipt(tmp_path) -> None:
+    daemon, state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
     )
 
-    callback = daemon._provider_runner_started_callback(
-        SimpleNamespace(),
-        task=SimpleNamespace(task_id="TASK-1"),
-        attempt=1,
-        command=[
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
-            "--agent-implementation-route-json",
-            "{}",
-        ],
-        workspace_path=SimpleNamespace(),
+    assert callback is not None
+    assert state.active_provider_runner == {}
+    assert command[-2] == "--agent-implementation-route-json"
+    assert workspace.is_dir()
+    assert not daemon.state_path.exists()
+
+
+def test_ordinary_birth_persists_before_input_and_drives_watchdog(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    marker = tmp_path / "ordinary-prompt-delivered"
+    observed: dict[str, Any] = {}
+
+    def assert_birth_before_input(process) -> None:
+        callback(process)
+        assert not marker.exists()
+        durable = PortalTaskState.load(daemon.state_path)
+        receipt = dict(durable.active_provider_runner)
+        item = {
+            "pid": process.pid,
+            "cmdline": " ".join(command),
+            "argv": tuple(command),
+            "start_ticks": supervisor._process_start_ticks(process.pid),
+        }
+        monkeypatch.setattr(
+            supervisor,
+            "descendant_processes",
+            lambda _pid: [item],
+        )
+        worker = supervisor.worktree_phase_worker_status(
+            vars(durable),
+            daemon_pid=os.getpid(),
+            threshold_seconds=60,
+        )
+        assert worker["active_worker_pids"] == [process.pid]
+        assert worker["stalled_without_active_worker"] is False
+        observed["receipt"] = receipt
+
+    completed = run_process_group_stream(
+        command,
+        cwd=workspace,
+        stdout=None,
+        env={"WATCHDOG_TEST_MARKER": str(marker)},
+        input_text="ordinary provider input",
+        timeout_seconds=10,
+        on_started=assert_birth_before_input,
     )
 
-    assert callback is None
+    assert completed.returncode == 0
+    assert marker.read_text(encoding="utf-8") == "ordinary provider input"
+    receipt = observed["receipt"]
+    assert receipt["schema"].endswith("ordinary-provider-runner-birth@1")
+    assert receipt["pid"] > 1
+    assert receipt["start_time_ticks"] > 0
+    assert receipt["process_group_id"] == receipt["pid"]
+    assert receipt["session_id"] == receipt["pid"]
+    assert isinstance(receipt["boot_id"], str)
+    assert receipt["argv_sha256"].startswith("sha256:")
+    serialized = json.dumps(receipt, sort_keys=True)
+    assert "private_locator" not in serialized
+    assert "must-not-be-persisted" not in serialized
+
+
+def test_ordinary_birth_requires_boot_identity_before_persistence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    real_read_birth = implementation_daemon.read_process_birth
+
+    def without_boot(pid: int):
+        birth = real_read_birth(pid)
+        if birth is None:
+            return None
+        return SimpleNamespace(
+            pid=birth.pid,
+            start_time_ticks=birth.start_time_ticks,
+            parent_pid=birth.parent_pid,
+            boot_id="",
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon,
+        "read_process_birth",
+        without_boot,
+    )
+    process = supervisor_runtime.launch_process_child(
+        command,
+        cwd=workspace,
+        stdin=supervisor_runtime.subprocess.PIPE,
+        stdout=supervisor_runtime.subprocess.DEVNULL,
+        stderr=supervisor_runtime.subprocess.DEVNULL,
+        start_new_session=True,
+        text=True,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="birth identity"):
+            callback(process)
+    finally:
+        supervisor_runtime.terminate_pid_tree(
+            process.pid,
+            grace_seconds=1.0,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=process.pid,
+            strict_timeout_seconds=1.0,
+        )
+        process.wait(timeout=2)
+
+    assert not daemon.state_path.exists()
+
+
+def test_ordinary_birth_recheck_failure_withholds_input_after_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    marker = tmp_path / "ordinary-input-withheld"
+    saved = False
+    real_save = PortalTaskState.save
+    real_read_birth = implementation_daemon.read_process_birth
+
+    def save_then_drift(instance: PortalTaskState, path: Path) -> None:
+        nonlocal saved
+        real_save(instance, path)
+        if instance is state:
+            saved = True
+
+    def fail_after_save(pid: int):
+        if saved:
+            raise OSError("post-save procfs unavailable")
+        return real_read_birth(pid)
+
+    monkeypatch.setattr(PortalTaskState, "save", save_then_drift)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "read_process_birth",
+        fail_after_save,
+    )
+
+    with pytest.raises(RuntimeError, match="drifted after persistence"):
+        run_process_group_stream(
+            command,
+            cwd=workspace,
+            stdout=None,
+            env={"WATCHDOG_TEST_MARKER": str(marker)},
+            input_text="must not cross persistence recheck",
+            timeout_seconds=10,
+            on_started=callback,
+        )
+
+    assert saved is True
+    durable = PortalTaskState.load(daemon.state_path)
+    assert durable.active_provider_runner
+    if marker.exists():
+        assert marker.read_bytes() == b""
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("pid", "start_time_ticks", "boot_id", "process_group_id", "session_id", "argv_sha256"),
+)
+def test_watchdog_rejects_drifted_ordinary_birth_receipt(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, _state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    process = supervisor_runtime.launch_process_child(
+        command,
+        cwd=workspace,
+        stdin=supervisor_runtime.subprocess.PIPE,
+        stdout=supervisor_runtime.subprocess.DEVNULL,
+        stderr=supervisor_runtime.subprocess.DEVNULL,
+        start_new_session=True,
+        text=True,
+    )
+    try:
+        callback(process)
+        durable = PortalTaskState.load(daemon.state_path)
+        receipt = durable.active_provider_runner
+        if mutation in {
+            "pid",
+            "start_time_ticks",
+            "process_group_id",
+            "session_id",
+        }:
+            receipt[mutation] += 1
+        elif mutation == "boot_id":
+            receipt[mutation] = "different-boot"
+        else:
+            receipt[mutation] = "sha256:" + "0" * 64
+        body = {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_id"
+        }
+        receipt["receipt_id"] = content_identity(body)
+        item = {
+            "pid": process.pid,
+            "cmdline": " ".join(command),
+            "argv": tuple(command),
+            "start_ticks": supervisor._process_start_ticks(process.pid),
+        }
+        monkeypatch.setattr(
+            supervisor,
+            "descendant_processes",
+            lambda _pid: [item],
+        )
+
+        worker = supervisor.worktree_phase_worker_status(
+            vars(durable),
+            daemon_pid=os.getpid(),
+            threshold_seconds=1,
+            now=datetime.now(UTC) + timedelta(seconds=2),
+        )
+
+        assert worker["active_worker_count"] == 0
+        assert worker["stalled_without_active_worker"] is True
+    finally:
+        supervisor_runtime.terminate_pid_tree(
+            process.pid,
+            grace_seconds=1.0,
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=process.pid,
+        )
+        process.wait(timeout=2)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "unknown_schema",
+        "extra_field",
+        "boolean_pid",
+        "empty_boot_id",
+        "wrong_task",
+        "wrong_attempt",
+        "wrong_revision",
+        "wrong_workspace",
+    ),
+)
+def test_ordinary_fence_rejects_malformed_or_wrong_active_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    receipt = status["active_provider_runner"]
+    if mutation == "unknown_schema":
+        receipt["schema"] = "unknown-provider-runner-birth@99"
+        # Phase is diagnostic and cannot make an unknown active receipt safe.
+        status["active_phase"] = ""
+    elif mutation == "extra_field":
+        receipt["unexpected"] = "field"
+    elif mutation == "boolean_pid":
+        receipt["pid"] = True
+    elif mutation == "empty_boot_id":
+        receipt["boot_id"] = ""
+    elif mutation == "wrong_task":
+        receipt["task_id"] = "PCTDD-OTHER"
+    elif mutation == "wrong_attempt":
+        receipt["attempt"] = True
+    elif mutation == "wrong_revision":
+        receipt["task_revision_cid"] = "wrong"
+    else:
+        receipt["workspace_path"] = str(tmp_path / "wrong")
+    if mutation != "unknown_schema":
+        _readdress_receipt(status)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_provider_runner_observation",
+        lambda _pid: pytest.fail("malformed receipt inspected a process"),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("malformed receipt signalled"),
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["applicable"] is True
+    assert result["safe_to_restart"] is False
+    assert result["fenced"] is False
+
+
+@pytest.mark.parametrize(
+    ("drift", "safe"),
+    (
+        ("boot", True),
+        ("start", True),
+        ("process_group", False),
+        ("session", False),
+        ("argv", False),
+    ),
+)
+def test_ordinary_fence_never_signals_a_drifted_numeric_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drift: str,
+    safe: bool,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    receipt = status["active_provider_runner"]
+    boot = receipt["boot_id"]
+    birth = (
+        receipt["owner_pid"],
+        receipt["process_group_id"],
+        receipt["session_id"],
+        receipt["start_time_ticks"],
+    )
+    argv_digest = receipt["argv_sha256"]
+    if drift == "boot":
+        boot = "99999999-8888-7777-6666-555555555555"
+    elif drift == "start":
+        birth = (*birth[:3], birth[3] + 1)
+    elif drift == "process_group":
+        birth = (birth[0], birth[1] + 1, birth[2], birth[3])
+    elif drift == "session":
+        birth = (birth[0], birth[1], birth[2] + 1, birth[3])
+    else:
+        argv_digest = "sha256:" + "b" * 64
+    observation = (boot, birth, argv_digest)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_provider_runner_observation",
+        lambda _pid: observation,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("drifted PID was signalled"),
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is safe
+    assert result["fenced"] is False
+
+
+@pytest.mark.parametrize("failure", ("boot_unavailable", "proc_unreadable"))
+def test_ordinary_fence_inspection_failure_is_typed_unsafe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    if failure == "boot_unavailable":
+        monkeypatch.setattr(
+            supervisor,
+            "_system_boot_id",
+            lambda: (_ for _ in ()).throw(OSError("boot unavailable")),
+        )
+    else:
+        monkeypatch.setattr(
+            supervisor,
+            "_process_birth_factors",
+            lambda _pid: (_ for _ in ()).throw(OSError("proc unreadable")),
+        )
+    monkeypatch.setattr(
+        supervisor,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("unknown birth was signalled"),
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is False
+    assert result["reason"] == "ordinary_provider_runner_liveness_unknown"
+
+
+def test_ordinary_fence_requires_two_exact_observations_and_is_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    receipt = status["active_provider_runner"]
+    exact = (
+        receipt["boot_id"],
+        (
+            1,
+            receipt["process_group_id"],
+            receipt["session_id"],
+            receipt["start_time_ticks"],
+        ),
+        receipt["argv_sha256"],
+    )
+    observations = iter((exact, exact, (receipt["boot_id"], None, None)))
+    observation_count = 0
+    fence_calls: list[dict[str, Any]] = []
+
+    def observe(_pid: int):
+        nonlocal observation_count
+        observation_count += 1
+        return next(observations)
+
+    def bounded_fence(pid: int, **kwargs: Any) -> bool:
+        assert observation_count == 2
+        fence_calls.append({"pid": pid, **kwargs})
+        return False
+
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_provider_runner_observation",
+        observe,
+    )
+    monkeypatch.setattr(supervisor, "terminate_pid_tree", bounded_fence)
+
+    result = supervisor.fence_ordinary_provider_runner(
+        status,
+        grace_seconds=0.5,
+    )
+
+    assert result["safe_to_restart"] is False
+    assert result["reason"] == "ordinary_provider_runner_exact_birth_fence_failed"
+    assert fence_calls[0]["pid"] == receipt["pid"]
+    assert fence_calls[0]["owned_process_group_id"] == receipt["pid"]
+    assert fence_calls[0]["expected_root_start_time_ticks"] == receipt[
+        "start_time_ticks"
+    ]
+    assert fence_calls[0]["strict_timeout_seconds"] == 0.5
+
+
+def test_ordinary_fence_carries_group_authority_after_leader_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    receipt = status["active_provider_runner"]
+    observations = iter(
+        (
+            (receipt["boot_id"], None, None),
+            (receipt["boot_id"], None, None),
+            (receipt["boot_id"], None, None),
+        )
+    )
+    fence_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_provider_runner_observation",
+        lambda _pid: next(observations),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "terminate_pid_tree",
+        lambda pid, **kwargs: fence_calls.append({"pid": pid, **kwargs})
+        or True,
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is True
+    assert result["fenced"] is True
+    assert fence_calls[0]["owned_process_group_id"] == receipt["pid"]
+
+
+def test_restart_reconciliation_fences_exact_ordinary_orphan(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    process = supervisor_runtime.launch_process_child(
+        command,
+        cwd=workspace,
+        stdin=supervisor_runtime.subprocess.PIPE,
+        stdout=supervisor_runtime.subprocess.DEVNULL,
+        stderr=supervisor_runtime.subprocess.DEVNULL,
+        start_new_session=True,
+        text=True,
+    )
+    callback(process)
+    state = PortalTaskState.load(daemon.state_path)
+    config = PortalSupervisorConfig(
+        todo_path=tmp_path / "todo.md",
+        state_path=daemon.state_path,
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        state_dir=tmp_path / "supervisor-state",
+    )
+    outer = PortalImplementationSupervisor(config)
+    monkeypatch.setattr(outer, "_read_managed_daemon_pid", lambda: None)
+    monkeypatch.setattr(outer, "_list_process_commands", list)
+    monkeypatch.setattr(outer, "_git_status_short", lambda _path: [])
+    try:
+        repaired = outer.repair_stale_active_execution_state()
+    finally:
+        if process.poll() is None:
+            supervisor_runtime.terminate_pid_tree(
+                process.pid,
+                grace_seconds=1.0,
+                freeze_first=True,
+                require_gone=True,
+                owned_process_group_id=process.pid,
+            )
+        process.wait(timeout=2)
+
+    assert repaired["repaired"] is True
+    assert repaired["provider_runner_fence"]["fenced"] is True
+    assert repaired["provider_runner_fence"]["safe_to_restart"] is True
+    assert not os.path.exists(f"/proc/{process.pid}")
+    durable = PortalTaskState.load(daemon.state_path)
+    assert durable.implementation_in_progress is False
+    assert durable.active_provider_runner == {}
+
+
+def test_signal_shutdown_fences_exact_ordinary_orphan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _state, command, workspace, callback = (
+        _ordinary_birth_callback_case(tmp_path)
+    )
+    process = supervisor_runtime.launch_process_child(
+        command,
+        cwd=workspace,
+        stdin=supervisor_runtime.subprocess.PIPE,
+        stdout=supervisor_runtime.subprocess.DEVNULL,
+        stderr=supervisor_runtime.subprocess.DEVNULL,
+        start_new_session=True,
+        text=True,
+    )
+    callback(process)
+    outer = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=daemon.state_path,
+            strategy_path=tmp_path / "strategy.json",
+            events_path=tmp_path / "events.jsonl",
+            state_dir=tmp_path / "supervisor-state",
+        )
+    )
+    monkeypatch.setattr(outer, "_find_matching_managed_daemon_pid", lambda: None)
+    try:
+        result = outer._terminate_managed_daemon_tree(grace_seconds=1.0)
+    finally:
+        if process.poll() is None:
+            supervisor_runtime.terminate_pid_tree(
+                process.pid,
+                grace_seconds=1.0,
+                freeze_first=True,
+                require_gone=True,
+                owned_process_group_id=process.pid,
+                strict_timeout_seconds=1.0,
+            )
+        process.wait(timeout=2)
+
+    assert result["terminated"] is False
+    assert result["daemon_fence"]["safe_to_restart"] is True
+    assert result["provider_runner_fence"]["fenced"] is True
+    assert result["quiesced"] is True
+
+
+def test_signal_shutdown_unknown_active_receipt_never_claims_quiescence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    status["active_provider_runner"]["schema"] = "unknown-birth@99"
+    state_path = tmp_path / "state.json"
+    state = PortalTaskState(
+        **{
+            key: value
+            for key, value in status.items()
+            if key in PortalTaskState.__dataclass_fields__
+        }
+    )
+    state.save(state_path)
+    outer = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=state_path,
+            strategy_path=tmp_path / "strategy.json",
+            events_path=tmp_path / "events.jsonl",
+            state_dir=tmp_path / "supervisor-state",
+        )
+    )
+    monkeypatch.setattr(outer, "_find_matching_managed_daemon_pid", lambda: None)
+    monkeypatch.setattr(
+        implementation_supervisor,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("unknown receipt signalled"),
+    )
+
+    result = outer._terminate_managed_daemon_tree()
+
+    assert result["provider_runner_fence"]["safe_to_restart"] is False
+    assert result["quiesced"] is False
 
 
 def test_state_loader_rejects_boolean_active_attempt(tmp_path) -> None:

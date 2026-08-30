@@ -24,6 +24,7 @@ from .core import (
     pid_alive,
     process_args,
     read_json,
+    terminate_pid_tree,
     write_json,
 )
 
@@ -110,6 +111,28 @@ _PROVIDER_RUNNER_RECEIPT_FIELDS = frozenset(
         "descriptor_size",
         "descriptor_seals",
         "archive_sha256",
+        "receipt_id",
+    }
+)
+_ORDINARY_PROVIDER_RUNNER_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "ordinary-provider-runner-birth@1"
+)
+_ORDINARY_PROVIDER_RUNNER_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "task_id",
+        "attempt",
+        "task_revision_cid",
+        "workspace_path",
+        "owner_pid",
+        "owner_start_ticks",
+        "pid",
+        "start_time_ticks",
+        "boot_id",
+        "process_group_id",
+        "session_id",
+        "argv_sha256",
         "receipt_id",
     }
 )
@@ -314,6 +337,103 @@ def _process_start_ticks(pid: Any) -> int | None:
     return start_ticks if start_ticks > 0 else None
 
 
+def _process_birth_factors(
+    pid: Any,
+) -> tuple[int, int, int, int] | None:
+    """Read parent, process-group, session, and start ticks atomically.
+
+    ``None`` is positive evidence that the process no longer executes.  An
+    unreadable or malformed record raises ``OSError`` so recovery never turns
+    inspection failure into authority to signal a numeric PID.
+    """
+
+    if isinstance(pid, bool):
+        raise OSError("boolean process id is invalid")
+    try:
+        process_id = int(pid)
+    except (TypeError, ValueError) as exc:
+        raise OSError("process id is invalid") from exc
+    if process_id <= 0:
+        raise OSError("process id is invalid")
+    process_root = Path("/proc") / str(process_id)
+    try:
+        raw = (process_root / "stat").read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        try:
+            process_root.stat()
+        except FileNotFoundError:
+            return None
+        except OSError:
+            raise
+        raise OSError("process stat is unavailable") from exc
+    except (OSError, UnicodeError):
+        raise
+    try:
+        fields = raw[raw.rindex(")") + 1 :].strip().split()
+        state = fields[0]
+        parent_pid = int(fields[1])
+        process_group = int(fields[2])
+        session = int(fields[3])
+        start_ticks = int(fields[19])
+    except (IndexError, ValueError) as exc:
+        raise OSError("process birth record is malformed") from exc
+    if state == "Z":
+        return None
+    if (
+        parent_pid < 0
+        or process_group <= 0
+        or session <= 0
+        or start_ticks <= 0
+    ):
+        raise OSError("process birth record is malformed")
+    return parent_pid, process_group, session, start_ticks
+
+
+def _system_boot_id() -> str:
+    """Return the current boot identity or raise when it is unknowable."""
+
+    try:
+        value = (
+            Path("/proc/sys/kernel/random/boot_id")
+            .read_text(encoding="ascii")
+            .strip()
+        )
+    except UnicodeError as exc:
+        raise OSError("system boot identity is malformed") from exc
+    if (
+        not value
+        or len(value) > 128
+        or any(character in value for character in "\0\n\r")
+    ):
+        raise OSError("system boot identity is unavailable")
+    return value
+
+
+def _ordinary_provider_runner_observation(
+    pid: int,
+) -> tuple[str, tuple[int, int, int, int] | None, str | None]:
+    """Observe one ordinary child without collapsing inspection failure.
+
+    The boot identity brackets the procfs reads.  A missing process is a
+    positive observation; a live process whose argv cannot be read is not.
+    """
+
+    boot_before = _system_boot_id()
+    birth = _process_birth_factors(pid)
+    argv_digest: str | None = None
+    if birth is not None:
+        argv = _process_command_argv(pid)
+        if argv is None:
+            raise OSError("ordinary provider runner argv is unavailable")
+        argv_digest = _argv_sha256(argv)
+        if not argv_digest:
+            raise OSError("ordinary provider runner argv is malformed")
+    boot_after = _system_boot_id()
+    if boot_after != boot_before:
+        raise OSError("system boot identity drifted during inspection")
+    return boot_before, birth, argv_digest
+
+
 def _single_argv_value(argv: Sequence[str], flag: str) -> str | None:
     positions = [index for index, item in enumerate(argv) if item == flag]
     if len(positions) != 1 or positions[0] + 1 >= len(argv):
@@ -456,6 +576,8 @@ def _provider_runner_receipt_matches(
         attempt=attempt,
         task_revision_cid=revision,
     )
+
+
     numeric_fields = {
         name: _positive_int(
             receipt.get(name),
@@ -593,6 +715,265 @@ def _provider_runner_receipt_matches(
     )
 
 
+def _validated_ordinary_provider_runner_receipt(
+    status: Mapping[str, Any],
+) -> tuple[Mapping[str, Any] | None, str]:
+    """Validate one self-addressed, task-bound ordinary birth receipt."""
+
+    receipt = status.get("active_provider_runner")
+    if not isinstance(receipt, Mapping) or not receipt:
+        return None, "ordinary_provider_runner_receipt_absent"
+    if receipt.get("schema") != _ORDINARY_PROVIDER_RUNNER_RECEIPT_SCHEMA:
+        return None, "ordinary_provider_runner_receipt_not_applicable"
+    active = _active_implementation_identity(status)
+    if (
+        active is None
+        or set(receipt) != _ORDINARY_PROVIDER_RUNNER_RECEIPT_FIELDS
+    ):
+        return None, "ordinary_provider_runner_receipt_shape_invalid"
+    task_id, attempt, revision, workspace = active
+    numeric = {
+        name: _positive_int(receipt.get(name))
+        for name in (
+            "owner_pid",
+            "owner_start_ticks",
+            "pid",
+            "start_time_ticks",
+            "process_group_id",
+            "session_id",
+        )
+    }
+    boot_id = receipt.get("boot_id")
+    if (
+        any(value is None for value in numeric.values())
+        or numeric["pid"] <= 1
+        or numeric["process_group_id"] != numeric["pid"]
+        or numeric["session_id"] != numeric["pid"]
+        or not isinstance(boot_id, str)
+        or not boot_id
+        or len(boot_id) > 128
+        or any(character in boot_id for character in "\0\n\r")
+        or receipt.get("task_id") != task_id
+        or isinstance(receipt.get("attempt"), bool)
+        or not isinstance(receipt.get("attempt"), int)
+        or receipt.get("attempt") != attempt
+        or receipt.get("task_revision_cid") != revision
+        or receipt.get("workspace_path") != workspace
+        or _SHA256_ID_RE.fullmatch(
+            str(receipt.get("argv_sha256") or "")
+        )
+        is None
+        or receipt.get("receipt_id")
+        != content_identity(
+            {
+                key: receipt[key]
+                for key in _ORDINARY_PROVIDER_RUNNER_RECEIPT_FIELDS
+                if key != "receipt_id"
+            }
+        )
+    ):
+        return None, "ordinary_provider_runner_receipt_binding_invalid"
+    return receipt, "ordinary_provider_runner_receipt_valid"
+
+
+def _ordinary_provider_runner_receipt_matches(
+    item: Mapping[str, Any],
+    status: Mapping[str, Any],
+    *,
+    daemon_pid: int,
+    argv: Sequence[str],
+) -> bool:
+    """Match an ordinary worker using exact persisted birth evidence."""
+
+    receipt, reason = _validated_ordinary_provider_runner_receipt(status)
+    if receipt is None or reason != "ordinary_provider_runner_receipt_valid":
+        return False
+    pid = item.get("pid")
+    if (
+        isinstance(pid, bool)
+        or not isinstance(pid, int)
+        or pid <= 1
+        or receipt.get("pid") != pid
+        or item.get("start_ticks") != receipt.get("start_time_ticks")
+        or receipt.get("owner_pid") != daemon_pid
+        or receipt.get("owner_start_ticks")
+        != _process_start_ticks(daemon_pid)
+        or receipt.get("argv_sha256") != _argv_sha256(argv)
+    ):
+        return False
+    try:
+        before = _ordinary_provider_runner_observation(pid)
+        after = _ordinary_provider_runner_observation(pid)
+    except OSError:
+        return False
+    expected = (
+        str(receipt["boot_id"]),
+        (
+            daemon_pid,
+            int(receipt["process_group_id"]),
+            int(receipt["session_id"]),
+            int(receipt["start_time_ticks"]),
+        ),
+        str(receipt["argv_sha256"]),
+    )
+    return bool(before == expected and after == expected)
+
+
+def fence_ordinary_provider_runner(
+    status: Mapping[str, Any],
+    *,
+    grace_seconds: float = 1.0,
+) -> JsonDict:
+    """Fence one exact ordinary provider birth without scanning by argv.
+
+    An absent or sealed receipt is outside this helper's authority.  A
+    malformed ordinary receipt or an inspection failure is an explicit unsafe
+    result; callers must not clear the attempt or restart work past it.
+    """
+
+    raw_receipt = status.get("active_provider_runner")
+    if not raw_receipt:
+        return {
+            "applicable": False,
+            "safe_to_restart": True,
+            "fenced": False,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        }
+    if (
+        isinstance(raw_receipt, Mapping)
+        and raw_receipt.get("schema") == _PROVIDER_RUNNER_RECEIPT_SCHEMA
+    ):
+        return {
+            "applicable": False,
+            "safe_to_restart": True,
+            "fenced": False,
+            "reason": "sealed_provider_runner_receipt_not_applicable",
+        }
+    if (
+        not isinstance(raw_receipt, Mapping)
+        or raw_receipt.get("schema")
+        != _ORDINARY_PROVIDER_RUNNER_RECEIPT_SCHEMA
+    ):
+        active_attempt = bool(
+            status.get("implementation_in_progress") is True
+            or _active_implementation_identity(status) is not None
+        )
+        return {
+            "applicable": active_attempt,
+            "safe_to_restart": not active_attempt,
+            "fenced": False,
+            "reason": (
+                "active_provider_runner_receipt_schema_unknown"
+                if active_attempt
+                else "ordinary_provider_runner_receipt_not_applicable"
+            ),
+        }
+    receipt, reason = _validated_ordinary_provider_runner_receipt(status)
+    if receipt is None:
+        return {
+            "applicable": True,
+            "safe_to_restart": False,
+            "fenced": False,
+            "reason": reason,
+        }
+    pid = int(receipt["pid"])
+    try:
+        before = _ordinary_provider_runner_observation(pid)
+        rechecked = _ordinary_provider_runner_observation(pid)
+    except OSError:
+        return {
+            "applicable": True,
+            "safe_to_restart": False,
+            "fenced": False,
+            "pid": pid,
+            "reason": "ordinary_provider_runner_liveness_unknown",
+        }
+    if rechecked != before:
+        return {
+            "applicable": True,
+            "safe_to_restart": False,
+            "fenced": False,
+            "pid": pid,
+            "reason": "ordinary_provider_runner_recheck_drifted",
+        }
+    boot_id, birth, argv_digest = before
+    recorded_boot = str(receipt["boot_id"])
+    # A different start or boot proves that this numeric PID no longer names
+    # the recorded process.  Never signal the replacement.
+    if boot_id != recorded_boot:
+        return {
+            "applicable": True,
+            "safe_to_restart": True,
+            "fenced": False,
+            "pid": pid,
+            "pid_reused": True,
+            "reason": "ordinary_provider_runner_recorded_birth_dead",
+        }
+    parent_pid = 0
+    if birth is not None:
+        parent_pid, process_group, session, start_ticks = birth
+        if start_ticks != int(receipt["start_time_ticks"]):
+            return {
+                "applicable": True,
+                "safe_to_restart": True,
+                "fenced": False,
+                "pid": pid,
+                "pid_reused": True,
+                "reason": "ordinary_provider_runner_recorded_birth_dead",
+            }
+        if (
+            process_group != int(receipt["process_group_id"])
+            or session != int(receipt["session_id"])
+            or argv_digest != receipt["argv_sha256"]
+        ):
+            return {
+                "applicable": True,
+                "safe_to_restart": False,
+                "fenced": False,
+                "pid": pid,
+                "reason": "ordinary_provider_runner_exact_identity_mismatch",
+            }
+    fenced = terminate_pid_tree(
+        pid,
+        grace_seconds=max(0.0, float(grace_seconds)),
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=int(receipt["process_group_id"]),
+        expected_root_start_time_ticks=int(receipt["start_time_ticks"]),
+        strict_timeout_seconds=max(0.2, float(grace_seconds)),
+    )
+    try:
+        remaining_boot, remaining, _remaining_argv = (
+            _ordinary_provider_runner_observation(pid)
+        )
+    except OSError:
+        return {
+            "applicable": True,
+            "safe_to_restart": False,
+            "fenced": False,
+            "pid": pid,
+            "reason": "ordinary_provider_runner_post_fence_unknown",
+        }
+    exact_still_alive = bool(
+        remaining is not None
+        and remaining[3] == receipt.get("start_time_ticks")
+        and remaining_boot == recorded_boot
+    )
+    safe = bool(fenced and not exact_still_alive)
+    return {
+        "applicable": True,
+        "safe_to_restart": safe,
+        "fenced": safe,
+        "pid": pid,
+        "parent_pid_before_fence": parent_pid,
+        "reason": (
+            "ordinary_provider_runner_exact_birth_fenced"
+            if safe
+            else "ordinary_provider_runner_exact_birth_fence_failed"
+        ),
+    }
+
+
 def _sealed_agent_worker_process(
     item: Mapping[str, Any],
     status: Mapping[str, Any] | None,
@@ -643,6 +1024,47 @@ def _sealed_agent_worker_process(
     )
 
 
+def _recognized_agent_worker_process(
+    item: Mapping[str, Any],
+    status: Mapping[str, Any] | None,
+    *,
+    daemon_pid: int,
+) -> bool:
+    """Recognize a worker without letting argv bypass an active receipt."""
+
+    if _sealed_agent_worker_process(
+        item,
+        status,
+        daemon_pid=daemon_pid,
+    ):
+        return True
+    command_match = _is_agent_worker_command(
+        str(item.get("cmdline") or "")
+    )
+    if not command_match:
+        return False
+    if status is None or _active_implementation_identity(status) is None:
+        # Legacy diagnostics and non-task phases retain their historical
+        # recognition.  Once an exact implementation attempt is active, argv
+        # alone can no longer establish provider liveness.
+        return True
+    if str(status.get("active_phase") or "") != "implementing":
+        return True
+    argv = item.get("argv")
+    if (
+        not isinstance(argv, (tuple, list))
+        or not argv
+        or any(not isinstance(value, str) or not value for value in argv)
+    ):
+        return False
+    return _ordinary_provider_runner_receipt_matches(
+        item,
+        status,
+        daemon_pid=daemon_pid,
+        argv=argv,
+    )
+
+
 def active_codex_exec_workers(
     root_pid: Any,
     current_status: Mapping[str, Any] | None = None,
@@ -659,12 +1081,10 @@ def active_codex_exec_workers(
     if daemon_pid <= 1:
         return workers
     for item in descendant_processes(daemon_pid):
-        if _is_agent_worker_command(str(item.get("cmdline") or "")) or (
-            _sealed_agent_worker_process(
-                item,
-                current_status,
-                daemon_pid=daemon_pid,
-            )
+        if _recognized_agent_worker_process(
+            item,
+            current_status,
+            daemon_pid=daemon_pid,
         ):
             workers.append(item)
     return workers
@@ -775,8 +1195,7 @@ def worktree_phase_worker_status(
     workers = [
         item
         for item in descendants
-        if _is_agent_worker_command(str(item.get("cmdline") or ""))
-        or _sealed_agent_worker_process(
+        if _recognized_agent_worker_process(
             item,
             current,
             daemon_pid=daemon_pid_value,

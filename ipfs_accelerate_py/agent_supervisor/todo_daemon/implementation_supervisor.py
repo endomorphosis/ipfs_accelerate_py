@@ -142,6 +142,7 @@ from .implementation_daemon import (
 from .supervisor import (
     active_codex_exec_workers,
     descendant_processes,
+    fence_ordinary_provider_runner,
     worktree_phase_worker_status,
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
@@ -6590,6 +6591,7 @@ class PortalImplementationSupervisor:
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
+        self._worktree_worker_generation = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
         self._control_plane_update_detected_at = ""
@@ -8277,6 +8279,7 @@ class PortalImplementationSupervisor:
             result = loop.run()
             self.restart_count = result.restart_count
             self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
@@ -8767,6 +8770,22 @@ class PortalImplementationSupervisor:
                     "active_task_id": state.active_task_id,
                 }
 
+        provider_runner_fence = fence_ordinary_provider_runner(
+            vars(state),
+            grace_seconds=2.0,
+        )
+        if (
+            provider_runner_fence.get("applicable") is True
+            and provider_runner_fence.get("safe_to_restart") is not True
+        ):
+            return {
+                "repaired": False,
+                "reason": "active_provider_runner_fence_unproven",
+                "daemon_pid": daemon_pid or 0,
+                "active_task_id": state.active_task_id,
+                "provider_runner_fence": provider_runner_fence,
+            }
+
         process_lines = self._list_process_commands()
         active_worktree = state.active_worktree_path.strip()
         # Validation can leave an MCP compatibility adapter in a task worktree
@@ -8823,6 +8842,8 @@ class PortalImplementationSupervisor:
         state.active_worktree_path = ""
         state.active_branch = ""
         state.implementation_in_progress = False
+        if provider_runner_fence.get("applicable") is True:
+            state.active_provider_runner = {}
         state.heartbeat_at = repaired_at
         state.last_progress_at = repaired_at
         state.save(self.config.state_path)
@@ -8833,6 +8854,7 @@ class PortalImplementationSupervisor:
             "repaired_at": repaired_at,
             "attempt_recovery": recovered_attempt,
             "rescue_result": rescue_result,
+            "provider_runner_fence": provider_runner_fence,
             **active_fields,
         }
         self._record_event("stale_active_execution_state_repaired", result)
@@ -17176,6 +17198,17 @@ class PortalImplementationSupervisor:
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
+        if state.active_phase_detail == "provider_launch_birth":
+            launch_age = self._age_seconds(
+                state.active_phase_started_at,
+                now_ts,
+            )
+            launch_grace = max(
+                30.0,
+                float(self.config.implementation_log_stall_seconds),
+            )
+            if launch_age <= launch_grace:
+                return ""
         # Agent and validation subprocesses can remain quiet while making
         # progress. Their implementation timeout is the authoritative bound.
         if self._implementation_attempt_is_active(state, now_ts=now_ts) and (
@@ -17205,11 +17238,15 @@ class PortalImplementationSupervisor:
             f"{age_seconds:.0f}s without output in {log_path}"
         )
 
-    def _active_agent_worker_processes(self) -> list[dict[str, Any]]:
+    def _active_agent_worker_processes(
+        self,
+        state: PortalTaskState | None = None,
+    ) -> list[dict[str, Any]]:
         daemon_pid = self._read_managed_daemon_pid()
         if not daemon_pid:
             return []
-        return active_codex_exec_workers(daemon_pid)
+        current_state = state or PortalTaskState.load(self.config.state_path)
+        return active_codex_exec_workers(daemon_pid, vars(current_state))
 
     def _active_validation_subprocess_exists(self) -> bool:
         """Return whether a managed agent is currently running a bounded test command."""
@@ -17285,20 +17322,22 @@ class PortalImplementationSupervisor:
             return ""
         threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
         worker_status = worktree_phase_worker_status(
-            {
-                "active_phase": state.active_phase,
-                "active_phase_started_at": state.active_phase_started_at,
-            },
+            vars(state),
             self._read_managed_daemon_pid(),
             threshold,
             now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
         )
         phase = str(worker_status.get("phase") or "")
+        tracking_generation = str(
+            worker_status.get("tracking_generation") or phase
+        )
         if not worker_status.get("required"):
             self._worktree_worker_phase = ""
+            self._worktree_worker_generation = ""
             self._last_worktree_worker_seen_monotonic = None
-        elif phase != self._worktree_worker_phase:
+        elif tracking_generation != self._worktree_worker_generation:
             self._worktree_worker_phase = phase
+            self._worktree_worker_generation = tracking_generation
             self._last_worktree_worker_seen_monotonic = None
 
         now_monotonic = time.monotonic()
@@ -18168,6 +18207,35 @@ class PortalImplementationSupervisor:
                     "fenced": False,
                     "reason": "managed_daemon_ownership_liveness_unknown",
                 }
+            recorded_birth = identity.process_birth
+            if not recorded_birth.boot_id:
+                return {
+                    "fenced": False,
+                    "reason": "managed_daemon_ownership_liveness_unknown",
+                }
+
+            def exact_current_birth() -> ProcessBirthIdentity | None:
+                try:
+                    current = read_process_birth(int(pid))
+                except OSError:
+                    return None
+                if (
+                    current is None
+                    or not current.boot_id
+                    or current.pid != recorded_birth.pid
+                    or current.start_time_ticks
+                    != recorded_birth.start_time_ticks
+                    or current.boot_id != recorded_birth.boot_id
+                ):
+                    return None
+                return current
+
+            birth_before = exact_current_birth()
+            if birth_before is None:
+                return {
+                    "fenced": False,
+                    "reason": "managed_daemon_ownership_liveness_unknown",
+                }
             observed_argv = read_process_command_argv(pid)
             if observed_argv is None or observed_argv != identity.command:
                 return {
@@ -18176,7 +18244,8 @@ class PortalImplementationSupervisor:
                 }
             # Re-read birth identity immediately before entering the existing
             # freeze/rescan/kill fence. A reused numeric PID is never signalled.
-            if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
+            birth_after = exact_current_birth()
+            if birth_after is None or birth_after != birth_before:
                 return {
                     "fenced": False,
                     "reason": "managed_daemon_process_birth_changed",
@@ -18189,6 +18258,10 @@ class PortalImplementationSupervisor:
                 owned_process_group_id=int(pid),
                 expected_root_start_time_ticks=(
                     identity.process_birth.start_time_ticks
+                ),
+                strict_timeout_seconds=max(
+                    0.2,
+                    float(grace_seconds),
                 ),
             )
             gone = (
@@ -18457,38 +18530,74 @@ class PortalImplementationSupervisor:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
 
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
-        """Stop the daemon this supervisor owns, including late-spawned workers."""
+        """Fence exact recorded daemon/provider births without argv killing."""
 
+        active_state = PortalTaskState.load(self.config.state_path)
         pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
         pid = self._read_managed_daemon_pid()
-        if pid is not None:
-            command_line = process_command_line(pid) if process_is_running(pid) else ""
-            if not self._managed_daemon_matches_command_line(command_line):
-                pid = None
         if pid is None:
-            pid = self._find_matching_managed_daemon_pid()
+            identity = load_supervised_child_identity(identity_path)
+            if identity is not None:
+                pid = int(identity.process_birth.pid)
 
-        terminated = bool(
-            pid is not None
-            and terminate_pid_tree(
-                pid,
-                grace_seconds=max(0.0, float(grace_seconds)),
-                freeze_first=True,
-                require_gone=True,
+        if pid is None:
+            marker_present = bool(
+                pid_path.exists()
+                or pid_path.is_symlink()
+                or identity_path.exists()
+                or identity_path.is_symlink()
             )
-        )
+            daemon_fence = {
+                "fenced": False,
+                "safe_to_restart": not marker_present,
+                "reason": (
+                    "managed_daemon_not_recorded"
+                    if not marker_present
+                    else "managed_daemon_identity_malformed"
+                ),
+            }
+        else:
+            daemon_fence = self._fence_recorded_managed_daemon(
+                pid=pid,
+                grace_seconds=max(0.0, float(grace_seconds)),
+            )
+            daemon_fence["safe_to_restart"] = bool(
+                daemon_fence.get("fenced") is True
+                or daemon_fence.get("reason")
+                == "managed_daemon_recorded_process_dead"
+            )
+
+        terminated = bool(daemon_fence.get("fenced") is True)
         remaining_pid = self._find_matching_managed_daemon_pid()
-        try:
-            if pid_path.is_file():
-                pid_path.unlink()
-        except OSError:
-            pass
+        provider_runner_fence = fence_ordinary_provider_runner(
+            vars(active_state),
+            grace_seconds=max(0.0, float(grace_seconds)),
+        )
+        markers_removed = False
+        if daemon_fence.get("safe_to_restart") is True:
+            markers_removed = True
+            for marker in (pid_path, identity_path):
+                try:
+                    if marker.is_file() or marker.is_symlink():
+                        marker.unlink()
+                except OSError:
+                    markers_removed = False
         return {
             "pid": pid,
             "terminated": terminated,
-            "quiesced": remaining_pid is None,
+            "quiesced": bool(
+                remaining_pid is None
+                and daemon_fence.get("safe_to_restart") is True
+                and provider_runner_fence.get("safe_to_restart") is True
+                and markers_removed
+            ),
             "remaining_pid": remaining_pid,
             "pid_path": str(pid_path),
+            "identity_path": str(identity_path),
+            "daemon_fence": daemon_fence,
+            "markers_removed": markers_removed,
+            "provider_runner_fence": provider_runner_fence,
         }
 
     def _read_managed_daemon_pid(self) -> int | None:

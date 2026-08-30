@@ -103,6 +103,43 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
     )
 
 
+def test_strict_fence_permission_failure_expires_typed_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid = 4244
+    snapshot = core_module.ProcessIdentitySnapshot.observed(
+        {pid: ("S", 1, pid, pid, "123")}
+    )
+    clock = iter(index * 0.05 for index in range(100))
+    monkeypatch.setattr(
+        core_module,
+        "_process_identity_snapshot",
+        lambda: snapshot,
+    )
+    monkeypatch.setattr(core_module.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(core_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        core_module.os,
+        "kill",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()),
+    )
+    monkeypatch.setattr(
+        core_module.os,
+        "killpg",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError()),
+    )
+
+    assert not terminate_pid_tree(
+        pid,
+        grace_seconds=1.0,
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=pid,
+        expected_root_start_time_ticks=123,
+        strict_timeout_seconds=0.2,
+    )
+
+
 def test_naturally_exited_direct_child_retains_empty_group_authority() -> None:
     child = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(0.2)"],

@@ -521,6 +521,7 @@ def _strictly_fence_pid_tree(
     grace_seconds: float,
     owned_process_group_id: int | None,
     expected_root_start_time_ticks: int | None,
+    strict_timeout_seconds: float | None,
 ) -> bool:
     """Freeze, rescan, kill, and prove one exact Linux process tree gone.
 
@@ -535,6 +536,17 @@ def _strictly_fence_pid_tree(
 
     if pid <= 1:
         return False
+    strict_deadline = (
+        None
+        if strict_timeout_seconds is None
+        else time.monotonic() + max(0.0, float(strict_timeout_seconds))
+    )
+
+    def deadline_expired() -> bool:
+        return bool(
+            strict_deadline is not None
+            and time.monotonic() >= strict_deadline
+        )
     own_group = int(owned_process_group_id or 0)
     if own_group in {1, os.getpgrp()}:
         own_group = 0
@@ -616,6 +628,8 @@ def _strictly_fence_pid_tree(
     freeze_deadline = time.monotonic() + max(0.2, float(grace_seconds))
     stable_scans = 0
     while stable_scans < 2:
+        if deadline_expired():
+            return False
         snapshot = _process_identity_snapshot()
         if not snapshot.available:
             return False
@@ -676,6 +690,8 @@ def _strictly_fence_pid_tree(
     # Once frozen, TERM handlers must not run: they are precisely where a
     # supervised process can fork a replacement after an ordinary snapshot.
     while True:
+        if deadline_expired():
+            return False
         snapshot = _process_identity_snapshot()
         if not snapshot.available:
             return False
@@ -835,6 +851,7 @@ def terminate_pid_tree(
     require_gone: bool = False,
     owned_process_group_id: int | None = None,
     expected_root_start_time_ticks: int | None = None,
+    strict_timeout_seconds: float | None = None,
 ) -> bool:
     """Terminate a process tree, optionally proving a fork-fenced tree gone.
 
@@ -843,7 +860,9 @@ def terminate_pid_tree(
     descendants and owned groups are stopped before repeated discovery, killed
     without running TERM handlers, and checked by PID start time.  With
     ``require_gone`` the function returns only after no tracked process or
-    owned-group member can execute.
+    owned-group member can execute.  Callers that cannot wait indefinitely may
+    supply ``strict_timeout_seconds``; expiry returns ``False`` and therefore
+    cannot authorize lease/capacity reuse.
     """
 
     if freeze_first:
@@ -854,6 +873,7 @@ def terminate_pid_tree(
             expected_root_start_time_ticks=(
                 expected_root_start_time_ticks
             ),
+            strict_timeout_seconds=strict_timeout_seconds,
         )
         return fenced if require_gone else bool(fenced)
 
@@ -1419,4 +1439,3 @@ def _expand_snapshot_by_owned_sessions(
             if process_id == session and session not in {0, 1, caller_session}:
                 owned_sessions.add(session)
     return expanded
-

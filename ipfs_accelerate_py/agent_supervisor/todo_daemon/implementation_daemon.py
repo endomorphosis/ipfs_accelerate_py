@@ -142,6 +142,7 @@ from ..merge.worktree_lifecycle import (
     lifecycle_race_result,
     normalize_workspace_path,
     owner_liveness,
+    read_process_birth,
 )
 from ..runtime.event_log import (
     append_jsonl_event,
@@ -32310,7 +32311,14 @@ class PortalImplementationDaemon:
         command: Sequence[str],
         workspace_path: Path,
     ) -> Callable[[subprocess.Popen[Any]], None] | None:
-        """Persist a daemon-owned birth receipt for one sealed fresh route."""
+        """Persist a daemon-owned birth receipt before provider input release.
+
+        The accepted sealed control-plane route retains its stronger descriptor
+        and latch receipt below.  Ordinary provider routes get a deliberately
+        narrower, separately versioned process-birth receipt: it commits to
+        the active task and exact child birth without persisting argv (which
+        can contain route material or other private provider input).
+        """
 
         launch = self._scoped_control_plane_launch
         route_flag = "--agent-implementation-route-json"
@@ -32336,10 +32344,13 @@ class PortalImplementationDaemon:
         except TypeError:
             sealed_candidate = False
         if not sealed_candidate:
-            # Unscoped route plans also carry route JSON.  They run the
-            # installed module and retain their existing process lifecycle;
-            # only the daemon-owned sealed descriptor requires this receipt.
-            return None
+            return self._ordinary_provider_runner_started_callback(
+                state,
+                task=task,
+                attempt=attempt,
+                command=command,
+                workspace_path=workspace_path,
+            )
         if any(not isinstance(item, str) or not item for item in command):
             raise RuntimeError("sealed provider runner command is malformed")
         argv = tuple(command)
@@ -32714,6 +32725,209 @@ class PortalImplementationDaemon:
             ):
                 raise RuntimeError(
                     "provider runner birth drifted after persistence"
+                )
+
+        return persist
+
+    def _ordinary_provider_runner_started_callback(
+        self,
+        state: PortalTaskState,
+        *,
+        task: PortalTask,
+        attempt: int,
+        command: Sequence[str],
+        workspace_path: Path,
+    ) -> Callable[[subprocess.Popen[Any]], None]:
+        """Return the pre-input persistence barrier for an ordinary runner.
+
+        This receipt is process-lifecycle evidence only.  It neither admits
+        provider output nor widens the provider, proof, merge, or completion
+        authority of the active attempt.
+        """
+
+        try:
+            argv = tuple(command)
+            if not argv or any(
+                not isinstance(item, str)
+                or not item
+                or any(character in item for character in "\0\n\r")
+                for item in argv
+            ):
+                raise ValueError("ordinary provider argv is malformed")
+            workspace_value = str(
+                workspace_path.expanduser().resolve(strict=True)
+            )
+            revision = self._canonical_ref(task)
+            owner_birth = current_process_birth()
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "ordinary provider runner birth receipt cannot be constructed"
+            ) from exc
+        if (
+            not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt < 1
+            or not isinstance(revision, str)
+            or not revision
+            or owner_birth.pid != os.getpid()
+            or owner_birth.start_time_ticks <= 0
+            or not owner_birth.boot_id
+            or state.implementation_in_progress is not True
+            or state.active_task_id != task.task_id
+            or state.active_attempt != attempt
+            or state.active_task_cid != revision
+            or state.active_worktree_path != workspace_value
+            or state.active_provider_runner
+        ):
+            raise RuntimeError(
+                "ordinary provider runner launch identity drifted"
+            )
+        expected_argv = (
+            b"\0".join(item.encode("utf-8") for item in argv) + b"\0"
+        )
+        argv_sha256 = "sha256:" + hashlib.sha256(expected_argv).hexdigest()
+
+        def exact_birth(pid: int) -> tuple[int, int, int, int, str]:
+            start_ticks, parent_pid, process_group, session = (
+                self._provider_process_identity(pid)
+            )
+            try:
+                birth = read_process_birth(pid)
+            except OSError as exc:
+                raise RuntimeError(
+                    "ordinary provider runner process birth is unavailable"
+                ) from exc
+            if (
+                birth is None
+                or birth.pid != pid
+                or birth.start_time_ticks != start_ticks
+                or birth.parent_pid != parent_pid
+                or not birth.boot_id
+                or birth.boot_id != owner_birth.boot_id
+            ):
+                raise RuntimeError(
+                    "ordinary provider runner process birth drifted"
+                )
+            return (
+                start_ticks,
+                parent_pid,
+                process_group,
+                session,
+                str(birth.boot_id or ""),
+            )
+
+        def persist(process: subprocess.Popen[Any]) -> None:
+            try:
+                pid = int(process.pid)
+                birth = exact_birth(pid)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "ordinary provider runner birth identity is unavailable"
+                ) from exc
+            start_ticks, parent_pid, process_group, session, boot_id = birth
+            expected_birth = (
+                start_ticks,
+                owner_birth.pid,
+                pid,
+                pid,
+                boot_id,
+            )
+            if (
+                pid <= 1
+                or birth != expected_birth
+                or state.implementation_in_progress is not True
+                or state.active_task_id != task.task_id
+                or state.active_attempt != attempt
+                or state.active_task_cid != revision
+                or state.active_worktree_path != workspace_value
+                or state.active_provider_runner
+            ):
+                raise RuntimeError(
+                    "ordinary provider runner birth identity drifted"
+                )
+
+            birth_deadline = (
+                time.monotonic() + PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS
+            )
+            while True:
+                if exact_birth(pid) != expected_birth:
+                    raise RuntimeError(
+                        "ordinary provider runner birth identity drifted"
+                    )
+                try:
+                    observed_argv = (
+                        Path("/proc") / str(pid) / "cmdline"
+                    ).read_bytes()
+                except OSError:
+                    observed_argv = b""
+                if observed_argv:
+                    if observed_argv != expected_argv:
+                        raise RuntimeError(
+                            "ordinary provider runner argv identity drifted"
+                        )
+                    break
+                if time.monotonic() >= birth_deadline:
+                    raise RuntimeError(
+                        "ordinary provider runner birth identity was not published"
+                    )
+                time.sleep(PROVIDER_RUNNER_BIRTH_POLL_SECONDS)
+
+            if (
+                current_process_birth() != owner_birth
+                or exact_birth(pid) != expected_birth
+                or state.implementation_in_progress is not True
+                or state.active_task_id != task.task_id
+                or state.active_attempt != attempt
+                or state.active_task_cid != revision
+                or state.active_worktree_path != workspace_value
+                or state.active_provider_runner
+            ):
+                raise RuntimeError(
+                    "ordinary provider runner birth identity drifted"
+                )
+            receipt_body = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "ordinary-provider-runner-birth@1"
+                ),
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "task_revision_cid": revision,
+                "workspace_path": workspace_value,
+                "owner_pid": owner_birth.pid,
+                "owner_start_ticks": owner_birth.start_time_ticks,
+                "pid": pid,
+                "start_time_ticks": start_ticks,
+                "boot_id": boot_id,
+                "process_group_id": process_group,
+                "session_id": session,
+                "argv_sha256": argv_sha256,
+            }
+            state.active_provider_runner = {
+                **receipt_body,
+                "receipt_id": content_identity(receipt_body),
+            }
+            state.save(self.state_path)
+
+            # Saving is the effect barrier.  Re-observe every independent
+            # birth factor and the argv digest before run_process_group_stream
+            # releases stdin to the child.
+            try:
+                identity_after = exact_birth(pid)
+                argv_after = (
+                    Path("/proc") / str(pid) / "cmdline"
+                ).read_bytes()
+            except (OSError, RuntimeError) as exc:
+                raise RuntimeError(
+                    "ordinary provider runner birth drifted after persistence"
+                ) from exc
+            if (
+                identity_after != expected_birth
+                or argv_after != expected_argv
+                or current_process_birth() != owner_birth
+            ):
+                raise RuntimeError(
+                    "ordinary provider runner birth drifted after persistence"
                 )
 
         return persist

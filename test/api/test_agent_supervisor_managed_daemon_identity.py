@@ -469,12 +469,18 @@ def test_shutdown_recovers_orphan_identity_before_fencing(
         "read_process_command_argv",
         lambda _pid: desired,
     )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda value: ProcessBirthIdentity(
+            pid=int(value),
+            start_time_ticks=1234,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+    )
     liveness = iter(
         (
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
             OwnerLiveness.ALIVE,
             OwnerLiveness.DEAD,
         )
@@ -502,6 +508,53 @@ def test_shutdown_recovers_orphan_identity_before_fencing(
     assert result["pid"] == pid
     assert not supervisor._managed_daemon_pid_path().exists()
     assert not supervisor._managed_daemon_identity_path().exists()
+
+
+def test_shutdown_refuses_managed_daemon_when_boot_identity_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    pid = 339
+    desired = tuple(supervisor._build_daemon_command())
+    _write_identity(supervisor, pid=pid, command=desired)
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.ALIVE,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda value: ProcessBirthIdentity(
+            pid=int(value),
+            start_time_ticks=1234,
+            boot_id="",
+            parent_pid=17,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "managed daemon with unknown boot identity was signalled"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+
+    assert result["terminated"] is False
+    assert result["quiesced"] is False
+    assert result["daemon_fence"]["safe_to_restart"] is False
+    assert result["daemon_fence"]["reason"] == (
+        "managed_daemon_ownership_liveness_unknown"
+    )
+    assert supervisor._managed_daemon_identity_path().exists()
 
 
 def test_shared_launcher_refuses_unreconciled_identity_before_spawning(
