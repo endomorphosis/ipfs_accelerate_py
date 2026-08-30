@@ -47,13 +47,17 @@ def _owner_policy(state_dir: Path) -> dict[str, object]:
     }
 
 
-def _managed_program(state_dir: Path) -> runner.DatabaseProgramConfig:
+def _managed_program(
+    state_dir: Path,
+    *,
+    port: int = 25123,
+) -> runner.DatabaseProgramConfig:
     return runner.DatabaseProgramConfig.from_mapping(
         {
             "authority_mode": "quack",
             "task_source_kind": "duckdb",
             "endpoint_secret_handle": "env://TEST_QUACK_OWNER_TOKEN",
-            "quack_endpoint": "quack:127.0.0.1:45123",
+            "quack_endpoint": f"quack:127.0.0.1:{port}",
             "store_id": "state/control.duckdb",
             "store_generation": "logical-g1",
             "schema_revision": "1",
@@ -223,6 +227,27 @@ def test_cli_runner_propagates_managed_program_only_when_explicit(
     assert "--database-program-json" not in external
 
 
+def test_configured_board_rejects_unreserved_ephemeral_owner_port(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state_dir = repo / "state" / "quack-owner"
+    state_dir.mkdir(parents=True)
+    program = _managed_program(state_dir, port=45123)
+    monkeypatch.setattr(
+        scheduler,
+        "_linux_unreserved_ephemeral_tcp_port",
+        lambda port: port == 45123,
+    )
+
+    with pytest.raises(
+        scheduler.ConfiguredBoardError,
+        match="ephemeral client-port range",
+    ):
+        scheduler._validate_managed_quack_owner_confinement(repo, program)
+
+
 def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -363,6 +388,13 @@ def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(
         "read_process_birth",
         lambda _pid: birth,
     )
+    monkeypatch.setattr(
+        lifecycle,
+        "_wait_for_endpoint_bindability",
+        lambda host, port: captured.setdefault(
+            "bind_preflight", (host, port)
+        ),
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "stale-token")
     monkeypatch.setenv("TEST_QUACK_OWNER_TOKEN", "stale-handle-token")
     monkeypatch.setenv("OPENAI_API_KEY", "provider-secret")
@@ -370,6 +402,7 @@ def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(
     owner = lifecycle._start_owner()
 
     assert owner.process_birth == birth
+    assert captured["bind_preflight"] == ("127.0.0.1", 25123)
     command = captured["command"]
     assert isinstance(command, list)
     repository_index = command.index("--repository-id")
@@ -382,6 +415,49 @@ def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(
     assert environment[runner.STATE_ENDPOINT_SECRET_HANDLE_ENV] == (
         program.endpoint_secret_handle
     )
+
+
+def test_managed_owner_waits_through_transient_endpoint_bind_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle, _program = _concrete_lifecycle(tmp_path)
+    states = iter(
+        (
+            runner._MANAGED_QUACK_ENDPOINT_TRANSIENT,
+            runner._MANAGED_QUACK_ENDPOINT_TRANSIENT,
+            runner._MANAGED_QUACK_ENDPOINT_BINDABLE,
+        )
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        lifecycle,
+        "_probe_endpoint_bindability",
+        lambda _host, _port: next(states),
+    )
+    monkeypatch.setattr(runner.time, "sleep", sleeps.append)
+
+    lifecycle._wait_for_endpoint_bindability("127.0.0.1", 45123)
+
+    assert sleeps == [0.1, 0.1]
+
+
+def test_managed_owner_refuses_unauthenticated_live_endpoint_listener(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle, _program = _concrete_lifecycle(tmp_path)
+    monkeypatch.setattr(
+        lifecycle,
+        "_probe_endpoint_bindability",
+        lambda _host, _port: runner._MANAGED_QUACK_ENDPOINT_LIVE,
+    )
+
+    with pytest.raises(
+        runner.DatabaseProgramConfigError,
+        match="unauthenticated live listener",
+    ):
+        lifecycle._wait_for_endpoint_bindability("127.0.0.1", 45123)
 
 
 def test_uncaptured_owner_birth_is_exactly_fenced_before_retry(

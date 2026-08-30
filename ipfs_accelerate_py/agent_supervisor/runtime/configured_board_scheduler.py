@@ -1603,6 +1603,87 @@ def _contained_path(repo_root: Path, relative: str) -> Path:
     return candidate
 
 
+def _linux_unreserved_ephemeral_tcp_port(port: int) -> bool:
+    """Return whether Linux may allocate ``port`` to an outbound client.
+
+    A managed fixed listener inside the unreserved ephemeral range can be
+    unavailable after an unrelated connection leaves that source port in
+    ``TIME_WAIT``.  The check is deliberately current-host scoped and runs only
+    during explicit configured-board validation.  Unknown platforms retain the
+    runtime's bounded bind-collision recovery path.
+    """
+
+    def read_bounded(path: Path, limit: int) -> str:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            payload = os.read(descriptor, limit + 1)
+        finally:
+            os.close(descriptor)
+        if len(payload) > limit:
+            raise ValueError("kernel port policy exceeds bounded input")
+        return payload.decode("ascii").strip()
+
+    try:
+        raw_range = read_bounded(
+            Path("/proc/sys/net/ipv4/ip_local_port_range"), 64
+        )
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "cannot inspect Linux ephemeral client-port policy"
+        ) from exc
+    except (UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "Linux ephemeral client-port policy is malformed"
+        ) from exc
+    try:
+        fields = raw_range.split()
+        if len(fields) != 2:
+            raise ValueError("range must contain two ports")
+        lower, upper = (int(field) for field in fields)
+        if not 1 <= lower <= upper <= 65535:
+            raise ValueError("range bounds are invalid")
+    except (UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "Linux ephemeral client-port policy is malformed"
+        ) from exc
+    if not lower <= port <= upper:
+        return False
+    try:
+        reserved = read_bounded(
+            Path("/proc/sys/net/ipv4/ip_local_reserved_ports"), 65536
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "cannot authenticate Linux reserved client-port policy"
+        ) from exc
+
+    for item in filter(None, (part.strip() for part in reserved.split(","))):
+        try:
+            if "-" in item:
+                start_text, end_text = item.split("-", 1)
+                start, end = int(start_text), int(end_text)
+            else:
+                start = end = int(item)
+        except ValueError as exc:
+            raise ConfiguredBoardError(
+                "Linux reserved client-port policy is malformed"
+            ) from exc
+        if not 1 <= start <= end <= 65535:
+            raise ConfiguredBoardError(
+                "Linux reserved client-port policy is malformed"
+            )
+        if start <= port <= end:
+            return False
+    return True
+
+
 def _validate_managed_quack_owner_confinement(
     repo_root: Path,
     program: DatabaseProgramConfig,
@@ -1617,6 +1698,21 @@ def _validate_managed_quack_owner_confinement(
     policy = program.owner_management
     if policy is None:
         return
+    endpoint = re.fullmatch(
+        r"quack:(?://)?(?:127\.0\.0\.1|localhost):(\d{1,5})",
+        program.quack_endpoint,
+        flags=re.IGNORECASE,
+    )
+    if endpoint is None:
+        raise ConfiguredBoardError(
+            "managed-local Quack endpoint is not an exact loopback TCP target"
+        )
+    endpoint_port = int(endpoint.group(1))
+    if _linux_unreserved_ephemeral_tcp_port(endpoint_port):
+        raise ConfiguredBoardError(
+            "managed-local Quack endpoint overlaps the unreserved Linux "
+            "ephemeral client-port range"
+        )
     owner_state_dir = Path(policy.owner_state_dir)
     try:
         owner_state_dir.relative_to(repo_root)

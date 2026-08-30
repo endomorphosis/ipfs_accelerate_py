@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -477,6 +478,9 @@ FORBIDDEN_QUACK_FAILOVER_TARGETS = frozenset(
 
 QUACK_OWNER_MANAGEMENT_MANAGED_LOCAL = "managed_local"
 QUACK_OWNER_MANAGEMENT_EXTERNAL = "external"
+_MANAGED_QUACK_ENDPOINT_BINDABLE = "bindable"
+_MANAGED_QUACK_ENDPOINT_TRANSIENT = "transient_bind_collision"
+_MANAGED_QUACK_ENDPOINT_LIVE = "live_listener"
 _QUACK_OWNER_MANAGEMENT_FIELDS = frozenset(
     {
         "mode",
@@ -1567,6 +1571,71 @@ class ManagedLocalQuackOwnerLifecycle:
             )
         path.unlink()
 
+    @staticmethod
+    def _probe_endpoint_bindability(host: str, port: int) -> str:
+        """Classify the exact local endpoint without claiming it as authority.
+
+        Quack does not currently expose a socket-adoption API.  A fixed server
+        port that overlaps the OS ephemeral client range can therefore remain
+        unavailable while an unrelated outbound connection is in ``TIME_WAIT``.
+        Probe with the same ordinary bind semantics before spawning an owner so
+        those known-absent transient collisions consume the startup window,
+        rather than the much smaller process-restart budget.
+        """
+
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.bind((host, int(port)))
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+        else:
+            return _MANAGED_QUACK_ENDPOINT_BINDABLE
+        finally:
+            probe.close()
+
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.settimeout(0.05)
+        try:
+            connected = listener.connect_ex((host, int(port))) == 0
+        finally:
+            listener.close()
+        return (
+            _MANAGED_QUACK_ENDPOINT_LIVE
+            if connected
+            else _MANAGED_QUACK_ENDPOINT_TRANSIENT
+        )
+
+    def _wait_for_endpoint_bindability(self, host: str, port: int) -> None:
+        """Wait through a proven transient bind collision, bounded by policy."""
+
+        from .quack_owner_watchdog import QuackOwnerStartAbsentError
+
+        deadline = time.monotonic() + float(
+            self.policy.startup_timeout_seconds
+        )
+        while True:
+            try:
+                state = self._probe_endpoint_bindability(host, port)
+            except OSError as exc:
+                raise DatabaseProgramConfigError(
+                    "managed owner endpoint bind preflight failed"
+                ) from exc
+            if state == _MANAGED_QUACK_ENDPOINT_BINDABLE:
+                return
+            if state == _MANAGED_QUACK_ENDPOINT_LIVE:
+                raise DatabaseProgramConfigError(
+                    "managed owner endpoint has an unauthenticated live listener"
+                )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # No process has been created, so the watchdog may safely apply
+                # its bounded retry policy without risking a second owner.
+                raise QuackOwnerStartAbsentError(
+                    "managed owner endpoint transient bind collision did not clear"
+                )
+            time.sleep(min(0.1, remaining))
+
     def _start_owner(self):
         from ..merge.worktree_lifecycle import read_process_birth
         from ..task_sources.duckdb_state import quack_transport_uri
@@ -1605,6 +1674,7 @@ class ManagedLocalQuackOwnerLifecycle:
                 "managed owner endpoint is not a supported local Quack URI"
             )
         host, port = match.group(1), int(match.group(2))
+        self._wait_for_endpoint_bindability(host, port)
         command = [
             self.python_executable,
             str(self.owner_entry_path),
