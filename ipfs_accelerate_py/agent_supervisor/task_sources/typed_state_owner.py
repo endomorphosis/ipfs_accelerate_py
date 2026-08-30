@@ -251,6 +251,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_leftover_wait_deferral_budget_retry_recovery",
         "database_portal_pooled_worktree_create_retry_recovery",
         "database_portal_superseded_consumed_attempt_recovery",
+        "database_portal_post_commit_candidate_recovery",
         "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",

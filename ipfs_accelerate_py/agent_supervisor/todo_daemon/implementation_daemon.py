@@ -28,7 +28,7 @@ import zlib
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence, TextIO
 from urllib.parse import unquote, urlsplit
 
@@ -88288,6 +88288,9 @@ DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON = (
 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON = (
     "post-merge completion recovery seed target generation changed"
 )
+DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON = (
+    "provider_callback_outcome_unknown"
+)
 DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON = (
     "protected preservation merged result is not on the exact target branch"
 )
@@ -89784,6 +89787,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
         ]
         | None = None,
+        post_commit_candidate_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -90146,6 +90153,16 @@ class DatabaseImplementationDaemon:
         )
         self._protected_reconciliation_self_lock_recovery_fn = (
             protected_reconciliation_self_lock_recovery_fn
+        )
+        if (
+            post_commit_candidate_recovery_fn is not None
+            and not callable(post_commit_candidate_recovery_fn)
+        ):
+            raise TypeError(
+                "post-commit candidate recovery callback must be callable"
+            )
+        self._post_commit_candidate_recovery_fn = (
+            post_commit_candidate_recovery_fn
         )
         self._merge_queue: Any = None
         self._merge_repo_root: Path | None = None
@@ -91226,6 +91243,10 @@ class DatabaseImplementationDaemon:
             Mapping[str, Any],
         ]
         | None = None,
+        post_commit_candidate_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -91276,6 +91297,13 @@ class DatabaseImplementationDaemon:
             raise TypeError(
                 "validation retry successor recovery callback must be callable"
             )
+        if (
+            post_commit_candidate_recovery_fn is not None
+            and not callable(post_commit_candidate_recovery_fn)
+        ):
+            raise TypeError(
+                "post-commit candidate recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -91290,6 +91318,7 @@ class DatabaseImplementationDaemon:
                     self._pooled_worktree_create_recovery_fn,
                     self._landed_completion_recovery_fn,
                     self._validation_retry_successor_recovery_fn,
+                    self._post_commit_candidate_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -91317,6 +91346,9 @@ class DatabaseImplementationDaemon:
             )
             self._validation_retry_successor_recovery_fn = (
                 validation_retry_successor_recovery_fn
+            )
+            self._post_commit_candidate_recovery_fn = (
+                post_commit_candidate_recovery_fn
             )
 
 
@@ -91790,6 +91822,19 @@ class DatabaseImplementationDaemon:
             if completion_seed is not None
             else None
         )
+        callback_unknown_completion = bool(
+            isinstance(completion_seed, Mapping)
+            and completion_seed.get("terminal_reason")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        )
+        historical_terminal_reason = (
+            historical_terminal_receipt.get("failure_kind")
+            if callback_unknown_completion
+            and isinstance(historical_terminal_receipt, Mapping)
+            else historical_terminal_receipt.get("reason")
+            if isinstance(historical_terminal_receipt, Mapping)
+            else None
+        )
         identity_mismatch = (
             not qualification_kind
             or receipt.get("attempt_id") != attempt.attempt_id
@@ -91861,7 +91906,12 @@ class DatabaseImplementationDaemon:
             or coordination.get("claim_id") != attempt.claim_id
             or coordination.get("attempt_number")
             != int(attempt.attempt_number)
-            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_status")
+            != (
+                "quarantined"
+                if callback_unknown_completion
+                else "blocked"
+            )
             or receipt.get("control_expected_revision") != task_revision - 1
             or (
                 completion_seed is not None
@@ -91902,7 +91952,7 @@ class DatabaseImplementationDaemon:
                     or completion_seed.get("recovery_evidence_id")
                     != evidence_id
                     or completion_seed.get("terminal_reason")
-                    != historical_terminal_receipt.get("reason")
+                    != historical_terminal_reason
                 )
             )
         )
@@ -97813,6 +97863,9 @@ class DatabaseImplementationDaemon:
             post_merge_completion_seed = prior_status_receipt.get(
                 "post_merge_completion_recovery_seed"
             )
+            post_commit_candidate_seed = prior_status_receipt.get(
+                "post_commit_candidate_recovery_seed"
+            )
             protected_seed = prior_status_receipt.get(
                 "protected_path_recovery_seed"
             )
@@ -97834,6 +97887,7 @@ class DatabaseImplementationDaemon:
                 preservation_seed is not None,
                 consumed_seed is not None,
                 post_merge_completion_seed is not None,
+                post_commit_candidate_seed is not None,
                 protected_seed is not None,
                 external_seed is not None,
                 inflight_seed is not None,
@@ -98180,6 +98234,51 @@ class DatabaseImplementationDaemon:
                         ),
                         "protected_preservation_seed": (
                             verified_preservation_seed
+                        ),
+                    }
+                )
+            elif post_commit_candidate_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != "database_portal_post_commit_candidate_recovery"
+                    or not isinstance(post_commit_candidate_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed post-commit candidate seed"
+                    )
+                source_attempt_id = str(
+                    post_commit_candidate_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if (
+                    source_attempt is None
+                    or source_attempt.status not in {"blocked", "failed"}
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim post-commit source attempt is unavailable"
+                    )
+                verified_post_commit_seed = (
+                    self._verified_post_commit_candidate_recovery_receipt(
+                        source_attempt,
+                        post_commit_candidate_seed,
+                    )
+                )
+                target_identity, target_claim_identity = feature_retry_target(
+                    source_attempt
+                )
+                carry_feature_retry_target(
+                    target_identity,
+                    target_claim_identity,
+                )
+                receipt_payload.update(
+                    {
+                        "post_commit_candidate_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "post_commit_candidate_recovery_seed": (
+                            verified_post_commit_seed
                         ),
                     }
                 )
@@ -99017,6 +99116,35 @@ class DatabaseImplementationDaemon:
             and raw.get("source_lease_id") == latest.lease_id
             and raw.get("source_fencing_token") == int(latest.fencing_token)
             and raw.get("source_fence_epoch") == int(latest.fence_epoch)
+        )
+
+    def _unknown_callback_post_merge_source_admitted(
+        self,
+        raw: Mapping[str, Any],
+        latest: DatabaseTaskAttempt,
+        task: Any,
+    ) -> bool:
+        """Admit only the exact quarantined callback whose merge already landed."""
+
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        return bool(
+            str(getattr(task, "status", "") or "").strip().lower()
+            == "quarantined"
+            and isinstance(receipt, Mapping)
+            and receipt.get("operation")
+            == "database_portal_neutral_failure_quarantine"
+            and receipt.get("failure_kind")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            and receipt.get("retry_suppressed") is True
+            and raw.get("schema")
+            == DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+            and self._post_merge_source_matches_latest(raw, latest)
+            and self._strict_resume_rejection_receipt_matches(task, latest)
         )
 
     @staticmethod
@@ -99908,6 +100036,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+                DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
             }
             or seed_id != self._database_portal_evidence_digest(value)
         ):
@@ -99972,46 +100101,69 @@ class DatabaseImplementationDaemon:
         )
         current_task = self.task_source.get(attempt.task_cid)
         terminal_reason = str(seed.get("terminal_reason") or "")
-        if (
-            set(entry) != {"revision", "status", "body"}
-            or entry.get("status") != "blocked"
-            or not isinstance(terminal_receipt, Mapping)
-            or not self._receipt_has_exact_optional_execution_route_lineage(
+        callback_unknown_source = bool(
+            terminal_reason
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            and entry.get("status") == "quarantined"
+            and isinstance(body, Mapping)
+            and self._strict_resume_rejection_receipt_matches(
+                SimpleNamespace(
+                    task_cid=attempt.task_cid,
+                    task_alias=attempt.task_alias,
+                    status="quarantined",
+                    revision=source_task_revision,
+                    body=dict(body),
+                ),
+                attempt,
+            )
+        )
+        ordinary_terminal_source = bool(
+            entry.get("status") == "blocked"
+            and isinstance(terminal_receipt, Mapping)
+            and self._receipt_has_exact_optional_execution_route_lineage(
                 terminal_receipt,
                 base_fields=(
                     _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
                 ),
                 task=current_task,
             )
-            or terminal_receipt.get("operation")
-            != "database_portal_terminal_failure"
-            or terminal_receipt.get("attempt_id") != attempt.attempt_id
-            or terminal_receipt.get("attempt_number")
-            != int(attempt.attempt_number)
-            or terminal_receipt.get("claim_id") != attempt.claim_id
-            or terminal_receipt.get("lease_id") != attempt.lease_id
-            or terminal_receipt.get("owner_session_id")
-            != attempt.owner_session_id
-            or terminal_receipt.get("fencing_token")
-            != int(attempt.fencing_token)
-            or terminal_receipt.get("fence_epoch") != int(attempt.fence_epoch)
-            or terminal_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
-            or terminal_receipt.get("execution_revision")
-            != int(attempt.revision)
-            or terminal_receipt.get("execution_finished_at_ms")
-            != attempt.finished_at_ms
-            or terminal_receipt.get("reason") != terminal_reason
-            or terminal_reason
-            not in {
+            and terminal_receipt.get("operation")
+            == "database_portal_terminal_failure"
+            and terminal_receipt.get("attempt_id") == attempt.attempt_id
+            and terminal_receipt.get("attempt_number")
+            == int(attempt.attempt_number)
+            and terminal_receipt.get("claim_id") == attempt.claim_id
+            and terminal_receipt.get("lease_id") == attempt.lease_id
+            and terminal_receipt.get("owner_session_id")
+            == attempt.owner_session_id
+            and terminal_receipt.get("fencing_token")
+            == int(attempt.fencing_token)
+            and terminal_receipt.get("fence_epoch")
+            == int(attempt.fence_epoch)
+            and terminal_receipt.get("execution_phase")
+            == ATTEMPT_PHASE_FAILED
+            and terminal_receipt.get("execution_revision")
+            == int(attempt.revision)
+            and terminal_receipt.get("execution_finished_at_ms")
+            == attempt.finished_at_ms
+            and terminal_receipt.get("reason") == terminal_reason
+            and terminal_reason
+            in {
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
             }
-            or terminal_receipt.get("retryable") is not False
-            or not isinstance(terminal_receipt.get("coordination"), Mapping)
-            or terminal_receipt.get("control_expected_status") != "in_progress"
-            or terminal_receipt.get("control_expected_revision")
-            != source_task_revision - 1
+            and terminal_receipt.get("retryable") is False
+            and isinstance(terminal_receipt.get("coordination"), Mapping)
+            and terminal_receipt.get("control_expected_status")
+            == "in_progress"
+            and terminal_receipt.get("control_expected_revision")
+            == source_task_revision - 1
+        )
+        if (
+            set(entry) != {"revision", "status", "body"}
+            or not isinstance(terminal_receipt, Mapping)
+            or not (callback_unknown_source or ordinary_terminal_source)
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge completion recovery terminal history does not reproduce"
@@ -100071,6 +100223,62 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "post-merge completion recovery source has no terminal receipt"
             )
+        source_execution = terminal
+        if (
+            verified.get("terminal_reason")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        ):
+            recovery_matches = [
+                candidate
+                for candidate in revisions
+                if isinstance(candidate, Mapping)
+                and candidate.get("revision")
+                == int(verified["source_task_revision"]) + 1
+                and candidate.get("status") == "retrying"
+            ]
+            recovery_body = (
+                recovery_matches[0].get("body")
+                if len(recovery_matches) == 1
+                else None
+            )
+            recovery_receipt = (
+                recovery_body.get("completion_receipt")
+                if isinstance(recovery_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(recovery_receipt, Mapping)
+                or recovery_receipt.get("operation")
+                != (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                )
+                or recovery_receipt.get("attempt_id")
+                != verified["attempt_id"]
+                or recovery_receipt.get("claim_id")
+                != verified["claim_id"]
+                or recovery_receipt.get("lease_id")
+                != verified["lease_id"]
+                or recovery_receipt.get("owner_session_id")
+                != verified["owner_session_id"]
+                or recovery_receipt.get("fencing_token")
+                != verified["fencing_token"]
+                or recovery_receipt.get("fence_epoch")
+                != verified["fence_epoch"]
+                or recovery_receipt.get("control_expected_status")
+                != "quarantined"
+                or recovery_receipt.get("control_expected_revision")
+                != verified["source_task_revision"]
+                or recovery_receipt.get(
+                    "post_merge_completion_recovery_seed"
+                )
+                != dict(verified)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "callback-unknown completion recovery lost its exact "
+                    "rearm receipt"
+                )
+            source_execution = recovery_receipt
         source = DatabaseTaskAttempt(
             attempt_id=str(verified["attempt_id"]),
             claim_id=str(verified["claim_id"]),
@@ -100084,8 +100292,8 @@ class DatabaseImplementationDaemon:
             committed_phase=ATTEMPT_PHASE_FAILED,
             status="failed",
             started_at_ms=0,
-            finished_at_ms=terminal.get("execution_finished_at_ms"),
-            revision=int(terminal.get("execution_revision") or 0),
+            finished_at_ms=source_execution.get("execution_finished_at_ms"),
+            revision=int(source_execution.get("execution_revision") or 0),
             body={},
         )
         self._post_merge_completion_terminal_receipt_from_history(
@@ -113416,6 +113624,14 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 "post-merge recovery requires the latest failed attempt"
             )
+        unknown_callback_source_admitted = (
+            qualification_kind == "callback_integration"
+            and self._unknown_callback_post_merge_source_admitted(
+                raw,
+                latest,
+                task,
+            )
+        )
         if status == "retrying":
             task_body = getattr(task, "body", None)
             retry_receipt = (
@@ -113524,10 +113740,14 @@ class DatabaseImplementationDaemon:
                 expected_target_commit=qualified_target_commit,
             )
         )
-        if not crash_source_admitted and not self._post_merge_source_admitted(
-            raw,
-            latest,
-            task,
+        if (
+            not crash_source_admitted
+            and not unknown_callback_source_admitted
+            and not self._post_merge_source_admitted(
+                raw,
+                latest,
+                task,
+            )
         ):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery evidence is not bound to the latest "
@@ -113566,6 +113786,7 @@ class DatabaseImplementationDaemon:
                 )
         if (
             not crash_source_admitted
+            and not unknown_callback_source_admitted
             and not (
                 qualification_kind == "callback_integration"
                 and self._is_portal_completion_evaluated_baseline_missing_terminal(
@@ -113599,14 +113820,16 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery task source has no atomic retry authority"
             )
-        if status != "blocked":
+        if status not in {"blocked", "quarantined"}:
             raise DatabaseImplementationConflictError(
-                "post-merge recovery requires blocked or exact retrying "
+                "post-merge recovery requires blocked, quarantined, or exact retrying "
                 f"control state, observed {status!r}"
             )
         control_receipt = (
             dict(crash_context["current_receipt"])
             if crash_source_admitted and crash_context is not None
+            else dict(task.body["completion_receipt"])
+            if unknown_callback_source_admitted
             else self._require_control_attempt_receipt(
                 task,
                 latest,
@@ -113616,6 +113839,8 @@ class DatabaseImplementationDaemon:
         completion_terminal_reason = (
             str(crash_context["source_seed"]["terminal_reason"])
             if crash_source_admitted and crash_context is not None
+            else DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            if unknown_callback_source_admitted
             else self._post_merge_completion_recovery_source_terminal_reason(
                 latest,
                 task,
@@ -113646,6 +113871,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+                DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
             }
             else None
         )
@@ -121471,12 +121697,7 @@ class DatabaseImplementationDaemon:
         self,
         task: Any,
     ) -> dict[str, Any] | None:
-        """Keep provider-outcome-unknown quarantined pending reconciliation.
-
-        Missing declared paths do not prove that an external effect did not
-        occur.  A future requeue requires separately admitted pre-dispatch or
-        idempotent-provider reconciliation evidence; this path has neither.
-        """
+        """Rearm only an exact retained post-commit candidate, without retry."""
 
         if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
             return None
@@ -121490,12 +121711,364 @@ class DatabaseImplementationDaemon:
             return None
         if receipt.get("retry_suppressed") is not True:
             return None
-        return None
+        recover = self._post_commit_candidate_recovery_fn
+        if not callable(recover):
+            # Deployments without the Portal recovery adapter preserve the
+            # historical fail-closed observation behavior.
+            return None
+        attempt_id = str(receipt.get("attempt_id") or "")
+        attempt = self.get_attempt(attempt_id)
+        if (
+            attempt is None
+            or attempt.task_cid != str(getattr(task, "task_cid", "") or "")
+            or attempt.status not in {"blocked", "failed"}
+            or not self._strict_resume_rejection_receipt_matches(task, attempt)
+        ):
+            return {
+                "task_cid": str(getattr(task, "task_cid", "") or ""),
+                "reopened": False,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "reason": "post_commit_recovery_source_not_exact",
+                "operator_review_required": True,
+            }
+        try:
+            recovered = recover(attempt)
+            recovered_schema = (
+                str(recovered.get("schema") or "")
+                if isinstance(recovered, Mapping)
+                else ""
+            )
+            if (
+                recovered_schema
+                == DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+            ):
+                landed = self.recover_blocked_post_merge_declared_outputs(
+                    recovered
+                )
+                if landed.get("recovered") is True:
+                    self._record_event(
+                        "unknown_callback_landed_recovery_rearmed",
+                        attempt_id=attempt.attempt_id,
+                        task_cid=str(task.task_cid),
+                        body={
+                            "request_id": str(
+                                recovered.get("request_id") or ""
+                            ),
+                            "evidence_id": str(
+                                recovered.get("evidence_id") or ""
+                            ),
+                            "provider_dispatched": False,
+                            "attempt_consumed": True,
+                        },
+                    )
+                return {
+                    "task_cid": str(task.task_cid),
+                    "reopened": bool(landed.get("recovered")),
+                    "changed": bool(landed.get("changed")),
+                    "status": str(landed.get("status") or "quarantined"),
+                    "reason": (
+                        "exact_landed_callback_rearmed"
+                        if landed.get("recovered") is True
+                        else str(
+                            landed.get("reason")
+                            or "landed_callback_recovery_not_admitted"
+                        )
+                    ),
+                    "provider_dispatched": False,
+                    "attempt_consumed": True,
+                    "source_receipt_id": str(
+                        recovered.get(
+                            "callback_requalification_receipt_id"
+                        )
+                        or ""
+                    ),
+                    "request_id": str(
+                        recovered.get("request_id") or ""
+                    ),
+                    "operator_review_required": False,
+                }
+            if (
+                recovered_schema == DATABASE_POST_MERGE_RECOVERY_SCHEMA
+                and recovered.get("reason")
+                == "post_merge_recovery_deferred"
+                and recovered.get("write_count") == 0
+            ):
+                return {
+                    "task_cid": str(task.task_cid),
+                    "reopened": False,
+                    "changed": False,
+                    "status": "quarantined",
+                    "reason": "landed_callback_recovery_deferred",
+                    "provider_dispatched": False,
+                    "attempt_consumed": True,
+                    "operator_review_required": False,
+                }
+            seed = self._verified_post_commit_candidate_recovery_receipt(
+                attempt,
+                recovered,
+            )
+        except Exception as exc:
+            return {
+                "task_cid": str(task.task_cid),
+                "reopened": False,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "reason": "post_commit_recovery_evidence_rejected",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+                "operator_review_required": True,
+            }
+        guarded = getattr(
+            self.task_source,
+            "record_queue_backoff_and_cas_status",
+            None,
+        )
+        if not callable(guarded):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery task source has no atomic retry authority"
+            )
+        current = self.task_source.get(str(task.task_cid))
+        if (
+            current is None
+            or str(current.status).strip().lower() != "quarantined"
+            or int(current.revision) != int(task.revision)
+            or not self._strict_resume_rejection_receipt_matches(
+                current,
+                attempt,
+            )
+        ):
+            return {
+                "task_cid": str(task.task_cid),
+                "reopened": False,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "reason": "post_commit_recovery_control_superseded",
+                "operator_review_required": False,
+            }
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        coordination = claim.to_dict() if claim is not None else {}
+        queue_reason = (
+            "database_portal_post_commit_candidate_recovery:"
+            + str(seed["receipt_id"])
+        )[:2048]
+        transition_receipt = {
+            "operation": "database_portal_post_commit_candidate_recovery",
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "execution_phase": attempt.committed_phase,
+            "execution_revision": int(attempt.revision),
+            "execution_finished_at_ms": attempt.finished_at_ms,
+            "reason": "exact_post_commit_candidate_retained",
+            "queue_reason": queue_reason,
+            "queue_receipt": {},
+            "coordination": coordination,
+            "control_expected_status": "quarantined",
+            "control_expected_revision": int(current.revision),
+            "post_commit_candidate_recovery_seed": dict(seed),
+        }
+        result = guarded(
+            task_cid=str(current.task_cid),
+            expected_revision=int(current.revision),
+            expected_control_receipt=receipt,
+            status="retrying",
+            receipt=transition_receipt,
+            delay_ms=0,
+            reason=queue_reason,
+        )
+        updated = self.task_source.get(str(current.task_cid))
+        if (
+            updated is None
+            or str(updated.status).strip().lower() != "retrying"
+            or not isinstance(updated.body, Mapping)
+            or not isinstance(updated.body.get("completion_receipt"), Mapping)
+            or updated.body["completion_receipt"].get(
+                "post_commit_candidate_recovery_seed"
+            )
+            != dict(seed)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery retry projection did not persist"
+            )
+        retired = (
+            self._retire_stale_blocked_neutral_attempt(attempt, updated)
+            if attempt.status == "blocked"
+            else attempt
+        )
+        self._record_event(
+            "post_commit_candidate_recovery_rearmed",
+            attempt_id=retired.attempt_id,
+            task_cid=str(updated.task_cid),
+            body={
+                "source_receipt_id": str(seed["receipt_id"]),
+                "implementation_commit": str(seed["implementation_commit"]),
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+            },
+        )
+        return {
+            "task_cid": str(updated.task_cid),
+            "reopened": True,
+            "changed": bool(getattr(result, "changed", True)),
+            "status": "retrying",
+            "reason": "exact_post_commit_candidate_rearmed",
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "source_receipt_id": str(seed["receipt_id"]),
+            "implementation_commit": str(seed["implementation_commit"]),
+        }
+
+    def _verified_post_commit_candidate_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify immutable Portal evidence before any quarantine rearm."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit candidate recovery receipt is malformed"
+            )
+        receipt = dict(raw)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "source_task_revision",
+            "portal_attempt",
+            "baseline_commit",
+            "implementation_commit",
+            "preserved_commit",
+            "rescue_branch",
+            "original_branch",
+            "original_worktree_path",
+            "source_workspace_disposition",
+            "source_workspace_observed_head",
+            "source_workspace_observed_tree",
+            "source_workspace_observed_branch",
+            "final_tree",
+            "candidate_fingerprint",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "implementation_started_event_id",
+            "pre_commit_handoff_event_id",
+            "post_commit_handoff_event_id",
+            "attempt_consumed",
+            "provider_dispatched",
+            "completion_authoritative",
+            "merge_attempted",
+        }
+        exact_identity = {
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            set(receipt) != expected_fields
+            or receipt.get("schema")
+            != DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA
+            or receipt.get("disposition")
+            != "retry_exact_post_commit_candidate"
+            or receipt.get("reason")
+            != "process_lost_before_merge_queue_publication"
+            or any(receipt.get(key) != value for key, value in exact_identity.items())
+            or receipt.get("attempt_consumed") is not True
+            or receipt.get("provider_dispatched") is not True
+            or receipt.get("completion_authoritative") is not False
+            or receipt.get("merge_attempted") is not False
+            or receipt.get("implementation_commit")
+            != receipt.get("preserved_commit")
+            or receipt.get("original_branch") != receipt.get("rescue_branch")
+            or not str(receipt.get("rescue_branch") or "").startswith(
+                "implementation/"
+            )
+            or receipt.get("source_workspace_disposition")
+            not in {"candidate_head", "clean_detached_baseline"}
+            or (
+                receipt.get("source_workspace_disposition")
+                == "candidate_head"
+                and (
+                    receipt.get("source_workspace_observed_head")
+                    != receipt.get("implementation_commit")
+                    or receipt.get("source_workspace_observed_tree")
+                    != receipt.get("final_tree")
+                    or receipt.get("source_workspace_observed_branch")
+                    != receipt.get("original_branch")
+                )
+            )
+            or (
+                receipt.get("source_workspace_disposition")
+                == "clean_detached_baseline"
+                and (
+                    receipt.get("source_workspace_observed_head")
+                    != receipt.get("baseline_commit")
+                    or receipt.get("source_workspace_observed_branch") != ""
+                )
+            )
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(receipt.get(field) or ""))
+                is None
+                for field in (
+                    "baseline_commit",
+                    "implementation_commit",
+                    "final_tree",
+                    "source_workspace_observed_head",
+                    "source_workspace_observed_tree",
+                )
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(receipt.get(field) or ""),
+                )
+                is None
+                for field in (
+                    "candidate_fingerprint",
+                    "binding_id",
+                    "events_digest",
+                    "implementation_started_event_id",
+                    "pre_commit_handoff_event_id",
+                    "post_commit_handoff_event_id",
+                )
+            )
+            or not str(receipt.get("event_stream_id") or "")
+            or not str(receipt.get("original_worktree_path") or "")
+            or receipt_id != _database_daemon_evidence_digest(receipt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit candidate recovery receipt failed verification"
+            )
+        receipt["receipt_id"] = receipt_id
+        return receipt
 
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
-        """Observe unknown-callback quarantines without authorizing retries."""
+        """Resume exact post-commit candidates; otherwise stay quarantined."""
 
         if self.repo_root is None:
             return []
