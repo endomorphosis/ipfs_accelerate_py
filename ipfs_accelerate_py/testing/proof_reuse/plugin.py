@@ -679,6 +679,50 @@ def _install_runtime_plugin(config: Any) -> None:
                     metrics.degraded(reason_code="runtime_trace_stop_failed")
             return outcome
 
+        @pytest.hookimpl(hookwrapper=True, tryfirst=True)
+        def pytest_runtest_setup(self, item: Any) -> Any:
+            # PCTDD-027: exact TestExecutionKeyV2 is assembled after current
+            # setup and before call.  Opaque or incomplete identities force
+            # normal execution.  Assembly never authorizes skip.
+            try:
+                from .setup_bound_execution_key import before_runtest_setup
+
+                before_runtest_setup(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="setup_bound_phase_mark_failed")
+            outcome = yield
+            try:
+                from .setup_bound_execution_key import after_runtest_setup
+
+                setup_failed = getattr(outcome, "excinfo", None) is not None
+                after_runtest_setup(item, setup_failed=setup_failed)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(
+                        reason_code="setup_bound_execution_key_assembly_failed"
+                    )
+            return outcome
+
+        @pytest.hookimpl(hookwrapper=True, tryfirst=True)
+        def pytest_runtest_call(self, item: Any) -> Any:
+            # PCTDD-027: verify the post-setup V2 key exists before call and
+            # fall back to normal execution when assembly is incomplete.
+            try:
+                from .setup_bound_execution_key import before_runtest_call
+
+                before_runtest_call(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(
+                        reason_code="setup_bound_execution_key_before_call_failed"
+                    )
+            outcome = yield
+            return outcome
+
         @pytest.hookimpl(hookwrapper=True, trylast=True)
         def pytest_runtest_makereport(self, item: Any, call: Any) -> Any:
             outcome = yield
