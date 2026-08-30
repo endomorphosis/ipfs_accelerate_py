@@ -2261,7 +2261,7 @@ def _attest_exact_docker_execution(
 ) -> dict[str, object]:
     """Capture immutable Docker and Linux process-scope identity before rm."""
 
-    from .process_security import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
         StateAuthorityProcessIsolationError,
         capture_linux_process_scope,
     )
@@ -2414,7 +2414,7 @@ def _docker_termination_scope_quiescent(
 ) -> bool:
     """Require the captured init, PID namespace, and cgroup to be empty."""
 
-    from .process_security import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
         StateAuthorityProcessIsolationError,
         linux_process_scope_quiescent,
     )
@@ -5359,7 +5359,7 @@ def _arm_docker_removal_once(
             else:
                 return False
 
-        from .process_security import (
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
             require_state_authority_handoff_ptrace_protection,
         )
 
@@ -8668,7 +8668,7 @@ class _DockerContainerLease:
             f"ipfs-accelerate-{provider}-{os.getpid()}-{uuid.uuid4().hex}"
         )
         cleanup_binding_record = _docker_cleanup_binding_path(container_name)
-        from .process_security import (
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
             require_state_authority_handoff_ptrace_protection,
         )
 
@@ -11660,7 +11660,7 @@ def _start_recorded_codex_effect(
         ]
     ):
         raise ValueError("recorded Docker start command drifted")
-    from .process_security import (
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
         require_state_authority_handoff_ptrace_protection,
     )
 
