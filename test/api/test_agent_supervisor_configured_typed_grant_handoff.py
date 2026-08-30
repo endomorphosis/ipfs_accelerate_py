@@ -4501,6 +4501,67 @@ def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     )[:2] == ("fail", "authoritative_scheduler_not_live")
 
 
+def test_aseh_post_admission_keeps_owner_on_replica_lifecycle_flicker() -> None:
+    """Quack replica-refresh FAILED must not SIGTERM claimed live work."""
+
+    failed_owner = {
+        "healthy": False,
+        "blocked": False,
+        "stuck": False,
+        "terminal": False,
+        "scheduler_alive": True,
+        "owner_ready": False,
+        "broker_ready": True,
+        "last_progress_at": 100.0,
+        "observed_at": 250.0,
+        "blocked_recovery_window_seconds": 300.0,
+        "active_count": 1,
+    }
+    assert aseh_operator._post_admission_health_action(
+        failed_owner,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    sample_only = {
+        **failed_owner,
+        "active_count": None,
+        "samples": [{"authority": {"active_count": 1, "available": True}}],
+    }
+    assert aseh_operator._post_admission_health_action(
+        sample_only,
+        prior_available=True,
+        current_available=False,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    broker_flicker = {
+        **failed_owner,
+        "owner_ready": True,
+        "broker_ready": False,
+    }
+    assert aseh_operator._post_admission_health_action(
+        broker_flicker,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    stale = {
+        **failed_owner,
+        "active_count": None,
+        "last_progress_at": 100.0,
+        "observed_at": 500.0,
+    }
+    assert aseh_operator._post_admission_health_action(
+        stale,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_owner_not_ready")
+
+
 def test_aseh_health_counts_live_workers_when_one_lane_census_is_none(
     tmp_path: Path,
 ) -> None:
