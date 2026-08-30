@@ -24,7 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
+    DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2,
     DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA,
+    DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA,
     DatabasePortalAttemptPaths,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -38,6 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     PortalImplementationDaemon,
+    PortalTask,
     parse_args,
     parse_task_text,
     task_declared_output_paths,
@@ -111,8 +114,105 @@ def _content_addressed_output(
     }
 
 
+def test_merge_producer_records_exact_target_advanced_topology(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ["git", *arguments],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    git("init", "-q")
+    git("branch", "-M", "main")
+    git("config", "user.name", "Portal Test")
+    git("config", "user.email", "portal@example.invalid")
+    (repository / "seed.py").write_text("SEED = True\n", encoding="utf-8")
+    git("add", "seed.py")
+    git("commit", "-q", "-m", "seed")
+    candidate_baseline = git("rev-parse", "HEAD")
+
+    branch_name = "implementation/parallel-candidate"
+    git("checkout", "-q", "-b", branch_name)
+    (repository / "candidate.py").write_text(
+        "CANDIDATE = True\n", encoding="utf-8"
+    )
+    git("add", "candidate.py")
+    git("commit", "-q", "-m", "candidate")
+    implementation_commit = git("rev-parse", "HEAD")
+
+    git("checkout", "-q", "main")
+    (repository / "concurrent.py").write_text(
+        "CONCURRENT = True\n", encoding="utf-8"
+    )
+    git("add", "concurrent.py")
+    git("commit", "-q", "-m", "concurrent integration")
+    integration_base = git("rev-parse", "HEAD")
+
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=repository / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repository,
+    )
+    result = daemon._merge_branch_to_main(
+        branch_name,
+        PortalTask(
+            task_id="PARALLEL-001",
+            title="Integrate parallel candidate",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+            outputs=("candidate.py",),
+        ),
+        1,
+        baseline_ref=candidate_baseline,
+    )
+
+    assert result["merged"] is True
+    assert result["candidate_baseline_ref"] == candidate_baseline
+    assert result["integration_base_commit"] == integration_base
+    merge_commit = str(result["merge_commit"])
+    assert git("rev-list", "--parents", "-n", "1", merge_commit).split() == [
+        merge_commit,
+        integration_base,
+        implementation_commit,
+    ]
+
+    proof = daemon._immutable_integration_commit(
+        result,
+        implementation_commit=implementation_commit,
+        target_branch="main",
+    )
+    assert proof["passed"] is True
+    assert proof["candidate_baseline_ref"] == candidate_baseline
+    assert proof["integration_base_commit"] == integration_base
+    assert proof["exact_two_parent_merge"] is True
+
+    forged = {**result, "integration_base_commit": candidate_baseline}
+    rejected = daemon._immutable_integration_commit(
+        forged,
+        implementation_commit=implementation_commit,
+        target_branch="main",
+    )
+    assert rejected["passed"] is False
+    assert "integration_commit_not_exact_two_parent_merge" in rejected["reasons"]
+
+
+@pytest.mark.parametrize("target_advanced", (False, True))
 def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     tmp_path: Path,
+    target_advanced: bool,
 ) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
@@ -156,6 +256,22 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     )
     implementation = git("rev-parse", "HEAD")
     git("checkout", "-q", "main")
+    if target_advanced:
+        (repository / "concurrent.py").write_text(
+            "CONCURRENT = True\n", encoding="utf-8"
+        )
+        git("add", "concurrent.py")
+        git(
+            "-c",
+            "user.name=Portal Test",
+            "-c",
+            "user.email=portal@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "concurrent integration",
+        )
+    integration_base = git("rev-parse", "HEAD")
     git(
         "-c",
         "user.name=Portal Test",
@@ -176,6 +292,14 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
         "integration_ref": merge_commit,
         "target_branch": "main",
     }
+    if target_advanced:
+        proof.update(
+            {
+                "candidate_baseline_ref": baseline,
+                "integration_base_commit": integration_base,
+                "exact_two_parent_merge": True,
+            }
+        )
     invariant = {"passed": True, "repository_ref": merge_commit}
     identity_bridge = DatabasePortalExecutionBridge(
         task_source=_TaskSource(_record()),
@@ -235,6 +359,13 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
             "post_merge_declared_output_invariant": invariant,
         },
     }
+    if target_advanced:
+        event["merge_result"].update(
+            {
+                "candidate_baseline_ref": baseline,
+                "integration_base_commit": integration_base,
+            }
+        )
     attempt_root = tmp_path / "attempt"
     attempt_root.mkdir()
     events = attempt_root / "events.jsonl"
@@ -330,14 +461,103 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     )
 
     assert transition is not None
-    assert transition["schema"] == DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
-    assert transition["baseline_ref"] == baseline
+    assert transition["schema"] == (
+        DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA
+        if target_advanced
+        else DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA
+    )
+    if target_advanced:
+        assert transition["candidate_baseline_ref"] == baseline
+        assert transition["integration_base_commit"] == integration_base
+        assert "baseline_ref" not in transition
+        assert transition["integration_commit_proof"][
+            "exact_two_parent_merge"
+        ] is True
+    else:
+        assert transition["baseline_ref"] == baseline
+        assert "candidate_baseline_ref" not in transition
     assert transition["implementation_commit"] == implementation
     assert transition["merge_commit"] == merge_commit
     assert transition["target_repository_id"] == checkout_repository_id(repository)
     assert transition["task_completion_authority"] is False
     assert transition["worker_self_approval"] is False
     assert str(transition["transition_cid"]).startswith("sha256:")
+
+    transition_evidence = {"accepted_source_transition": transition}
+    transition_receipt = {
+        "schema": (
+            DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+            if target_advanced
+            else DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2
+        ),
+        "interface": bridge.INTERFACE,
+        "status": "succeeded",
+        "provider": "PortalImplementationDaemon",
+        "accepted": True,
+        "task_cid": _attempt().task_cid,
+        "attempt_id": _attempt().attempt_id,
+        "evidence_digest": bridge_module._sha256_bytes(
+            bridge_module._canonical_json(transition_evidence)
+        ),
+        "portal_evidence": transition_evidence,
+        "accepted_source_transition": transition,
+    }
+    transition_receipt["receipt_id"] = bridge_module._sha256_bytes(
+        bridge_module._canonical_json(transition_receipt)
+    )
+    assert bridge.apply_effect(_attempt(), transition_receipt)["status"] == "applied"
+    if target_advanced:
+        forged_v2 = {**transition_receipt, "schema": DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2}
+        forged_v2.pop("receipt_id")
+        forged_v2["receipt_id"] = bridge_module._sha256_bytes(
+            bridge_module._canonical_json(forged_v2)
+        )
+        with pytest.raises(DatabasePortalBridgeError, match="unbound source transition"):
+            bridge.apply_effect(_attempt(), forged_v2)
+
+    expected_diff = subprocess.run(
+        [
+            "git",
+            "--no-replace-objects",
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "-z",
+            integration_base,
+            merge_commit,
+        ],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    ).stdout
+    assert transition["changed_path_diff_sha256"] == bridge_module._sha256_bytes(
+        expected_diff
+    )
+
+    if target_advanced:
+        forged_event = json.loads(json.dumps(event))
+        forged_event["merge_result"]["integration_base_commit"] = baseline
+        events.write_text(
+            json.dumps(forged_event, sort_keys=True, separators=(",", ":"))
+            + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(DatabasePortalBridgeError, match="exact Git merge"):
+            bridge._accepted_source_transition(
+                attempt=_attempt(),
+                paths=paths,
+                binding=binding,
+                task_alias="LGSWF-004",
+                task_cid="task:cid:004",
+                merge_request_loader=lambda request_id: (
+                    request if request_id == request["request_id"] else None
+                ),
+            )
+        events.write_text(
+            json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
 
     for field, replacement in (
         ("canonical_task_cid", None),
@@ -697,7 +917,7 @@ def test_source_transition_admits_exact_queued_reconciliation_only(
     assert transition["worker_self_approval"] is False
     evidence = {"accepted_source_transition": transition}
     provider_receipt = {
-        "schema": DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+        "schema": DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2,
         "interface": bridge.INTERFACE,
         "status": "succeeded",
         "provider": "PortalImplementationDaemon",

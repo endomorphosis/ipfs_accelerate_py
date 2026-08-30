@@ -1057,7 +1057,7 @@ MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 MAX_VALIDATION_GENERATED_ARTIFACT_RECEIPT_PATHS = 50
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "secret-change-scope-examination@1"
+    "secret-change-scope-examination@2"
 )
 # ProposalValidationPolicy's ordinary limits are intentionally small for
 # provider output. The daemon constructs this proposal from a local Git diff
@@ -26257,7 +26257,7 @@ class PortalImplementationDaemon:
                 target_branch,
             ):
                 reasons.append("integration_commit_not_on_target")
-        return {
+        proof: dict[str, Any] = {
             "passed": not reasons,
             "integration_ref": integration_ref,
             "integration_commit": integration_commit,
@@ -26265,6 +26265,90 @@ class PortalImplementationDaemon:
             "target_branch": target_branch,
             "reasons": reasons,
         }
+        candidate_baseline_ref = str(
+            result.get("candidate_baseline_ref") or ""
+        ).strip()
+        integration_base_ref = str(
+            result.get("integration_base_commit") or ""
+        ).strip()
+        if candidate_baseline_ref or integration_base_ref:
+            candidate_baseline_commit = self._resolved_commit_ref(
+                self.repo_root,
+                candidate_baseline_ref,
+            )
+            integration_base_commit = self._resolved_commit_ref(
+                self.repo_root,
+                integration_base_ref,
+            )
+            exact_parents: list[str] = []
+            if not candidate_baseline_ref:
+                reasons.append("candidate_baseline_ref_missing")
+            elif not candidate_baseline_commit:
+                reasons.append("candidate_baseline_ref_unavailable")
+            if not integration_base_ref:
+                reasons.append("integration_base_commit_missing")
+            elif not integration_base_commit:
+                reasons.append("integration_base_commit_unavailable")
+            if integration_commit:
+                topology = subprocess.run(
+                    [
+                        "git",
+                        "--no-replace-objects",
+                        "rev-list",
+                        "--parents",
+                        "-n",
+                        "1",
+                        integration_commit,
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if topology.returncode == 0:
+                    exact_parents = topology.stdout.strip().split()
+                if (
+                    len(exact_parents) != 3
+                    or exact_parents[0] != integration_commit
+                    or exact_parents[1] != integration_base_commit
+                    or exact_parents[2] != implementation_commit
+                ):
+                    reasons.append("integration_commit_not_exact_two_parent_merge")
+            if (
+                candidate_baseline_commit
+                and integration_base_commit
+                and not self._git_ref_is_ancestor(
+                    candidate_baseline_commit,
+                    integration_base_commit,
+                )
+            ):
+                reasons.append("candidate_baseline_not_ancestor_of_integration_base")
+            if (
+                candidate_baseline_commit
+                and implementation_commit
+                and not self._git_ref_is_ancestor(
+                    candidate_baseline_commit,
+                    implementation_commit,
+                )
+            ):
+                reasons.append("candidate_baseline_not_ancestor_of_implementation")
+            proof.update(
+                {
+                    "candidate_baseline_ref": candidate_baseline_commit,
+                    "integration_base_commit": integration_base_commit,
+                    "exact_two_parent_merge": not any(
+                        reason
+                        in {
+                            "integration_commit_not_exact_two_parent_merge",
+                            "candidate_baseline_not_ancestor_of_integration_base",
+                            "candidate_baseline_not_ancestor_of_implementation",
+                        }
+                        for reason in reasons
+                    ),
+                }
+            )
+        proof["passed"] = not reasons
+        return proof
 
     def _declared_output_tracking_invariant(
         self,
@@ -39336,7 +39420,25 @@ class PortalImplementationDaemon:
     def _secret_change_scope_examination(
         proposal_validation: Any,
     ) -> dict[str, Any] | None:
-        """Classify secret findings against both proposal scope envelopes."""
+        """Classify secret findings against scope without retaining content.
+
+        The additional negative facts are intentionally derived from the live
+        content-bound proposal and projected only as booleans/path sets.  They
+        let auto-rescue distinguish a credential-shaped test literal from
+        private-key material while never persisting the matched value.
+        """
+
+        from ..validation.proposal_validation import (
+            _PRIVATE_KEY_CONTENT_RE,
+            _entry_introduces_secret,
+            _introduced_candidate_text,
+            _is_concrete_secret_value,
+            _is_scoped_python_test_source,
+            _is_synthetic_test_secret_canary,
+        )
+        from ..validation.implementation_auto_rescue import (
+            build_scoped_test_semantic_inventory,
+        )
 
         findings = tuple(
             getattr(proposal_validation, "findings", ()) or ()
@@ -39389,6 +39491,64 @@ class PortalImplementationDaemon:
             scope_classification = "in_scope"
         else:
             scope_classification = "unknown"
+        candidate_entries = tuple(
+            getattr(proposal, "candidate_diff", ()) or ()
+        )
+        relevant_entries_by_path: dict[str, list[Any]] = {
+            path: [] for path in examined_paths
+        }
+        for entry in candidate_entries:
+            path = str(
+                getattr(entry, "new_path", "")
+                or getattr(entry, "old_path", "")
+                or ""
+            ).strip()
+            if path in relevant_entries_by_path:
+                relevant_entries_by_path[path].append(entry)
+        candidate_diff_path_coverage_complete = bool(examined_paths) and all(
+            relevant_entries_by_path[path] for path in examined_paths
+        )
+        private_key_material_detected = any(
+            _PRIVATE_KEY_CONTENT_RE.search(_introduced_candidate_text(entry))
+            is not None
+            for entries_for_path in relevant_entries_by_path.values()
+            for entry in entries_for_path
+        )
+        private_key_material_absence_verified = bool(
+            candidate_diff_path_coverage_complete
+            and not private_key_material_detected
+        )
+        credential_assignment_only = bool(
+            private_key_material_absence_verified
+            and all(
+                any(
+                    _entry_introduces_secret(
+                        entry,
+                        allow_synthetic_test_canaries=True,
+                    )
+                    for entry in relevant_entries_by_path[path]
+                )
+                for path in examined_paths
+            )
+        )
+        scoped_python_test_source_paths = tuple(
+            path
+            for path in examined_paths
+            if policy is not None
+            and _is_scoped_python_test_source(path, policy)
+        )
+        test_semantic_inventory = build_scoped_test_semantic_inventory(
+            proposal,
+            scoped_python_test_source_paths,
+            concrete_secret_value=lambda raw: bool(
+                _is_concrete_secret_value(
+                    raw,
+                    allow_test_sentinel=True,
+                    allow_never_expose_sentinel=True,
+                )
+                and not _is_synthetic_test_secret_canary(raw)
+            ),
+        )
         examination = {
             "schema": SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA,
             "proposal_id": str(
@@ -39399,7 +39559,19 @@ class PortalImplementationDaemon:
             "examined_paths": list(examined_paths),
             "in_scope_paths": list(in_scope_paths),
             "out_of_scope_paths": list(out_of_scope_paths),
+            "scoped_python_test_source_paths": list(
+                scoped_python_test_source_paths
+            ),
             "scope_classification": scope_classification,
+            "candidate_diff_path_coverage_complete": (
+                candidate_diff_path_coverage_complete
+            ),
+            "private_key_material_detected": private_key_material_detected,
+            "private_key_material_absence_verified": (
+                private_key_material_absence_verified
+            ),
+            "credential_assignment_only": credential_assignment_only,
+            "test_semantic_inventory": test_semantic_inventory,
             # Scope membership never grants permission to persist a secret.
             "secret_policy_overridden": False,
             "proof_authoritative": False,
@@ -43807,6 +43979,21 @@ class PortalImplementationDaemon:
             review_implementation_failure,
         )
 
+        # Retain only the content-free examination needed to plan a bounded
+        # repair.  The live proposal/source never crosses the persistence
+        # boundary, and the original secret rejection remains authoritative.
+        if (
+            "secret_change_scope_examination" not in result
+            and proposal_validation is not None
+        ):
+            secret_examination = self._secret_change_scope_examination(
+                proposal_validation
+            )
+            if secret_examination is not None:
+                result["secret_change_scope_examination"] = (
+                    secret_examination
+                )
+
         log_excerpt = ""
         if log_path is not None:
             try:
@@ -44392,6 +44579,7 @@ class PortalImplementationDaemon:
             AutoRescueAction,
             build_inline_provider_rescue_prompt,
             plan_automatic_implementation_rescue,
+            scoped_test_semantics_preserved,
         )
 
         result = dict(validation_result or {})
@@ -44452,6 +44640,11 @@ class PortalImplementationDaemon:
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
                 missing_expected_outputs=missing,
+                # This method runs before commit, merge queue admission, or
+                # any accepted transition. Candidate edits in the fenced
+                # worktree are not authoritative effects.
+                accepted_effect_count=0,
+                merge_effect_count=0,
             )
             steps.append(plan.to_record())
             if plan.action is AutoRescueAction.NONE:
@@ -44676,7 +44869,10 @@ class PortalImplementationDaemon:
                     return result
                 continue
 
-            if plan.action is AutoRescueAction.INLINE_PROVIDER_RESCUE:
+            if plan.action in {
+                AutoRescueAction.INLINE_PROVIDER_RESCUE,
+                AutoRescueAction.REMEDIATE_SCOPED_TEST_SECRET,
+            }:
                 if not command or not allow_provider_rescue:
                     break
                 provider_passes += 1
@@ -44685,6 +44881,33 @@ class PortalImplementationDaemon:
                     validation_result=result,
                     auto_rescue_plan=plan,
                 )
+                base_prompt_id = content_identity(
+                    {"kind": "implementation_provider_prompt", "text": base_prompt}
+                )
+                rescue_prompt_id = content_identity(
+                    {
+                        "kind": "implementation_provider_rescue_prompt",
+                        "text": rescue_prompt,
+                    }
+                )
+                strategy_changed = bool(
+                    rescue_prompt.strip()
+                    and rescue_prompt != str(base_prompt or "")
+                    and rescue_prompt_id != base_prompt_id
+                )
+                if not strategy_changed:
+                    self._record_event(
+                        "implementation_auto_rescue_provider_blocked",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "reason": "rescue_strategy_unchanged",
+                            "plan": plan.to_record(),
+                            "base_prompt_id": base_prompt_id,
+                            "rescue_prompt_id": rescue_prompt_id,
+                        },
+                    )
+                    break
                 self._record_event(
                     "implementation_auto_rescue_provider_started",
                     {
@@ -44692,6 +44915,9 @@ class PortalImplementationDaemon:
                         "attempt": int(attempt),
                         "plan": plan.to_record(),
                         "failed_commands": list(plan.failed_commands),
+                        "base_prompt_id": base_prompt_id,
+                        "rescue_prompt_id": rescue_prompt_id,
+                        "strategy_changed": True,
                     },
                 )
                 with _open_private_implementation_log(log_path, "a") as log_fh:
@@ -44778,6 +45004,126 @@ class PortalImplementationDaemon:
                     ),
                 )
                 proposal_validation = revalidated.get("proposal_validation")
+                if (
+                    plan.action
+                    is AutoRescueAction.REMEDIATE_SCOPED_TEST_SECRET
+                ):
+                    replacement_gate = revalidated.get("proposal_gate")
+                    replacement_proposal_id = ""
+                    replacement_gate_accepted = False
+                    if isinstance(replacement_gate, Mapping):
+                        replacement_proposal_id = str(
+                            replacement_gate.get("proposal_id") or ""
+                        ).strip()
+                        replacement_gate_accepted = (
+                            replacement_gate.get("accepted") is True
+                        )
+                    if not replacement_proposal_id:
+                        replacement_proposal_id = str(
+                            getattr(
+                                getattr(
+                                    proposal_validation,
+                                    "proposal",
+                                    None,
+                                ),
+                                "proposal_id",
+                                "",
+                            )
+                            or ""
+                        ).strip()
+                        replacement_gate_accepted = bool(
+                            getattr(proposal_validation, "accepted", False)
+                        )
+                    replacement_is_fresh = bool(
+                        replacement_proposal_id
+                        and replacement_proposal_id
+                        != plan.prior_proposal_id
+                    )
+                    (
+                        test_semantics_preserved,
+                        test_semantics_reason,
+                    ) = scoped_test_semantics_preserved(
+                        plan.prior_test_semantic_inventory,
+                        getattr(proposal_validation, "proposal", None),
+                        plan.remediation_paths,
+                    )
+                    prior_inventory_id = ""
+                    if isinstance(
+                        plan.prior_test_semantic_inventory,
+                        Mapping,
+                    ):
+                        prior_inventory_id = str(
+                            plan.prior_test_semantic_inventory.get(
+                                "inventory_id"
+                            )
+                            or ""
+                        )
+                    revalidated = dict(revalidated)
+                    revalidated[
+                        "scoped_test_secret_remediation_binding"
+                    ] = {
+                        "prior_proposal_id": plan.prior_proposal_id,
+                        "prior_receipt_id": plan.prior_receipt_id,
+                        "replacement_proposal_id": replacement_proposal_id,
+                        "replacement_is_fresh": replacement_is_fresh,
+                        "replacement_gate_accepted": (
+                            replacement_gate_accepted
+                        ),
+                        "prior_test_semantic_inventory_id": (
+                            prior_inventory_id
+                        ),
+                        "test_semantics_preserved": (
+                            test_semantics_preserved
+                        ),
+                        "test_semantics_reason": test_semantics_reason,
+                        "full_validation_passed": bool(
+                            revalidated.get("passed", False)
+                        ),
+                        "proof_authoritative": False,
+                        "completion_authoritative": False,
+                    }
+                    if not replacement_is_fresh:
+                        revalidated.update(
+                            {
+                                "passed": False,
+                                "returncode": (
+                                    PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+                                ),
+                                "reason": (
+                                    "scoped_test_secret_remediation_"
+                                    "proposal_unchanged"
+                                ),
+                                "error": "proposal_validation_failed",
+                            }
+                        )
+                    elif not replacement_gate_accepted:
+                        revalidated.update(
+                            {
+                                "passed": False,
+                                "returncode": (
+                                    PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+                                ),
+                                "reason": (
+                                    "scoped_test_secret_remediation_"
+                                    "proposal_rejected"
+                                ),
+                                "error": "proposal_validation_failed",
+                            }
+                        )
+                    elif not test_semantics_preserved:
+                        revalidated.update(
+                            {
+                                "passed": False,
+                                "returncode": (
+                                    PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+                                ),
+                                "reason": (
+                                    "scoped_test_secret_remediation_"
+                                    "test_semantics_not_preserved"
+                                ),
+                                "error": "proposal_validation_failed",
+                            }
+                        )
                 revalidated = self._apply_implementation_failure_review(
                     task=task,
                     attempt=attempt,
@@ -47219,6 +47565,23 @@ class PortalImplementationDaemon:
                     "submodule_failure_rollback": submodule_failure_rollback,
                     "submodule_merge_results": submodule_merge_results,
             }
+            if (
+                effective_merged
+                and baseline_ref
+                and pre_merge_commit
+                and pre_merge_commit != baseline_ref
+            ):
+                # Keep the candidate's immutable dispatch baseline distinct
+                # from the target's first parent when another lane integrates
+                # before this merge.  Consumers can then prove the exact
+                # two-parent topology without pretending the target was
+                # serialized at dispatch time.
+                result.update(
+                    {
+                        "candidate_baseline_ref": baseline_ref,
+                        "integration_base_commit": pre_merge_commit,
+                    }
+                )
             if missing_changed_submodule_paths:
                 result["missing_changed_submodule_paths"] = (
                     missing_changed_submodule_paths
@@ -67331,6 +67694,9 @@ DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
 )
+DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1"
+)
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
@@ -67590,6 +67956,99 @@ def _database_daemon_task_shard_binding(
             "multi-lane database execution requires strict task sharding"
         )
     return shard_count, shard_index, strict
+
+
+def database_daemon_pass_heartbeat_path(
+    *,
+    state_dir: Path | str,
+    state_prefix: str,
+) -> Path:
+    """Return the lane-local, non-authoritative database pass heartbeat path."""
+
+    prefix = str(state_prefix or "").strip()
+    if not _DATABASE_DAEMON_STATE_PREFIX_PATTERN.fullmatch(prefix):
+        raise DatabaseImplementationAuthorityError(
+            "database daemon pass heartbeat requires one safe state_prefix"
+        )
+    directory = Path(state_dir).resolve(strict=False)
+    if directory == Path(directory.anchor):
+        raise DatabaseImplementationAuthorityError(
+            "database daemon pass heartbeat refuses a filesystem-root state_dir"
+        )
+    path = (directory / f"{prefix}_database_daemon_pass_heartbeat.json").resolve(
+        strict=False
+    )
+    if path.parent != directory:
+        raise DatabaseImplementationAuthorityError(
+            "database daemon pass heartbeat escaped its state_dir"
+        )
+    return path
+
+
+def publish_database_daemon_pass_heartbeat(
+    *,
+    state_dir: Path | str,
+    state_prefix: str,
+    sequence: int,
+    result: Mapping[str, Any],
+    process_instance_id: str,
+    owner_session_id: str,
+    authority_mode: str,
+    task_source_kind: str,
+    task_shard_count: int,
+    task_shard_index: int,
+    strict_task_sharding: bool,
+) -> dict[str, Any]:
+    """Publish one completed database-daemon pass as advisory liveness.
+
+    The record deliberately contains no task authority, credentials, provider
+    output, or arbitrary pass payload. Its process-birth identity lets the
+    outer supervisor distinguish a current child heartbeat from a stale file
+    left by an earlier PID generation.
+    """
+
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+        raise ValueError("database daemon pass sequence must be a positive integer")
+    if not isinstance(result, Mapping):
+        raise TypeError("database daemon pass result must be a mapping")
+    shard_count, shard_index, strict = _database_daemon_task_shard_binding(
+        task_shard_count=task_shard_count,
+        task_shard_index=task_shard_index,
+        strict_task_sharding=strict_task_sharding,
+    )
+    active_task_id = str(result.get("active_task_id") or "")
+    claimed_task_cid = str(result.get("claimed_task_cid") or "")
+    selection_idle_reason = str(result.get("selection_idle_reason") or "")
+    try:
+        write_count = max(0, int(result.get("write_count") or 0))
+    except (TypeError, ValueError):
+        write_count = 0
+    payload: dict[str, Any] = {
+        "schema": DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
+        "completed_at": utc_now(),
+        "sequence": sequence,
+        "process_birth": current_process_birth().to_dict(),
+        "process_instance_id": str(process_instance_id or ""),
+        "owner_session_id": str(owner_session_id or ""),
+        "authority_mode": str(authority_mode or ""),
+        "task_source_kind": str(task_source_kind or ""),
+        "task_shard_count": shard_count,
+        "task_shard_index": shard_index,
+        "strict_task_sharding": strict,
+        "unchanged": result.get("unchanged") is True,
+        "write_count": write_count,
+        "active_task_id": active_task_id,
+        "selection_idle_reason": selection_idle_reason,
+        "claimed_task_cid": claimed_task_cid,
+    }
+    write_json_atomic(
+        database_daemon_pass_heartbeat_path(
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+        ),
+        payload,
+    )
+    return payload
 
 
 def _database_daemon_lane_execution_path(
@@ -71298,6 +71757,16 @@ class DatabaseImplementationDaemon:
     def reconcile_terminal_portal_failures(self) -> list[dict[str, Any]]:
         """Finish a crash-interrupted exact failure settlement once."""
 
+        # TODO(accepted-source-transition-recovery): do not reinterpret an
+        # already-settled FAILED attempt as successful merely because its
+        # candidate is now an ancestor of the target.  A safe automatic
+        # recovery needs an adjacent, closed authority contract binding the
+        # original failure settlement and attempt, the original merge-queue
+        # request, a freshly verified @3 exact source transition, and the new
+        # blocked-task CAS/claim.  Without all of those identities, resetting
+        # the task would falsify immutable failure history or let ancestry
+        # stand in for task-scoped acceptance.
+
         connection = self._require_connection()
         rows = connection.execute(
             """
@@ -72440,8 +72909,32 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(2)
             return
         last_idle_info_at: float | None = None
+        database_pass_sequence = 0
         while True:
             result = daemon.run_once()
+            if use_database_daemon:
+                database_pass_sequence += 1
+                publish_database_daemon_pass_heartbeat(
+                    state_dir=Path(args.state_dir),
+                    state_prefix=str(args.state_prefix),
+                    sequence=database_pass_sequence,
+                    result=result,
+                    process_instance_id=str(
+                        getattr(daemon, "process_instance_id", "") or ""
+                    ),
+                    owner_session_id=str(
+                        getattr(daemon, "owner_session_id", "") or ""
+                    ),
+                    authority_mode=str(
+                        getattr(daemon, "authority_mode", authority_mode) or ""
+                    ),
+                    task_source_kind=str(
+                        getattr(daemon, "task_source_kind", task_source_kind) or ""
+                    ),
+                    task_shard_count=int(args.task_shard_count),
+                    task_shard_index=int(args.task_shard_index),
+                    strict_task_sharding=bool(args.strict_task_sharding),
+                )
             now = time.monotonic()
             emit_idle_info = (
                 bool(args.once)

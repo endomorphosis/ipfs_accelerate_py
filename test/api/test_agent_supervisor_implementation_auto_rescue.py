@@ -8,6 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
+    DiffChangeKind,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
     summarize_test_failure,
@@ -19,10 +22,41 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
     build_inline_provider_rescue_prompt,
+    build_scoped_test_semantic_inventory,
     derive_materialize_commands,
     is_undeclared_helper_path,
     plan_automatic_implementation_rescue,
 )
+
+
+def _secret_test_source(value: str, *, include_assertion: bool = True) -> str:
+    source = (
+        "def test_secret_redaction():\n"
+        f"    password = {value!r}\n"
+    )
+    if include_assertion:
+        source += "    assert redact(password) == '[redacted]'\n"
+    return source
+
+
+def _test_proposal(
+    proposal_id: str,
+    source: str,
+    *,
+    path: str = "tests/unit/test_redaction.py",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        proposal_id=proposal_id,
+        changed_paths=(path,),
+        candidate_diff=(
+            SimpleNamespace(
+                before_source="",
+                after_source=source,
+                new_path=path,
+                old_path=path,
+            ),
+        ),
+    )
 
 
 def test_summarize_test_failure_prefers_assertion_over_banner() -> None:
@@ -377,6 +411,238 @@ def test_plan_refuses_hard_deny_and_exhausted_budget() -> None:
     assert exhausted.action is AutoRescueAction.NONE
 
 
+def _scoped_test_secret_failure_result(
+    *,
+    path: str = "tests/unit/test_redaction.py",
+    private_key_absence_verified: bool = True,
+    credential_assignment_only: bool = True,
+    out_of_scope_paths: tuple[str, ...] = (),
+    finding_codes: tuple[str, ...] = ("secret_change_forbidden",),
+) -> dict[str, object]:
+    in_scope_paths = () if out_of_scope_paths else (path,)
+    rejected_proposal = _test_proposal(
+        "proposal:rejected-secret",
+        _secret_test_source("s3cret-value"),
+        path=path,
+    )
+    semantic_inventory = build_scoped_test_semantic_inventory(
+        rejected_proposal,
+        (path,),
+        concrete_secret_value=lambda _value: True,
+    )
+    assert semantic_inventory is not None
+    return {
+        "passed": False,
+        "reason": "proposal_gate_failed",
+        "error": "proposal_validation_failed",
+        "proposal_gate": {
+            "accepted": False,
+            "proposal_id": "proposal:rejected-secret",
+            "receipt_id": "receipt:rejected-secret",
+            "reason_codes": list(finding_codes),
+        },
+        "failure_review": {
+            "decision": "reject",
+            "reason_codes": ["hard_deny_findings", "proposal_gate_failed"],
+            "finding_codes": list(finding_codes),
+        },
+        "secret_change_scope_examination": {
+            "proposal_id": "proposal:rejected-secret",
+            "finding_code": "secret_change_forbidden",
+            "examined_paths": [path],
+            "in_scope_paths": list(in_scope_paths),
+            "out_of_scope_paths": list(out_of_scope_paths),
+            "scoped_python_test_source_paths": [path],
+            "scope_classification": (
+                "out_of_scope" if out_of_scope_paths else "in_scope"
+            ),
+            "candidate_diff_path_coverage_complete": True,
+            "private_key_material_detected": (
+                not private_key_absence_verified
+            ),
+            "private_key_material_absence_verified": (
+                private_key_absence_verified
+            ),
+            "credential_assignment_only": credential_assignment_only,
+            "test_semantic_inventory": semantic_inventory,
+            "secret_policy_overridden": False,
+        },
+    }
+
+
+def test_plan_allows_one_repair_pass_for_rejected_scoped_test_secret() -> None:
+    unbound = plan_automatic_implementation_rescue(
+        validation_result=_scoped_test_secret_failure_result(),
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+    )
+    assert unbound.action is AutoRescueAction.NONE
+
+    plan = plan_automatic_implementation_rescue(
+        validation_result=_scoped_test_secret_failure_result(),
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        provider_rescue_passes_used=0,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
+    assert plan.action is AutoRescueAction.REMEDIATE_SCOPED_TEST_SECRET
+    assert plan.remediation_paths == ("tests/unit/test_redaction.py",)
+    assert plan.prior_proposal_id == "proposal:rejected-secret"
+    assert plan.prior_receipt_id == "receipt:rejected-secret"
+    assert plan.accepted_effect_count == 0
+    assert plan.merge_effect_count == 0
+    assert plan.max_provider_rescue_passes == 1
+    assert plan.prior_test_semantic_inventory is not None
+    assert "s3cret-value" not in str(plan.to_record())
+
+
+def test_plan_refuses_scoped_secret_rescue_without_bound_test_inventory() -> None:
+    result = _scoped_test_secret_failure_result()
+    examination = result["secret_change_scope_examination"]
+    assert isinstance(examination, dict)
+    examination.pop("test_semantic_inventory")
+
+    plan = plan_automatic_implementation_rescue(
+        validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        provider_rescue_passes_used=0,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
+    assert plan.action is AutoRescueAction.NONE
+
+
+@pytest.mark.parametrize(
+    "result_kwargs,planner_kwargs",
+    [
+        ({"path": "src/redaction.py"}, {}),
+        ({"out_of_scope_paths": ("tests/unit/test_redaction.py",)}, {}),
+        ({"private_key_absence_verified": False}, {}),
+        ({"credential_assignment_only": False}, {}),
+        (
+            {
+                "finding_codes": (
+                    "secret_change_forbidden",
+                    "test_weakening_forbidden",
+                )
+            },
+            {},
+        ),
+        ({}, {"accepted_effect_count": 1}),
+        ({}, {"merge_effect_count": 1}),
+        ({}, {"provider_rescue_passes_used": 1}),
+    ],
+)
+def test_plan_refuses_unsafe_or_repeated_scoped_test_secret_remediation(
+    result_kwargs: dict[str, object],
+    planner_kwargs: dict[str, int],
+) -> None:
+    result = _scoped_test_secret_failure_result(**result_kwargs)
+    # Production paths are deliberately not classified as scoped test source.
+    if result_kwargs.get("path") == "src/redaction.py":
+        examination = result["secret_change_scope_examination"]
+        assert isinstance(examination, dict)
+        examination["scoped_python_test_source_paths"] = []
+
+    kwargs = {
+        "provider_rescue_passes_used": 0,
+        "accepted_effect_count": 0,
+        "merge_effect_count": 0,
+        **planner_kwargs,
+    }
+    plan = plan_automatic_implementation_rescue(
+        validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        **kwargs,
+    )
+
+    assert plan.action is AutoRescueAction.NONE
+
+
+def test_scoped_test_secret_rescue_prompt_changes_strategy_without_value() -> None:
+    failure = _scoped_test_secret_failure_result()
+    plan = plan_automatic_implementation_rescue(
+        validation_result=failure,
+        expected_outputs=("tests/unit/test_redaction.py",),
+        allow_provider_rescue=True,
+        accepted_effect_count=0,
+        merge_effect_count=0,
+    )
+
+    prompt = build_inline_provider_rescue_prompt(
+        base_prompt="Implement the redaction trace test.",
+        validation_result=failure,
+        auto_rescue_plan=plan,
+    )
+
+    assert "Scoped test-secret remediation" in prompt
+    assert "prior proposal remains rejected" in prompt
+    assert "different proposal" in prompt
+    assert "do not weaken" in prompt
+    assert "tests/unit/test_redaction.py" in prompt
+    assert "actual-secret-from-candidate" not in prompt
+
+
+def test_secret_scope_examination_proves_assignment_only_not_private_key() -> None:
+    path = "tests/unit/test_redaction.py"
+    policy = SimpleNamespace(
+        policy_id="policy:test-scope",
+        path_is_in_scope=lambda candidate: candidate == path,
+    )
+
+    def examination_for(source: str) -> dict[str, object]:
+        entry = SimpleNamespace(
+            before_source="",
+            after_source=source,
+            change_kind=DiffChangeKind.MODIFY,
+            new_path=path,
+            old_path=path,
+        )
+        proposal = SimpleNamespace(
+            proposal_id="proposal:scope-examination",
+            changed_paths=(path,),
+            candidate_diff=(entry,),
+        )
+        result = SimpleNamespace(
+            findings=(
+                SimpleNamespace(
+                    code=SimpleNamespace(value="secret_change_forbidden"),
+                    path=path,
+                ),
+            ),
+            proposal=proposal,
+            policy=policy,
+        )
+        examination = PortalImplementationDaemon._secret_change_scope_examination(
+            result
+        )
+        assert examination is not None
+        return examination
+
+    assignment_source = (
+        "pass" + "word = \"" + "s3cret" + "-value\"\n"
+    )
+    assignment = examination_for(assignment_source)
+    assert assignment["scoped_python_test_source_paths"] == [path]
+    assert assignment["candidate_diff_path_coverage_complete"] is True
+    assert assignment["private_key_material_detected"] is False
+    assert assignment["private_key_material_absence_verified"] is True
+    assert assignment["credential_assignment_only"] is True
+
+    private_key_source = (
+        "-----BEGIN " + "PRIVATE KEY-----\nnot-a-key\n-----END PRIVATE KEY-----\n"
+    )
+    private_key = examination_for(private_key_source)
+    assert private_key["private_key_material_detected"] is True
+    assert private_key["private_key_material_absence_verified"] is False
+    assert private_key["credential_assignment_only"] is False
+
+
 def test_inline_provider_rescue_prompt_includes_failure_evidence() -> None:
     prompt = build_inline_provider_rescue_prompt(
         base_prompt="Implement DCR-013 outputs.",
@@ -575,3 +841,245 @@ def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
     assert result["passed"] is True
     assert len(calls) == 1
     assert "pass_fds" not in calls[0]
+
+
+def test_scoped_test_secret_remediation_runs_once_then_fully_revalidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    provider_calls: list[dict[str, object]] = []
+    validation_calls: list[dict[str, object]] = []
+
+    def fake_stream(run_command, **kwargs):
+        provider_calls.append({"command": list(run_command), **dict(kwargs)})
+        return subprocess.CompletedProcess(run_command, 0)
+
+    replacement = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:replacement-secret",
+            _secret_test_source("literal-secret-canary"),
+        ),
+    )
+
+    def fake_revalidate(*_args, **kwargs):
+        validation_calls.append(dict(kwargs))
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": replacement,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:replacement-secret",
+                "receipt_id": "receipt:replacement-secret",
+            },
+            "selection": {"scope": "pre_merge"},
+        }
+
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        fake_stream,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        fake_revalidate,
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-001",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-001",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok", "--model", "grok-4.6"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is True
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 1
+    assert len(provider_calls) == 1
+    assert len(validation_calls) == 1
+    # Omitting a prior live proposal forces a fresh proposal-gate run followed
+    # by the ordinary full pre-merge validation plan.
+    assert validation_calls[0]["proposal_validation"] is None
+    binding = result["scoped_test_secret_remediation_binding"]
+    assert binding["prior_proposal_id"] == "proposal:rejected-secret"
+    assert binding["prior_receipt_id"] == "receipt:rejected-secret"
+    assert binding["replacement_proposal_id"] == "proposal:replacement-secret"
+    assert binding["replacement_is_fresh"] is True
+    assert binding["replacement_gate_accepted"] is True
+    assert binding["full_validation_passed"] is True
+    started = next(
+        payload
+        for name, payload in events
+        if name == "implementation_auto_rescue_provider_started"
+    )
+    assert started["strategy_changed"] is True
+    assert started["base_prompt_id"] != started["rescue_prompt_id"]
+    assert started["plan"]["prior_receipt_id"] == "receipt:rejected-secret"
+    assert "actual-secret-from-candidate" not in str(started)
+
+
+def test_scoped_test_secret_remediation_rejects_unchanged_proposal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    unchanged = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:rejected-secret",
+            _secret_test_source("literal-secret-canary"),
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": unchanged,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:rejected-secret",
+                "receipt_id": "receipt:unchanged",
+            },
+        },
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-002",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-002",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["auto_rescue"]["provider_passes"] == 1
+    assert result["reason"] == "scoped_test_secret_remediation_proposal_unchanged"
+    assert result["scoped_test_secret_remediation_binding"][
+        "replacement_is_fresh"
+    ] is False
+
+
+def test_scoped_test_secret_remediation_rejects_deleted_security_assertion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary green gate cannot weaken a test added by the rejection."""
+
+    daemon, _events = _inline_rescue_test_daemon(tmp_path, monkeypatch)
+    daemon._scoped_control_plane_launch = None
+    daemon._scoped_recovery_control_plane_launches = {}
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    weakened = SimpleNamespace(
+        accepted=True,
+        proposal=_test_proposal(
+            "proposal:replacement-weakened",
+            "RESCUE_MARKER = 'different-proposal'\n",
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            # Model the pre-fix hole: baseline tests and the ordinary proposal
+            # gate are green even though the rejected proposal's new security
+            # test disappeared.
+            "passed": True,
+            "returncode": 0,
+            "proposal_validation": weakened,
+            "proposal_gate": {
+                "accepted": True,
+                "proposal_id": "proposal:replacement-weakened",
+                "receipt_id": "receipt:replacement-weakened",
+            },
+        },
+    )
+    task = PortalTask(
+        task_id="RESCUE-SECRET-003",
+        title="repair a redaction test canary",
+        status="in_progress",
+        completion="proposal and tests pass",
+        priority="high",
+        track="test",
+        outputs=["tests/unit/test_redaction.py"],
+        validation=["python -m pytest -q tests/unit/test_redaction.py"],
+    )
+
+    result = daemon._automatic_implementation_rescue(
+        task=task,
+        attempt=1,
+        workspace_path=tmp_path,
+        branch_name="agent/rescue-secret-003",
+        baseline_ref="a" * 40,
+        validation_result=_scoped_test_secret_failure_result(),
+        log_path=tmp_path / "implementation.log",
+        state=None,
+        command=["/opt/providers/grok"],
+        base_prompt="Implement the redaction trace test.",
+    )
+
+    assert result["passed"] is False
+    assert result["auto_rescue_terminal"] is True
+    assert result["reason"] == (
+        "scoped_test_secret_remediation_test_semantics_not_preserved"
+    )
+    binding = result["scoped_test_secret_remediation_binding"]
+    assert binding["replacement_is_fresh"] is True
+    assert binding["replacement_gate_accepted"] is True
+    assert binding["full_validation_passed"] is True
+    assert binding["test_semantics_preserved"] is False
+    assert binding["test_semantics_reason"] == (
+        "replacement_inventory_unavailable"
+    )

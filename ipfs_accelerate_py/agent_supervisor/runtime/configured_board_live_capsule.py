@@ -1171,7 +1171,6 @@ def _verify_canonical_source_transition(
         "merge_request_digest",
         "merge_request_dedupe_key",
         "target_repository_id",
-        "baseline_ref",
         "implementation_commit",
         "implementation_tree",
         "merge_commit",
@@ -1185,6 +1184,110 @@ def _verify_canonical_source_transition(
         "task_completion_authority",
         "worker_self_approval",
     }
+    transition_schema = str(transition.get("schema") or "")
+    source_binding_valid = False
+    proof_topology_valid = True
+    legacy_direct_schema = (
+        "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+    )
+    legacy_reconciled_schema = (
+        "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@2"
+    )
+    target_advanced_schema = (
+        "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@3"
+    )
+    reconciliation_fields = {
+        "source_event_mode",
+        "queued_implementation_event_id",
+        "reconciliation_event_id",
+        "merge_queue_terminal_status",
+        "merge_queue_attempt",
+        "merge_queue_cancellation_reason",
+        "completion_persistence",
+    }
+    reconciled_transition = bool(
+        transition_schema == legacy_reconciled_schema
+        or (
+            transition_schema == target_advanced_schema
+            and transition.get("source_event_mode") is not None
+        )
+    )
+    reconciliation_binding_valid = True
+    if reconciled_transition:
+        expected_fields.update(reconciliation_fields)
+        completion_persistence = transition.get("completion_persistence")
+        queue_attempt = transition.get("merge_queue_attempt")
+        portal_attempt = transition.get("portal_attempt_number")
+        reconciliation_binding_valid = bool(
+            transition.get("source_event_mode")
+            == "queued_merge_reconciliation"
+            and _SHA256.fullmatch(
+                str(transition.get("queued_implementation_event_id") or "")
+            )
+            is not None
+            and _SHA256.fullmatch(
+                str(transition.get("reconciliation_event_id") or "")
+            )
+            is not None
+            and transition.get("merge_queue_terminal_status") == "cancelled"
+            and isinstance(queue_attempt, int)
+            and not isinstance(queue_attempt, bool)
+            and isinstance(portal_attempt, int)
+            and not isinstance(portal_attempt, bool)
+            and queue_attempt >= portal_attempt >= 1
+            and transition.get("merge_queue_cancellation_reason")
+            == "stale_quarantined_merge"
+            and isinstance(completion_persistence, Mapping)
+            and completion_persistence.get("passed") is True
+            and completion_persistence.get("reason")
+            == "completion_persisted"
+            and completion_persistence.get("durable_update") is True
+            and completion_persistence.get("status_persisted") is True
+        )
+    if transition_schema in {legacy_direct_schema, legacy_reconciled_schema}:
+        expected_fields.add("baseline_ref")
+        source_binding_valid = transition.get("baseline_ref") == prior_head
+        proof_topology_valid = reconciliation_binding_valid
+    elif transition_schema == target_advanced_schema:
+        expected_fields.update(
+            {"candidate_baseline_ref", "integration_base_commit"}
+        )
+        candidate_baseline = str(
+            transition.get("candidate_baseline_ref") or ""
+        )
+        integration_base = str(
+            transition.get("integration_base_commit") or ""
+        )
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", candidate_baseline)
+            and integration_base == prior_head
+        ):
+            try:
+                _git(
+                    repo_root,
+                    "merge-base",
+                    "--is-ancestor",
+                    candidate_baseline,
+                    integration_base,
+                )
+                _git(
+                    repo_root,
+                    "merge-base",
+                    "--is-ancestor",
+                    candidate_baseline,
+                    implementation_head,
+                )
+            except ConfiguredBoardLiveCapsuleError:
+                source_binding_valid = False
+            else:
+                source_binding_valid = True
+        proof_topology_valid = bool(
+            isinstance(proof, Mapping)
+            and proof.get("candidate_baseline_ref") == candidate_baseline
+            and proof.get("integration_base_commit") == integration_base
+            and proof.get("exact_two_parent_merge") is True
+            and reconciliation_binding_valid
+        )
     implementation_tree = _git(
         repo_root, "rev-parse", f"{implementation_head}^{{tree}}"
     ).decode("ascii").strip()
@@ -1241,14 +1344,13 @@ def _verify_canonical_source_transition(
         or validation.get("task_cid") != authority.get("task_cid")
         or validation.get("attempt_id") != transition.get("attempt_id")
         or validation.get("accepted_source_transition") != transition
-        or transition.get("schema")
-        != "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+        or not source_binding_valid
+        or not proof_topology_valid
         or transition.get("database_task_cid") != authority.get("task_cid")
         or transition.get("task_alias") != alias
         or transition.get("board_namespace") != board_namespace
         or transition.get("configured_board_admission_cid") != admission_cid
         or transition.get("target_repository_id") != target_repository_id
-        or transition.get("baseline_ref") != prior_head
         or transition.get("implementation_commit") != implementation_head
         or transition.get("implementation_tree") != implementation_tree
         or transition.get("merge_commit") != merge_head

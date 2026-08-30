@@ -477,9 +477,18 @@ def _source_transition_authority(
     baseline: str,
     implementation: str,
     merge_commit: str,
+    integration_base: str = "",
+    ordinal: int = 1,
+    reconciled: bool = False,
 ) -> dict[str, object]:
-    task_cid = "sha256:" + "7" * 64
-    attempt_id = "attempt:test-source:1"
+    identity_digit = f"{ordinal + 6:x}"[-1]
+    identity_letter = chr(ord("a") + ordinal - 1)
+    task_alias = f"TEST-{ordinal:03d}"
+    task_cid = "sha256:" + identity_digit * 64
+    attempt_id = f"attempt:test-source:{ordinal}"
+    claim_id = f"claim:test-source:{ordinal}"
+    target_advanced = bool(integration_base and integration_base != baseline)
+    diff_base = integration_base if target_advanced else baseline
     implementation_tree = _git(root, "rev-parse", f"{implementation}^{{tree}}")
     merge_tree = _git(root, "rev-parse", f"{merge_commit}^{{tree}}")
     diff = subprocess.run(
@@ -490,7 +499,7 @@ def _source_transition_authority(
             "--name-status",
             "-r",
             "-z",
-            baseline,
+            diff_base,
             merge_commit,
         ],
         cwd=root,
@@ -504,6 +513,14 @@ def _source_transition_authority(
         "integration_ref": merge_commit,
         "target_branch": "main",
     }
+    if target_advanced:
+        proof.update(
+            {
+                "candidate_baseline_ref": baseline,
+                "integration_base_commit": integration_base,
+                "exact_two_parent_merge": True,
+            }
+        )
     invariant = {"passed": True, "repository_ref": merge_commit}
     database_attempt_binding: dict[str, object] = {
         "schema": (
@@ -512,15 +529,15 @@ def _source_transition_authority(
         ),
         "interface": "DatabasePortalExecutionBridge@1",
         "attempt_id": attempt_id,
-        "claim_id": "claim:test-source:1",
+        "claim_id": claim_id,
         "task_cid": task_cid,
-        "task_alias": "TEST-001",
+        "task_alias": task_alias,
         "goal_cid": "goal:test-source",
         "plan_cid": "plan:test-source",
         "task_revision": 1,
         "fencing_token": 1,
         "fence_epoch": 1,
-        "lease_id": "lease:test-source:1",
+        "lease_id": f"lease:test-source:{ordinal}",
         "task_body_digest": "sha256:" + "3" * 64,
         "projection_seed_digest": "sha256:" + "4" * 64,
         "projection_immutable_digest": "sha256:" + "5" * 64,
@@ -537,25 +554,28 @@ def _source_transition_authority(
     ).hexdigest()
     transition: dict[str, object] = {
         "schema": (
-            "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+            "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@3"
+            if target_advanced
+            else "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@2"
+            if reconciled
+            else "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
         ),
         "board_namespace": "test-board-v1",
         "configured_board_admission_cid": admission.admission_cid,
-        "task_alias": "TEST-001",
+        "task_alias": task_alias,
         "database_task_cid": task_cid,
         "attempt_id": attempt_id,
         "attempt_number": 1,
         "portal_attempt_number": 1,
-        "claim_id": "claim:test-source:1",
+        "claim_id": claim_id,
         "fencing_token": 1,
         "database_attempt_binding": database_attempt_binding,
-        "canonical_task_cid": "baguqeera" + "a" * 48,
-        "canonical_task_key": "task/v1/" + "1" * 64,
-        "request_id": "request:test-source:1",
-        "merge_request_digest": "sha256:" + "6" * 64,
-        "merge_request_dedupe_key": "9" * 64,
+        "canonical_task_cid": "baguqeera" + identity_letter * 48,
+        "canonical_task_key": "task/v1/" + identity_digit * 64,
+        "request_id": f"request:test-source:{ordinal}",
+        "merge_request_digest": "sha256:" + identity_digit * 64,
+        "merge_request_dedupe_key": identity_digit * 64,
         "target_repository_id": capsule.checkout_repository_id(root),
-        "baseline_ref": baseline,
         "implementation_commit": implementation,
         "implementation_tree": implementation_tree,
         "merge_commit": merge_commit,
@@ -573,6 +593,32 @@ def _source_transition_authority(
         "task_completion_authority": False,
         "worker_self_approval": False,
     }
+    if target_advanced:
+        transition.update(
+            {
+                "candidate_baseline_ref": baseline,
+                "integration_base_commit": integration_base,
+            }
+        )
+    else:
+        transition["baseline_ref"] = baseline
+    if reconciled:
+        transition.update(
+            {
+                "source_event_mode": "queued_merge_reconciliation",
+                "queued_implementation_event_id": "sha256:" + "b" * 64,
+                "reconciliation_event_id": "sha256:" + "c" * 64,
+                "merge_queue_terminal_status": "cancelled",
+                "merge_queue_attempt": 1,
+                "merge_queue_cancellation_reason": "stale_quarantined_merge",
+                "completion_persistence": {
+                    "passed": True,
+                    "reason": "completion_persisted",
+                    "durable_update": True,
+                    "status_persisted": True,
+                },
+            }
+        )
     transition["transition_cid"] = "sha256:" + hashlib.sha256(
         json.dumps(
             transition,
@@ -593,7 +639,7 @@ def _source_transition_authority(
     }
     return {
         "task_cid": task_cid,
-        "task_alias": "TEST-001",
+        "task_alias": task_alias,
         "status": "completed",
         "revision": 2,
         "completion_receipt": completion,
@@ -728,9 +774,15 @@ def test_accepted_source_exact_pin_needs_no_transition_authority(
     assert receipt["merge_commits"] == []
 
 
+@pytest.mark.parametrize(
+    "reconciled",
+    (False, True),
+    ids=("accepted-source-transition-at-1", "accepted-source-transition-at-2"),
+)
 def test_accepted_source_admits_only_exact_database_receipted_merge(
     tmp_path: Path,
     quack_projection: _ProjectionFixture,
+    reconciled: bool,
 ) -> None:
     projection_pin, extension_set_pin, _projection_home = quack_projection
     root, raw_paths = _seed(tmp_path, extension_set_pin)
@@ -744,6 +796,7 @@ def test_accepted_source_admits_only_exact_database_receipted_merge(
         baseline=baseline,
         implementation=implementation,
         merge_commit=merge_commit,
+        reconciled=reconciled,
     )
 
     receipt = capsule.verify_configured_board_accepted_source(
@@ -764,6 +817,11 @@ def test_accepted_source_admits_only_exact_database_receipted_merge(
     assert receipt["task_aliases"] == ["TEST-001"]
     assert receipt["database_task_cids"] == [authority["task_cid"]]
     assert receipt["task_completion_authority"] is False
+    assert authority["transition"]["schema"].endswith(
+        "accepted-source-transition@2"
+        if reconciled
+        else "accepted-source-transition@1"
+    )
 
     forged = json.loads(json.dumps(authority))
     forged["transition"]["target_branch"] = "foreign"
@@ -778,6 +836,169 @@ def test_accepted_source_admits_only_exact_database_receipted_merge(
             admission,
             repo_root=root,
             transition_loader=lambda *_args: forged,
+        )
+
+
+def test_accepted_source_admits_parallel_merges_from_one_candidate_baseline(
+    tmp_path: Path,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed(tmp_path, extension_set_pin)
+    admission = _admission(
+        root, tuple(sorted(raw_paths)), projection_pin, extension_set_pin
+    )
+    candidate_baseline = _git(root, "rev-parse", "HEAD")
+
+    _git(
+        root,
+        "checkout",
+        "-q",
+        "-b",
+        "implementation/parallel-one",
+        candidate_baseline,
+    )
+    (root / "src").mkdir(exist_ok=True)
+    (root / "src/parallel_one.py").write_text(
+        "PARALLEL_ONE = True\n", encoding="utf-8"
+    )
+    _git(root, "add", "src/parallel_one.py")
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "parallel one",
+    )
+    implementation_one = _git(root, "rev-parse", "HEAD")
+
+    _git(
+        root,
+        "checkout",
+        "-q",
+        "-b",
+        "implementation/parallel-two",
+        candidate_baseline,
+    )
+    (root / "src").mkdir(exist_ok=True)
+    (root / "src/parallel_two.py").write_text(
+        "PARALLEL_TWO = True\n", encoding="utf-8"
+    )
+    _git(root, "add", "src/parallel_two.py")
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        "parallel two",
+    )
+    implementation_two = _git(root, "rev-parse", "HEAD")
+
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "merge",
+        "--no-ff",
+        "-q",
+        "-m",
+        "accept parallel one",
+        implementation_one,
+    )
+    merge_one = _git(root, "rev-parse", "HEAD")
+    _git(
+        root,
+        "-c",
+        "user.name=Capsule Test",
+        "-c",
+        "user.email=capsule@example.invalid",
+        "merge",
+        "--no-ff",
+        "-q",
+        "-m",
+        "accept parallel two",
+        implementation_two,
+    )
+    merge_two = _git(root, "rev-parse", "HEAD")
+
+    authority_one = _source_transition_authority(
+        root,
+        admission,
+        baseline=candidate_baseline,
+        implementation=implementation_one,
+        merge_commit=merge_one,
+        ordinal=1,
+    )
+    authority_two = _source_transition_authority(
+        root,
+        admission,
+        baseline=candidate_baseline,
+        integration_base=merge_one,
+        implementation=implementation_two,
+        merge_commit=merge_two,
+        ordinal=2,
+    )
+    authorities = {merge_one: authority_one, merge_two: authority_two}
+
+    receipt = capsule.verify_configured_board_accepted_source(
+        admission,
+        repo_root=root,
+        transition_loader=lambda requested, _scheduler: authorities[requested],
+    )
+
+    assert receipt["merge_commits"] == [merge_one, merge_two]
+    assert receipt["implementation_commits"] == [
+        implementation_one,
+        implementation_two,
+    ]
+    assert receipt["task_aliases"] == ["TEST-001", "TEST-002"]
+    transition_two = authority_two["transition"]
+    assert isinstance(transition_two, dict)
+    assert transition_two["schema"].endswith("accepted-source-transition@3")
+    assert transition_two["candidate_baseline_ref"] == candidate_baseline
+    assert transition_two["integration_base_commit"] == merge_one
+
+    forged = json.loads(json.dumps(authority_two))
+    forged_transition = forged["transition"]
+    forged_transition["candidate_baseline_ref"] = merge_one
+    forged_transition["integration_commit_proof"][
+        "candidate_baseline_ref"
+    ] = merge_one
+    forged_transition.pop("transition_cid")
+    forged_transition["transition_cid"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            forged_transition,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    forged["completion_receipt"]["validation"][
+        "accepted_source_transition"
+    ] = forged_transition
+    forged_authorities = {merge_one: authority_one, merge_two: forged}
+    with pytest.raises(
+        capsule.ConfiguredBoardLiveCapsuleError,
+        match="canonical source transition is inconsistent",
+    ):
+        capsule.verify_configured_board_accepted_source(
+            admission,
+            repo_root=root,
+            transition_loader=lambda requested, _scheduler: (
+                forged_authorities[requested]
+            ),
         )
 
 

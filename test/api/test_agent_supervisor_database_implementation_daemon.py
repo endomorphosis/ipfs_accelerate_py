@@ -12,6 +12,7 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -46,11 +47,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
+    DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    database_daemon_pass_heartbeat_path,
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
@@ -2240,6 +2243,19 @@ def test_direct_cli_passes_exact_strict_lane_binding(
     assert captured["task_shard_count"] == 4
     assert captured["task_shard_index"] == 3
     assert captured["strict_task_sharding"] is True
+    heartbeat_path = database_daemon_pass_heartbeat_path(
+        state_dir=state_dir,
+        state_prefix="dqp-lane-3",
+    )
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["schema"] == DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA
+    assert heartbeat["sequence"] == 1
+    assert heartbeat["process_birth"]["pid"] > 0
+    assert heartbeat["task_shard_count"] == 4
+    assert heartbeat["task_shard_index"] == 3
+    assert heartbeat["strict_task_sharding"] is True
+    assert heartbeat["selection_idle_reason"] == "test"
+    assert "implementation_result" not in heartbeat
 
 
 def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:

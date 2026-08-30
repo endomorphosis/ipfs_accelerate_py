@@ -14,8 +14,8 @@ import signal
 import stat
 import subprocess
 import sys
-import time
 import threading
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
@@ -38,6 +38,7 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     board_scoped_checkout_mutation_lock_path,
+    checkout_lock_repository_matches,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lease_state,
@@ -119,6 +120,7 @@ from ..rescue.supervisor_watchdog import (
 )
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
+    DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
@@ -136,6 +138,8 @@ from .implementation_daemon import (
     _validated_provider_route_receipt,
     _validated_provider_filesystem_boundary_receipt,
     consume_stale_active_attempt,
+    database_daemon_pass_heartbeat_path,
+    is_database_authority_mode,
     load_json_dict,
     normalize_status,
     normalize_focus_tracks,
@@ -185,6 +189,39 @@ RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_re
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
 CONTROL_PLANE_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"
+)
+DATABASE_READINESS_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-readiness-observation@1"
+)
+DATABASE_IDLE_DAEMON_STALL_REASON = "ready_work_idle_daemon_stall"
+SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-maintenance-receipt@1"
+)
+LEGACY_TASKLESS_CLEANUP_LEASE_OPERATION = "cleanup_backlogged_worktrees"
+LEGACY_TASKLESS_CLEANUP_RECLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/legacy-cleanup-reclaim@1"
+)
+LEGACY_TASKLESS_CLEANUP_RECLAIM_OPERATION = (
+    "reclaim_expired_legacy_taskless_cleanup_lease"
+)
+LEGACY_TASKLESS_CLEANUP_LEASE_MIN_STALE_SECONDS = 3600.0
+LEGACY_TASKLESS_CLEANUP_POST_PHASES = frozenset(
+    {
+        "strategy_state_repair",
+        "objective_goal_migration",
+        "objective_task_janitor",
+        "reconciliation_guardrails",
+        "guardrail_releases",
+        "stuck_recovery",
+        "post_stuck_generated_dirty_repair",
+        "retry_dependency_guardrails",
+        "objective_refill",
+        "codebase_refill",
+        "post_refill_goal_contradictions",
+        "preflight_refill_deferred",
+        "post_refill_generated_dirty_repair",
+        "supervisor_check_event",
+    }
 )
 CONTROL_PLANE_SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
@@ -6987,6 +7024,78 @@ class PortalImplementationSupervisor:
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
 
+    def _supervisor_maintenance_receipt_path(self) -> Path:
+        """Return the confined durable maintenance-progress receipt path."""
+
+        state_prefix = str(self.config.state_prefix or "").strip()
+        if (
+            not state_prefix
+            or Path(state_prefix).name != state_prefix
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", state_prefix)
+            is None
+        ):
+            raise ValueError("state_prefix is unsafe for maintenance receipt")
+        state_dir = self.config.state_dir.resolve()
+        if state_dir == Path(state_dir.anchor):
+            raise ValueError("maintenance receipt state_dir must not be a filesystem root")
+        path = state_dir / f"{state_prefix}_supervisor_maintenance_receipt.json"
+        if path.parent != state_dir:
+            raise ValueError("maintenance receipt path escapes state_dir")
+        return path
+
+    def _write_supervisor_maintenance_receipt(
+        self,
+        phase: str,
+        *,
+        status: str,
+        started_at: str,
+        updated_at: str,
+    ) -> dict[str, Any]:
+        """Atomically bind one maintenance phase to the current process birth."""
+
+        maintenance_status = str(status or "").strip()
+        if maintenance_status not in {"running", "completed", "failed"}:
+            raise ValueError("maintenance receipt status is invalid")
+        maintenance_phase = str(phase or "").strip()
+        if not maintenance_phase:
+            raise ValueError("maintenance receipt phase must not be empty")
+        birth = read_process_birth(os.getpid())
+        if (
+            birth is None
+            or birth.pid != os.getpid()
+            or birth.start_time_ticks <= 0
+            or not birth.boot_id
+        ):
+            raise RuntimeError("current supervisor process birth is unavailable")
+        state_dir = self.config.state_dir.resolve()
+        state_path = self.config.state_path.resolve()
+        repo_root = self.config.repo_root.resolve()
+        receipt = {
+            "schema": SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
+            "repo_root": str(repo_root),
+            "state_dir": str(state_dir),
+            "state_path": str(state_path),
+            "state_prefix": str(self.config.state_prefix),
+            "supervisor_pid": os.getpid(),
+            "process_birth": birth.to_dict(),
+            "phase": maintenance_phase,
+            "status": maintenance_status,
+            "maintenance_started_at": str(started_at or ""),
+            "updated_at": str(updated_at or ""),
+            "completed_at": (
+                str(updated_at or "")
+                if maintenance_status in {"completed", "failed"}
+                else ""
+            ),
+        }
+        if (
+            parse_timestamp(receipt["maintenance_started_at"]) is None
+            or parse_timestamp(receipt["updated_at"]) is None
+        ):
+            raise ValueError("maintenance receipt timestamps are invalid")
+        write_json_atomic(self._supervisor_maintenance_receipt_path(), receipt)
+        return receipt
+
     def _write_signal_shutdown_status(
         self,
         *,
@@ -7056,6 +7165,1606 @@ class PortalImplementationSupervisor:
         if configured is not None:
             return max(0.0, float(configured))
         return max(300.0, float(self.config.check_interval) * 2.0)
+
+    def _database_authority_enabled(self) -> bool:
+        program = self.config.database_program
+        return bool(
+            program is not None
+            and is_database_authority_mode(
+                authority_mode=program.authority_mode,
+                task_source_kind=program.task_source_kind,
+            )
+        )
+
+    def _is_board_maintenance_leader(self) -> bool:
+        """Return whether this strict lane owns shared board maintenance."""
+
+        if int(self.config.task_shard_count) <= 1:
+            return True
+        return int(self.config.task_shard_index) == 0
+
+    @staticmethod
+    def _database_task_automatic_dispatch_forbidden(task: Any) -> bool:
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        completion = body.get("completion")
+        if isinstance(completion, Mapping):
+            completion = completion.get("mode") or completion.get("kind")
+        manual_completion = str(completion or "").strip().lower() == "manual"
+        review_raw = body.get("review_only")
+        review_only = review_raw is True or str(review_raw or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        return manual_completion or review_only
+
+    @staticmethod
+    def _database_task_shard_key(task: Any) -> str:
+        alias = str(getattr(task, "task_alias", "") or "").strip()
+        task_cid = str(getattr(task, "task_cid", "") or "").strip()
+        key = alias or task_cid
+        if ":" in key:
+            key = key.rsplit(":", 1)[-1]
+        return key
+
+    def _database_task_belongs_to_current_shard(self, task: Any) -> bool:
+        count = max(1, int(self.config.task_shard_count))
+        if count <= 1:
+            return True
+        key = self._database_task_shard_key(task)
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return int(digest[:8], 16) % count == int(self.config.task_shard_index)
+
+    def _database_task_in_scope(self, task: Any) -> bool:
+        alias = str(getattr(task, "task_alias", "") or "")
+        if self.config.task_prefix and not alias.startswith(self.config.task_prefix):
+            return False
+        return not self._database_task_automatic_dispatch_forbidden(task)
+
+    def _authoritative_runnable_work_status(self) -> dict[str, Any]:
+        """Read canonical ready/active work through the configured DB authority.
+
+        This probe never falls back from Quack to its local DuckDB file. Any
+        inability to obtain the complete bounded projection is typed as
+        unavailable so the watchdog cannot infer that the board is idle.
+        """
+
+        base: dict[str, Any] = {
+            "schema": DATABASE_READINESS_OBSERVATION_SCHEMA,
+            "available": False,
+            "reason": "database_authority_not_configured",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        }
+        program = self.config.database_program
+        if not self._database_authority_enabled() or program is None:
+            return base
+
+        try:
+            from ..task_sources.database_task_source import (
+                MAX_QUERY_LIMIT,
+                DatabaseTaskSource,
+            )
+
+            if program.authority_mode == "quack":
+                program.assert_quack_not_demoted(candidate_mode="quack")
+                target: str | Path = str(program.quack_endpoint or "")
+                if not target:
+                    raise ValueError("configured Quack endpoint is absent")
+            else:
+                if not str(program.store_id or ""):
+                    raise ValueError("configured database store is absent")
+                store_path = Path(program.store_id)
+                target = (
+                    store_path
+                    if store_path.is_absolute()
+                    else self.config.repo_root / store_path
+                )
+
+            with DatabaseTaskSource(
+                target,
+                owner_id=(
+                    "implementation-supervisor-readiness:"
+                    f"{self.board_namespace}:{self.config.task_shard_index}"
+                ),
+                install_schema=False,
+            ) as source:
+                ready_page = source.ready_tasks(limit=MAX_QUERY_LIMIT)
+                active_page = source.list_tasks(
+                    status=("claimed", "in_progress", "running"),
+                    limit=MAX_QUERY_LIMIT,
+                )
+            if ready_page.next_cursor or active_page.next_cursor:
+                raise RuntimeError("authoritative readiness projection is truncated")
+
+            ready = [
+                task
+                for task in ready_page.tasks
+                if self._database_task_in_scope(task)
+            ]
+            active = [
+                task
+                for task in active_page.tasks
+                if self._database_task_in_scope(task)
+            ]
+
+            def task_id(task: Any) -> str:
+                return str(
+                    getattr(task, "task_alias", "")
+                    or getattr(task, "task_cid", "")
+                    or ""
+                )
+
+            ready_ids = [task_id(task) for task in ready]
+            active_ids = [task_id(task) for task in active]
+            return {
+                **base,
+                "available": True,
+                "reason": "authoritative_readiness_observed",
+                "task_source_revision": max(
+                    int(ready_page.revision),
+                    int(active_page.revision),
+                ),
+                "ready_task_ids": ready_ids,
+                "same_shard_ready_task_ids": [
+                    task_id(task)
+                    for task in ready
+                    if self._database_task_belongs_to_current_shard(task)
+                ],
+                "active_task_ids": active_ids,
+                "same_shard_active_task_ids": [
+                    task_id(task)
+                    for task in active
+                    if self._database_task_belongs_to_current_shard(task)
+                ],
+            }
+        except Exception as exc:
+            logger.warning(
+                "Authoritative database readiness probe failed closed: %s",
+                type(exc).__name__,
+            )
+            return {
+                **base,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": type(exc).__name__,
+            }
+
+    def _database_pass_heartbeat_stale_after_seconds(self) -> float:
+        return max(
+            30.0,
+            float(self.config.daemon_interval) * 3.0,
+            float(self.config.check_interval) * 2.0,
+        )
+
+    @staticmethod
+    def _process_birth_matches(
+        observed: ProcessBirthIdentity,
+        expected: ProcessBirthIdentity,
+    ) -> bool:
+        return bool(
+            observed.pid > 0
+            and observed.start_time_ticks > 0
+            and observed.pid == expected.pid
+            and observed.start_time_ticks == expected.start_time_ticks
+            and observed.boot_id == expected.boot_id
+            and observed.parent_pid == expected.parent_pid
+        )
+
+    @staticmethod
+    def _stable_process_birth_matches(
+        observed: ProcessBirthIdentity,
+        expected: ProcessBirthIdentity,
+    ) -> bool:
+        """Match PID-reuse identity while treating reparenting as informational."""
+
+        return bool(
+            observed.pid > 0
+            and observed.start_time_ticks > 0
+            and observed.pid == expected.pid
+            and observed.start_time_ticks == expected.start_time_ticks
+            and observed.boot_id
+            and observed.boot_id == expected.boot_id
+        )
+
+    @staticmethod
+    def _path_is_regular_nofollow(path: Path) -> bool:
+        try:
+            return stat.S_ISREG(path.lstat().st_mode)
+        except OSError:
+            return False
+
+    @staticmethod
+    def _resolve_confined_status_path(
+        value: Any,
+        *,
+        worktree: Path,
+        require_regular: bool = True,
+    ) -> Path | None:
+        """Resolve one absolute-or-worktree-relative regular evidence path."""
+
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if ".." in path.parts:
+            return None
+        candidate = path if path.is_absolute() else worktree / path
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(worktree)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return None
+        try:
+            lexical_mode = lexical.lstat().st_mode
+        except OSError:
+            return None
+        kind_matches = (
+            stat.S_ISREG(lexical_mode)
+            if require_regular
+            else stat.S_ISDIR(lexical_mode)
+        )
+        if resolved != lexical or not kind_matches:
+            return None
+        return resolved
+
+    def _database_pass_heartbeat_status(
+        self,
+        child: Any,
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Validate the current child's last completed database-daemon pass."""
+
+        threshold = self._database_pass_heartbeat_stale_after_seconds()
+        path = database_daemon_pass_heartbeat_path(
+            state_dir=self.config.state_dir,
+            state_prefix=self.config.state_prefix,
+        )
+        base: dict[str, Any] = {
+            "schema": DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
+            "path": str(path),
+            "available": False,
+            "current_process": False,
+            "stale": False,
+            "stale_after_seconds": threshold,
+            "reason": "heartbeat_missing",
+        }
+        child_pid = int(getattr(child, "pid", 0) or 0)
+        child_started_at = parse_timestamp(str(getattr(child, "started_at", "") or ""))
+        child_age = (
+            max(0.0, now_ts - child_started_at.timestamp())
+            if child_started_at is not None
+            else None
+        )
+        base["child_age_seconds"] = child_age
+        if path.is_symlink():
+            return {**base, "reason": "heartbeat_path_is_symlink"}
+        payload = load_json_dict(path)
+        if payload is None:
+            if path.exists():
+                return {**base, "reason": "heartbeat_malformed"}
+            if child_age is not None and child_age > threshold:
+                return {**base, "stale": True}
+            return base
+        if payload.get("schema") != DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA:
+            return {**base, "reason": "heartbeat_schema_mismatch"}
+        try:
+            sequence = int(payload.get("sequence") or 0)
+            observed_birth = ProcessBirthIdentity.from_dict(
+                payload.get("process_birth")
+                if isinstance(payload.get("process_birth"), Mapping)
+                else None
+            )
+        except (TypeError, ValueError):
+            return {**base, "reason": "heartbeat_identity_malformed"}
+        if sequence < 1:
+            return {**base, "reason": "heartbeat_sequence_invalid"}
+        try:
+            heartbeat_shard_count = int(payload.get("task_shard_count"))
+            heartbeat_shard_index = int(payload.get("task_shard_index"))
+        except (TypeError, ValueError):
+            return {**base, "reason": "heartbeat_shard_binding_malformed"}
+        if (
+            heartbeat_shard_count != int(self.config.task_shard_count)
+            or heartbeat_shard_index != int(self.config.task_shard_index)
+            or payload.get("strict_task_sharding")
+            is not bool(self.config.strict_task_sharding)
+        ):
+            return {**base, "reason": "heartbeat_shard_binding_mismatch"}
+        expected_birth = getattr(child, "identity_process_birth", None)
+        if not isinstance(expected_birth, ProcessBirthIdentity):
+            expected_birth = read_process_birth(child_pid) if child_pid > 0 else None
+        if expected_birth is None:
+            return {**base, "reason": "child_process_birth_unavailable"}
+        if not self._process_birth_matches(observed_birth, expected_birth):
+            return {
+                **base,
+                "reason": "heartbeat_belongs_to_prior_child",
+                "stale": bool(child_age is not None and child_age > threshold),
+            }
+        completed_at = parse_timestamp(str(payload.get("completed_at") or ""))
+        if completed_at is None:
+            return {**base, "reason": "heartbeat_timestamp_invalid"}
+        age = now_ts - completed_at.timestamp()
+        if age < -5.0:
+            return {**base, "reason": "heartbeat_timestamp_in_future"}
+        age = max(0.0, age)
+        return {
+            **base,
+            "available": True,
+            "current_process": True,
+            "stale": age > threshold,
+            "reason": "heartbeat_stale" if age > threshold else "heartbeat_fresh",
+            "age_seconds": age,
+            "sequence": sequence,
+            "completed_at": str(payload.get("completed_at") or ""),
+            "selection_idle_reason": str(
+                payload.get("selection_idle_reason") or ""
+            ),
+            "active_task_id": str(payload.get("active_task_id") or ""),
+        }
+
+    def _legacy_taskless_cleanup_lease_stale_after_seconds(self) -> float:
+        """Return a conservative expiry bound for a legacy cleanup lease.
+
+        Only the old repo-global, taskless ``cleanup_backlogged_worktrees``
+        transaction is eligible for this migration escape hatch.  Ordinary
+        task, merge, and protected-recovery leases remain durable fences even
+        after this interval.
+        """
+
+        return max(
+            LEGACY_TASKLESS_CLEANUP_LEASE_MIN_STALE_SECONDS,
+            self._supervisor_maintenance_timeout_seconds() * 2.0,
+        )
+
+    def _legacy_cleanup_owner_successor_status(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        started_at: datetime,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Prove that a live legacy owner advanced beyond its cleanup call.
+
+        A live PID alone normally keeps an atomic lease authoritative.  The
+        legacy cleanup leak was produced after the supervisor returned from
+        cleanup but failed its exact-lease release.  Reclamation is therefore
+        allowed only when that same supervisor has published a newer bounded
+        status heartbeat, has no task or worker, and is not currently in the
+        cleanup phase.  Missing or malformed projections fail closed.
+        """
+
+        base: dict[str, Any] = {
+            "available": False,
+            "advanced": False,
+            "reason": "legacy_cleanup_owner_status_unavailable",
+        }
+        worktree_raw = str(metadata.get("worktree_root") or "").strip()
+        state_dir_raw = str(metadata.get("state_dir") or "").strip()
+        state_path_raw = str(metadata.get("state_path") or "").strip()
+        if not worktree_raw or not state_dir_raw or not state_path_raw:
+            return base
+        raw_worktree_root = Path(worktree_raw)
+        raw_state_dir = Path(state_dir_raw)
+        raw_state_path = Path(state_path_raw)
+        if (
+            raw_worktree_root.is_symlink()
+            or raw_state_dir.is_symlink()
+            or raw_state_path.is_symlink()
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_paths_invalid"}
+        try:
+            worktree_root = raw_worktree_root.resolve(strict=True)
+            state_dir = raw_state_dir.resolve(strict=True)
+            state_path = raw_state_path.resolve(strict=True)
+            state_dir.relative_to(worktree_root)
+            state_path.relative_to(state_dir)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_owner_paths_invalid"}
+        if state_path.parent != state_dir:
+            return {**base, "reason": "legacy_cleanup_owner_state_path_invalid"}
+        if not self._path_is_regular_nofollow(state_path):
+            return {**base, "reason": "legacy_cleanup_owner_state_path_invalid"}
+        suffix = "_task_state.json"
+        if not state_path.name.endswith(suffix):
+            return {**base, "reason": "legacy_cleanup_owner_state_name_invalid"}
+        state_prefix = state_path.name[: -len(suffix)]
+        if not state_prefix:
+            return {**base, "reason": "legacy_cleanup_owner_state_name_invalid"}
+        status_path = state_dir / f"{state_prefix}_supervisor_status.json"
+        receipt_path = (
+            state_dir / f"{state_prefix}_supervisor_maintenance_receipt.json"
+        )
+        try:
+            status_resolved = status_path.resolve(strict=True)
+            status_resolved.relative_to(state_dir)
+            receipt_resolved = receipt_path.resolve(strict=True)
+            receipt_resolved.relative_to(state_dir)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return {
+                **base,
+                "reason": "legacy_cleanup_owner_status_or_receipt_path_invalid",
+            }
+        if (
+            status_path.is_symlink()
+            or status_resolved != status_path
+            or receipt_path.is_symlink()
+            or receipt_resolved != receipt_path
+            or not self._path_is_regular_nofollow(status_path)
+            or not self._path_is_regular_nofollow(receipt_path)
+        ):
+            return {
+                **base,
+                "reason": "legacy_cleanup_owner_status_or_receipt_path_invalid",
+            }
+
+        task_state = load_json_dict(state_path)
+        status = load_json_dict(status_path)
+        receipt = load_json_dict(receipt_path)
+        if (
+            not isinstance(task_state, Mapping)
+            or not isinstance(status, Mapping)
+            or not isinstance(receipt, Mapping)
+        ):
+            return base
+        if status.get("schema") != (
+            "ipfs_accelerate_py.agent_supervisor."
+            "todo_implementation_supervisor.supervisor"
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_status_schema_invalid"}
+        owner_pid = metadata.get("pid")
+        status_pid = status.get("supervisor_pid")
+        active_workers = status.get("active_worker_count")
+        worker_descendants = status.get("worker_descendant_count")
+        active_worker_pids = status.get("active_worker_pids")
+        if (
+            isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+            or isinstance(status_pid, bool)
+            or not isinstance(status_pid, int)
+            or status_pid <= 0
+            or isinstance(active_workers, bool)
+            or not isinstance(active_workers, int)
+            or active_workers < 0
+            or isinstance(worker_descendants, bool)
+            or not isinstance(worker_descendants, int)
+            or worker_descendants < 0
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_status_incomplete"}
+        if not isinstance(active_worker_pids, list) or any(
+            isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0
+            for pid in active_worker_pids
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_status_incomplete"}
+        if status_pid != owner_pid:
+            return {**base, "reason": "legacy_cleanup_owner_status_pid_mismatch"}
+        updated_at = parse_timestamp(str(status.get("updated_at") or ""))
+        if updated_at is None:
+            return {**base, "reason": "legacy_cleanup_owner_status_time_invalid"}
+        successor_grace = max(60.0, float(self.config.check_interval) * 2.0)
+        status_age = now_ts - updated_at.timestamp()
+        if (
+            updated_at.timestamp() <= started_at.timestamp() + successor_grace
+            or status_age < -5.0
+            or status_age > max(300.0, float(self.config.stale_seconds))
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_status_not_current"}
+        active_task_id = task_state.get("active_task_id")
+        if not isinstance(active_task_id, str):
+            return {**base, "reason": "legacy_cleanup_owner_task_state_incomplete"}
+        if (
+            active_task_id.strip()
+            or task_state.get("implementation_in_progress") is not False
+            or active_workers != 0
+            or worker_descendants != 0
+            or active_worker_pids
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_work_active"}
+        status_name = str(status.get("status") or "").strip()
+        if status_name not in {
+            "running",
+            "starting",
+            "agentic_maintenance_started",
+            "agentic_maintenance_completed",
+            "agentic_maintenance_failed",
+        }:
+            return {**base, "reason": "legacy_cleanup_owner_status_not_running"}
+        current_status_phase = str(
+            status.get("last_agentic_maintenance_phase") or ""
+        ).strip()
+        if (
+            status_name == "agentic_maintenance_started"
+            and current_status_phase == "worktree_cleanup"
+        ):
+            return {
+                **base,
+                "reason": "legacy_cleanup_owner_cleanup_active",
+            }
+
+        expected_receipt_fields = {
+            "schema",
+            "repo_root",
+            "state_dir",
+            "state_path",
+            "state_prefix",
+            "supervisor_pid",
+            "process_birth",
+            "phase",
+            "status",
+            "maintenance_started_at",
+            "updated_at",
+            "completed_at",
+        }
+        if set(receipt) != expected_receipt_fields:
+            return {**base, "reason": "legacy_cleanup_receipt_fields_invalid"}
+        if receipt.get("schema") != SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA:
+            return {**base, "reason": "legacy_cleanup_receipt_schema_invalid"}
+        if (
+            str(receipt.get("repo_root") or "") != str(worktree_root)
+            or str(receipt.get("state_dir") or "") != str(state_dir)
+            or str(receipt.get("state_path") or "") != str(state_path)
+            or str(receipt.get("state_prefix") or "") != state_prefix
+        ):
+            return {**base, "reason": "legacy_cleanup_receipt_binding_invalid"}
+        receipt_pid = receipt.get("supervisor_pid")
+        if (
+            isinstance(receipt_pid, bool)
+            or not isinstance(receipt_pid, int)
+            or receipt_pid <= 0
+        ):
+            return {**base, "reason": "legacy_cleanup_receipt_pid_invalid"}
+        try:
+            receipt_birth = ProcessBirthIdentity.from_dict(
+                receipt.get("process_birth")
+                if isinstance(receipt.get("process_birth"), Mapping)
+                else None
+            )
+            current_birth = read_process_birth(owner_pid)
+        except (OSError, TypeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_receipt_birth_unavailable"}
+        if (
+            receipt_pid != owner_pid
+            or current_birth is None
+            or not self._stable_process_birth_matches(receipt_birth, current_birth)
+        ):
+            return {**base, "reason": "legacy_cleanup_receipt_birth_mismatch"}
+
+        maintenance_phase = str(receipt.get("phase") or "").strip()
+        receipt_status = str(receipt.get("status") or "").strip()
+        if maintenance_phase not in LEGACY_TASKLESS_CLEANUP_POST_PHASES:
+            return {
+                **base,
+                "reason": "legacy_cleanup_owner_post_cleanup_phase_unproved",
+            }
+        if receipt_status != "completed":
+            return {**base, "reason": "legacy_cleanup_receipt_status_invalid"}
+        maintenance_started_at = parse_timestamp(
+            str(receipt.get("maintenance_started_at") or "")
+        )
+        receipt_updated_at = parse_timestamp(
+            str(receipt.get("updated_at") or "")
+        )
+        completed_raw = str(receipt.get("completed_at") or "")
+        completed_at = parse_timestamp(completed_raw) if completed_raw else None
+        if maintenance_started_at is None or receipt_updated_at is None:
+            return {**base, "reason": "legacy_cleanup_receipt_time_invalid"}
+        receipt_age = now_ts - receipt_updated_at.timestamp()
+        if (
+            receipt_updated_at < maintenance_started_at
+            or receipt_updated_at.timestamp() <= started_at.timestamp()
+            or receipt_age < -5.0
+            or receipt_age > max(300.0, float(self.config.stale_seconds))
+        ):
+            return {**base, "reason": "legacy_cleanup_receipt_not_current"}
+        if (
+            completed_at is None
+            or completed_at != receipt_updated_at
+            or completed_at < maintenance_started_at
+        ):
+            return {
+                **base,
+                "reason": "legacy_cleanup_receipt_completion_invalid",
+            }
+        return {
+            **base,
+            "available": True,
+            "advanced": True,
+            "reason": "legacy_cleanup_owner_advanced",
+            "status_updated_at": str(status.get("updated_at") or ""),
+            "maintenance_phase": maintenance_phase,
+            "maintenance_receipt_path": str(receipt_path),
+            "maintenance_receipt_status": receipt_status,
+            "maintenance_receipt_updated_at": str(
+                receipt.get("updated_at") or ""
+            ),
+        }
+
+    def _expired_legacy_taskless_cleanup_lease_status(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Classify one lease without weakening any normal lock authority."""
+
+        base: dict[str, Any] = {
+            "eligible": False,
+            "reason": "not_legacy_taskless_cleanup_lease",
+            "stale_after_seconds": (
+                self._legacy_taskless_cleanup_lease_stale_after_seconds()
+            ),
+        }
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or str(metadata.get("operation") or "")
+            != LEGACY_TASKLESS_CLEANUP_LEASE_OPERATION
+            or not str(metadata.get("lease_id") or "").strip()
+        ):
+            return base
+        attempt = metadata.get("attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+            return {**base, "reason": "legacy_cleanup_attempt_invalid"}
+        if (
+            str(metadata.get("task_id") or "").strip()
+            or str(metadata.get("branch") or "").strip()
+            or attempt != 0
+        ):
+            return {**base, "reason": "legacy_cleanup_task_binding_present"}
+        # Any protected journal or generated-board ownership turns the record
+        # into a durable recovery fence, regardless of a false-y field value.
+        if any(str(key).startswith("protected_") for key in metadata) or any(
+            key in metadata
+            for key in (
+                "producer",
+                "merge_request_id",
+                "merge_queue_request_id",
+                "proposal_id",
+            )
+        ):
+            return {**base, "reason": "legacy_cleanup_protected_binding_present"}
+        if checkout_lock_repository_matches(metadata, self.config.repo_root) is not True:
+            return {**base, "reason": "legacy_cleanup_repository_unverified"}
+        owner_pid = metadata.get("pid")
+        if (
+            isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+        ):
+            return {**base, "reason": "legacy_cleanup_owner_pid_invalid"}
+        started_at = parse_timestamp(str(metadata.get("started_at") or ""))
+        if started_at is None:
+            return {**base, "reason": "legacy_cleanup_started_at_invalid"}
+        age_seconds = max(0.0, now_ts - started_at.timestamp())
+        base["age_seconds"] = age_seconds
+        if age_seconds <= float(base["stale_after_seconds"]):
+            return {**base, "reason": "legacy_cleanup_lease_not_expired"}
+
+        try:
+            owner_active = self._checkout_lock_owner_is_active(dict(metadata))
+        except Exception:
+            return {**base, "reason": "legacy_cleanup_owner_liveness_unavailable"}
+        successor: dict[str, Any] = {}
+        if owner_active:
+            successor = self._legacy_cleanup_owner_successor_status(
+                metadata,
+                started_at=started_at,
+                now_ts=now_ts,
+            )
+            if successor.get("advanced") is not True:
+                return {
+                    **base,
+                    "reason": str(
+                        successor.get("reason")
+                        or "legacy_cleanup_owner_not_advanced"
+                    ),
+                    "owner_successor_status": successor,
+                }
+        return {
+            **base,
+            "eligible": True,
+            "reason": "legacy_taskless_cleanup_lease_expired",
+            "owner_active": bool(owner_active),
+            "owner_successor_status": successor,
+        }
+
+    @staticmethod
+    def _verified_git_worktree_common_dir(worktree: Path) -> Path | None:
+        """Return a Git-proved common directory for one exact worktree."""
+
+        if worktree.is_symlink():
+            return None
+        try:
+            resolved = worktree.resolve(strict=True)
+            result = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--show-toplevel",
+                    "--git-common-dir",
+                ],
+                cwd=resolved,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (FileNotFoundError, OSError, RuntimeError, subprocess.TimeoutExpired):
+            return None
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        if result.returncode != 0 or len(lines) != 2:
+            return None
+        top = Path(lines[0])
+        common = Path(lines[1])
+        try:
+            top = top.resolve(strict=True)
+            common = (
+                common
+                if common.is_absolute()
+                else (resolved / common)
+            ).resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError):
+            return None
+        return common if top == resolved else None
+
+    @staticmethod
+    def _normalized_board_task_prefix(value: Any) -> str:
+        return re.sub(r"^[#\s]+", "", str(value or "").strip()).strip()
+
+    def _legacy_lease_targets_current_worktree(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        raw = str(metadata.get("worktree_root") or "").strip()
+        if not raw or Path(raw).is_symlink():
+            return False
+        try:
+            return (
+                Path(raw).resolve(strict=True)
+                == self.config.repo_root.resolve(strict=True)
+                and checkout_lock_repository_matches(
+                    metadata,
+                    self.config.repo_root,
+                )
+                is True
+            )
+        except (FileNotFoundError, OSError, RuntimeError):
+            return False
+
+    def _exact_checkout_lease_revalidation(
+        self,
+        lease: CheckoutMutationLease,
+    ) -> dict[str, Any]:
+        """Revalidate one classified lease without trusting a stale snapshot."""
+
+        base: dict[str, Any] = {
+            "current": False,
+            "absent": False,
+            "reason": "checkout_lease_revalidation_unverifiable",
+            "lease_id": lease.lease_id,
+            "device": lease.device,
+            "inode": lease.inode,
+        }
+        lock_path = lease.lock_path
+        try:
+            observed_stat = lock_path.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            return {
+                **base,
+                "absent": True,
+                "reason": "checkout_lease_revalidation_absent",
+            }
+        except OSError:
+            return base
+        if stat.S_ISLNK(observed_stat.st_mode):
+            return {**base, "reason": "checkout_lease_revalidation_symlink"}
+        if not stat.S_ISREG(observed_stat.st_mode):
+            return {**base, "reason": "checkout_lease_revalidation_not_regular"}
+        current = read_checkout_mutation_lease(lock_path)
+        if current is None:
+            try:
+                lock_path.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                return {
+                    **base,
+                    "absent": True,
+                    "reason": "checkout_lease_revalidation_absent",
+                }
+            except OSError:
+                return base
+            return base
+        if (
+            current.device != lease.device
+            or current.inode != lease.inode
+            or current.lease_id != lease.lease_id
+            or dict(current.metadata) != dict(lease.metadata)
+        ):
+            return {
+                **base,
+                "reason": "checkout_lease_revalidation_replaced",
+                "observed_lease_id": current.lease_id,
+                "observed_device": current.device,
+                "observed_inode": current.inode,
+            }
+        return {
+            **base,
+            "current": True,
+            "reason": "checkout_lease_revalidation_current",
+        }
+
+    def _external_board_legacy_cleanup_lease_status(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Prove that a repo-global legacy cleanup belongs to another board.
+
+        This is an interoperability classification, not lease expiry: the
+        external record is preserved byte-for-byte.  Every identity and path
+        dimension must prove a distinct board in a different linked worktree;
+        uncertainty remains a checkout-mutation blocker.
+        """
+
+        base: dict[str, Any] = {
+            "external_board": False,
+            "preserved": True,
+            "reason": "legacy_cleanup_external_board_unproved",
+        }
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or str(metadata.get("operation") or "")
+            != LEGACY_TASKLESS_CLEANUP_LEASE_OPERATION
+            or not str(metadata.get("lease_id") or "").strip()
+        ):
+            return {**base, "reason": "not_legacy_taskless_cleanup_lease"}
+        attempt = metadata.get("attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+            return {**base, "reason": "legacy_cleanup_attempt_invalid"}
+        if (
+            str(metadata.get("task_id") or "").strip()
+            or str(metadata.get("branch") or "").strip()
+            or attempt != 0
+        ):
+            return {**base, "reason": "legacy_cleanup_task_binding_present"}
+        if any(str(key).startswith("protected_") for key in metadata) or any(
+            key in metadata
+            for key in (
+                "producer",
+                "merge_request_id",
+                "merge_queue_request_id",
+                "proposal_id",
+            )
+        ):
+            return {**base, "reason": "legacy_cleanup_protected_binding_present"}
+        if checkout_lock_repository_matches(metadata, self.config.repo_root) is not True:
+            return {**base, "reason": "legacy_cleanup_repository_unverified"}
+        started_at = parse_timestamp(str(metadata.get("started_at") or ""))
+        if started_at is None or started_at.timestamp() > now_ts + 5.0:
+            return {**base, "reason": "legacy_cleanup_started_at_invalid"}
+
+        worktree_raw = str(metadata.get("worktree_root") or "").strip()
+        state_dir_raw = str(metadata.get("state_dir") or "").strip()
+        state_path_raw = str(metadata.get("state_path") or "").strip()
+        if not worktree_raw or not state_dir_raw or not state_path_raw:
+            return {**base, "reason": "legacy_cleanup_external_bindings_absent"}
+        raw_worktree = Path(worktree_raw)
+        raw_state_dir = Path(state_dir_raw)
+        raw_state_path = Path(state_path_raw)
+        if (
+            raw_worktree.is_symlink()
+            or raw_state_dir.is_symlink()
+            or raw_state_path.is_symlink()
+        ):
+            return {**base, "reason": "legacy_cleanup_external_path_is_symlink"}
+        try:
+            worktree = raw_worktree.resolve(strict=True)
+            current_worktree = self.config.repo_root.resolve(strict=True)
+            state_dir = raw_state_dir.resolve(strict=True)
+            state_path = raw_state_path.resolve(strict=True)
+            state_dir.relative_to(worktree)
+            state_path.relative_to(state_dir)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_external_paths_invalid"}
+        if worktree == current_worktree:
+            return {**base, "reason": "legacy_cleanup_same_board_worktree"}
+        external_common = self._verified_git_worktree_common_dir(worktree)
+        current_common = self._verified_git_worktree_common_dir(current_worktree)
+        if (
+            external_common is None
+            or current_common is None
+            or external_common != current_common
+        ):
+            return {**base, "reason": "legacy_cleanup_external_worktree_unverified"}
+        if state_path.parent != state_dir:
+            return {**base, "reason": "legacy_cleanup_external_state_path_invalid"}
+        if not self._path_is_regular_nofollow(state_path):
+            return {**base, "reason": "legacy_cleanup_external_state_path_invalid"}
+        suffix = "_task_state.json"
+        if not state_path.name.endswith(suffix):
+            return {**base, "reason": "legacy_cleanup_external_state_name_invalid"}
+        state_prefix = state_path.name[: -len(suffix)]
+        if not state_prefix:
+            return {**base, "reason": "legacy_cleanup_external_state_name_invalid"}
+        status_path = state_dir / f"{state_prefix}_supervisor_status.json"
+        try:
+            status_resolved = status_path.resolve(strict=True)
+            status_resolved.relative_to(state_dir)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_external_status_invalid"}
+        if (
+            status_path.is_symlink()
+            or status_resolved != status_path
+            or not self._path_is_regular_nofollow(status_path)
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_invalid"}
+        task_state = load_json_dict(state_path)
+        status = load_json_dict(status_path)
+        if not isinstance(task_state, Mapping) or not isinstance(status, Mapping):
+            return {**base, "reason": "legacy_cleanup_external_status_unavailable"}
+        if status.get("schema") != (
+            "ipfs_accelerate_py.agent_supervisor."
+            "todo_implementation_supervisor.supervisor"
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_schema_invalid"}
+        owner_pid = metadata.get("pid")
+        status_pid = status.get("supervisor_pid")
+        active_workers = status.get("active_worker_count")
+        worker_descendants = status.get("worker_descendant_count")
+        active_worker_pids = status.get("active_worker_pids")
+        if (
+            isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+            or isinstance(status_pid, bool)
+            or not isinstance(status_pid, int)
+            or status_pid <= 0
+            or isinstance(active_workers, bool)
+            or not isinstance(active_workers, int)
+            or active_workers < 0
+            or isinstance(worker_descendants, bool)
+            or not isinstance(worker_descendants, int)
+            or worker_descendants < 0
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_incomplete"}
+        if not isinstance(active_worker_pids, list) or any(
+            isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0
+            for pid in active_worker_pids
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_incomplete"}
+        status_updated_at = parse_timestamp(str(status.get("updated_at") or ""))
+        if status_updated_at is None:
+            return {**base, "reason": "legacy_cleanup_external_status_time_invalid"}
+        status_age = now_ts - status_updated_at.timestamp()
+        if (
+            status_pid != owner_pid
+            or status_age < -5.0
+            or status_age > max(300.0, float(self.config.stale_seconds))
+        ):
+            return {**base, "reason": "legacy_cleanup_external_owner_unverified"}
+        try:
+            owner_active = self._checkout_lock_owner_is_active(dict(metadata))
+        except Exception:
+            owner_active = False
+        if not owner_active:
+            return {**base, "reason": "legacy_cleanup_external_owner_inactive"}
+        active_task_id = task_state.get("active_task_id")
+        if not isinstance(active_task_id, str):
+            return {**base, "reason": "legacy_cleanup_external_task_state_incomplete"}
+        if (
+            active_task_id.strip()
+            or task_state.get("implementation_in_progress") is not False
+            or active_workers != 0
+            or worker_descendants != 0
+            or active_worker_pids
+        ):
+            return {**base, "reason": "legacy_cleanup_external_work_active"}
+
+        status_repo_root = self._resolve_confined_status_path(
+            status.get("repo_root"),
+            worktree=worktree,
+            require_regular=False,
+        )
+        status_state_path = self._resolve_confined_status_path(
+            status.get("state_path"),
+            worktree=worktree,
+        )
+        current_status_path = self._resolve_confined_status_path(
+            status.get("current_status_path"),
+            worktree=worktree,
+        )
+        external_todo_path = self._resolve_confined_status_path(
+            status.get("todo_path"),
+            worktree=worktree,
+        )
+        if (
+            status_repo_root is None
+            or status_state_path is None
+            or current_status_path is None
+            or external_todo_path is None
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_binding_invalid"}
+        if (
+            status_repo_root != worktree
+            or status_state_path != state_path
+            or current_status_path != state_path
+            or str(status.get("state_prefix") or "") != state_prefix
+        ):
+            return {**base, "reason": "legacy_cleanup_external_status_binding_invalid"}
+        try:
+            current_todo_path = self.config.todo_path.resolve(strict=True)
+            external_todo_relative = external_todo_path.relative_to(worktree)
+            current_todo_relative = current_todo_path.relative_to(current_worktree)
+        except (FileNotFoundError, OSError, RuntimeError):
+            return {**base, "reason": "legacy_cleanup_current_board_unverified"}
+        except ValueError:
+            return {**base, "reason": "legacy_cleanup_board_todo_unconfined"}
+        external_prefix = self._normalized_board_task_prefix(
+            status.get("task_prefix")
+        )
+        current_prefix = self._normalized_board_task_prefix(
+            self.config.task_prefix
+        )
+        if (
+            not external_prefix
+            or not current_prefix
+            or external_prefix == current_prefix
+            or external_todo_path == current_todo_path
+            or external_todo_relative == current_todo_relative
+        ):
+            return {**base, "reason": "legacy_cleanup_external_board_ambiguous"}
+        status_namespace = str(status.get("board_namespace") or "").strip()
+        metadata_namespace = str(metadata.get("board_namespace") or "").strip()
+        if (
+            status_namespace
+            and status_namespace == self.board_namespace
+        ) or (
+            metadata_namespace
+            and metadata_namespace == self.board_namespace
+        ):
+            return {**base, "reason": "legacy_cleanup_same_board_namespace"}
+        successor = self._legacy_cleanup_owner_successor_status(
+            metadata,
+            started_at=started_at,
+            now_ts=now_ts,
+        )
+        if successor.get("advanced") is not True:
+            return {
+                **base,
+                "reason": "legacy_cleanup_external_successor_unproved",
+                "owner_successor_status": successor,
+            }
+        return {
+            **base,
+            "external_board": True,
+            "reason": "external_board_legacy_cleanup_lease_preserved",
+            "source_worktree": str(worktree),
+            "source_state_prefix": state_prefix,
+            "source_task_prefix": external_prefix,
+            "source_todo_path": str(external_todo_path),
+            "source_todo_relative_path": external_todo_relative.as_posix(),
+            "owner_pid": owner_pid,
+            "status_updated_at": str(status.get("updated_at") or ""),
+            "owner_successor_status": successor,
+        }
+
+    def _reclaim_expired_legacy_taskless_cleanup_lease(
+        self,
+        lock_path: Path,
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """CAS-replace and release only an expired legacy cleanup lease."""
+
+        base: dict[str, Any] = {
+            "attempted": False,
+            "reclaimed": False,
+            "reason": "legacy_cleanup_lease_absent",
+            "lock_path": str(lock_path),
+        }
+        if lock_path.is_symlink():
+            return {**base, "reason": "legacy_cleanup_lock_path_is_symlink"}
+        if lock_path.exists() and not self._path_is_regular_nofollow(lock_path):
+            return {**base, "reason": "legacy_cleanup_lock_path_not_regular"}
+        existing = read_checkout_mutation_lease(lock_path)
+        if existing is None:
+            if lock_path.exists():
+                return {**base, "reason": "legacy_cleanup_lease_unverifiable"}
+            return base
+        expiry = self._expired_legacy_taskless_cleanup_lease_status(
+            existing.metadata,
+            now_ts=now_ts,
+        )
+        if expiry.get("eligible") is not True:
+            return {**base, "reason": str(expiry.get("reason") or ""), "expiry": expiry}
+
+        expected_lease_id = existing.lease_id
+        try:
+            replacement_metadata = self._legacy_cleanup_reclaim_metadata(
+                reclaimed_from_lease_id=expected_lease_id,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **base,
+                "reason": "legacy_cleanup_reclaim_process_birth_unavailable",
+                "error_type": type(exc).__name__,
+                "expiry": expiry,
+            }
+
+        def preserve_unless_same_expired_cleanup(candidate: dict[str, Any]) -> bool:
+            if str(candidate.get("lease_id") or "") != expected_lease_id:
+                return True
+            candidate_status = self._expired_legacy_taskless_cleanup_lease_status(
+                candidate,
+                now_ts=time.time(),
+            )
+            return candidate_status.get("eligible") is not True
+
+        lease, reason, cleared, _waited = acquire_atomic_checkout_mutation_lease(
+            lock_path,
+            replacement_metadata,
+            owner_active=preserve_unless_same_expired_cleanup,
+            timeout_seconds=0.0,
+        )
+        attempted = True
+        if lease is None:
+            return {
+                **base,
+                "attempted": attempted,
+                "reason": f"legacy_cleanup_reclaim_{reason}",
+                "expiry": expiry,
+            }
+        cleared_lease_id = str((cleared or {}).get("lease_id") or "")
+        released = release_checkout_mutation_lease(lease)
+        reclaimed = bool(
+            released and cleared_lease_id == expected_lease_id
+        )
+        result = {
+            **base,
+            "attempted": attempted,
+            "reclaimed": reclaimed,
+            "reason": (
+                "legacy_taskless_cleanup_lease_reclaimed"
+                if reclaimed
+                else (
+                    "legacy_cleanup_replacement_release_failed"
+                    if not released
+                    else "legacy_cleanup_reclaim_raced"
+                )
+            ),
+            "reclaimed_from_lease_id": expected_lease_id,
+            "replacement_released": released,
+            "expiry": expiry,
+        }
+        self._record_event(result["reason"], result)
+        return result
+
+    def _legacy_cleanup_reclaim_metadata(
+        self,
+        *,
+        reclaimed_from_lease_id: str,
+    ) -> dict[str, Any]:
+        birth = read_process_birth(os.getpid())
+        if birth is None or birth.start_time_ticks <= 0 or not birth.boot_id:
+            raise RuntimeError("legacy cleanup reclaimer process birth unavailable")
+        return self._supervisor_checkout_lock_metadata(
+            operation=LEGACY_TASKLESS_CLEANUP_RECLAIM_OPERATION,
+            extra={
+                "reclaim_schema": LEGACY_TASKLESS_CLEANUP_RECLAIM_SCHEMA,
+                "reclaimed_from_lease_id": reclaimed_from_lease_id,
+                "reclaimer_process_birth": birth.to_dict(),
+            },
+        )
+
+    def _legacy_cleanup_reclaim_replacement_status(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Validate one fenced, non-mutating cleanup-reclaim replacement."""
+
+        base = {
+            "resumable": False,
+            "reason": "not_legacy_cleanup_reclaim_replacement",
+        }
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or str(metadata.get("operation") or "")
+            != LEGACY_TASKLESS_CLEANUP_RECLAIM_OPERATION
+            or metadata.get("reclaim_schema")
+            != LEGACY_TASKLESS_CLEANUP_RECLAIM_SCHEMA
+            or not str(metadata.get("lease_id") or "").strip()
+            or not str(metadata.get("reclaimed_from_lease_id") or "").strip()
+        ):
+            return base
+        attempt = metadata.get("attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+            return {**base, "reason": "legacy_cleanup_reclaim_attempt_invalid"}
+        if (
+            str(metadata.get("task_id") or "").strip()
+            or str(metadata.get("branch") or "").strip()
+            or attempt != 0
+            or any(str(key).startswith("protected_") for key in metadata)
+            or any(
+                key in metadata
+                for key in (
+                    "producer",
+                    "merge_request_id",
+                    "merge_queue_request_id",
+                    "proposal_id",
+                )
+            )
+        ):
+            return {**base, "reason": "legacy_cleanup_reclaim_binding_invalid"}
+        if checkout_lock_repository_matches(metadata, self.config.repo_root) is not True:
+            return {**base, "reason": "legacy_cleanup_reclaim_repository_unverified"}
+        try:
+            worktree = Path(str(metadata.get("worktree_root") or "")).resolve(
+                strict=True
+            )
+            state_dir = Path(str(metadata.get("state_dir") or "")).resolve(
+                strict=True
+            )
+            state_path = Path(str(metadata.get("state_path") or "")).resolve(
+                strict=True
+            )
+            expected_worktree = self.config.repo_root.resolve(strict=True)
+            expected_state_dir = self.config.state_dir.resolve(strict=True)
+            expected_state_path = self.config.state_path.resolve(strict=True)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_reclaim_paths_invalid"}
+        if (
+            worktree != expected_worktree
+            or state_dir != expected_state_dir
+            or state_path != expected_state_path
+        ):
+            return {**base, "reason": "legacy_cleanup_reclaim_paths_invalid"}
+        owner_pid = metadata.get("pid")
+        if (
+            isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+        ):
+            return {**base, "reason": "legacy_cleanup_reclaim_birth_invalid"}
+        try:
+            observed_birth = ProcessBirthIdentity.from_dict(
+                metadata.get("reclaimer_process_birth")
+                if isinstance(metadata.get("reclaimer_process_birth"), Mapping)
+                else None
+            )
+            current_birth = read_process_birth(owner_pid)
+        except (OSError, TypeError, ValueError):
+            return {**base, "reason": "legacy_cleanup_reclaim_birth_unavailable"}
+        if (
+            observed_birth.pid != owner_pid
+            or observed_birth.start_time_ticks <= 0
+            or not observed_birth.boot_id
+        ):
+            return {**base, "reason": "legacy_cleanup_reclaim_birth_invalid"}
+        if current_birth is not None and self._stable_process_birth_matches(
+            observed_birth,
+            current_birth,
+        ):
+            if owner_pid != os.getpid():
+                return {**base, "reason": "legacy_cleanup_reclaim_owner_active"}
+            owner_state = "current_process"
+        else:
+            owner_state = "dead_or_reused_owner"
+        return {
+            **base,
+            "resumable": True,
+            "reason": "legacy_cleanup_reclaim_replacement_resumable",
+            "owner_state": owner_state,
+            "reclaimed_from_lease_id": str(
+                metadata.get("reclaimed_from_lease_id") or ""
+            ),
+        }
+
+    def _resume_legacy_cleanup_reclaim_replacement(
+        self,
+        lock_path: Path,
+        existing: CheckoutMutationLease,
+    ) -> dict[str, Any]:
+        """Release or CAS-adopt a prior cleanup-reclaim crash window."""
+
+        status = self._legacy_cleanup_reclaim_replacement_status(
+            existing.metadata
+        )
+        base = {
+            "attempted": False,
+            "reclaimed": False,
+            "reason": str(status.get("reason") or ""),
+            "lock_path": str(lock_path),
+            "reclaim_replacement": status,
+        }
+        if status.get("resumable") is not True:
+            return base
+        if status.get("owner_state") == "current_process":
+            released = release_checkout_mutation_lease(existing)
+            result = {
+                **base,
+                "attempted": True,
+                "reclaimed": released,
+                "reason": (
+                    "legacy_cleanup_reclaim_replacement_released"
+                    if released
+                    else "legacy_cleanup_reclaim_replacement_release_failed"
+                ),
+            }
+            self._record_event(result["reason"], result)
+            return result
+
+        try:
+            replacement_metadata = self._legacy_cleanup_reclaim_metadata(
+                reclaimed_from_lease_id=str(
+                    status.get("reclaimed_from_lease_id") or ""
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **base,
+                "reason": "legacy_cleanup_reclaim_replacement_birth_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        expected_lease_id = existing.lease_id
+
+        def preserve_unless_same_dead_replacement(
+            candidate: dict[str, Any],
+        ) -> bool:
+            if str(candidate.get("lease_id") or "") != expected_lease_id:
+                return True
+            candidate_status = self._legacy_cleanup_reclaim_replacement_status(
+                candidate
+            )
+            return not (
+                candidate_status.get("resumable") is True
+                and candidate_status.get("owner_state") == "dead_or_reused_owner"
+            )
+
+        lease, reason, cleared, _waited = acquire_atomic_checkout_mutation_lease(
+            lock_path,
+            replacement_metadata,
+            owner_active=preserve_unless_same_dead_replacement,
+            timeout_seconds=0.0,
+        )
+        if lease is None:
+            return {
+                **base,
+                "attempted": True,
+                "reason": f"legacy_cleanup_reclaim_resume_{reason}",
+            }
+        cleared_id = str((cleared or {}).get("lease_id") or "")
+        released = release_checkout_mutation_lease(lease)
+        resumed = bool(released and cleared_id == expected_lease_id)
+        result = {
+            **base,
+            "attempted": True,
+            "reclaimed": resumed,
+            "reason": (
+                "legacy_cleanup_reclaim_replacement_resumed"
+                if resumed
+                else (
+                    "legacy_cleanup_reclaim_replacement_release_failed"
+                    if not released
+                    else "legacy_cleanup_reclaim_replacement_raced"
+                )
+            ),
+        }
+        self._record_event(result["reason"], result)
+        return result
+
+    def _idle_database_child_recycle_guard(
+        self,
+        *,
+        state: PortalTaskState,
+        child: Any,
+        readiness: Mapping[str, Any],
+        heartbeat: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove the bounded conditions for recycling an idle DB child."""
+
+        blockers: list[str] = []
+        legacy_cleanup_recovery: dict[str, Any] = {
+            "attempted": False,
+            "reclaimed": False,
+            "reason": "not_evaluated",
+        }
+        external_legacy_cleanup: dict[str, Any] = {
+            "external_board": False,
+            "preserved": True,
+            "reason": "not_evaluated",
+        }
+        external_legacy_cleanup_classified = False
+        external_legacy_cleanup_current = False
+        external_legacy_cleanup_absent = False
+        if readiness.get("available") is not True:
+            blockers.append("authoritative_readiness_unavailable")
+        if not readiness.get("same_shard_ready_task_ids"):
+            blockers.append("no_same_shard_ready_work")
+        if readiness.get("same_shard_active_task_ids"):
+            blockers.append("canonical_same_shard_task_active")
+        if heartbeat.get("stale") is not True:
+            blockers.append("database_pass_heartbeat_not_stale")
+        if state.active_task_id or state.implementation_in_progress:
+            blockers.append("local_task_projection_active")
+        if self._active_agent_worker_processes():
+            blockers.append("implementation_worker_active")
+        if self._active_validation_subprocess_exists():
+            blockers.append("validation_worker_active")
+        child_pid = int(getattr(child, "pid", 0) or 0)
+        if child_pid <= 0 or not process_is_running(child_pid):
+            blockers.append("managed_child_not_live")
+        elif descendant_processes(child_pid):
+            blockers.append("managed_child_has_descendants")
+        if self._current_supervisor_checkout_lease() is not None:
+            blockers.append("supervisor_checkout_transaction_active")
+        lock_path = self._repo_merge_lock_path()
+        if lock_path.is_symlink() or lock_path.exists():
+            lease = (
+                read_checkout_mutation_lease(lock_path)
+                if self._path_is_regular_nofollow(lock_path)
+                else None
+            )
+            blockers.append(
+                "checkout_mutation_transaction_active"
+                if lease is not None
+                else "checkout_mutation_transaction_unverifiable"
+            )
+        # Before board-scoped checkout leases landed, cleanup used the shared
+        # repo-global path.  A process could advance after losing the exact
+        # release race and leave that taskless lease behind indefinitely.  Do
+        # not touch it until every ordinary recycle guard above has passed.
+        # The CAS recovery helper itself accepts only that exact old cleanup
+        # shape and preserves task, merge, generated, and protected records.
+        legacy_lock_path = checkout_mutation_lock_path(self.config.repo_root)
+        legacy_lock_present = (
+            legacy_lock_path.is_symlink() or legacy_lock_path.exists()
+        )
+        if legacy_lock_path != lock_path and legacy_lock_present:
+            legacy_lease = (
+                read_checkout_mutation_lease(legacy_lock_path)
+                if self._path_is_regular_nofollow(legacy_lock_path)
+                else None
+            )
+            if legacy_lease is not None:
+                external_legacy_cleanup = (
+                    self._external_board_legacy_cleanup_lease_status(
+                        legacy_lease.metadata,
+                        now_ts=time.time(),
+                    )
+                )
+            else:
+                external_legacy_cleanup = {
+                    "external_board": False,
+                    "preserved": True,
+                    "reason": (
+                        "legacy_cleanup_external_lock_path_is_symlink"
+                        if legacy_lock_path.is_symlink()
+                        else "legacy_cleanup_external_lease_unverifiable"
+                    ),
+                }
+            external_legacy_cleanup_classified = (
+                external_legacy_cleanup.get("external_board") is True
+            )
+            if external_legacy_cleanup_classified and legacy_lease is not None:
+                lease_revalidation = self._exact_checkout_lease_revalidation(
+                    legacy_lease
+                )
+                external_legacy_cleanup_current = (
+                    lease_revalidation.get("current") is True
+                )
+                external_legacy_cleanup_absent = (
+                    lease_revalidation.get("absent") is True
+                )
+                external_legacy_cleanup = {
+                    **external_legacy_cleanup,
+                    "lease_revalidation": lease_revalidation,
+                }
+                if not external_legacy_cleanup_current:
+                    external_legacy_cleanup = {
+                        **external_legacy_cleanup,
+                        "external_board": False,
+                        "classified_external_board": True,
+                        "reason": (
+                            "external_board_legacy_cleanup_lease_absent"
+                            if external_legacy_cleanup_absent
+                            else "external_board_legacy_cleanup_lease_changed"
+                        ),
+                    }
+            if external_legacy_cleanup_current:
+                legacy_cleanup_recovery = {
+                    "attempted": False,
+                    "reclaimed": False,
+                    "preserved": True,
+                    "reason": "external_board_legacy_cleanup_lease_preserved",
+                    "lock_path": str(legacy_lock_path),
+                }
+            elif external_legacy_cleanup_absent:
+                legacy_cleanup_recovery = {
+                    "attempted": False,
+                    "reclaimed": False,
+                    "preserved": False,
+                    "reason": "external_board_legacy_cleanup_lease_absent",
+                    "lock_path": str(legacy_lock_path),
+                }
+            elif external_legacy_cleanup_classified:
+                legacy_cleanup_recovery = {
+                    "attempted": False,
+                    "reclaimed": False,
+                    "preserved": True,
+                    "reason": "external_board_legacy_cleanup_lease_changed",
+                    "lock_path": str(legacy_lock_path),
+                }
+            elif not blockers:
+                if (
+                    legacy_lease is not None
+                    and str(legacy_lease.metadata.get("operation") or "")
+                    == LEGACY_TASKLESS_CLEANUP_RECLAIM_OPERATION
+                ):
+                    legacy_cleanup_recovery = (
+                        self._resume_legacy_cleanup_reclaim_replacement(
+                            legacy_lock_path,
+                            legacy_lease,
+                        )
+                    )
+                elif (
+                    legacy_lease is not None
+                    and self._legacy_lease_targets_current_worktree(
+                        legacy_lease.metadata
+                    )
+                ):
+                    legacy_cleanup_recovery = (
+                        self._reclaim_expired_legacy_taskless_cleanup_lease(
+                            legacy_lock_path,
+                            now_ts=time.time(),
+                        )
+                    )
+                else:
+                    legacy_cleanup_recovery = {
+                        "attempted": False,
+                        "reclaimed": False,
+                        "preserved": True,
+                        "reason": "legacy_cleanup_sibling_board_unproved",
+                        "lock_path": str(legacy_lock_path),
+                    }
+            else:
+                legacy_cleanup_recovery = {
+                    "attempted": False,
+                    "reclaimed": False,
+                    "reason": "ordinary_recycle_guard_blocked",
+                    "lock_path": str(legacy_lock_path),
+                }
+            legacy_lock_still_present = (
+                legacy_lock_path.is_symlink() or legacy_lock_path.exists()
+            )
+            if (
+                legacy_lock_still_present
+                and not external_legacy_cleanup_current
+            ):
+                remaining_lease = (
+                    read_checkout_mutation_lease(legacy_lock_path)
+                    if self._path_is_regular_nofollow(legacy_lock_path)
+                    else None
+                )
+                blockers.append(
+                    "legacy_checkout_mutation_transaction_active"
+                    if remaining_lease is not None
+                    else "legacy_checkout_mutation_transaction_unverifiable"
+                )
+        return {
+            "safe": not blockers,
+            "blockers": blockers,
+            "legacy_taskless_cleanup_lease_recovery": legacy_cleanup_recovery,
+            "external_legacy_cleanup_lease": external_legacy_cleanup,
+            "attempt_budget_consumed": False,
+            "provider_invocation_consumed": False,
+        }
 
     def _proof_rollout_status_fields(
         self,
@@ -7183,8 +8892,8 @@ class PortalImplementationSupervisor:
             payload["autonomous_unstall"] = autonomous_unstall
             latest_unstall = autonomous_unstall.get("latest")
             if isinstance(latest_unstall, Mapping):
-                phase = str(latest_unstall.get("phase") or "")
-                if phase in {"quarantined", "rescue_previewed"}:
+                unstall_phase = str(latest_unstall.get("phase") or "")
+                if unstall_phase in {"quarantined", "rescue_previewed"}:
                     reasons = list(payload.get("backpressure_reasons") or ())
                     if "autonomous_unstall_quarantine" not in reasons:
                         reasons.append("autonomous_unstall_quarantine")
@@ -7192,6 +8901,12 @@ class PortalImplementationSupervisor:
                     payload["backpressure_reasons"] = reasons[:256]
         payload.update(self._control_plane_status_projection())
         write_json_atomic(status_path, payload)
+        self._write_supervisor_maintenance_receipt(
+            phase,
+            status=status,
+            started_at=started_at,
+            updated_at=now,
+        )
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
@@ -7199,19 +8914,24 @@ class PortalImplementationSupervisor:
         started_at = utc_now()
         current = {"phase": phase}
         stop_event = threading.Event()
+        write_lock = threading.RLock()
         interval = max(5.0, min(30.0, float(self.config.check_interval) / 2.0))
 
         def write(status: str = "running", error: str = "") -> None:
-            try:
-                self._write_supervisor_maintenance_status(
-                    current["phase"],
-                    status=status,
-                    started_at=started_at,
-                    error=error,
-                    daemon_pid=daemon_pid,
-                )
-            except Exception:
-                logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
+            with write_lock:
+                try:
+                    self._write_supervisor_maintenance_status(
+                        current["phase"],
+                        status=status,
+                        started_at=started_at,
+                        error=error,
+                        daemon_pid=daemon_pid,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to update supervisor maintenance heartbeat",
+                        exc_info=True,
+                    )
 
         def heartbeat() -> None:
             while not stop_event.wait(interval):
@@ -7226,13 +8946,17 @@ class PortalImplementationSupervisor:
         thread.start()
 
         def update(next_phase: str) -> None:
-            current["phase"] = next_phase
-            write()
+            with write_lock:
+                current["phase"] = next_phase
+                write()
 
         def finish(status: str = "completed", error: str = "") -> None:
-            write(status=status, error=error)
             stop_event.set()
             thread.join(timeout=1.0)
+            # Publish the terminal receipt after stopping the periodic writer
+            # so an already-woken heartbeat cannot replace completion with a
+            # later ``running`` projection.
+            write(status=status, error=error)
 
         return update, finish
 
@@ -8433,19 +10157,26 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
-        try:
-            preflight = self.run_once(include_refill=False)
-        except Exception as exc:
-            self._record_event(
-                "supervisor_preflight_maintenance_failed",
-                {
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-            )
-            raise
+        if self._is_board_maintenance_leader():
+            self.repair_main_checkout_merge_state()
+            try:
+                preflight = self.run_once(include_refill=False)
+            except Exception as exc:
+                self._record_event(
+                    "supervisor_preflight_maintenance_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                raise
+        else:
+            preflight = {
+                "skipped": True,
+                "reason": "non_leader_board_maintenance_lane",
+                "task_shard_index": int(self.config.task_shard_index),
+            }
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
@@ -8478,29 +10209,39 @@ class PortalImplementationSupervisor:
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
 
-            try:
-                recovery = self.run_once()
-            except Exception as exc:
+            if not self._is_board_maintenance_leader():
                 recovery = {
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
+                    "skipped": True,
+                    "reason": "non_leader_board_maintenance_lane",
+                    "task_shard_index": int(self.config.task_shard_index),
                 }
-                logger.warning("Supervisor recovery pass failed; restarting child loop anyway", exc_info=True)
-                self._record_event(
-                    "supervisor_loop_recovery_failed",
-                    {
-                        "loop_result": result_payload,
-                        "recovery": recovery,
-                    },
-                )
             else:
-                self._record_event(
-                    "supervisor_loop_recovery_pass",
-                    {
-                        "loop_result": result_payload,
-                        "recovery": recovery,
-                    },
-                )
+                try:
+                    recovery = self.run_once()
+                except Exception as exc:
+                    recovery = {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                    logger.warning(
+                        "Supervisor recovery pass failed; restarting child loop anyway",
+                        exc_info=True,
+                    )
+                    self._record_event(
+                        "supervisor_loop_recovery_failed",
+                        {
+                            "loop_result": result_payload,
+                            "recovery": recovery,
+                        },
+                    )
+                else:
+                    self._record_event(
+                        "supervisor_loop_recovery_pass",
+                        {
+                            "loop_result": result_payload,
+                            "recovery": recovery,
+                        },
+                    )
 
             delay_seconds = self._supervisor_loop_recovery_delay_seconds()
             self._record_event(
@@ -8658,15 +10399,102 @@ class PortalImplementationSupervisor:
                 status=CONTROL_PLANE_RELOAD_STATUS,
             )
         now_monotonic = time.monotonic()
+        now_ts = time.time()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=time.time())
+        stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
-        if (
+
+        database_authority = self._database_authority_enabled()
+        if database_authority and not stuck:
+            readiness = self._authoritative_runnable_work_status()
+            readiness_fields = {
+                "board_maintenance_leader": self._is_board_maintenance_leader(),
+                "authoritative_readiness_available": (
+                    readiness.get("available") is True
+                ),
+                "authoritative_readiness_reason": str(
+                    readiness.get("reason") or ""
+                ),
+                "authoritative_readiness_task_source_revision": int(
+                    readiness.get("task_source_revision") or 0
+                ),
+                "authoritative_ready_task_ids": list(
+                    readiness.get("ready_task_ids") or ()
+                )[:64],
+                "authoritative_same_shard_ready_task_ids": list(
+                    readiness.get("same_shard_ready_task_ids") or ()
+                )[:64],
+                "authoritative_active_task_ids": list(
+                    readiness.get("active_task_ids") or ()
+                )[:64],
+                "authoritative_same_shard_active_task_ids": list(
+                    readiness.get("same_shard_active_task_ids") or ()
+                )[:64],
+            }
+            if readiness.get("error_type"):
+                readiness_fields["authoritative_readiness_error_type"] = str(
+                    readiness.get("error_type") or ""
+                )
+            self._set_loop_status_fields(_loop, readiness_fields)
+            if readiness.get("available") is not True:
+                # An unavailable canonical query is never evidence that the
+                # board is idle. Preserve the child and all live/protected locks.
+                return SupervisorLoopDecision.keep_running()
+
+            ready_task_ids = list(readiness.get("ready_task_ids") or ())
+            same_shard_ready_task_ids = list(
+                readiness.get("same_shard_ready_task_ids") or ()
+            )
+            if ready_task_ids:
+                if same_shard_ready_task_ids:
+                    heartbeat = self._database_pass_heartbeat_status(
+                        _child,
+                        now_ts=now_ts,
+                    )
+                    recycle_guard = self._idle_database_child_recycle_guard(
+                        state=state,
+                        child=_child,
+                        readiness=readiness,
+                        heartbeat=heartbeat,
+                    )
+                    self._set_loop_status_fields(
+                        _loop,
+                        {
+                            "database_daemon_pass_heartbeat": dict(heartbeat),
+                            "idle_database_child_recycle_guard": dict(
+                                recycle_guard
+                            ),
+                        },
+                    )
+                    if recycle_guard.get("safe") is True:
+                        detail = {
+                            "same_shard_ready_task_ids": same_shard_ready_task_ids,
+                            "task_source_revision": int(
+                                readiness.get("task_source_revision") or 0
+                            ),
+                            "database_daemon_pass_heartbeat": dict(heartbeat),
+                            **dict(recycle_guard),
+                        }
+                        self._record_event(
+                            "ready_work_idle_daemon_stall_detected",
+                            detail,
+                        )
+                        return SupervisorLoopDecision.recycle(
+                            DATABASE_IDLE_DAEMON_STALL_REASON,
+                            detail=detail,
+                        )
+                # Ready work anywhere on this board outranks nonessential
+                # generated-board maintenance. Its home lane owns dispatch.
+                return SupervisorLoopDecision.keep_running()
+            if readiness.get("active_task_ids"):
+                return SupervisorLoopDecision.keep_running()
+
+        if not database_authority and (
             not stuck
             and (
                 state.selectable_ready_count > 0
@@ -8678,6 +10506,22 @@ class PortalImplementationSupervisor:
             # finishes, hold the global implementation lease for a long
             # objective-refill scan, and make the daemon skip ready tasks for
             # the duration of that scan.
+            return SupervisorLoopDecision.keep_running()
+
+        if not self._is_board_maintenance_leader():
+            if stuck:
+                detail = {
+                    "active_task_id": state.active_task_id,
+                    "attempt_budget_consumed": False,
+                    "provider_invocation_consumed": False,
+                    "board_maintenance_skipped": True,
+                    "task_shard_index": int(self.config.task_shard_index),
+                }
+                self._record_event(
+                    "non_leader_stuck_child_recycle",
+                    {**detail, "reason": reason},
+                )
+                return SupervisorLoopDecision.recycle(reason, detail=detail)
             return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic

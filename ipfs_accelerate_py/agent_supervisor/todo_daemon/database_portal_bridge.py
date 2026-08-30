@@ -36,14 +36,20 @@ DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutio
 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@1"
 )
-DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@2"
+)
+DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@3"
 )
 DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
 )
 DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@2"
+)
+DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@3"
 )
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
@@ -1307,13 +1313,82 @@ class DatabasePortalExecutionBridge:
             return completed.stdout
 
         parents = git("rev-list", "--parents", "-n", "1", merge_commit)
-        if parents.decode("ascii").strip().split() != [
-            merge_commit,
-            baseline,
-            implementation,
-        ]:
+        parent_fields = parents.decode("ascii").strip().split()
+        if (
+            len(parent_fields) != 3
+            or parent_fields[0] != merge_commit
+            or parent_fields[2] != implementation
+        ):
             raise DatabasePortalBridgeError(
                 "Portal accepted-source transition is not the exact Git merge"
+            )
+        integration_base_commit = parent_fields[1]
+        target_advanced = integration_base_commit != baseline
+        transition_proof = dict(proof)
+        if target_advanced:
+            # A task's dispatch baseline and the target's first parent at
+            # integration are different identities when another fenced lane
+            # lands first.  The completed merge request still binds the
+            # immutable implementation parent; Git supplies the exact target
+            # parent.  Both histories must descend from the dispatch baseline.
+            try:
+                git(
+                    "merge-base",
+                    "--is-ancestor",
+                    baseline,
+                    integration_base_commit,
+                )
+                git(
+                    "merge-base",
+                    "--is-ancestor",
+                    baseline,
+                    implementation,
+                )
+            except DatabasePortalBridgeError as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal accepted-source transition is not the exact Git merge"
+                ) from exc
+            claimed_candidate_baselines = {
+                str(value)
+                for value in (
+                    merge.get("candidate_baseline_ref"),
+                    proof.get("candidate_baseline_ref"),
+                )
+                if value is not None and str(value)
+            }
+            claimed_integration_bases = {
+                str(value)
+                for value in (
+                    merge.get("integration_base_commit"),
+                    proof.get("integration_base_commit"),
+                )
+                if value is not None and str(value)
+            }
+            claimed_exact_topology = proof.get("exact_two_parent_merge")
+            if (
+                (
+                    claimed_candidate_baselines
+                    and claimed_candidate_baselines != {baseline}
+                )
+                or (
+                    claimed_integration_bases
+                    and claimed_integration_bases
+                    != {integration_base_commit}
+                )
+                or claimed_exact_topology not in {None, True}
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal accepted-source transition is not the exact Git merge"
+                )
+            transition_schema = (
+                DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA
+            )
+            transition_proof.update(
+                {
+                    "candidate_baseline_ref": baseline,
+                    "integration_base_commit": integration_base_commit,
+                    "exact_two_parent_merge": True,
+                }
             )
         implementation_tree = git(
             "rev-parse", f"{implementation}^{{tree}}"
@@ -1328,7 +1403,7 @@ class DatabasePortalExecutionBridge:
                 "--name-status",
                 "-r",
                 "-z",
-                baseline,
+                integration_base_commit,
                 merge_commit,
             )
         )
@@ -1350,20 +1425,29 @@ class DatabasePortalExecutionBridge:
             "merge_request_digest": merge_request_digest,
             "merge_request_dedupe_key": request_dedupe_key,
             "target_repository_id": target_repository_id,
-            "baseline_ref": baseline,
             "implementation_commit": implementation,
             "implementation_tree": implementation_tree,
             "merge_commit": merge_commit,
             "merge_tree": merge_tree,
             "target_branch": target_branch,
             "changed_path_diff_sha256": changed_path_diff_sha256,
-            "integration_commit_proof": dict(proof),
+            "integration_commit_proof": transition_proof,
             "declared_output_invariant": dict(invariant),
             "portal_event_log_sha256": event_log_sha256,
             "authority": "database_completion_cas_after_portal_and_git_verification",
             "task_completion_authority": False,
             "worker_self_approval": False,
         }
+        if target_advanced:
+            transition.update(
+                {
+                    "candidate_baseline_ref": baseline,
+                    "integration_base_commit": integration_base_commit,
+                }
+            )
+        else:
+            # Preserve the accepted-source-transition@1/@2 byte vocabulary.
+            transition["baseline_ref"] = baseline
         if reconciliation is not None:
             transition.update(
                 {
@@ -1475,11 +1559,19 @@ class DatabasePortalExecutionBridge:
         if accepted_source_transition is not None:
             evidence["accepted_source_transition"] = accepted_source_transition
         evidence_digest = _sha256_bytes(_canonical_json(evidence))
+        transition_schema = (
+            accepted_source_transition.get("schema")
+            if isinstance(accepted_source_transition, Mapping)
+            else None
+        )
         receipt = {
             "schema": (
-                self.RECEIPT_SCHEMA
-                if accepted_source_transition is not None
-                else DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1
+                DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1
+                if accepted_source_transition is None
+                else self.RECEIPT_SCHEMA
+                if transition_schema
+                == DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA
+                else DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2
             ),
             "interface": self.INTERFACE,
             "status": "succeeded",
@@ -1586,6 +1678,7 @@ class DatabasePortalExecutionBridge:
             schema
             not in {
                 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
+                DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2,
                 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
             }
             or provider_result.get("interface") != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
@@ -1616,9 +1709,8 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database effect rejected a legacy receipt with a source transition"
             )
-        if (
-            schema == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
-            and not isinstance(transition, Mapping)
+        if schema != DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1 and not isinstance(
+            transition, Mapping
         ):
             raise DatabasePortalBridgeError(
                 "database effect rejected a source-transition receipt without its transition"
@@ -1635,7 +1727,18 @@ class DatabasePortalExecutionBridge:
                 not in {
                     DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
                     DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA,
+                    DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA,
                 }
+                or (
+                    schema == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2
+                    and transition.get("schema")
+                    == DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA
+                )
+                or (
+                    schema == DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+                    and transition.get("schema")
+                    != DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA
+                )
                 or transition.get("database_task_cid") != str(attempt.task_cid)
                 or transition.get("worker_self_approval") is not False
                 or (
@@ -1706,8 +1809,10 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1",
+    "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2",
     "DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA",
     "DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA",
+    "DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
