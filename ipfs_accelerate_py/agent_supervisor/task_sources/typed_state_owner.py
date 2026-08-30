@@ -116,6 +116,16 @@ TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
     "database_claim_legacy_unstall_dead_process"
 )
+TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-post-commit-route-recovery@1"
+)
+TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND: Final = (
+    "task.execution_route.post_commit.recover"
+)
+TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION: Final = (
+    "database_post_commit_route_lineage_recovery"
+)
 TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-orphan-in-progress-unstall@1"
@@ -252,6 +262,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_pooled_worktree_create_retry_recovery",
         "database_portal_superseded_consumed_attempt_recovery",
         "database_portal_post_commit_candidate_recovery",
+        TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
         "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
@@ -3242,6 +3253,286 @@ def _legacy_unstall_recovery_receipt(
     return receipt
 
 
+def _post_commit_route_recovery_material(
+    *,
+    task_cid: str,
+    task_alias: str,
+    current_revision: int,
+    current_body: Mapping[str, Any],
+    prior_status: str,
+    prior_body: Mapping[str, Any],
+    queue: Mapping[str, Any],
+    current_policy_id: str,
+    current_policy_source_revision: int,
+    current_plan_root_cid: str,
+    current_repository_tree_id: str,
+    current_task_contract_cid: str,
+    current_execution_mode: str,
+) -> dict[str, Any]:
+    """Derive one exact history-backed repair for the retired route omission."""
+
+    if (
+        type(task_cid) is not str
+        or not task_cid.strip()
+        or task_cid != task_cid.strip()
+        or type(task_alias) is not str
+        or not task_alias.strip()
+        or task_alias != task_alias.strip()
+        or type(current_revision) is not int
+        or current_revision < 2
+        or prior_status != "quarantined"
+        or not isinstance(current_body, Mapping)
+        or not isinstance(prior_body, Mapping)
+        or not isinstance(queue, Mapping)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery task history is invalid"
+        )
+    current_receipt = current_body.get("completion_receipt")
+    prior_receipt = prior_body.get("completion_receipt")
+    if not isinstance(current_receipt, Mapping) or not isinstance(
+        prior_receipt, Mapping
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery receipts are absent"
+        )
+    current = dict(current_receipt)
+    prior = dict(prior_receipt)
+    route_fields = {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+    if set(current) & route_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery current lineage is partial or already present"
+        )
+    if set(prior) & route_fields != route_fields:
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery predecessor has no complete route"
+        )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            prior.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery predecessor route is invalid"
+        ) from exc
+    policy_text = (
+        current_policy_id,
+        current_plan_root_cid,
+        current_repository_tree_id,
+        current_task_contract_cid,
+        current_execution_mode,
+    )
+    if (
+        any(type(value) is not str or not value.strip() for value in policy_text)
+        or type(current_policy_source_revision) is not int
+        or current_policy_source_revision < 1
+        or route["task_cid"] != task_cid
+        or route["task_alias"] != task_alias
+        or route["plan_root_cid"] != current_plan_root_cid
+        or route["repository_tree_id"] != current_repository_tree_id
+        or route["task_contract_cid"] != current_task_contract_cid
+        or route["execution_mode"] != current_execution_mode
+        or route["source_revision"] > current_policy_source_revision
+        or route["task_revision"] >= current_revision
+        or prior.get("execution_route_binding") != route
+        or prior.get("execution_route_policy_id") != route["policy_id"]
+        or prior.get("execution_route_origin_revision")
+        != route["task_revision"]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery differs from the current route policy"
+        )
+    if (
+        current.get("operation")
+        != "database_portal_post_commit_candidate_recovery"
+        or current.get("control_expected_status") != "quarantined"
+        or not _strict_scalar_equal(
+            current.get("control_expected_revision"), current_revision - 1
+        )
+        or prior.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-neutral-quarantine@1"
+        )
+        or prior.get("operation")
+        != "database_portal_neutral_failure_quarantine"
+        or prior.get("failure_kind") != "provider_callback_outcome_unknown"
+        or prior.get("retry_suppressed") is not True
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery operation lineage is invalid"
+        )
+    stripped_current = dict(current_body)
+    stripped_prior = dict(prior_body)
+    stripped_current.pop("completion_receipt", None)
+    stripped_prior.pop("completion_receipt", None)
+    if canonical_json_bytes(stripped_current) != canonical_json_bytes(
+        stripped_prior
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery task contract changed across history"
+        )
+    identity_fields = (
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    if any(
+        type(current.get(name)) is not type(prior.get(name))
+        or current.get(name) != prior.get(name)
+        for name in identity_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery attempt lineage changed"
+        )
+    seed = current.get("post_commit_candidate_recovery_seed")
+    extension = queue.get("extension")
+    if not isinstance(seed, Mapping) or not isinstance(extension, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery seed or cooldown is absent"
+        )
+    current_attempt_number = current.get("attempt_number")
+    if (
+        type(current_attempt_number) is not int
+        or current_attempt_number < 1
+        or any(
+            seed.get(name) != current.get(name)
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        )
+        or seed.get("attempt_number") != current_attempt_number
+        or seed.get("task_cid") != task_cid
+        or seed.get("task_alias") != task_alias
+        or type(seed.get("receipt_id")) is not str
+        or not seed["receipt_id"].strip()
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery seed differs from the attempt"
+        )
+    queue_bindings = {
+        "task_cid": task_cid,
+        "expected_task_revision": current_revision - 1,
+        "attempt_id": current["attempt_id"],
+        "claim_id": current["claim_id"],
+        "lease_id": current["lease_id"],
+        "owner_session_id": current["owner_session_id"],
+        "attempt_number": current_attempt_number,
+        "fencing_token": current["fencing_token"],
+        "fence_epoch": current["fence_epoch"],
+        "delay_ms": current.get("backoff_ms"),
+        "retry_not_before_ms": current.get("retry_not_before_ms"),
+        "reason": current.get("queue_reason"),
+    }
+    if (
+        any(
+            type(extension.get(name)) is not type(value)
+            or extension.get(name) != value
+            for name, value in queue_bindings.items()
+        )
+        or queue.get("task_cid") != task_cid
+        or queue.get("attempt") != current_attempt_number
+        or queue.get("claim_cid") != current.get("claim_id")
+        or queue.get("owner_session_id") != current.get("owner_session_id")
+        or queue.get("fencing_token") != current.get("fencing_token")
+        or queue.get("fence_epoch") != current.get("fence_epoch")
+        or queue.get("retry_not_before_ms")
+        != current.get("retry_not_before_ms")
+        or queue.get("release_reason") != current.get("queue_reason")
+        or type(queue.get("revision")) is not int
+        or queue["revision"] < 1
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery cooldown differs from the task"
+        )
+    prior_receipt_cid = content_identity(
+        {"post_commit_route_predecessor_receipt": prior}
+    )
+    current_receipt_cid = content_identity(
+        {"post_commit_route_missing_receipt": current}
+    )
+    route_binding_cid = content_identity(
+        {"task_execution_route_binding": route}
+    )
+    # This is not a new scheduling attempt.  Rebind only the task-revision
+    # member under an exact full-row CAS and retain the queue CAS revision.
+    new_queue_revision = int(queue["revision"])
+    new_extension = dict(extension)
+    new_extension["expected_task_revision"] = current_revision
+    new_extension_json = canonical_json_bytes(new_extension).decode("utf-8")
+    new_resolution_cid = content_identity(
+        {
+            "typed_retry_cooldown": new_extension,
+            "started_at_ms": new_extension["started_at_ms"],
+        }
+    )
+    witness = {
+        "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "source_task_revision": current_revision - 1,
+        "missing_route_task_revision": current_revision,
+        "recovered_task_revision": current_revision + 1,
+        "prior_receipt_cid": prior_receipt_cid,
+        "current_receipt_cid": current_receipt_cid,
+        "route_binding_cid": route_binding_cid,
+        "route_policy_id": route["policy_id"],
+        "current_policy_id": current_policy_id,
+        "current_policy_source_revision": current_policy_source_revision,
+        "plan_root_cid": current_plan_root_cid,
+        "repository_tree_id": current_repository_tree_id,
+        "post_commit_candidate_receipt_id": seed["receipt_id"],
+        "queue_revision_before": int(queue["revision"]),
+        "queue_revision_after": new_queue_revision,
+    }
+    witness["receipt_id"] = content_identity(
+        {"typed_post_commit_route_recovery": witness}
+    )
+    recovered_receipt = {
+        **current,
+        "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+        "source_control_operation": current["operation"],
+        "control_expected_status": "retrying",
+        "control_expected_revision": current_revision,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+        "execution_route_lineage_recovery": witness,
+    }
+    recovered_body = dict(current_body)
+    recovered_body["completion_receipt"] = recovered_receipt
+    return {
+        "current_receipt": current,
+        "prior_receipt": prior,
+        "route": route,
+        "prior_receipt_cid": prior_receipt_cid,
+        "current_receipt_cid": current_receipt_cid,
+        "route_binding_cid": route_binding_cid,
+        "witness": witness,
+        "recovered_receipt": recovered_receipt,
+        "recovered_body": recovered_body,
+        "body_json": canonical_json_bytes(recovered_body).decode("utf-8"),
+        "new_extension": new_extension,
+        "new_extension_json": new_extension_json,
+        "new_resolution_cid": new_resolution_cid,
+        "new_queue_revision": new_queue_revision,
+    }
+
+
 def _validated_retry_cooldown_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -3602,6 +3893,159 @@ def _legacy_unstall_recovery_command_digest(
         name: member
         for name, member in validated.items()
         if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _validated_post_commit_route_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed history-backed route-lineage migration command."""
+
+    parameters = dict(value)
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "expected_task_revision",
+        "expected_task_status",
+        "prior_task_revision",
+        "status",
+        "current_policy_id",
+        "current_policy_source_revision",
+        "current_plan_root_cid",
+        "current_repository_tree_id",
+        "current_task_contract_cid",
+        "current_execution_mode",
+        "prior_receipt_cid",
+        "current_receipt_cid",
+        "route_binding_cid",
+        "route_binding_json",
+        "body_json",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "expected_queue_resolution_cid",
+        "expected_queue_extension_json",
+        "new_queue_revision",
+        "new_queue_resolution_cid",
+        "new_queue_extension_json",
+    }
+    if set(parameters) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("schema")
+        != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+        or parameters.get("operation")
+        != TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND
+        or parameters.get("expected_task_status") != "retrying"
+        or parameters.get("status") != "retrying"
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery command schema is invalid"
+        )
+    text_fields = {
+        "task_cid": 1_024,
+        "task_alias": 1_024,
+        "current_policy_id": 1_024,
+        "current_plan_root_cid": 1_024,
+        "current_repository_tree_id": 1_024,
+        "current_task_contract_cid": 1_024,
+        "current_execution_mode": 128,
+        "prior_receipt_cid": 1_024,
+        "current_receipt_cid": 1_024,
+        "route_binding_cid": 1_024,
+        "expected_queue_resolution_cid": 1_024,
+        "new_queue_resolution_cid": 1_024,
+    }
+    if any(
+        type(parameters.get(name)) is not str
+        or not parameters[name].strip()
+        or parameters[name] != parameters[name].strip()
+        or len(parameters[name].encode("utf-8")) > maximum
+        or any(marker in parameters[name] for marker in ("\x00", "\n", "\r"))
+        for name, maximum in text_fields.items()
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery identity is invalid"
+        )
+    revision_fields = (
+        "expected_task_revision",
+        "prior_task_revision",
+        "current_policy_source_revision",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "new_queue_revision",
+    )
+    if any(
+        type(parameters.get(name)) is not int or parameters[name] < 1
+        for name in revision_fields
+    ) or (
+        parameters["prior_task_revision"]
+        != parameters["expected_task_revision"] - 1
+        or parameters["new_queue_revision"]
+        != parameters["expected_queue_revision"]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery revision lineage is invalid"
+        )
+    route, route_json = _closed_canonical_json_object(
+        parameters.get("route_binding_json"),
+        noun="post-commit route recovery binding",
+    )
+    body, body_json = _closed_canonical_json_object(
+        parameters.get("body_json"),
+        noun="post-commit route recovery task body",
+    )
+    old_extension, old_extension_json = _closed_canonical_json_object(
+        parameters.get("expected_queue_extension_json"),
+        noun="post-commit route recovery prior cooldown",
+    )
+    new_extension, new_extension_json = _closed_canonical_json_object(
+        parameters.get("new_queue_extension_json"),
+        noun="post-commit route recovery next cooldown",
+    )
+    if any(
+        len(encoded.encode("utf-8")) > MAX_BODY_BYTES
+        for encoded in (
+            route_json,
+            body_json,
+            old_extension_json,
+            new_extension_json,
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-commit route recovery payload exceeds its byte bound"
+        )
+    return {
+        **parameters,
+        "route_binding_json": route_json,
+        "body_json": body_json,
+        "expected_queue_extension_json": old_extension_json,
+        "new_queue_extension_json": new_extension_json,
+        "route_binding": route,
+        "body": body,
+        "expected_queue_extension": old_extension,
+        "new_queue_extension": new_extension,
+    }
+
+
+def _post_commit_route_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    validated = _validated_post_commit_route_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name
+        not in {
+            "route_binding",
+            "body",
+            "expected_queue_extension",
+            "new_queue_extension",
+        }
     }
     return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
 
@@ -4864,6 +5308,13 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_update_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_rebind_retry_cooldown_task_revision",
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            }
+        ),
         TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: frozenset(
             {
                 "executor_insert_validation_run",
@@ -4902,6 +5353,7 @@ _TASK_STATUS_UPDATE_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
     }
 )
@@ -4913,6 +5365,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+        TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
         TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
         "task.validation.record.passed",
@@ -4998,6 +5451,11 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                     "executor_cas_task_status_receipt",
                     "executor_insert_task_revision_history",
                 }
+            ),
+            TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND
+                ]
             ),
             TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: (
                 _COMMAND_MUTATION_CATALOG[
@@ -6976,6 +7434,7 @@ class TypedStateOwnerGateway:
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND: "claim",
             TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND: "claim",
             TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
@@ -7015,6 +7474,20 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "legacy unstall recovery replay identity differs from "
+                    "its parameters"
+                )
+        if operation == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND:
+            digest = _post_commit_route_recovery_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:post-commit-route-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-post-commit-route-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery replay identity differs from "
                     "its parameters"
                 )
         if operation == TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND:
@@ -7774,6 +8247,128 @@ class TypedStateOwnerGateway:
                 "prior_queue": prior_queue,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND:
+            values = _validated_post_commit_route_recovery_parameters(
+                command.parameters
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT task_alias, plan_cid, status, revision, identity_json,
+                       body_json FROM tasks WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            prior_rows = self._connection.execute(
+                """
+                SELECT status, body_json FROM task_revisions
+                WHERE task_cid = ? AND revision = ? LIMIT 2
+                """,
+                [values["task_cid"], values["prior_task_revision"]],
+            ).fetchall()
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1 or len(prior_rows) != 1 or len(queue_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                task_row[0] != values["task_alias"]
+                or task_row[1] != values["current_plan_root_cid"]
+                or str(task_row[2] or "").strip().lower() != "retrying"
+                or type(task_row[3]) is not int
+                or task_row[3] != values["expected_task_revision"]
+                or str(prior_rows[0][0] or "").strip().lower()
+                != "quarantined"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery task revision is stale"
+                )
+            identity, _identity_json = _closed_canonical_json_object(
+                task_row[4], noun="post-commit route recovery task identity"
+            )
+            current_body, _current_body_json = _closed_canonical_json_object(
+                task_row[5], noun="post-commit route recovery current body"
+            )
+            prior_body, _prior_body_json = _closed_canonical_json_object(
+                prior_rows[0][1], noun="post-commit route recovery prior body"
+            )
+            queue = _validated_stored_retry_cooldown(
+                queue_rows[0], task_cid=values["task_cid"]
+            )
+            if (
+                identity.get("repository_tree_id")
+                != values["current_repository_tree_id"]
+                or (
+                    identity.get("task_contract_cid") not in (None, "")
+                    and identity.get("task_contract_cid")
+                    != values["current_task_contract_cid"]
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery task policy identity differs"
+                )
+            material = _post_commit_route_recovery_material(
+                task_cid=values["task_cid"],
+                task_alias=values["task_alias"],
+                current_revision=values["expected_task_revision"],
+                current_body=current_body,
+                prior_status=str(prior_rows[0][0] or "").strip().lower(),
+                prior_body=prior_body,
+                queue=queue,
+                current_policy_id=values["current_policy_id"],
+                current_policy_source_revision=values[
+                    "current_policy_source_revision"
+                ],
+                current_plan_root_cid=values["current_plan_root_cid"],
+                current_repository_tree_id=values[
+                    "current_repository_tree_id"
+                ],
+                current_task_contract_cid=values[
+                    "current_task_contract_cid"
+                ],
+                current_execution_mode=values["current_execution_mode"],
+            )
+            exact_parameters = {
+                "prior_receipt_cid": material["prior_receipt_cid"],
+                "current_receipt_cid": material["current_receipt_cid"],
+                "route_binding_cid": material["route_binding_cid"],
+                "route_binding_json": canonical_json_bytes(
+                    material["route"]
+                ).decode("utf-8"),
+                "body_json": material["body_json"],
+                "expected_queue_revision": queue["revision"],
+                "expected_queue_attempt": queue["attempt"],
+                "expected_queue_resolution_cid": queue["resolution_cid"],
+                "expected_queue_extension_json": queue["extension_json"],
+                "new_queue_revision": material["new_queue_revision"],
+                "new_queue_resolution_cid": material["new_resolution_cid"],
+                "new_queue_extension_json": material["new_extension_json"],
+            }
+            if any(
+                values.get(name) != expected
+                for name, expected in exact_parameters.items()
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery proposal differs from owner history"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": material["body_json"],
+                "queue": queue,
+                "material": material,
             }
         if operation == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND:
             recovery = _validated_blocked_retry_recovery_parameters(
@@ -10445,6 +11040,7 @@ class TypedStateOwnerGateway:
                 in {
                     "task.database.claim.phase",
                     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
                     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
                 }
             ):
@@ -11645,6 +12241,98 @@ class TypedStateOwnerGateway:
             if observed_queue != expected_queue:
                 raise TypedStateOwnerAuthorizationError(
                     "legacy unstall recovery cooldown post-state differs"
+                )
+            return
+
+        if operation == TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND:
+            expected_revision = int(authority["expected_revision"])
+            queue = dict(authority["queue"])
+            material = dict(authority["material"])
+            exact(
+                one("executor_rebind_retry_cooldown_task_revision"),
+                {
+                    "new_resolution_cid": material["new_resolution_cid"],
+                    "new_extension_json": material["new_extension_json"],
+                    "task_cid": authority["task_cid"],
+                    "expected_queue_revision": queue["revision"],
+                    "expected_queue_attempt": queue["attempt"],
+                    "expected_resolution_cid": queue["resolution_cid"],
+                    "expected_extension_schema": queue["extension_schema"],
+                    "expected_extension_json": queue["extension_json"],
+                },
+            )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                one("executor_insert_task_revision_history"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "task_revision": expected_revision + 1,
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            history_rows = self._connection.execute(
+                """
+                SELECT status, body_json FROM task_revisions
+                WHERE task_cid = ? AND revision = ? LIMIT 2
+                """,
+                [authority["task_cid"], expected_revision + 1],
+            ).fetchall()
+            if (
+                len(task_rows) != 1
+                or tuple(task_rows[0][index] for index in range(3))
+                != (
+                    "retrying",
+                    expected_revision + 1,
+                    authority["body_json"],
+                )
+                or len(history_rows) != 1
+                or tuple(history_rows[0][index] for index in range(2))
+                != ("retrying", authority["body_json"])
+                or len(queue_rows) != 1
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery task post-state differs"
+                )
+            observed_queue = _validated_stored_retry_cooldown(
+                queue_rows[0], task_cid=authority["task_cid"]
+            )
+            if (
+                observed_queue["revision"] != queue["revision"]
+                or observed_queue["attempt"] != queue["attempt"]
+                or observed_queue["resolution_cid"]
+                != material["new_resolution_cid"]
+                or observed_queue["extension"] != material["new_extension"]
+                or observed_queue["extension_json"]
+                != material["new_extension_json"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-commit route recovery cooldown post-state differs"
                 )
             return
 
@@ -12882,6 +13570,9 @@ __all__ = [
     "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_OPERATION",
     "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_REASON",
     "TYPED_DATABASE_LEGACY_ORPHAN_OUTCOME_UNKNOWN_SCHEMA",
+    "TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND",
+    "TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION",
+    "TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA",
     "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION",
     "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_REASON",
     "TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA",
