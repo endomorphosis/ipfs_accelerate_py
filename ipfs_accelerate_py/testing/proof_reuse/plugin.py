@@ -715,6 +715,8 @@ def _install_runtime_plugin(config: Any) -> None:
         def pytest_runtest_call(self, item: Any) -> Any:
             # PCTDD-027: verify the post-setup V2 key exists before call and
             # fall back to normal execution when assembly is incomplete.
+            # PCTDD-028: an admitted call certificate reuses only call while
+            # current setup and teardown still execute.  Reuse is never skip.
             try:
                 from .setup_bound_execution_key import before_runtest_call
 
@@ -725,7 +727,49 @@ def _install_runtime_plugin(config: Any) -> None:
                     metrics.degraded(
                         reason_code="setup_bound_execution_key_before_call_failed"
                     )
+            restore = None
+            try:
+                from .post_setup_call_reuse import prepare_runtest_call
+
+                restore = prepare_runtest_call(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="post_setup_call_reuse_failed")
+                restore = None
+            try:
+                outcome = yield
+            finally:
+                if restore is not None:
+                    try:
+                        restore()
+                    except Exception:
+                        pass
+            return outcome
+
+        @pytest.hookimpl(hookwrapper=True, tryfirst=True)
+        def pytest_runtest_teardown(self, item: Any, nextitem: Any) -> Any:
+            # PCTDD-028: current teardown always executes; reuse never
+            # substitutes teardown or finalizers.
+            try:
+                from .post_setup_call_reuse import before_runtest_teardown
+
+                before_runtest_teardown(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(reason_code="post_setup_teardown_mark_failed")
             outcome = yield
+            try:
+                from .post_setup_call_reuse import after_runtest_teardown
+
+                after_runtest_teardown(item)
+            except Exception:
+                metrics = getattr(config, METRICS_ATTRIBUTE, None)
+                if metrics is not None:
+                    metrics.degraded(
+                        reason_code="post_setup_teardown_record_failed"
+                    )
             return outcome
 
         @pytest.hookimpl(hookwrapper=True, trylast=True)
