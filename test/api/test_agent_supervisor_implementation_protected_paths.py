@@ -1728,6 +1728,213 @@ def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     assert accepted[0]["protected_paths"] == [POLICY_PATH]
 
 
+def _duckdb_bound_task(*, outputs: list[str]) -> PortalTask:
+    return replace(
+        _task(outputs=outputs),
+        canonical_task_key="sha256:" + "a" * 64,
+        canonical_task_cid="sha256:" + "b" * 64,
+        board_namespace="database-attempt-fixture",
+    )
+
+
+def test_ephemeral_fence_accepts_clean_strict_forward_control_update_for_duckdb_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    # The task body is canonical DuckDB state.  Portal's Markdown path is only
+    # a projection and supplies no authority to this decision.
+    task = _duckdb_bound_task(outputs=["src/example.py"])
+    authority = {
+        "authoritative_task_store": "duckdb",
+        "projection_authority": False,
+        "task_alias": task.task_id,
+        "task_cid": task.canonical_task_cid,
+        "binding_id": "sha256:" + "c" * 64,
+        "attempt_id": "attempt:focused",
+        "claim_id": "claim:focused",
+        "lease_id": "lease:focused",
+        "attempt_number": 1,
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_database_forward_update_attempt_identity",
+        lambda observed: authority if observed == task else {},
+    )
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("external control-plane update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=External Controller",
+        "-c",
+        "user.email=external-controller@example.invalid",
+        "commit",
+        "-m",
+        "advance protected control-plane source",
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation == {}
+    assert not daemon._implementation_protected_incident_path().exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    accepted = [
+        event
+        for event in events
+        if event["type"]
+        == "implementation_protected_path_concurrent_update_accepted"
+        and event.get("history_kind")
+        == "clean_strict_forward_protected_source_update"
+    ]
+    assert len(accepted) == 1
+    assert accepted[0]["task_output_scope_excluded"] is True
+    assert accepted[0]["workspace_protected_paths_unchanged"] is True
+    assert accepted[0]["shared_checkout_clean"] is True
+    assert accepted[0]["database_attempt_identity"] == authority
+    assert accepted[0]["before_head"] != accepted[0]["after_head"]
+    assert accepted[0]["after_tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+    assert accepted[0]["protected_paths"] == [POLICY_PATH]
+    assert accepted[0]["path_evidence"][0]["path"] == POLICY_PATH
+
+
+@pytest.mark.parametrize(
+    "denial",
+    [
+        "markdown_authority",
+        "output_overlap",
+        "dirty_checkout",
+        "rewritten_history",
+    ],
+)
+def test_ephemeral_fence_rejects_unproved_forward_control_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    denial: str,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    rollback_head = ""
+    if denial == "rewritten_history":
+        rollback_head, _discarded_head = _temporary_shared_merge(repo, protected)
+    task = _duckdb_bound_task(
+        outputs=[POLICY_PATH] if denial == "output_overlap" else ["src/example.py"]
+    )
+    if denial != "markdown_authority":
+        monkeypatch.setattr(
+            daemon,
+            "_database_forward_update_attempt_identity",
+            lambda observed: (
+                {
+                    "authoritative_task_store": "duckdb",
+                    "projection_authority": False,
+                    "task_alias": observed.task_id,
+                    "task_cid": observed.canonical_task_cid,
+                    "binding_id": "sha256:" + "c" * 64,
+                }
+                if observed == task
+                else {}
+            ),
+        )
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    if rollback_head:
+        _git(repo, "reset", "--hard", rollback_head)
+    protected.write_text("unproved external update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=External Controller",
+        "-c",
+        "user.email=external-controller@example.invalid",
+        "commit",
+        "-m",
+        "unproved protected source update",
+    )
+    if denial == "dirty_checkout":
+        (repo / "untracked-provider-byte.txt").write_text(
+            "not admitted\n",
+            encoding="utf-8",
+        )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_crash_recovery_does_not_clear_clean_head_without_quack_retry_receipt(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _duckdb_bound_task(outputs=["src/example.py"])
+    # Deliberately omit DuckDB attempt authority so the live fence latches.
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    protected.write_text("committed but not admitted\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=External Controller",
+        "-c",
+        "user.email=external-controller@example.invalid",
+        "commit",
+        "-m",
+        "unbound protected source update",
+    )
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    incident_path = daemon._implementation_protected_incident_path()
+    active_path = daemon._implementation_protected_active_snapshot_path()
+    incident_before = incident_path.read_bytes()
+    active_before = active_path.read_bytes()
+
+    recovery = daemon._reconcile_implementation_protected_path_fence()
+
+    assert recovery["blocked"] is True
+    assert recovery["reason"] == "implementation_protected_path_incident_latched"
+    assert incident_path.read_bytes() == incident_before
+    assert active_path.read_bytes() == active_before
+    assert not list(
+        incident_path.parent.glob(
+            "implementation-protected-path-head-clean-clearance-*.json"
+        )
+    )
+
+
 def test_ephemeral_fence_accepts_trusted_update_after_temporary_merge_rollback(
     tmp_path: Path,
 ) -> None:

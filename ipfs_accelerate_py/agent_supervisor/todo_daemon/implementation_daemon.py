@@ -1564,15 +1564,13 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
-                head_clean = (
-                    daemon._auto_clear_shared_checkout_incident_when_head_clean(
-                        incident,
-                        incident_path=incident_path,
-                        active_path=active_path,
-                    )
-                )
-                if head_clean and head_clean.get("cleared"):
-                    return head_clean
+                # A clean path at HEAD is not, by itself, recovery authority.
+                # In particular, clearing a database-Portal fence here would
+                # discard the evidence needed by the bridge to publish its
+                # exact Quack retry/CAS receipt.  Clean forward control-plane
+                # updates are admitted while the live task and its immutable
+                # database projection are still available; every historical
+                # shared-checkout incident remains operator gated.
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
@@ -10005,6 +10003,370 @@ class PortalImplementationDaemon:
             "commits": commits,
         }
 
+    def _database_forward_update_attempt_identity(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Return exact DuckDB attempt identity for a disposable projection.
+
+        Markdown is never task authority here.  A database Portal projection
+        is usable only after its immutable bytes and attempt binding verify;
+        the returned record is identity evidence and grants no completion or
+        policy authority.
+        """
+
+        canonical_task_key = str(task.canonical_task_key or "").strip()
+        canonical_task_cid = str(task.canonical_task_cid or "").strip()
+        if not canonical_task_key or not canonical_task_cid:
+            return {}
+        if self.todo_path.name != "task-projection.md":
+            return {}
+        try:
+            # Lazy import avoids making the bridge/Portal dependency cyclic at
+            # module import time.
+            from .database_portal_bridge import (
+                verify_database_portal_attempt_projection,
+            )
+
+            verified = verify_database_portal_attempt_projection(
+                self.todo_path,
+                expected_task_alias=task.task_id,
+                expected_task_cid=canonical_task_cid,
+                allowed_root=self.todo_path.parent,
+            )
+        except (OSError, RuntimeError, ValueError):
+            return {}
+        if (
+            verified.get("verified") is not True
+            or verified.get("authoritative_task_store") != "duckdb"
+            or verified.get("projection_authority") is not False
+            or verified.get("task_alias") != task.task_id
+            or verified.get("task_cid") != canonical_task_cid
+            or verified.get("canonical_task_key") != canonical_task_key
+            or not str(verified.get("binding_id") or "")
+        ):
+            return {}
+        return {
+            key: verified[key]
+            for key in (
+                "authoritative_task_store",
+                "projection_authority",
+                "task_alias",
+                "task_cid",
+                "canonical_task_key",
+                "binding_id",
+                "attempt_id",
+                "claim_id",
+                "owner_session_id",
+                "lease_id",
+                "goal_cid",
+                "plan_cid",
+                "task_revision",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "projection_immutable_digest",
+                "landed_completion_recovery_seed_id",
+            )
+            if key in verified
+        }
+
+    def _protected_path_git_blob_identity(
+        self,
+        *,
+        commit: str,
+        relative: str,
+    ) -> dict[str, Any]:
+        """Return one exact tracked regular-file identity, or no evidence."""
+
+        if (
+            re.fullmatch(r"[0-9a-f]{40,64}", commit) is None
+            or not relative
+            or relative.startswith(("/", "\\"))
+            or "\\" in relative
+            or "\0" in relative
+            or ".." in PurePosixPath(relative).parts
+        ):
+            return {}
+        try:
+            tree = subprocess.run(
+                ["git", "ls-tree", "-z", commit, "--", relative],
+                cwd=self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return {}
+        entries = [entry for entry in tree.stdout.split(b"\0") if entry]
+        if tree.returncode != 0 or len(entries) != 1:
+            return {}
+        try:
+            metadata, encoded_path = entries[0].split(b"\t", 1)
+            mode, kind, object_id = metadata.decode("ascii").split(" ", 2)
+            decoded_path = encoded_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError):
+            return {}
+        if (
+            decoded_path != relative
+            or kind != "blob"
+            or mode not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{40,64}", object_id) is None
+        ):
+            return {}
+        try:
+            blob = subprocess.run(
+                ["git", "cat-file", "blob", object_id],
+                cwd=self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return {}
+        if blob.returncode != 0:
+            return {}
+        return {
+            "commit": commit,
+            "path": relative,
+            "git_mode": mode,
+            "blob_id": object_id,
+            "sha256": hashlib.sha256(blob.stdout).hexdigest(),
+            "size": len(blob.stdout),
+        }
+
+    def _authorized_clean_forward_protected_path_update(
+        self,
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Admit one exact clean, strict-forward protected source update.
+
+        This is deliberately a live-fence exception, not crash recovery.  It
+        requires the immutable DuckDB attempt projection, an isolated provider
+        workspace whose protected bytes did not change, task output exclusion,
+        and stable Git evidence that every observed before/after byte is the
+        tracked byte at the old/current commits.  Any dirty, rewritten,
+        projection-less, provider-scoped, or output-overlapping change keeps
+        the ordinary operator-clearance path.
+        """
+
+        try:
+            workspace = workspace_path.resolve(strict=True)
+            repo_root = self.repo_root.resolve(strict=True)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return {}
+        if workspace == repo_root or not mutations:
+            return {}
+        attempt_identity = self._database_forward_update_attempt_identity(task)
+        if not attempt_identity:
+            return {}
+        mutated_paths = sorted(
+            {
+                str(item.get("path") or "")
+                for item in mutations
+                if isinstance(item, Mapping)
+                and str(item.get("path") or "")
+            }
+        )
+        if (
+            not mutated_paths
+            or any(
+                not isinstance(item, Mapping)
+                or str(item.get("scope") or "") != "shared_checkout"
+                or str(item.get("change") or "") != "content_changed"
+                or str(item.get("path") or "") not in mutated_paths
+                for item in mutations
+            )
+            or task_implementation_protected_path_conflicts(
+                task,
+                mutated_paths,
+            )
+        ):
+            return {}
+        configured = set(self.implementation_protected_paths)
+        if not set(mutated_paths).issubset(configured):
+            return {}
+        before_workspace = before.get("workspace")
+        after_workspace = after.get("workspace")
+        before_shared = before.get("shared_checkout")
+        after_shared = after.get("shared_checkout")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (
+                before_workspace,
+                after_workspace,
+                before_shared,
+                after_shared,
+            )
+        ):
+            return {}
+        assert isinstance(before_workspace, Mapping)
+        assert isinstance(after_workspace, Mapping)
+        assert isinstance(before_shared, Mapping)
+        assert isinstance(after_shared, Mapping)
+        if (
+            before_workspace.get("root") != str(workspace)
+            or after_workspace.get("root") != str(workspace)
+            or before_shared.get("root") != str(repo_root)
+            or after_shared.get("root") != str(repo_root)
+        ):
+            return {}
+        before_workspace_paths = before_workspace.get("paths")
+        after_workspace_paths = after_workspace.get("paths")
+        before_shared_paths = before_shared.get("paths")
+        after_shared_paths = after_shared.get("paths")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (
+                before_workspace_paths,
+                after_workspace_paths,
+                before_shared_paths,
+                after_shared_paths,
+            )
+        ):
+            return {}
+        assert isinstance(before_workspace_paths, Mapping)
+        assert isinstance(after_workspace_paths, Mapping)
+        assert isinstance(before_shared_paths, Mapping)
+        assert isinstance(after_shared_paths, Mapping)
+        if (
+            set(map(str, before_workspace_paths)) != configured
+            or set(map(str, after_workspace_paths)) != configured
+            or before_workspace_paths != after_workspace_paths
+            or set(map(str, before_shared_paths)) != configured
+            or set(map(str, after_shared_paths)) != configured
+        ):
+            return {}
+        before_head = str(before_shared.get("git_head") or "")
+        after_head = str(after_shared.get("git_head") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{40,64}", before_head) is None
+            or re.fullmatch(r"[0-9a-f]{40,64}", after_head) is None
+            or before_head == after_head
+        ):
+            return {}
+        try:
+            ancestry = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", before_head, after_head],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            first_head = self._implementation_protected_git_head(repo_root)
+            first_status = subprocess.run(
+                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return {}
+        if (
+            ancestry.returncode != 0
+            or first_head != after_head
+            or first_status.returncode != 0
+            or str(first_status.stdout or "").strip()
+        ):
+            return {}
+        path_evidence: list[dict[str, Any]] = []
+        mutation_by_path = {
+            str(item.get("path") or ""): item
+            for item in mutations
+            if isinstance(item, Mapping)
+        }
+        for relative in mutated_paths:
+            mutation = mutation_by_path.get(relative)
+            before_identity = (
+                mutation.get("before")
+                if isinstance(mutation, Mapping)
+                and isinstance(mutation.get("before"), Mapping)
+                else None
+            )
+            after_identity = (
+                mutation.get("after")
+                if isinstance(mutation, Mapping)
+                and isinstance(mutation.get("after"), Mapping)
+                else None
+            )
+            old_blob = self._protected_path_git_blob_identity(
+                commit=before_head,
+                relative=relative,
+            )
+            current_blob = self._protected_path_git_blob_identity(
+                commit=after_head,
+                relative=relative,
+            )
+            if (
+                not isinstance(before_identity, Mapping)
+                or not isinstance(after_identity, Mapping)
+                or before_identity != before_shared_paths.get(relative)
+                or after_identity != after_shared_paths.get(relative)
+                or before_identity.get("state") != "present"
+                or after_identity.get("state") != "present"
+                or before_identity.get("kind") != "regular_file"
+                or after_identity.get("kind") != "regular_file"
+                or old_blob.get("sha256") != before_identity.get("sha256")
+                or old_blob.get("size") != before_identity.get("size")
+                or current_blob.get("sha256") != after_identity.get("sha256")
+                or current_blob.get("size") != after_identity.get("size")
+            ):
+                return {}
+            path_evidence.append(
+                {
+                    "path": relative,
+                    "before_blob_id": old_blob["blob_id"],
+                    "before_sha256": old_blob["sha256"],
+                    "after_blob_id": current_blob["blob_id"],
+                    "after_sha256": current_blob["sha256"],
+                }
+            )
+        # Close the Git/path evidence window.  The caller additionally repeats
+        # the complete protected snapshot before releasing its verification
+        # lock.
+        second_head = self._implementation_protected_git_head(repo_root)
+        try:
+            second_status = subprocess.run(
+                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return {}
+        if (
+            second_head != after_head
+            or second_status.returncode != 0
+            or str(second_status.stdout or "").strip()
+        ):
+            return {}
+        try:
+            after_tree = self._run_git(
+                ["rev-parse", "--verify", f"{after_head}^{{tree}}"],
+                cwd=repo_root,
+            ).stdout.strip()
+        except (OSError, RuntimeError):
+            return {}
+        return {
+            "history_kind": "clean_strict_forward_protected_source_update",
+            "before_head": before_head,
+            "after_head": after_head,
+            "after_tree": after_tree,
+            "protected_paths": mutated_paths,
+            "path_evidence": path_evidence,
+            "task_output_scope_excluded": True,
+            "workspace_protected_paths_unchanged": True,
+            "shared_checkout_clean": True,
+            "database_attempt_identity": attempt_identity,
+        }
+
     def _acquire_implementation_protected_verification_lock(
         self,
         *,
@@ -11424,6 +11786,16 @@ class PortalImplementationDaemon:
                 after=after,
                 mutations=mutations,
             )
+            if not concurrent_update and task is not None:
+                concurrent_update = (
+                    self._authorized_clean_forward_protected_path_update(
+                        task=task,
+                        workspace_path=workspace_path,
+                        before=comparison_before,
+                        after=after,
+                        mutations=mutations,
+                    )
+                )
             if concurrent_update:
                 self._record_event(
                     "implementation_protected_path_concurrent_update_accepted",
@@ -11541,6 +11913,16 @@ class PortalImplementationDaemon:
                         mutations=mutations,
                     )
                 )
+                if not concurrent_update and task is not None:
+                    concurrent_update = (
+                        self._authorized_clean_forward_protected_path_update(
+                            task=task,
+                            workspace_path=workspace_path,
+                            before=comparison_before,
+                            after=after,
+                            mutations=mutations,
+                        )
+                    )
             confirmed_after = self._implementation_protected_path_snapshot(
                 comparison_workspace
             )
@@ -12771,111 +13153,6 @@ class PortalImplementationDaemon:
             "task_id": task_id,
             "attempt": attempt,
             **concurrent_update,
-        }
-        self._record_event(
-            "implementation_protected_path_incident_auto_cleared",
-            result,
-        )
-        return result
-
-    def _auto_clear_shared_checkout_incident_when_head_clean(
-        self,
-        incident: Mapping[str, Any],
-        *,
-        incident_path: Path,
-        active_path: Path,
-    ) -> dict[str, Any] | None:
-        """Clear a shared-checkout latch once those paths match HEAD.
-
-        Control-plane commits can land the same protected bytes the fence
-        treated as an uncommitted mutation. When every incident path is a
-        shared-checkout content change and the checkout is clean at HEAD,
-        there is nothing left to restore and the lane can resume.
-        """
-
-        if (
-            incident.get("schema") != "implementation-protected-path-incident-v1"
-            or incident.get("requires_operator_clearance") is not True
-            or incident.get("reason") != "implementation_protected_path_mutated"
-        ):
-            return None
-        mutations = incident.get("mutations")
-        if not isinstance(mutations, list) or not mutations:
-            return None
-        paths: list[str] = []
-        for item in mutations:
-            if not isinstance(item, Mapping):
-                return None
-            if str(item.get("scope") or "") != "shared_checkout":
-                return None
-            change = str(item.get("change") or "")
-            if change not in {"content_changed", "modified"}:
-                return None
-            path = str(item.get("path") or "").strip()
-            if not path or path.startswith("/") or ".." in Path(path).parts:
-                return None
-            paths.append(path)
-        if not paths:
-            return None
-        repo_root = self.repo_root.resolve()
-        try:
-            status = self._run_git(
-                ["status", "--porcelain", "--untracked-files=no", "--", *paths],
-                cwd=repo_root,
-            )
-        except (OSError, RuntimeError):
-            return None
-        if status.returncode != 0 or str(status.stdout or "").strip():
-            return None
-        task_id = str(incident.get("task_id") or "")
-        try:
-            attempt = int(incident.get("attempt") or 0)
-        except (TypeError, ValueError):
-            attempt = 0
-        clearance_payload = {
-            "kind": "shared-checkout-head-clean",
-            "task_id": task_id,
-            "attempt": attempt,
-            "paths": paths,
-            "incident_latched_at": str(incident.get("latched_at") or ""),
-        }
-        clearance_id = "sha256:" + hashlib.sha256(
-            json.dumps(
-                clearance_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        receipt = {
-            "schema": "implementation-protected-path-head-clean-clearance-v1",
-            "clearance_id": clearance_id,
-            "cleared_at": utc_now(),
-            "reason": "shared_checkout_matches_head",
-            **clearance_payload,
-        }
-        receipt_path = incident_path.parent / (
-            "implementation-protected-path-head-clean-clearance-"
-            f"{clearance_id.removeprefix('sha256:')[:16]}.json"
-        )
-        write_json_atomic(receipt_path, receipt)
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
-        result = {
-            "cleared": True,
-            "auto": True,
-            "blocked": False,
-            "reason": receipt["reason"],
-            "clearance_id": clearance_id,
-            "receipt_path": str(receipt_path),
-            "task_id": task_id,
-            "attempt": attempt,
-            "paths": paths,
         }
         self._record_event(
             "implementation_protected_path_incident_auto_cleared",
