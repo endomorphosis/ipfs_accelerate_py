@@ -1804,6 +1804,284 @@ def _synthetic_extension_pin(
     return pin
 
 
+def _install_synthetic_quack_native_bootstrap(
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[str],
+    *,
+    preload_error: Exception | None = None,
+) -> tuple[int, int]:
+    """Install a non-native exact bootstrap double with a real held fd."""
+
+    from ipfs_accelerate_py import agent_implementation_route as native_route
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    for alias in ("_duckdb", "duckdb"):
+        monkeypatch.delitem(sys.modules, alias, raising=False)
+    descriptor, writer = os.pipe()
+    executable = f"/proc/self/fd/{descriptor}"
+    module = SimpleNamespace(__file__=executable, __version__="1.5.5")
+    launch = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=descriptor),
+        pin=SimpleNamespace(
+            dependency_id="sha256:" + "1" * 64,
+            distribution_version="1.5.5",
+        ),
+    )
+    board = SimpleNamespace()
+    snapshot = SimpleNamespace()
+
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: events.append("load_board") or board,
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_configured_board_dependency_seal_snapshot",
+        lambda value: events.append("snapshot") or snapshot
+        if value is board
+        else (_ for _ in ()).throw(AssertionError("wrong board")),
+    )
+
+    def seal(value: object, *, dependency_seal_snapshot: object) -> object:
+        assert value is board
+        assert dependency_seal_snapshot is snapshot
+        events.append("seal")
+        return launch
+
+    monkeypatch.setattr(
+        scheduler,
+        "_seal_configured_board_native_dependency",
+        seal,
+    )
+
+    def preload(value: object) -> object:
+        assert value is launch
+        events.append("preload")
+        if preload_error is not None:
+            raise preload_error
+        monkeypatch.setitem(sys.modules, "_duckdb", module)
+        monkeypatch.setitem(sys.modules, "duckdb", module)
+        return module
+
+    def verify(value: object) -> str:
+        assert value is launch
+        os.fstat(descriptor)
+        events.append("verify_fd")
+        return executable
+
+    monkeypatch.setattr(
+        native_route,
+        "preload_agent_supervisor_native_dependency",
+        preload,
+    )
+    monkeypatch.setattr(
+        native_route,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        verify,
+    )
+    return descriptor, writer
+
+
+def test_quack_start_preloads_exact_native_before_validation_and_holds_fd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_native_order_test",
+    )
+    events: list[str] = []
+    descriptor, writer = _install_synthetic_quack_native_bootstrap(
+        monkeypatch,
+        events,
+    )
+
+    def validate(config: object, config_path: Path) -> None:
+        assert config == {"quack_owner": "test"}
+        assert config_path == REPO_ROOT / "config/test-quack.json"
+        os.fstat(descriptor)
+        events.append("validate")
+
+    def start(config: object) -> int:
+        assert config == {"quack_owner": "test"}
+        os.fstat(descriptor)
+        events.append("start")
+        return 17
+
+    monkeypatch.setattr(operator, "_validate_offline_quack_start", validate)
+    monkeypatch.setattr(operator, "_start_quack", start)
+    try:
+        assert operator._run_quack_start(
+            {"quack_owner": "test"},
+            REPO_ROOT / "config/test-quack.json",
+        ) == 17
+        assert events == [
+            "load_board",
+            "snapshot",
+            "seal",
+            "preload",
+            "verify_fd",
+            "validate",
+            "start",
+            "verify_fd",
+        ]
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    finally:
+        os.close(writer)
+
+
+def test_quack_start_closes_native_fd_when_owner_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_native_owner_failure_test",
+    )
+    events: list[str] = []
+    descriptor, writer = _install_synthetic_quack_native_bootstrap(
+        monkeypatch,
+        events,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_validate_offline_quack_start",
+        lambda *_args: events.append("validate"),
+    )
+
+    def fail_owner(_config: object) -> int:
+        os.fstat(descriptor)
+        events.append("start")
+        raise RuntimeError("owner failed")
+
+    monkeypatch.setattr(operator, "_start_quack", fail_owner)
+    try:
+        with pytest.raises(RuntimeError, match="owner failed"):
+            operator._run_quack_start({}, REPO_ROOT / "config/test-quack.json")
+        assert events[-3:] == ["validate", "start", "verify_fd"]
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    finally:
+        os.close(writer)
+
+
+def test_quack_start_preload_failure_never_reaches_validation_or_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_native_preload_failure_test",
+    )
+    events: list[str] = []
+    descriptor, writer = _install_synthetic_quack_native_bootstrap(
+        monkeypatch,
+        events,
+        preload_error=ValueError("wrong native runtime"),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_validate_offline_quack_start",
+        lambda *_args: events.append("forbidden_validation"),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_start_quack",
+        lambda *_args: events.append("forbidden_start"),
+    )
+    try:
+        with pytest.raises(operator.OperatorError, match="failed closed"):
+            operator._run_quack_start({}, REPO_ROOT / "config/test-quack.json")
+        assert events == ["load_board", "snapshot", "seal", "preload"]
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    finally:
+        os.close(writer)
+
+
+def test_quack_start_rejects_preloaded_ambient_duckdb_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_ambient_native_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    monkeypatch.setitem(sys.modules, "duckdb", ModuleType("duckdb"))
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("board loading must not precede ambient rejection")
+        ),
+    )
+    with pytest.raises(operator.OperatorError, match="preloaded ambient"):
+        operator._run_quack_start({}, REPO_ROOT / "config/test-quack.json")
+
+
+def test_quack_start_rejects_ambient_loader_environment_and_closes_fd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_ambient_loader_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    for alias in ("_duckdb", "duckdb"):
+        monkeypatch.delitem(sys.modules, alias, raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/hostile-native-loader")
+    captured: dict[str, object] = {}
+    original_seal = scheduler._seal_configured_board_native_dependency
+
+    def capture_seal(
+        board: object,
+        *,
+        dependency_seal_snapshot: object,
+    ) -> object:
+        launch = original_seal(
+            board,
+            dependency_seal_snapshot=dependency_seal_snapshot,
+        )
+        captured["launch"] = launch
+        return launch
+
+    monkeypatch.setattr(
+        scheduler,
+        "_seal_configured_board_native_dependency",
+        capture_seal,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_validate_offline_quack_start",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("ambient loader state must prevent validation")
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_start_quack",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("ambient loader state must prevent owner start")
+        ),
+    )
+
+    with pytest.raises(operator.OperatorError, match="failed closed"):
+        operator._run_quack_start({}, operator.CONFIG_PATH)
+    launch = captured["launch"]
+    descriptor = launch.descriptor.descriptor
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+    assert "_duckdb" not in sys.modules
+    assert "duckdb" not in sys.modules
+
+
 def test_operator_loads_and_resolves_exact_extension_names(
     tmp_path: Path,
 ) -> None:

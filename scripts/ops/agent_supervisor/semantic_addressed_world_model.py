@@ -22,7 +22,8 @@ import stat
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -7312,6 +7313,92 @@ def _validate_offline_quack_start(
     )
 
 
+@contextmanager
+def _sealed_quack_native_runtime(config_path: Path) -> Iterator[Any]:
+    """Hold the protected native DuckDB dependency for one Quack lifetime.
+
+    The operator's validation environment intentionally excludes ambient user
+    site packages.  Consequently a plain ``import duckdb`` may resolve an
+    older validation dependency even though the board admits newer, exact
+    DuckDB and extension bytes.  Reuse the configured-board native authority
+    before any offline validator can import DuckDB, and retain its sealed
+    descriptor until the foreground owner has stopped.
+    """
+
+    aliases = ("_duckdb", "duckdb")
+    if any(name in sys.modules for name in aliases):
+        raise OperatorError(
+            "Quack start refuses preloaded ambient DuckDB aliases"
+        )
+    from ipfs_accelerate_py.agent_implementation_route import (
+        preload_agent_supervisor_native_dependency,
+        verify_agent_supervisor_native_dependency_sealed_fd,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        _configured_board_dependency_seal_snapshot,
+        _seal_configured_board_native_dependency,
+        load_configured_board,
+    )
+
+    if any(name in sys.modules for name in aliases):
+        raise OperatorError(
+            "Quack native bootstrap imported an ambient DuckDB alias"
+        )
+    launch = None
+    descriptor = -1
+    try:
+        board = load_configured_board(config_path, repo_root=REPO_ROOT)
+        dependency_snapshot = _configured_board_dependency_seal_snapshot(board)
+        launch = _seal_configured_board_native_dependency(
+            board,
+            dependency_seal_snapshot=dependency_snapshot,
+        )
+        descriptor = int(launch.descriptor.descriptor)
+        module = preload_agent_supervisor_native_dependency(launch)
+        executable = verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        if (
+            descriptor < 3
+            or executable != f"/proc/self/fd/{descriptor}"
+            or sys.modules.get("_duckdb") is not module
+            or sys.modules.get("duckdb") is not module
+            or getattr(module, "__file__", None) != executable
+            or getattr(module, "__version__", None)
+            != launch.pin.distribution_version
+        ):
+            raise OperatorError(
+                "Quack native DuckDB bootstrap identity differs from the seal"
+            )
+    except OperatorError:
+        if descriptor >= 3:
+            os.close(descriptor)
+        raise
+    except Exception as exc:
+        if descriptor >= 3:
+            os.close(descriptor)
+        raise OperatorError(
+            "Quack native DuckDB bootstrap failed closed"
+        ) from exc
+
+    try:
+        yield module
+    finally:
+        try:
+            verify_agent_supervisor_native_dependency_sealed_fd(launch)
+        finally:
+            os.close(descriptor)
+
+
+def _run_quack_start(
+    config: Mapping[str, Any],
+    config_path: Path = CONFIG_PATH,
+) -> int:
+    """Validate and serve Quack under the exact protected native runtime."""
+
+    with _sealed_quack_native_runtime(config_path):
+        _validate_offline_quack_start(config, config_path)
+        return _start_quack(config)
+
+
 def _start_quack(config: Mapping[str, Any]) -> int:
     owner = config["quack_owner"]
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
@@ -9350,8 +9437,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return _emit(materializer.materialize(REPO_ROOT, config_path))
         if args.command == "quack-start":
-            _validate_offline_quack_start(config, config_path)
-            return _start_quack(config)
+            return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
