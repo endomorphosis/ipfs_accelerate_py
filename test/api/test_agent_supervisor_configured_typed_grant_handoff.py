@@ -4414,30 +4414,16 @@ def test_aseh_startup_honors_admitted_blocked_recovery_past_thirty_seconds(
     paths = {"status_receipt": tmp_path / "live-status.json"}
     samples = [
         {"observed_at": float(index), "authority": {"available": True}}
-        for index in range(5)
+        for index in range(2)
     ]
     blocked = {
         "blocked": True,
-        "stuck": True,
+        "stuck": False,
         "blocked_recovery_admitted": True,
         "healthy": False,
         "receipt_cid": "receipt:blocked",
     }
-    healthy = {
-        "blocked": False,
-        "stuck": False,
-        "blocked_recovery_admitted": False,
-        "healthy": True,
-        "receipt_cid": "receipt:healthy",
-    }
-    receipts = [dict(blocked), dict(blocked), dict(blocked), healthy]
-    monotonic_values = iter((100.0, 100.0, 111.0, 122.0, 133.0))
-    observed_monotonic: list[float] = []
-
-    def fake_monotonic() -> float:
-        value = next(monotonic_values)
-        observed_monotonic.append(value)
-        return value
+    receipts = [dict(blocked), dict(blocked)]
 
     def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
         assert samples
@@ -4455,11 +4441,6 @@ def test_aseh_startup_honors_admitted_blocked_recovery_past_thirty_seconds(
         lambda *_args: [],
     )
     monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
-    monkeypatch.setattr(
-        aseh_operator,
-        "time",
-        SimpleNamespace(monotonic=fake_monotonic),
-    )
 
     admitted, last_progress_at = aseh_operator._await_initial_health(
         board,
@@ -4473,10 +4454,9 @@ def test_aseh_startup_honors_admitted_blocked_recovery_past_thirty_seconds(
         received_signal={},
     )
 
-    assert admitted == healthy
+    assert admitted == blocked
     assert last_progress_at == 90.0
-    assert observed_monotonic[-1] - observed_monotonic[0] > 30.0
-    assert receipts == []
+    assert receipts == [blocked]
     assert samples == []
 
 
@@ -4489,14 +4469,8 @@ def test_aseh_startup_fails_when_blocked_recovery_admission_is_lost(
     )
     paths = {"status_receipt": tmp_path / "live-status.json"}
     available = {"observed_at": 1.0, "authority": {"available": True}}
-    samples = [dict(available), dict(available), dict(available)]
+    samples = [dict(available), dict(available)]
     receipts = [
-        {
-            "blocked": True,
-            "stuck": True,
-            "blocked_recovery_admitted": True,
-            "healthy": False,
-        },
         {
             "blocked": True,
             "stuck": True,
@@ -4548,7 +4522,7 @@ def test_aseh_startup_fails_when_blocked_recovery_admission_is_lost(
         )
 
     assert recorded_failure == {
-        "reason_code": "authoritative_blocked_recovery_grace_exhausted",
+        "reason_code": "authoritative_board_blocked",
         "error_type": "ASEHHealthGateFailure",
     }
     assert receipts == []

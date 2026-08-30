@@ -91597,7 +91597,6 @@ def _await_initial_health(
         ),
     )
     deadline = time.monotonic() + timeout
-    blocked_recovery_observed = False
     while time.monotonic() < deadline:
         if shutdown_requested.is_set():
             raise OperatorStopRequested(
@@ -91627,20 +91626,15 @@ def _await_initial_health(
         _atomic_json(paths["status_receipt"], receipt)
         if receipt.get("blocked") is True or receipt.get("stuck") is True:
             if receipt.get("blocked_recovery_admitted") is True:
-                # The receipt is the bounded recovery authority.  It already
-                # binds freshness, the configured recovery window, owner and
-                # broker authority, sealed identities/corpora, lane safety,
-                # and authoritative progress.  Do not replace that admission
-                # with a shorter wall-clock or sample-count heuristic.
-                blocked_recovery_observed = True
-                first = second
-                continue
+                # The receipt is the bounded recovery authority.  Admit and
+                # let the post-admission monitor keep that bound.  Waiting
+                # here for healthy=True times out a live parallel board
+                # whose one blocked shard never clears during the grace.
+                return receipt, last_progress_at
             _record_control_failure(
                 paths, failure, failure_event,
                 reason_code=(
-                    "authoritative_blocked_recovery_grace_exhausted"
-                    if blocked_recovery_observed
-                    else "authoritative_board_blocked"
+                    "authoritative_board_blocked"
                     if receipt.get("blocked") is True
                     else "authoritative_board_stuck"
                 ),
