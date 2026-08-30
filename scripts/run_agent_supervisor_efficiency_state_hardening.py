@@ -91546,6 +91546,8 @@ def _health_receipt(
         ),
         "lane_stalled_without_active_worker": lane_stalled,
         "lane_active_worker_count": lane_active_worker_count,
+        "active_count": active_count,
+        "ready_count": ready_count,
         "owner_ready": owner_ready,
         "broker_ready": broker_ready,
         "owner_identity_admitted": owner_identity_admitted,
@@ -91685,6 +91687,11 @@ def _recent_live_work(receipt: Mapping[str, Any]) -> bool:
 
     active_workers = receipt.get("lane_active_worker_count")
     if type(active_workers) is int and active_workers > 0:
+        return True
+    active_tasks = receipt.get("active_count")
+    if type(active_tasks) is int and active_tasks > 0:
+        # Claimed/in_progress board rows are live work even when Grok is
+        # inside a container/worktree the descendant census cannot see.
         return True
     if receipt.get("startup_grace_active") is True:
         return True
