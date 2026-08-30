@@ -1,0 +1,122 @@
+{
+  "authority": {
+    "canonical_semantic_identity": "ipfs_datasets_py",
+    "ducklake_authority": false,
+    "exact_bytes_cid_storage": "ipfs_kit_py",
+    "model_output_is_completion_authority": false,
+    "operational_admission": "ipfs_accelerate_py",
+    "repository_contract_sealed": true
+  },
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "changed_paths": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/repository_contract_seal.json",
+    "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-003.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-003.json"
+  ],
+  "completion_authoritative": false,
+  "expected_outputs": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/repository_contract_seal.json",
+    "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-003.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-003.json"
+  ],
+  "goal_id": "DOEP-G010.S1",
+  "no_competing_subsystem_created": true,
+  "observed_at": "2026-08-30T03:15:00Z",
+  "outputs_present": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/repository_contract_seal.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-003.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-003.json": true,
+    "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py": true
+  },
+  "parent_goal_id": "DOEP-G010",
+  "path_digests": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/repository_contract_seal.json": "sha256:6d0c70ad892964e8c7201ee3fe69df7b3cdd9b2fccc164af152345f897da1b15",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-003.json": "sha256:77ae0375c4e43b2fbb59744c144aaa23829984cab644010fd9186a3629bc99a1",
+    "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py": "sha256:6dc7febd01786a819ba4b7346864ab3ac4393bea71d5e013ff1e92ab4880714f"
+  },
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "required_evidence": {
+    "changed_path_digest": "sha256:4992d318a4c79464e0bbee269675aaa966400a8edf95380629e001856f81eec9",
+    "limitations": [
+      "Candidate repository-contract seal receipt only; independent fenced supervisor admission is required.",
+      "Worker or model assertion alone is insufficient for task completion.",
+      "Sealed commits and trees bind DOEP-PLAN-V5 immutable source forest authority; branch names remain navigation only.",
+      "Digests bind the exact declared non-receipt outputs at observation time.",
+      "No competing objective, planner, task, event, or state subsystem was created by this seal."
+    ],
+    "receipt_cid": {
+      "reason": "ipfs CLI absent from sealed validation PATH; SHA-256 is not substituted for a CID.",
+      "status": "unavailable"
+    },
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {
+        "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+        "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+      },
+      "ipfs_datasets_py": {
+        "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+        "tree": "456e09b51d6a07a3a5873436df24054768195320"
+      },
+      "ipfs_kit_py": {
+        "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+        "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+      },
+      "lift_coding": {
+        "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+      }
+    },
+    "test_proof_results": {
+      "proof_reason": "Inventory/seal-only task; no source mutation and no formal proof obligation selected.",
+      "proof_selection": "verified_empty",
+      "validation_command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py",
+        "-q"
+      ]
+    },
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "rollback": {
+    "destructive_effects": false,
+    "procedure": "Revert the four declared DOEP-003 outputs and invalidate consumers of this repository contract seal; do not alter sealed repository contents, protected plan documents, or dependency-contract pyproject files."
+  },
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  },
+  "task_cid": "sha256:27ae152374f415aad20e7396c1ba88ebb63440b98f667cbf59a26eb79a987ead",
+  "task_id": "DOEP-003",
+  "title": "Seal current cross-repository contracts and commits",
+  "validation": {
+    "commands": [
+      {
+        "argv": [
+          "python3",
+          "-m",
+          "pytest",
+          "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py",
+          "-q"
+        ],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "worker_completion_insufficient": true,
+  "write_scope": [
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/inventory/repository_contract_seal.json",
+    "test/api/doep/test_doep_003_seal_current_cross_repository_contracts_and_commits.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-003.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-003.json"
+  ]
+}
