@@ -120,6 +120,89 @@ REQUIRED_TARGETS: Final[tuple[str, ...]] = (
     "hard_safety_failures",
 )
 
+# Outer-receipt narrative for the ordinary missing-live-campaign case.
+# These strings are evidence labels, not measurements.
+CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "ten_consecutive_bounded_objectives": (
+            "No live sequence of 10 consecutive bounded objectives ran in this "
+            "environment. Hermetic single-objective prompt tests are not substituted."
+        ),
+        "twenty_historical_task_replays": (
+            "No live historical 20-task replay cohort ran. Event-log cursor replay "
+            "tests are hermetic candidates only."
+        ),
+        "held_out_high_level_decomposition": (
+            "No held-out live high-level objective decomposition campaign ran."
+        ),
+        "owner_loss_and_restart": (
+            "No live owner-loss or authoritative-state-owner restart campaign ran."
+        ),
+        "stale_task_recovery": "No live stale-task recovery campaign ran.",
+        "provider_outcome_unknown_reconciliation": (
+            "No live provider-outcome-unknown reconciliation campaign ran."
+        ),
+        "lease_and_fencing_races": "No live lease/fencing race campaign ran.",
+        "event_replay_and_duplicate_delivery": (
+            "No live duplicate-delivery campaign ran. Hermetic cursor replay is not live."
+        ),
+        "automatic_task_frontier_refill": (
+            "No live automatic task-frontier refill campaign ran. Post-merge auto-start "
+            "and portal-idle tests are hermetic candidates only."
+        ),
+        "incremental_plan_reassessment": (
+            "No live incremental plan-reassessment campaign ran."
+        ),
+        "contextpack_reuse_and_invalidation": (
+            "No live ContextPack reuse/invalidation campaign ran."
+        ),
+        "cross_supervisor_event_handling": (
+            "No live cross-supervisor event campaign ran."
+        ),
+        "external_python_and_mcp_submission": (
+            "Hermetic Python/CLI/MCP identity tests exist and were exercised; they "
+            "are not a live external-client campaign."
+        ),
+    }
+)
+
+TARGET_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "median_end_to_end_input_token_reduction": (
+            "No live Codex-primed baseline or current-route token measurements exist. "
+            "Missing is not recorded as 0%."
+        ),
+        "frontier_model_call_reduction": (
+            "No live frontier-model call ledger was observed. Missing is not recorded as 0%."
+        ),
+        "net_cost_reduction_after_audit": (
+            "No live provider-cost ledger was observed. Missing is not recorded as zero savings."
+        ),
+        "eligible_decisions_without_frontier_model": (
+            "No live eligible-decision ledger was observed. Missing is not recorded as 0%."
+        ),
+        "ordinary_refills_without_llm": (
+            "No live ordinary-refill ledger was observed. Missing is not recorded as 0%."
+        ),
+        "contextpack_reuse_on_eligible_tasks": (
+            "No live ContextPack reuse ledger was observed. Missing is not recorded as 0%."
+        ),
+        "unnecessary_task_churn": (
+            "No live unnecessary-task-churn ledger was observed. Missing is not recorded as 0%."
+        ),
+        "manual_recovery": (
+            "No live manual-recovery ledger was observed. Missing is not recorded as 0%."
+        ),
+        "manual_task_table_edits": (
+            "This worker did not write DuckDB or Quack state. That local fact is not "
+            "substituted for a live 10-objective campaign counter."
+        ),
+        "hard_safety_failures": (
+            "Live campaign hard-zero counters were not observed and are not recorded as zero."
+        ),
+    }
+)
+
 HARD_ZERO_INVARIANTS: Final[tuple[str, ...]] = (
     "false_completions",
     "unauthorized_mutations",
@@ -178,6 +261,8 @@ HERMETIC_CANDIDATE_SUITES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
             "test/api/test_agent_supervisor_plan_supervisor_service.py",
             "test/api/test_agent_supervisor_post_completion_ops_refill.py",
             "test/api/test_agent_supervisor_refill_residual_guard.py",
+            "test/api/test_agent_supervisor_todo_daemon_port.py",
+            "test/api/test_agent_supervisor_database_portal_bridge.py",
         ),
         "incremental_plan_reassessment": (
             "test/api/test_agent_supervisor_adaptive_planner.py",
@@ -290,6 +375,7 @@ class QualificationVerdict:
     missed_targets: tuple[str, ...]
     blockers: tuple[str, ...]
     verdict_cid: str
+    live_campaign_identity: str = ""
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -307,6 +393,7 @@ class QualificationVerdict:
             "missed_targets": list(self.missed_targets),
             "blockers": list(self.blockers),
             "verdict_cid": self.verdict_cid,
+            "live_campaign_identity": self.live_campaign_identity,
         }
 
 
@@ -401,17 +488,30 @@ def unavailable_safety_vector(*, reason: str) -> SafetyVector:
 
 def current_head_unavailable_inputs(
     *,
-    reason: str = (
-        "No live PCPR Phase-0 cohort ran in this environment; hermetic suites "
-        "remain candidate coverage and are not substituted for live counts or "
-        "efficiency targets."
-    ),
+    reason: str = "",
 ) -> tuple[tuple[CohortEvidence, ...], tuple[TargetMeasurement, ...], SafetyVector]:
     """Default fail-closed inputs when the live campaign is absent."""
 
-    cohort = tuple(unavailable_cohort_evidence(case_id, reason=reason) for case_id in REQUIRED_COHORT_CASES)
-    targets = tuple(unavailable_target_measurement(target_id, reason=reason) for target_id in REQUIRED_TARGETS)
-    return cohort, targets, unavailable_safety_vector(reason=reason)
+    safety_reason = reason or (
+        "No live PCPR Phase-0 cohort ran in this environment; hermetic suites "
+        "remain candidate coverage and are not substituted for live counts or "
+        "efficiency targets."
+    )
+    cohort = tuple(
+        unavailable_cohort_evidence(
+            case_id,
+            reason=reason or CASE_UNAVAILABLE_REASONS[case_id],
+        )
+        for case_id in REQUIRED_COHORT_CASES
+    )
+    targets = tuple(
+        unavailable_target_measurement(
+            target_id,
+            reason=reason or TARGET_UNAVAILABLE_REASONS[target_id],
+        )
+        for target_id in REQUIRED_TARGETS
+    )
+    return cohort, targets, unavailable_safety_vector(reason=safety_reason)
 
 
 def _live_cohort_satisfied(record: CohortEvidence) -> bool:
@@ -675,6 +775,7 @@ def qualify_direct_objective_event_driven(
         missed_targets=unique_missed_targets,
         blockers=unique_blockers,
         verdict_cid=verdict_cid,
+        live_campaign_identity=live_campaign_identity.strip(),
     )
 
 
@@ -689,7 +790,7 @@ def qualify_current_head_without_live_campaign() -> QualificationVerdict:
 # means the default unavailable payload changed and the outer receipt must be
 # regenerated from this evaluator rather than transcribed.
 CURRENT_HEAD_UNAVAILABLE_VERDICT_CID: Final = (
-    "baguqeerateinyeij5jrpdtgtpiehmroe3zdp5h7t5k2va3asqo6dwwz4tg3q"
+    "baguqeeraxo2nkg6uoh46ak2snuihopkj7muiw5rn35xdruew6viwri4vo6rq"
 )
 
 PCPR_PHASE0_TASK_ID: Final = "PCPR-001"
@@ -740,3 +841,270 @@ def current_head_pcpr_phase0_receipt_promotion() -> dict[str, Any]:
     """Fail-closed promotion section for the ordinary missing-live case."""
 
     return pcpr_phase0_receipt_promotion(qualify_current_head_without_live_campaign())
+
+
+LIVE_COUNT_CASES: Final[frozenset[str]] = frozenset(
+    {
+        "ten_consecutive_bounded_objectives",
+        "twenty_historical_task_replays",
+    }
+)
+
+TARGET_RECEIPT_SPEC: Final[Mapping[str, Mapping[str, Any]]] = MappingProxyType(
+    {
+        "median_end_to_end_input_token_reduction": {
+            "kind": "bps_min",
+            "required_bps": TARGET_MEDIAN_INPUT_TOKEN_REDUCTION_BPS,
+        },
+        "frontier_model_call_reduction": {
+            "kind": "bps_min",
+            "required_bps": TARGET_FRONTIER_MODEL_CALL_REDUCTION_BPS,
+        },
+        "net_cost_reduction_after_audit": {
+            "kind": "net_cost",
+            "required": "positive integer cost units",
+        },
+        "eligible_decisions_without_frontier_model": {
+            "kind": "bps_min",
+            "required_bps": TARGET_ELIGIBLE_DECISIONS_WITHOUT_FRONTIER_BPS,
+        },
+        "ordinary_refills_without_llm": {
+            "kind": "bps_min",
+            "required_bps": TARGET_ORDINARY_REFILLS_WITHOUT_LLM_BPS,
+        },
+        "contextpack_reuse_on_eligible_tasks": {
+            "kind": "bps_min",
+            "required_bps": TARGET_CONTEXTPACK_REUSE_BPS,
+        },
+        "unnecessary_task_churn": {
+            "kind": "bps_max",
+            "maximum_bps": TARGET_MAX_UNNECESSARY_TASK_CHURN_BPS,
+        },
+        "manual_recovery": {
+            "kind": "bps_max",
+            "maximum_bps": TARGET_MAX_MANUAL_RECOVERY_BPS,
+        },
+        "manual_task_table_edits": {
+            "kind": "count_zero",
+            "required_count": TARGET_MANUAL_TASK_TABLE_EDITS,
+        },
+        "hard_safety_failures": {
+            "kind": "count_zero",
+            "required_count": TARGET_HARD_SAFETY_FAILURES,
+        },
+    }
+)
+
+
+def _reject_closed_release_value(value: Any, name: str) -> None:
+    if value in CLOSED_RELEASE_OUTCOMES:
+        raise DirectObjectiveEventDrivenQualificationError(
+            f"{name} must not be a closed PCPR release outcome"
+        )
+
+
+def pcpr_phase0_receipt_live_cohort(verdict: QualificationVerdict) -> dict[str, Any]:
+    """Outer-receipt live-cohort section.  Hermetic coverage is not live."""
+
+    cases: list[dict[str, Any]] = []
+    for record in verdict.cohort:
+        evidence_kind = record.evidence_kind
+        live_status = record.status
+        if evidence_kind != LIVE_SATISFYING_KIND and live_status == "passed":
+            live_status = "unavailable"
+        live_evidence = (
+            LIVE_SATISFYING_KIND if evidence_kind == LIVE_SATISFYING_KIND else "unavailable"
+        )
+        item: dict[str, Any] = {
+            "case_id": record.case_id,
+            "live_status": live_status,
+            "evidence_kind": live_evidence,
+            "reason": record.reason,
+        }
+        if record.case_id in LIVE_COUNT_CASES:
+            item["live_count"] = (
+                record.live_count if evidence_kind == LIVE_SATISFYING_KIND else None
+            )
+        cases.append(item)
+    return {
+        "minimum_consecutive_bounded_objectives": LIVE_OBJECTIVE_MINIMUM,
+        "minimum_historical_task_replays": LIVE_REPLAY_MINIMUM,
+        "live_campaign_executed": bool(verdict.live_campaign_identity)
+        and not verdict.missed_live_cohort
+        and not verdict.missed_targets
+        and not verdict.blockers,
+        "manual_database_edits_in_this_task": 0,
+        "cases": cases,
+    }
+
+
+def pcpr_phase0_receipt_efficiency_targets(
+    verdict: QualificationVerdict,
+) -> dict[str, Any]:
+    """Outer-receipt efficiency-target section.  Missing values stay null."""
+
+    by_id = {item.target_id: item for item in verdict.targets}
+    payload: dict[str, Any] = {}
+    for target_id in REQUIRED_TARGETS:
+        record = by_id[target_id]
+        spec = TARGET_RECEIPT_SPEC[target_id]
+        entry: dict[str, Any] = {
+            "status": "passed" if _target_satisfied(record) else record.evidence_kind,
+            "evidence_kind": record.evidence_kind,
+            "reason": record.reason,
+        }
+        kind = spec["kind"]
+        if kind == "bps_min":
+            entry["required_bps"] = spec["required_bps"]
+            entry["observed_bps"] = (
+                record.observed_bps if record.evidence_kind == LIVE_SATISFYING_KIND else None
+            )
+        elif kind == "bps_max":
+            entry["maximum_bps"] = spec["maximum_bps"]
+            entry["observed_bps"] = (
+                record.observed_bps if record.evidence_kind == LIVE_SATISFYING_KIND else None
+            )
+        elif kind == "net_cost":
+            entry["required"] = spec["required"]
+            entry["observed_net_cost_units"] = (
+                record.observed_net_cost_units
+                if record.evidence_kind == LIVE_SATISFYING_KIND
+                else None
+            )
+        elif kind == "count_zero":
+            entry["required_count"] = spec["required_count"]
+            entry["observed_count"] = (
+                record.observed_count if record.evidence_kind == LIVE_SATISFYING_KIND else None
+            )
+            if target_id == "manual_task_table_edits":
+                entry["this_task_direct_writes"] = 0
+        payload[target_id] = entry
+    return payload
+
+
+def pcpr_phase0_receipt_negative_results() -> dict[str, Any]:
+    """Fixed negative results for Phase-0 R&D qualification."""
+
+    return {
+        "simulated_success_cannot_promote": True,
+        "hermetic_pass_cannot_satisfy_live_objective_minimum": True,
+        "estimated_token_reduction_rejected": True,
+        "missing_metrics_not_recorded_as_zero": True,
+        "closed_release_outcome_not_emitted": True,
+        "direct_database_bypass_not_used": True,
+        "evidence_kind": "measured",
+    }
+
+
+def current_head_pcpr_phase0_receipt_sections() -> dict[str, Any]:
+    """Promotion, cohort, target, and negative sections for the missing-live case."""
+
+    verdict = qualify_current_head_without_live_campaign()
+    promotion = pcpr_phase0_receipt_promotion(verdict)
+    return {
+        "qualification_verdict": promotion,
+        "required_live_cohort": pcpr_phase0_receipt_live_cohort(verdict),
+        "efficiency_targets": pcpr_phase0_receipt_efficiency_targets(verdict),
+        "negative_results": pcpr_phase0_receipt_negative_results(),
+        "verdict_cid": verdict.verdict_cid,
+        "promotion_status": promotion["promotion_status"],
+        "closed_release_outcome": None,
+        "release_claim": False,
+    }
+
+
+def validate_pcpr_phase0_outer_receipt(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed if an outer PCPR-001 receipt claims a closed release."""
+
+    if not isinstance(payload, Mapping):
+        raise DirectObjectiveEventDrivenQualificationError("outer receipt must be a mapping")
+    task_id = payload.get("task_id")
+    if task_id != PCPR_PHASE0_TASK_ID:
+        raise DirectObjectiveEventDrivenQualificationError("outer receipt task_id must be PCPR-001")
+    _reject_closed_release_value(payload.get("status"), "status")
+    _reject_closed_release_value(payload.get("promotion_status"), "promotion_status")
+    if payload.get("release_claim") is True:
+        raise DirectObjectiveEventDrivenQualificationError("outer receipt must not claim a release")
+    if payload.get("completion_authoritative") is True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "outer receipt completion is not authoritative"
+        )
+
+    verdict_section = payload.get("qualification_verdict")
+    if not isinstance(verdict_section, Mapping):
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification_verdict must be a mapping"
+        )
+    _reject_closed_release_value(
+        verdict_section.get("promotion_status"),
+        "qualification_verdict.promotion_status",
+    )
+    if verdict_section.get("closed_release_outcome") is not None:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification_verdict.closed_release_outcome must be null"
+        )
+    if verdict_section.get("release_claim") is True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification_verdict must not claim a release"
+        )
+    if verdict_section.get("duckdb_or_quack_state_written") is True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification must not write DuckDB or Quack state"
+        )
+    promotion_status = verdict_section.get("promotion_status")
+    if promotion_status not in PROMOTION_STATUSES:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification_verdict.promotion_status is not an admitted Phase-0 status"
+        )
+
+    acceptance = payload.get("acceptance")
+    if isinstance(acceptance, Mapping):
+        _reject_closed_release_value(
+            acceptance.get("promotion_status"),
+            "acceptance.promotion_status",
+        )
+        if acceptance.get("closed_release_outcome") is not None:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "acceptance.closed_release_outcome must be null"
+            )
+        if acceptance.get("release_claim") is True:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "acceptance must not claim a release"
+            )
+        if acceptance.get("promotion_status") not in {None, promotion_status}:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "acceptance.promotion_status must match qualification_verdict"
+            )
+
+    expected = current_head_pcpr_phase0_receipt_promotion()
+    live_campaign = False
+    cohort = payload.get("required_live_cohort")
+    if isinstance(cohort, Mapping):
+        live_campaign = bool(cohort.get("live_campaign_executed"))
+    if not live_campaign:
+        if verdict_section.get("verdict_cid") != expected["verdict_cid"]:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "missing-live qualification_verdict.verdict_cid must match the evaluator"
+            )
+        if promotion_status != expected["promotion_status"]:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "missing-live promotion_status must match the evaluator"
+            )
+        if expected["promotion_status"] == "rnd_non_promoted" and promotion_status not in {
+            "rnd_non_promoted",
+            "typed_unavailable",
+            "typed_blocked",
+            "supervisor_non_promoted",
+        }:
+            raise DirectObjectiveEventDrivenQualificationError(
+                "missing-live promotion_status must be an honest non-promotion"
+            )
+    return {
+        "valid": True,
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "promotion_status": promotion_status,
+        "closed_release_outcome": None,
+        "release_claim": False,
+        "verdict_cid": verdict_section.get("verdict_cid"),
+        "evidence_kind": "measured",
+    }

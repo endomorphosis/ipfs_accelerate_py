@@ -7,6 +7,7 @@ from types import MappingProxyType
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_driven_qualification import (
+    CASE_UNAVAILABLE_REASONS,
     CLOSED_RELEASE_OUTCOMES,
     CURRENT_HEAD_UNAVAILABLE_VERDICT_CID,
     DIRECT_OBJECTIVE_EVENT_DRIVEN_QUALIFICATION_INTERFACE,
@@ -25,15 +26,21 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     TARGET_MAX_UNNECESSARY_TASK_CHURN_BPS,
     TARGET_MEDIAN_INPUT_TOKEN_REDUCTION_BPS,
     TARGET_ORDINARY_REFILLS_WITHOUT_LLM_BPS,
+    TARGET_RECEIPT_SPEC,
+    TARGET_UNAVAILABLE_REASONS,
     CohortEvidence,
     DirectObjectiveEventDrivenQualificationError,
     SafetyVector,
     TargetMeasurement,
     current_head_pcpr_phase0_receipt_promotion,
+    current_head_pcpr_phase0_receipt_sections,
     current_head_unavailable_inputs,
+    pcpr_phase0_receipt_efficiency_targets,
+    pcpr_phase0_receipt_live_cohort,
     pcpr_phase0_receipt_promotion,
     qualify_current_head_without_live_campaign,
     qualify_direct_objective_event_driven,
+    validate_pcpr_phase0_outer_receipt,
 )
 
 
@@ -58,6 +65,15 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
     assert "non_promoted_supervisor_unqualified" in CLOSED_RELEASE_OUTCOMES
     assert "rnd_non_promoted" not in CLOSED_RELEASE_OUTCOMES
     assert "supervisor_non_promoted" not in CLOSED_RELEASE_OUTCOMES
+    assert set(CASE_UNAVAILABLE_REASONS) == set(REQUIRED_COHORT_CASES)
+    assert set(TARGET_UNAVAILABLE_REASONS) == set(REQUIRED_TARGETS)
+    assert set(TARGET_RECEIPT_SPEC) == set(REQUIRED_TARGETS)
+    assert "test/api/test_agent_supervisor_todo_daemon_port.py" in HERMETIC_CANDIDATE_SUITES[
+        "automatic_task_frontier_refill"
+    ]
+    assert "test/api/test_agent_supervisor_database_portal_bridge.py" in HERMETIC_CANDIDATE_SUITES[
+        "automatic_task_frontier_refill"
+    ]
 
 
 def test_missing_live_campaign_is_rnd_non_promoted_and_not_a_release() -> None:
@@ -419,3 +435,108 @@ def _live_passing_inputs() -> tuple[
         reason="live campaign counters",
     )
     return cohort, targets, safety
+
+
+def test_current_head_receipt_sections_are_rnd_non_promoted_and_not_a_release() -> None:
+    sections = current_head_pcpr_phase0_receipt_sections()
+    assert sections["promotion_status"] == "rnd_non_promoted"
+    assert sections["closed_release_outcome"] is None
+    assert sections["release_claim"] is False
+    assert sections["verdict_cid"] == CURRENT_HEAD_UNAVAILABLE_VERDICT_CID
+    cohort = sections["required_live_cohort"]
+    assert cohort["live_campaign_executed"] is False
+    assert cohort["minimum_consecutive_bounded_objectives"] == 10
+    assert cohort["minimum_historical_task_replays"] == 20
+    assert cohort["manual_database_edits_in_this_task"] == 0
+    assert [item["case_id"] for item in cohort["cases"]] == list(REQUIRED_COHORT_CASES)
+    assert all(item["live_status"] == "unavailable" for item in cohort["cases"])
+    assert all(item["evidence_kind"] == "unavailable" for item in cohort["cases"])
+    assert all(item["live_count"] is None for item in cohort["cases"] if "live_count" in item)
+    assert {
+        item["case_id"]: item["reason"] for item in cohort["cases"]
+    } == dict(CASE_UNAVAILABLE_REASONS)
+    targets = sections["efficiency_targets"]
+    assert set(targets) == set(REQUIRED_TARGETS)
+    assert all(entry["observed_bps"] is None for entry in targets.values() if "observed_bps" in entry)
+    assert all(
+        entry["observed_count"] is None for entry in targets.values() if "observed_count" in entry
+    )
+    assert targets["net_cost_reduction_after_audit"]["observed_net_cost_units"] is None
+    assert targets["manual_task_table_edits"]["this_task_direct_writes"] == 0
+    assert sections["negative_results"]["closed_release_outcome_not_emitted"] is True
+    assert sections["negative_results"]["direct_database_bypass_not_used"] is True
+
+
+def test_outer_receipt_validator_accepts_generated_missing_live_receipt() -> None:
+    sections = current_head_pcpr_phase0_receipt_sections()
+    payload = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "completion_authoritative": False,
+        "release_claim": False,
+        "qualification_verdict": sections["qualification_verdict"],
+        "required_live_cohort": sections["required_live_cohort"],
+        "efficiency_targets": sections["efficiency_targets"],
+        "acceptance": {
+            "named_receipt_exists": True,
+            "promotion_status": "rnd_non_promoted",
+            "closed_release_outcome": None,
+            "release_claim": False,
+        },
+    }
+    checked = validate_pcpr_phase0_outer_receipt(payload)
+    assert checked["valid"] is True
+    assert checked["promotion_status"] == "rnd_non_promoted"
+    assert checked["closed_release_outcome"] is None
+    assert checked["release_claim"] is False
+    assert checked["verdict_cid"] == CURRENT_HEAD_UNAVAILABLE_VERDICT_CID
+
+
+def test_outer_receipt_validator_rejects_closed_release_outcome() -> None:
+    sections = current_head_pcpr_phase0_receipt_sections()
+    forged = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": dict(sections["qualification_verdict"]),
+        "required_live_cohort": sections["required_live_cohort"],
+        "acceptance": {
+            "promotion_status": "release_candidate_qualified",
+            "closed_release_outcome": "release_candidate_qualified",
+            "release_claim": True,
+        },
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="closed PCPR release"):
+        validate_pcpr_phase0_outer_receipt(forged)
+    forged_status = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "non_promoted_supervisor_unqualified",
+        "qualification_verdict": sections["qualification_verdict"],
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="closed PCPR release"):
+        validate_pcpr_phase0_outer_receipt(forged_status)
+    forged_verdict = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": {
+            **sections["qualification_verdict"],
+            "closed_release_outcome": "non_promoted_unmeasured",
+        },
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="must be null"):
+        validate_pcpr_phase0_outer_receipt(forged_verdict)
+
+
+def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
+    cohort, targets, safety = current_head_unavailable_inputs()
+    verdict = qualify_direct_objective_event_driven(cohort, targets, safety)
+    refill = next(
+        item for item in verdict.cohort if item.case_id == "automatic_task_frontier_refill"
+    )
+    assert "test/api/test_agent_supervisor_todo_daemon_port.py" in refill.hermetic_suite_paths
+    assert "test/api/test_agent_supervisor_database_portal_bridge.py" in refill.hermetic_suite_paths
+    assert refill.evidence_kind == "unavailable"
+    assert "automatic_task_frontier_refill" in verdict.missed_live_cohort
+    section = pcpr_phase0_receipt_live_cohort(verdict)
+    assert section["live_campaign_executed"] is False
+    targets_section = pcpr_phase0_receipt_efficiency_targets(verdict)
+    assert targets_section["median_end_to_end_input_token_reduction"]["observed_bps"] is None
