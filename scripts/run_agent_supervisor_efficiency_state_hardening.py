@@ -23363,6 +23363,8 @@ class _GitGuardSyscallTrace:
 
 
 _ASEH_CANDIDATE_GIT_GUARD: _CandidateGitGuard | None = None
+_ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
+ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS: Final = 180.0
 _GIT_GUARD_PTRACE: Any | None = None
 _PTRACE_TRACEME: Final = 0
 _PTRACE_CONT: Final = 7
@@ -50105,6 +50107,39 @@ def _recheck_r45_owner_start_authority(
         raise OperatorError("R45 owner-start authority changed")
 
 
+def _r45_launch_historical_live_evidence(
+    stored_evidence: Mapping[str, Any],
+    *,
+    stored_policy: Mapping[str, Any],
+    receipt_cid: str,
+) -> dict[str, Any]:
+    """Bind sealed authorization-time live evidence to the admitted receipt.
+
+    Launch must not re-execute R19 docker/identity. That path stalled owner
+    start, so ready tasks were never claimed.
+    """
+
+    if (
+        not isinstance(stored_evidence, Mapping)
+        or not isinstance(stored_policy, Mapping)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_cid) is None
+        or stored_evidence.get("active_policy_cid")
+        != stored_policy.get("policy_admission_cid")
+        or stored_evidence.get("authorizing_receipt_cid")
+        not in {None, receipt_cid}
+    ):
+        raise OperatorError("R45 stored live evidence does not bind this receipt")
+    unsigned = {
+        key: value
+        for key, value in stored_evidence.items()
+        if key != "evidence_cid"
+    }
+    unsigned["authorizing_receipt_cid"] = receipt_cid
+    evidence = dict(unsigned)
+    evidence["evidence_cid"] = _identity(unsigned)
+    return evidence
+
+
 def _complete_r45_historical_live_prequalification(
     *,
     paths: Mapping[str, Path],
@@ -50171,58 +50206,59 @@ def _complete_r45_historical_live_prequalification(
         active_candidate_head=active_head,
         active_candidate_tree=active_tree,
     )
-    admitted_policy, fresh_evidence = (
-        _qualify_r45_pre_duckdb_historical_live_policy(
-            paths=paths,
-            bootstrap_receipt_id=str(bundle.get("bootstrap_receipt_id") or ""),
-            prior_chain=prior_chain,
-            candidate_head=anchor_head,
-            candidate_tree=anchor_tree,
-            candidate_authorization_witness=stored_witness,
-            durable_candidate_witness=durable,
-            candidate_git_guard=stored_guard,
-            r40_authorization_attempt=values["r40_authorization_attempt"],
-            r40_authorization_failure_evidence=values[
-                "r40_authorization_failure_evidence"
-            ],
-            r39_validation_dependency_failure_evidence=values[
-                "r39_validation_dependency_failure_evidence"
-            ],
-            approved_validation_runtime_deployment=values[
-                "approved_validation_runtime_deployment"
-            ],
-            validation_dependency_directories_contract=values[
-                "validation_dependency_directories_contract"
-            ],
-            r41_bootstrap_failure_evidence=values[
-                "r41_bootstrap_failure_evidence"
-            ],
-            native_dependency_bootstrap_dispatch_contract=values[
-                "native_dependency_bootstrap_dispatch_contract"
-            ],
-            r42_authorization_attempt=values["r42_authorization_attempt"],
-            r42_authorization_timeout_failure_evidence=values[
-                "r42_authorization_timeout_failure_evidence"
-            ],
-            validation_timeout_policy_contract=values[
-                "validation_timeout_policy_contract"
-            ],
-            r43_authorization_attempt=values["r43_authorization_attempt"],
-            r43_authorization_failure_evidence=values[
-                "r43_validation_failure_evidence"
-            ],
-            validation_runtime_binding_contract=values[
-                "validation_runtime_binding_contract"
-            ],
-            policy_admission=stored_policy,
-            authorizing_receipt_cid=receipt_cid,
-            authorization_attempt=values["authorization_attempt"],
-            authorization_receipt=receipt,
-            active_candidate_head=active_head,
-            active_candidate_tree=active_tree,
-            active_candidate_authorization_witness=active_witness,
-            continuity_admission=sealed_continuity,
-        )
+    _assert_r45_historical_live_effect_admission(
+        paths=paths,
+        authorization_attempt=values["authorization_attempt"],
+        authorization_candidate_head=anchor_head,
+        authorization_candidate_tree=anchor_tree,
+        authorization_candidate_witness=stored_witness,
+        durable_candidate_witness=durable,
+        candidate_git_guard=stored_guard,
+        r40_authorization_attempt=values["r40_authorization_attempt"],
+        r40_authorization_failure_evidence=values[
+            "r40_authorization_failure_evidence"
+        ],
+        r39_validation_dependency_failure_evidence=values[
+            "r39_validation_dependency_failure_evidence"
+        ],
+        approved_validation_runtime_deployment=values[
+            "approved_validation_runtime_deployment"
+        ],
+        validation_dependency_directories_contract=values[
+            "validation_dependency_directories_contract"
+        ],
+        r41_bootstrap_failure_evidence=values[
+            "r41_bootstrap_failure_evidence"
+        ],
+        native_dependency_bootstrap_dispatch_contract=values[
+            "native_dependency_bootstrap_dispatch_contract"
+        ],
+        r42_authorization_attempt=values["r42_authorization_attempt"],
+        r42_authorization_timeout_failure_evidence=values[
+            "r42_authorization_timeout_failure_evidence"
+        ],
+        validation_timeout_policy_contract=values[
+            "validation_timeout_policy_contract"
+        ],
+        r43_authorization_attempt=values["r43_authorization_attempt"],
+        r43_authorization_failure_evidence=values[
+            "r43_validation_failure_evidence"
+        ],
+        validation_runtime_binding_contract=values[
+            "validation_runtime_binding_contract"
+        ],
+        authorization_receipt=receipt,
+        authorizing_receipt_cid=receipt_cid,
+        active_candidate_head=active_head,
+        active_candidate_tree=active_tree,
+        active_candidate_witness=active_witness,
+        continuity_admission=sealed_continuity,
+    )
+    admitted_policy = stored_policy
+    fresh_evidence = _r45_launch_historical_live_evidence(
+        stored_evidence,
+        stored_policy=stored_policy,
+        receipt_cid=receipt_cid,
     )
     _assert_candidate_authorization_witness(
         active_witness,
@@ -80285,6 +80321,41 @@ def _append_exact_r36_transition_if_missing(
         repair_transition_chain.append(r36_transition)
 
 
+@contextmanager
+def _bounded_launch_admission(*, timeout_seconds: float) -> Any:
+    """Fail-closed if launch admission exceeds a wall-clock deadline."""
+
+    global _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE
+    if (
+        _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE
+        or timeout_seconds <= 0
+        or not hasattr(signal, "setitimer")
+        or not hasattr(signal, "SIGALRM")
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        yield
+        return
+
+    def expired(_signum: int, _frame: Any) -> None:
+        raise OperatorError(
+            "sealed launch admission exceeded its fail-closed deadline"
+        )
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = True
+    try:
+        signal.signal(signal.SIGALRM, expired)
+        signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
+        yield
+    finally:
+        signal.setitimer(
+            signal.ITIMER_REAL, previous_timer[0], previous_timer[1]
+        )
+        signal.signal(signal.SIGALRM, previous_handler)
+        _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE = False
+
+
 def _admit_materialized_launch(
     board: Any,
     config: Mapping[str, Any],
@@ -80292,6 +80363,15 @@ def _admit_materialized_launch(
 ) -> dict[str, Any]:
     """Acquire R30's fresh Git epoch before any launch live effect."""
 
+    if not _ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE:
+        with _bounded_launch_admission(
+            timeout_seconds=ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS,
+        ):
+            return _admit_materialized_launch(
+                board,
+                config,
+                paths,
+            )
     population = _population(board, config)
     if _ASEH_CANDIDATE_GIT_GUARD is None and _r30_launch_requires_git_guard(
         paths=paths,

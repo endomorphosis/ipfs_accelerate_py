@@ -6044,6 +6044,67 @@ def test_quack_transport_unavailable_defers_whole_pass_without_claim(
         assert result["quack_transport_cache_reset"] is True
         assert claims == []
         assert resets == [uri]
+        assert result["consecutive_quack_portal_deferrals"] == 1
+    finally:
+        daemon.close()
+
+
+def test_quack_transport_unavailable_fail_closes_after_bounded_deferrals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon as daemon_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS",
+        2,
+    )
+    uri = "quack:127.0.0.1:45124"
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-circuit-breaker",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def unavailable() -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45124"'
+            )
+
+        monkeypatch.setattr(daemon.task_source, "snapshot", unavailable)
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("transport availability requested board mutation"),
+        )
+        monkeypatch.setattr(
+            duckdb_state_module,
+            "reset_quack_transport_cache",
+            lambda endpoint="": None,
+        )
+
+        first = daemon.run_once()
+        second = daemon.run_once()
+        assert first["reason"] == "quack_transport_unavailable"
+        assert first["consecutive_quack_portal_deferrals"] == 1
+        assert second["consecutive_quack_portal_deferrals"] == 2
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="fail-closed so claim cannot stall",
+        ):
+            daemon.run_once()
     finally:
         daemon.close()
 
