@@ -1,0 +1,37 @@
+{
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "changed_path_digest": "sha256:4cee681b164457afa74c8d26299dc987da6a2d9588562aebbeb1e0e8309fe107",
+  "competing_subsystem_created": false,
+  "completion_authoritative": false,
+  "exact_outputs": [
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json"
+  ],
+  "output_digest_method": "sha256 of file bytes for .py sources; sha256 of canonical JSON body excluding self-identifying digest/CID fields for JSON artifacts",
+  "output_digests": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json": "sha256:28b88d4eb1794b6689f27503c5b269fdd0ee541da66cdff0bae20d6b09a1efc8",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json": "sha256:9f03294f27f7f61f8827c93d14a86ab0faea341829a88d6899cd5bbcc7b51fef",
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py": "sha256:19004b06955968b23fb9ad858a7604a6561723d28503e71ba4bc1f75b099446e",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py": "sha256:af6bef401ec18fe0036276ddcf8d88fe6b7a1380c2ca4a941bc1110c5a4781d1"
+  },
+  "outputs_present": true,
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "primary_output": "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+  "promotion_eligible": false,
+  "receipt_cid": "sha256:71a76cac7da13952bff28b90e459fa0e4298b5a4a76548db9fd671d180b5bd85",
+  "receipt_output": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json",
+  "schema": "ipfs_accelerate_py.agent_supervisor.doep.task-output-manifest@1",
+  "sealed_mode": "codex_primed",
+  "source_digests": {
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py": "sha256:19004b06955968b23fb9ad858a7604a6561723d28503e71ba4bc1f75b099446e",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py": "sha256:af6bef401ec18fe0036276ddcf8d88fe6b7a1380c2ca4a941bc1110c5a4781d1"
+  },
+  "task_cid": "sha256:940f797121528fe86fe8f86fb808d3cb8c60e6bdd20b20e3439b45bc11a94b74",
+  "task_id": "DOEP-001",
+  "test_output": "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+  "title": "Seal current Codex-primed baseline"
+}

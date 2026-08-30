@@ -1,0 +1,129 @@
+{
+  "authority": false,
+  "base_repositories": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "changed_path_digest": "sha256:4cee681b164457afa74c8d26299dc987da6a2d9588562aebbeb1e0e8309fe107",
+  "changed_paths": [
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json"
+  ],
+  "completion_authoritative": false,
+  "exact_outputs": [
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json"
+  ],
+  "gates_weakened": false,
+  "goal_id": "DOEP-G010.S2",
+  "limitations": [
+    "Worker or model assertion alone is insufficient for completion.",
+    "Paired measurements are explicitly not_run until DOEP-111..125.",
+    "Promotion remains held; this receipt is candidate evidence only.",
+    "Custom Codex campaign prompt bytes are not sealed as authoritative policy.",
+    "DuckLake remains optional and non-authoritative."
+  ],
+  "non_promotion_reason": "paired baseline and candidate execution have not run; measurements remain explicitly not_run",
+  "output_content_digests": {
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json": "sha256:28b88d4eb1794b6689f27503c5b269fdd0ee541da66cdff0bae20d6b09a1efc8",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json": "sha256:9f03294f27f7f61f8827c93d14a86ab0faea341829a88d6899cd5bbcc7b51fef",
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py": "sha256:19004b06955968b23fb9ad858a7604a6561723d28503e71ba4bc1f75b099446e",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py": "sha256:af6bef401ec18fe0036276ddcf8d88fe6b7a1380c2ca4a941bc1110c5a4781d1"
+  },
+  "outputs_present": true,
+  "owning_repository": "external/ipfs_accelerate",
+  "parent_goal_id": "DOEP-G010",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "postcondition_violations": [],
+  "postconditions_hold": true,
+  "promotion_eligible": false,
+  "receipt_cid": "sha256:71a76cac7da13952bff28b90e459fa0e4298b5a4a76548db9fd671d180b5bd85",
+  "repository_authority": "ACC",
+  "required_evidence": {
+    "changed_path_digest": "sha256:4cee681b164457afa74c8d26299dc987da6a2d9588562aebbeb1e0e8309fe107",
+    "limitations": [
+      "Worker or model assertion alone is insufficient for completion.",
+      "Paired measurements are explicitly not_run until DOEP-111..125.",
+      "Promotion remains held; this receipt is candidate evidence only.",
+      "Custom Codex campaign prompt bytes are not sealed as authoritative policy.",
+      "DuckLake remains optional and non-authoritative."
+    ],
+    "proof_selection": {
+      "reason": "DOEP-001 seals a reproducible Codex-primed baseline identity; no datasets proof obligations are selected for this bootstrap seal.",
+      "selected_obligations": [],
+      "selection_status": "verified_empty"
+    },
+    "receipt_cid": "sha256:71a76cac7da13952bff28b90e459fa0e4298b5a4a76548db9fd671d180b5bd85",
+    "source_commit_tree_gitlinks": true,
+    "test_results": {
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+        "-q"
+      ],
+      "status": "declared_independent_pytest"
+    },
+    "verifier_admission": "candidate_receipt_only; independent validation required"
+  },
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py.agent_supervisor.doep.task-receipt@1",
+  "sealed_baseline": {
+    "competing_subsystem_created": false,
+    "manifest_path": "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+    "manifest_sha256": "sha256:19004b06955968b23fb9ad858a7604a6561723d28503e71ba4bc1f75b099446e",
+    "measurements_status": "not_run",
+    "mode": "codex_primed",
+    "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+    "plan_revision": "DOEP-PLAN-V5"
+  },
+  "source_digests": {
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py": "sha256:19004b06955968b23fb9ad858a7604a6561723d28503e71ba4bc1f75b099446e",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py": "sha256:af6bef401ec18fe0036276ddcf8d88fe6b7a1380c2ca4a941bc1110c5a4781d1"
+  },
+  "status": "implemented",
+  "task_cid": "sha256:940f797121528fe86fe8f86fb808d3cb8c60e6bdd20b20e3439b45bc11a94b74",
+  "task_id": "DOEP-001",
+  "title": "Seal current Codex-primed baseline",
+  "validation": {
+    "commands": [
+      [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+        "-q"
+      ]
+    ],
+    "profile": "doep-validation/DOEP-PLAN-V5/DOEP-001@1"
+  },
+  "worker_completion_insufficient": true,
+  "write_scope": [
+    "benchmarks/agent_supervisor/doep/baseline_manifest.py",
+    "test/api/doep/test_doep_001_seal_current_codex_primed_baseline.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-001.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-001.json"
+  ]
+}
