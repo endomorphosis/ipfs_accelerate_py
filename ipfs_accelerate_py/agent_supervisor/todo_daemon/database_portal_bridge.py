@@ -18844,10 +18844,7 @@ class DatabasePortalExecutionBridge:
 
             def reconcile_under_checkout_authority() -> dict[str, Any]:
                 if (
-                    not self._preserved_commit_exists(
-                        commit=preserved_commit,
-                        rescue_branch=rescue_branch,
-                    )
+                    not self._zero_provider_source_ref_exists(seed)
                     or not self._preserved_commit_descends_from(
                         baseline_commit=baseline_commit,
                         preserved_commit=preserved_commit,

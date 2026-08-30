@@ -444,6 +444,85 @@ def test_bridge_reuses_exact_post_commit_candidate_without_provider(
     assert factory_calls == []
 
 
+def test_bridge_zero_provider_reconciles_post_commit_candidate_seed(
+    tmp_path: Path,
+) -> None:
+    source_bridge, source, record, source_paths, seed, source_factory_calls = (
+        _post_commit_candidate_fixture(tmp_path)
+    )
+    repo = source_bridge.repository_root
+    source_worktree_root = source_bridge.worktree_root
+    assert repo is not None
+    assert source_worktree_root is not None
+    assert seed["schema"] == DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA
+    assert str(seed["rescue_branch"]).startswith("implementation/")
+
+    target = replace(
+        source,
+        attempt_id="attempt:post-commit-target",
+        claim_id="claim:post-commit-target",
+        lease_id="lease:post-commit-target",
+        attempt_number=2,
+        fencing_token=8,
+        owner_session_id="session:post-commit-target",
+    )
+    record.revision += 1
+    record.status = "in_progress"
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": target.attempt_id,
+            "claim_id": target.claim_id,
+            "lease_id": target.lease_id,
+            "owner_session_id": target.owner_session_id,
+            "attempt_number": target.attempt_number,
+            "fencing_token": target.fencing_token,
+            "fence_epoch": target.fence_epoch,
+            "post_commit_candidate_source_attempt_id": source.attempt_id,
+            "post_commit_candidate_recovery_seed": dict(seed),
+        },
+    }
+    bridge, observed, _queue, provider_hooks, factory_calls = (
+        _protected_recovery_bridge(
+            record=record,
+            target=target,
+            repo=repo,
+            target_root=source_paths.root.parent,
+            mode="success_todo",
+        )
+    )
+    # Reproduce the source receipt from the original managed worktree root;
+    # the target reconciliation still creates a fresh worktree owned by Portal.
+    bridge.worktree_root = source_worktree_root
+
+    receipt = bridge.run_provider(target)
+    effect = bridge.apply_effect(target, receipt)
+    validation = bridge.validate_effect(target, effect)
+    portal = observed["portal"]
+
+    assert receipt["accepted"] is True
+    completion_binding = validation["portal_completion_binding"]
+    assert completion_binding["baseline_commit"] == seed["baseline_commit"]
+    assert completion_binding["implementation_commit"] == seed["preserved_commit"]
+    assert provider_hooks == []
+    assert source_factory_calls == []
+    assert factory_calls == [target.task_alias]
+    assert len(portal.reconcile_calls) == 1
+    assert portal.reconcile_calls[0]["candidate_commit"] == seed["preserved_commit"]
+    assert subprocess.run(
+        [
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            str(seed["preserved_commit"]),
+            "HEAD",
+        ],
+        cwd=repo,
+        check=False,
+    ).returncode == 0
+
+
 def test_bridge_post_commit_candidate_later_event_fails_closed(
     tmp_path: Path,
 ) -> None:
