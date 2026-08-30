@@ -91711,11 +91711,19 @@ def _post_admission_health_action(
     if receipt.get("broker_ready") is not True:
         return "fail", "authoritative_broker_not_ready", unhealthy_edges
     if not prior_available and not current_available:
-        return (
-            "fail",
-            "authoritative_status_unavailable_two_samples",
-            unhealthy_edges,
-        )
+        active_workers = receipt.get("lane_active_worker_count")
+        if type(active_workers) is int and active_workers > 0:
+            # Quack can miss two samples while a grok worker is still
+            # implementing. Do not SIGTERM the live shard.
+            return "continue", "", 0
+        next_edges = unhealthy_edges + 1
+        if next_edges > 2:
+            return (
+                "fail",
+                "authoritative_status_unavailable_two_samples",
+                next_edges,
+            )
+        return "continue", "", next_edges
     if receipt.get("terminal") is True:
         if receipt.get("healthy") is True:
             return "stop", "", 0

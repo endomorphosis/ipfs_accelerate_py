@@ -4253,6 +4253,43 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert reason == "authoritative_status_recovery_grace_exhausted"
     assert edges == 3
 
+    both_unavailable = {
+        "healthy": False,
+        "blocked": False,
+        "stuck": False,
+        "scheduler_alive": True,
+        "owner_ready": True,
+        "broker_ready": True,
+        "lane_active_worker_count": 0,
+    }
+    edges = 0
+    for _index in range(2):
+        action, reason, edges = aseh_operator._post_admission_health_action(
+            both_unavailable,
+            prior_available=False,
+            current_available=False,
+            unhealthy_edges=edges,
+        )
+        assert (action, reason) == ("continue", "")
+    action, reason, edges = aseh_operator._post_admission_health_action(
+        both_unavailable,
+        prior_available=False,
+        current_available=False,
+        unhealthy_edges=edges,
+    )
+    assert (action, reason, edges) == (
+        "fail",
+        "authoritative_status_unavailable_two_samples",
+        3,
+    )
+    working = {**both_unavailable, "lane_active_worker_count": 1}
+    assert aseh_operator._post_admission_health_action(
+        working,
+        prior_available=False,
+        current_available=False,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
 
 def test_aseh_post_admission_bounds_parallel_scope_identity_flicker() -> None:
     scoped = {
