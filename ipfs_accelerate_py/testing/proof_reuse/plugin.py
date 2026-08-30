@@ -778,6 +778,25 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
     for item in collected:
         setattr(item, ITEM_METADATA_ATTRIBUTE, collect_item_metadata(item))
 
+    # PCTDD-022: collection extracts and memoizes exact fixture closures
+    # without executing fixture bodies, skip authority, or V2 assembly.
+    try:
+        from .fixture_definition_extraction import (
+            FIXTURE_DEFINITION_MEMO_ATTRIBUTE,
+            collect_fixture_definition_closures,
+            new_memo,
+        )
+
+        memo = getattr(config, FIXTURE_DEFINITION_MEMO_ATTRIBUTE, None)
+        if memo is None:
+            memo = new_memo()
+            setattr(config, FIXTURE_DEFINITION_MEMO_ATTRIBUTE, memo)
+        collect_fixture_definition_closures(collected, memo=memo, attach=True)
+    except Exception:
+        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+        if metrics is not None:
+            metrics.degraded(reason_code="fixture_definition_extraction_failed")
+
     from ...agent_supervisor.proof.test_execution_contracts import ReuseDecision
     from .lookup import (
         ITEM_LOOKUP_REQUEST_ATTRIBUTE,
