@@ -801,7 +801,7 @@ command-target = "test/api/doep/test_doep_092_add_bounded_model_assisted_synthes
 command-kind = "pytest"
 validation-command-sha256 = "13c3d50a4a5c28fe7abbd006136afb4499e5c457562917ebc6ad393ad7787f37"
 requirements = ["pytest>=8.0.0"]
-task = { board-namespace = "agent-supervisor-direct-objective-and-event-driven-planning-v1", canonical-task-cid = "sha256:a1500f08ac6f7752d116a3030fd943db3c81c266083af845b7451752ddf0c506", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py","test/api/doep/test_doep_092_add_bounded_model_assisted_synthesis.py","artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-092.json","artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-092.json"] }
+task = { board-namespace = "agent-supervisor-direct-objective-and-event-driven-planning-v1", canonical-task-cid = "sha256:16cf6e54ae4482bf71e768093b251302667641ef17f5fe1bd6e1681a7e2fe382", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py","test/api/doep/test_doep_092_add_bounded_model_assisted_synthesis.py","artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-092.json","artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-092.json"] }
 baseline = { state = "declared-output-absent" }
 
 [[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
@@ -828,7 +828,7 @@ command-target = "test/api/doep/test_doep_100_add_sibling_supervisor_capability_
 command-kind = "pytest"
 validation-command-sha256 = "8bd27c059616462787acbaac3e801f7b30dcb4ef58e39d0d1cd98a865887a19b"
 requirements = ["pytest>=8.0.0"]
-task = { board-namespace = "agent-supervisor-direct-objective-and-event-driven-planning-v1", canonical-task-cid = "sha256:02cd5e6c674330fc998c8608e91780b75ba399570bbd29f4c69c8e808c868388", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py","test/api/doep/test_doep_100_add_sibling_supervisor_capability_registry.py","artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-100.json","artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-100.json"] }
+task = { board-namespace = "agent-supervisor-direct-objective-and-event-driven-planning-v1", canonical-task-cid = "sha256:37c622460173381a138a1626cfaeed9386089a9bb067e24b8fda0a3cc8be2eae", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/runtime/supervisor_fabric.py","test/api/doep/test_doep_100_add_sibling_supervisor_capability_registry.py","artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-100.json","artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-100.json"] }
 baseline = { state = "declared-output-absent" }
 
 [[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
