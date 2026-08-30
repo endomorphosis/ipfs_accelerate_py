@@ -7,12 +7,14 @@ import json
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
+    MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES,
+    MAX_SCOPED_CONTRACT_TARGETS,
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
     _require_safe_scoped_pytest_target,
+    _scoped_v2_selected_target,
     preflight_validation_project_dependencies,
 )
 
@@ -46,6 +48,8 @@ def _write_project(
     selected_requirements: list[str] | None = None,
     target: str = TARGET,
     baseline_state: str = "present",
+    relative_root: str = "",
+    declared_outputs: list[str] | None = None,
 ) -> dict[str, object]:
     requirements_payload = b"requests>=2.31.0\n"
     (workspace / "requirements.txt").write_bytes(requirements_payload)
@@ -66,7 +70,19 @@ def _write_project(
         if selected_requirements is None
         else selected_requirements
     )
-    command = f"python -m pytest -q {target}"
+    local_command = f"python -m pytest -q {target}"
+    command = (
+        f"cd {relative_root} && {local_command}"
+        if relative_root
+        else local_command
+    )
+    contract_declared_outputs = (
+        [target] if declared_outputs is None else declared_outputs
+    )
+    runtime_declared_outputs = [
+        f"{relative_root}/{output}" if relative_root else output
+        for output in contract_declared_outputs
+    ]
     (workspace / "pyproject.toml").write_text(
         f"""
 [project]
@@ -92,7 +108,7 @@ command-target = {json.dumps(target)}
 command-kind = "pytest"
 validation-command-sha256 = {json.dumps(hashlib.sha256(command.encode()).hexdigest())}
 requirements = {json.dumps(selected)}
-task = {{ board-namespace = {json.dumps(BOARD)}, canonical-task-cid = {json.dumps(TASK_CID)}, declared-outputs = [{json.dumps(target)}] }}
+task = {{ board-namespace = {json.dumps(BOARD)}, canonical-task-cid = {json.dumps(TASK_CID)}, declared-outputs = {json.dumps(contract_declared_outputs)} }}
 baseline = {{ {baseline} }}
 """.strip()
         + "\n",
@@ -106,8 +122,26 @@ baseline = {{ {baseline} }}
         "task_authority": {
             "board_namespace": BOARD,
             "canonical_task_cid": TASK_CID,
-            "declared_outputs": [target],
+            "declared_outputs": runtime_declared_outputs,
         },
+    }
+
+
+def _v4_contract_target(index: int, *, path: str | None = None) -> dict[str, object]:
+    target = path or f"test/api/test_doep_contract_{index:03d}.py"
+    command = f"python -m pytest -q {target}"
+    return {
+        "target": target,
+        "command-target": target,
+        "command-kind": "pytest",
+        "validation-command-sha256": hashlib.sha256(command.encode()).hexdigest(),
+        "requirements": [PYTEST_REQUIREMENT],
+        "task": {
+            "board-namespace": BOARD,
+            "canonical-task-cid": f"doep-task-cid-{index:03d}",
+            "declared-outputs": [target],
+        },
+        "baseline": {"state": "declared-output-absent"},
     }
 
 
@@ -448,3 +482,184 @@ def test_checked_in_v4_contract_covers_later_command_grammars(
 
     assert receipt["passed"] is True
     assert payloads[0]["projects"][0]["requirements"] == requirements
+
+
+def test_v4_contract_accepts_bounded_85_task_campaign_catalog() -> None:
+    targets = [_v4_contract_target(index) for index in range(85)]
+    selected = targets[-1]
+    target = str(selected["target"])
+    command = f"python -m pytest -q {target}"
+    task = selected["task"]
+    assert isinstance(task, dict)
+
+    result = _scoped_v2_selected_target(
+        {
+            "schema": SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+            "targets": targets,
+        },
+        relative_root="",
+        validation_commands=[command],
+        task_authority={
+            "board_namespace": task["board-namespace"],
+            "canonical_task_cid": task["canonical-task-cid"],
+            "declared_outputs": task["declared-outputs"],
+        },
+    )
+
+    assert MAX_SCOPED_CONTRACT_TARGETS >= 85
+    assert result["target"] == target
+
+
+def test_v4_contract_rejects_target_count_above_closed_bound() -> None:
+    targets = [
+        _v4_contract_target(index)
+        for index in range(MAX_SCOPED_CONTRACT_TARGETS + 1)
+    ]
+    selected = targets[0]
+    task = selected["task"]
+    assert isinstance(task, dict)
+
+    with pytest.raises(
+        ValueError,
+        match="v2_targets_invalid_or_exceed_bound",
+    ):
+        _scoped_v2_selected_target(
+            {
+                "schema": SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                "targets": targets,
+            },
+            relative_root="",
+            validation_commands=[
+                f"python -m pytest -q {selected['target']}"
+            ],
+            task_authority={
+                "board_namespace": task["board-namespace"],
+                "canonical_task_cid": task["canonical-task-cid"],
+                "declared_outputs": task["declared-outputs"],
+            },
+        )
+
+
+def test_v4_contract_retains_aggregate_target_byte_bound() -> None:
+    # Seventeen individually valid paths just below the per-target cap exceed
+    # the independent 64 KiB aggregate once target and command-target bytes
+    # are both counted.
+    path_stem_bytes = 1_980
+    targets = [
+        _v4_contract_target(
+            index,
+            path=f"test/{'a' * path_stem_bytes}{index:02d}.py",
+        )
+        for index in range(17)
+    ]
+    assert sum(
+        len(str(entry[field]).encode("utf-8"))
+        for entry in targets
+        for field in ("target", "command-target")
+    ) > MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES
+    selected = targets[0]
+    task = selected["task"]
+    assert isinstance(task, dict)
+
+    with pytest.raises(
+        ValueError,
+        match="v2_targets_duplicate_or_oversized",
+    ):
+        _scoped_v2_selected_target(
+            {
+                "schema": SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V4,
+                "targets": targets,
+            },
+            relative_root="",
+            validation_commands=[
+                f"python -m pytest -q {selected['target']}"
+            ],
+            task_authority={
+                "board_namespace": task["board-namespace"],
+                "canonical_task_cid": task["canonical-task-cid"],
+                "declared_outputs": task["declared-outputs"],
+            },
+        )
+
+
+def test_v4_nested_repository_admits_exact_projected_runtime_outputs(
+    tmp_path: Path,
+) -> None:
+    relative_root = "external/ipfs_datasets"
+    project_root = tmp_path / relative_root
+    project_root.mkdir(parents=True)
+    expected = _write_project(
+        project_root,
+        relative_root=relative_root,
+        declared_outputs=[
+            "ipfs_datasets_py/logic/objective.py",
+            TARGET,
+        ],
+    )
+    payloads: list[dict[str, object]] = []
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [str(expected["command"])],
+        task_authority=expected["task_authority"],
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is True
+    project = receipt["projects"][0]
+    assert project["root"] == relative_root
+    assert project["scoped_validation_task_authority_sha256"] == (
+        _content_sha256(expected["task_authority"])
+    )
+    assert len(payloads) == 1
+
+
+@pytest.mark.parametrize(
+    "runtime_outputs",
+    [
+        [
+            "ipfs_datasets_py/logic/objective.py",
+            TARGET,
+        ],
+        [
+            "external/ipfs_kit/ipfs_datasets_py/logic/objective.py",
+            f"external/ipfs_kit/{TARGET}",
+        ],
+        [
+            "external/ipfs_datasets/ipfs_datasets_py/logic/objective.py",
+            f"external/ipfs_datasets/{TARGET}",
+            "external/ipfs_datasets/unbound.py",
+        ],
+    ],
+)
+def test_v4_nested_repository_projection_rejects_scope_bypass(
+    tmp_path: Path,
+    runtime_outputs: list[str],
+) -> None:
+    relative_root = "external/ipfs_datasets"
+    project_root = tmp_path / relative_root
+    project_root.mkdir(parents=True)
+    expected = _write_project(
+        project_root,
+        relative_root=relative_root,
+        declared_outputs=[
+            "ipfs_datasets_py/logic/objective.py",
+            TARGET,
+        ],
+    )
+    task_authority = dict(expected["task_authority"])
+    task_authority["declared_outputs"] = runtime_outputs
+    payloads: list[dict[str, object]] = []
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        [str(expected["command"])],
+        task_authority=task_authority,
+        probe_runner=_passing_probe(payloads),
+    )
+
+    assert receipt["passed"] is False
+    assert receipt["projects"][0]["contract_error_reason"] == (
+        "v2_validation_task_authority_mismatch"
+    )
+    assert payloads == []

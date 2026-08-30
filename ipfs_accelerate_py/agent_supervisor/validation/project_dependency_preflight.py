@@ -81,7 +81,10 @@ PROJECT_DEPENDENCY_PREFLIGHT_MAX_BACKOFF_SECONDS = 1800
 MAX_PYPROJECT_BYTES = 2 * 1024 * 1024
 MAX_DEPENDENCY_MANIFEST_FILES = 16
 MAX_DEPENDENCY_MANIFEST_BYTES = 2 * 1024 * 1024
-MAX_SCOPED_CONTRACT_TARGETS = 16
+# One campaign may bind a bounded board-wide validation catalog.  Keep this
+# comfortably above the current 85-task board while the independent aggregate
+# byte limits below continue to cap the amount of authority parsed here.
+MAX_SCOPED_CONTRACT_TARGETS = 128
 MAX_SCOPED_CONTRACT_TARGET_BYTES = 2048
 MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES = 64 * 1024
 MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES = 4096
@@ -1441,15 +1444,35 @@ def _scoped_v2_selected_target(
         board_namespace = entry_task.get("board-namespace")
         canonical_task_cid = entry_task.get("canonical-task-cid")
         if v4_contract:
-            declared_outputs = _require_scoped_prior_seed_paths(
+            contract_declared_outputs = _require_scoped_prior_seed_paths(
                 entry_task.get("declared-outputs"),
                 reason="v4_target_declared_outputs_invalid",
             )
-            if target not in declared_outputs:
+            if target not in contract_declared_outputs:
                 raise _ScopedDependencyContractError(
                     "v4_target_not_declared_output"
                 )
-            declared_output = target
+            # A v4 contract is stored in the project it describes, so its
+            # paths are project-relative.  Portal task authority is rooted at
+            # the accelerator worktree and therefore prefixes outputs for a
+            # configured nested repository.  Project the whole closed list
+            # exactly once before comparing it with runtime authority.  This
+            # is an equality check, not a suffix/containment allowance: a
+            # sibling-root or otherwise unprojected runtime path still fails.
+            declared_outputs = _require_scoped_prior_seed_paths(
+                [
+                    _expected_scoped_declared_output(
+                        relative_root,
+                        output,
+                    )
+                    for output in contract_declared_outputs
+                ],
+                reason="v4_runtime_declared_output_projection_invalid",
+            )
+            declared_output = _expected_scoped_declared_output(
+                relative_root,
+                target,
+            )
         else:
             declared_output = entry_task.get("declared-output")
             declared_outputs = [str(declared_output)]
