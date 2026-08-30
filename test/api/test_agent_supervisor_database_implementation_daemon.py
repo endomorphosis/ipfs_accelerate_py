@@ -7556,6 +7556,92 @@ def test_reconcile_completes_blocked_task_when_merge_queue_landed(
         daemon.close()
 
 
+def test_reconcile_reopens_missing_implementation_event_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-missing-implementation",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal terminal replay lacks a task-bound implementation event",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_completes_bound_merge_train_queue_without_constructor_queue(
+    tmp_path: Path,
+) -> None:
+    """Live daemons bind the queue on _merge_queue, not the constructor field."""
+
+    repo = _git_repo_with_output(tmp_path)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    queue = MergeQueue(tmp_path / "merge-queue")
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:bound-merge-train-completion",
+        repo_root=repo,
+        merge_target_ref="main",
+    )
+    try:
+        assert daemon.merge_queue is None
+        daemon.bind_merge_train_recovery(
+            merge_queue=queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="Portal terminal replay lacks a task-bound implementation event",
+        )
+        completed_dir = Path(queue.completed_dir)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        (completed_dir / "aseh-020-completed.json").write_text(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "task_id": "DQP-T001",
+                    "canonical_task_id": "task:cid:001",
+                    "commit_sha": commit,
+                    "metadata": {
+                        "implementation_commit": commit,
+                        "completion_task_cids": {"DQP-T001": "task:cid:001"},
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = daemon.run_once()
+        completed_rows = result["merge_queue_landed_completions"]
+        assert completed_rows
+        assert completed_rows[0]["task_cid"] == "task:cid:001"
+        assert result["false_terminal_portal_unstalls"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
