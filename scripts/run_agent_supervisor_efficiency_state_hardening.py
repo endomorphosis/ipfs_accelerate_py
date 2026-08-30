@@ -91512,11 +91512,15 @@ def _health_receipt(
         )
         and (admission_progress or not require_authoritative_progress)
     )
+    counted_workers = [
+        int(item["active_worker_count"])
+        for item in lanes
+        if type(item.get("active_worker_count")) is int
+    ]
+    # One recycling shard reports None. That must not hide live workers on
+    # the other shards or the owner SIGTERMs a claimed in-progress task.
     lane_active_worker_count = (
-        sum(int(item["active_worker_count"]) for item in lanes)
-        if lanes
-        and all(type(item.get("active_worker_count")) is int for item in lanes)
-        else None
+        sum(counted_workers) if counted_workers else None
     )
     receipt = {
         "schema": LIVE_STATUS_SCHEMA,

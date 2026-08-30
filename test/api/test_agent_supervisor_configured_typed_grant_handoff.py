@@ -4454,6 +4454,105 @@ def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     )[:2] == ("fail", "authoritative_scheduler_not_live")
 
 
+def test_aseh_health_counts_live_workers_when_one_lane_census_is_none(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        status="in_progress",
+        ready=False,
+        active=True,
+        worker_count=1,
+        observed_at=now - 1.0,
+        lane_mtime_ns=int((now - 1.0) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        status="in_progress",
+        ready=False,
+        active=True,
+        worker_count=1,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    missing = {
+        "lane": 2,
+        "fresh": True,
+        "admissible": True,
+        "watchdog_admissible": False,
+        "worker_census_admissible": False,
+        "mtime_ns": int(now * 1_000_000_000),
+        "active_worker_count": None,
+        "worker_root_pid": None,
+    }
+    for sample in (before, current):
+        lanes = sample["lanes"]
+        assert isinstance(lanes, list)
+        lanes.append(dict(missing))
+
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 400.0,
+        last_progress_at=now - 400.0,
+        failure={},
+    )
+    assert receipt["lane_active_worker_count"] == 1
+    assert receipt["startup_grace_active"] is False
+    action, reason, edges = aseh_operator._post_admission_health_action(
+        {
+            "healthy": False,
+            "blocked": False,
+            "stuck": False,
+            "terminal": False,
+            "scheduler_alive": True,
+            "owner_ready": True,
+            "broker_ready": True,
+            "health_without_lane_admitted": True,
+            "lane_heartbeat_fresh": False,
+            "startup_grace_active": False,
+            "lane_active_worker_count": receipt["lane_active_worker_count"],
+            "last_progress_at": now - 400.0,
+            "observed_at": now,
+            "blocked_recovery_window_seconds": 300.0,
+        },
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    )
+    assert (action, reason, edges) == ("continue", "", 0)
+
+
+def test_aseh_health_counts_no_workers_when_every_lane_census_is_none(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now - 1.0,
+        lane_mtime_ns=int((now - 1.0) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    for sample in (before, current):
+        sample["lanes"][0]["active_worker_count"] = None  # type: ignore[index]
+
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 1.0,
+        last_progress_at=now,
+        failure={},
+    )
+    assert receipt["lane_active_worker_count"] is None
+
+
 def test_aseh_startup_fails_after_two_unavailable_authority_samples(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
