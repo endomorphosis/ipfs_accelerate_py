@@ -91449,6 +91449,11 @@ def _health_receipt(
         stale_seconds,
         max(30.0, startup_grace),
     )
+    parallel_work_remaining = bool(
+        (ready_count is not None and ready_count > 0)
+        or (active_count is not None and active_count > 0)
+        or delayed_frontier_admitted
+    )
     blocked_recovery_scope = (
         "dependency_deadlock"
         if (
@@ -91462,11 +91467,15 @@ def _health_receipt(
             blocked_count is not None
             and blocked_count > 0
             and startup_active
-            and (
-                (ready_count is not None and ready_count > 0)
-                or (active_count is not None and active_count > 0)
-                or delayed_frontier_admitted
-            )
+            and parallel_work_remaining
+        )
+        else "parallel_work"
+        if (
+            blocked_count is not None
+            and blocked_count > 0
+            and not dependency_deadlock
+            and parallel_work_remaining
+            and now - last_progress_at <= blocked_recovery_window_seconds
         )
         else ""
     )
@@ -91493,10 +91502,14 @@ def _health_receipt(
         and objective_count == expected_objectives == 1
         and plan_count == expected_plans == 1
         # Fresh wrappers may not have replaced stale lane receipts yet on the
-        # first post-launch samples.  The separate last-progress bound and
-        # initial-health grace still cap this exception; after startup, a
-        # fresh authenticated lane census is mandatory again.
-        and (lane_fresh or startup_active)
+        # first post-launch samples.  After startup, one shard can still
+        # recycle its daemon while other shards keep implementing; the
+        # last-progress bound caps that exception.
+        and (
+            lane_fresh
+            or startup_active
+            or blocked_recovery_scope == "parallel_work"
+        )
         and (admission_progress or not require_authoritative_progress)
     )
     lane_active_worker_count = (
