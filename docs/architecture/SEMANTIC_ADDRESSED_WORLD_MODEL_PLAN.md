@@ -1186,7 +1186,66 @@ and receipt last.  The nine controls are committed before materialization;
 preflight, dry-run, and generation-21 launch occur only after every static,
 source, predecessor, receipt, and target-freshness gate passes.
 
-## 29. Current limitations at seal time
+## 29. M21 generation-realization successor
+
+M20 was materialized correctly, but its predecessor M19 had never launched.
+Consequently the first successful M20 Quack start minted the next real store
+generation, 20, while the M20 scheduler seal expected generation 21.  The
+generation-20 owner loaded only the exact sealed `httpfs` and `quack`
+extensions and reached authenticated readiness.  Preflight then failed closed
+with the exact typed error `live Quack generation 20 differs from the sealed
+generation 21`; no task was claimed and no implementation provider was
+invoked.  The owner was stopped through its fenced operator control at
+`2026-08-30T02:45:44Z`.
+
+M21 preserves that honest failed-preflight history rather than relabelling
+M20, weakening the generation gate, or inserting a synthetic generation.  Its
+exact stopped-M20 anchors are:
+
+```text
+control SHA-256       29705f38e13dec72de8e55c454bd776188b48593bc55c15b112b58a3cefdbead
+coordination SHA-256  4ffd71f5ccbb1953a84e430d2ffbc114fffd3d787abdf7cc39a42a5d3ef13e41
+read-replica SHA-256  4bceb28c643a24541ba8359c1c7100e68272d40539955f3a6bec7acb580ebd49
+status SHA-256        ddb80d92799b0bd28fccc70750115e87f14addc31f7c51ac99c8e32836c28312
+historical receipt    8795de90b3f7d8c539e84619b1243bec0eae8fbfbe50708d3fff2d1c1cc93b0b
+server ID             server:0619d09f-01a7-4ca2-8084-be1c620c80c5
+process birth ID      birth:d63dde7e4f90a5c4cb2d894a95427877
+observed generation   20 (stopped; all 20 owner rows stopped)
+```
+
+The historical M20 receipt remains a valid marker for the pre-runtime pair;
+its publication-time control hash is intentionally distinct from the stopped
+post-runtime control hash.  M21 verifies both facts, copies only the exact
+stopped control and unchanged coordination stores, and leaves M20's status,
+replica, locks, and receipt in the M20 namespace.  It appends only plan
+revision 22, one operator evidence node, and intent events 230--231.  Tasks,
+goals, accepted evidence, lifecycle history, coordination authority, and
+implementation results remain unchanged.
+
+M21's fresh target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m21/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m21/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m21
+Quack port    24064
+generation    21
+plan revision 22
+event cursor  231
+coord events  1125
+coord root    sha256:659b67b3f48e632337609d2c872c1d342650628921c6be52415a3fa9d73db1a1
+semantic      sha256:5e8d0afb732eaa5912512086a3d1ad288fa2de2b41b2b47462bf9006a6b7da5f
+frozen base   sha256:ee68fd6fafe885b3c8cd67e9bc502377c44be268d75c86d844231e9609a94e4c
+```
+
+Key presence selects `generation_realization_successor_materialization`
+before M20 and every historical successor.  Materialization does not create a
+generation-21 row: the next exact fenced Quack start legitimately creates it
+from the stopped maximum generation 20.  Only after generation 21 is observed
+and bound may preflight, implementation dry-run, and the real supervisor
+launch continue.
+
+## 30. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
