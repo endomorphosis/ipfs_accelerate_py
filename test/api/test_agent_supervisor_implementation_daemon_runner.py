@@ -1293,6 +1293,9 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert callbacks["protected_reconciliation_self_lock_recovery"] == (
         bridge.recover_protected_reconciliation_self_lock
     )
+    assert callbacks["post_commit_candidate_recovery_fn"] == (
+        bridge.recover_post_commit_candidate
+    )
     assert callbacks["merge_train_recovery"] == {
         "merge_queue": bridge.merge_queue,
         "repo_root": repo,
