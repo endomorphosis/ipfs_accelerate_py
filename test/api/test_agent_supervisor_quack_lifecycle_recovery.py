@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     OwnerMarker,
+    QuackStateServerMigrationError,
     QuackStateServerOwnershipError,
     QuackStateServerReadyError,
     StateServerIdentity,
@@ -173,6 +174,22 @@ def _prior_row(database: Path) -> tuple[Any, ...]:
         connection.close()
 
 
+def _prior_epochs(database: Path) -> list[tuple[Any, ...]]:
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        return connection.execute(
+            """
+            SELECT epoch, fence_epoch, started_at, ended_at
+            FROM server_epochs
+            WHERE server_id = 'server:stale-prior'
+            ORDER BY epoch, fence_epoch
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+
+
 @pytest.mark.parametrize("prior_status", ["starting", "ready"])
 def test_dead_starting_or_ready_generation_is_reconciled_exactly(
     tmp_path: Path,
@@ -194,6 +211,12 @@ def test_dead_starting_or_ready_generation_is_reconciled_exactly(
     assert reconciliation["status"] == "stopped"
     assert reconciliation["revision"] == 8
     assert reconciliation["fence_token_digest"].startswith("sha256:")
+    current_marker = OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert current_marker.server_id == identity.server_id
+    assert current_marker.generation == identity.generation == 2
+    assert current_marker.started_at == identity.started_at
     server.stop()
     row = _prior_row(database)
     assert row[0] == database_uuid
@@ -282,6 +305,96 @@ def test_post_publication_failure_is_closed_before_successful_retry(
     assert nonterminal == []
 
 
+@pytest.mark.parametrize("epoch_corruption", ["missing", "ambiguous"])
+def test_failed_start_closure_refuses_inexact_epoch_and_preserves_current_marker(
+    tmp_path: Path,
+    epoch_corruption: str,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    database, state_dir, prior_marker, _database_uuid = _seed_stale_server(
+        tmp_path,
+        status="ready",
+    )
+    failing = build_server(
+        database_path=database,
+        state_dir=state_dir,
+        transport=FakeQuackTransport(fail_live_query=True),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(
+            allow_network_install=False,
+            allow_local_load=True,
+            use_cache=False,
+        ),
+        process_birth_factory=lambda: _birth(pid=333_444, ticks=555),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    original_publish = failing._publish_identity_rows
+
+    def publish_with_corrupt_epoch(
+        connection: Any,
+        identity: StateServerIdentity,
+        capability: Any,
+    ) -> None:
+        original_publish(connection, identity, capability)
+        expected_epoch = int(identity.startup_epoch or identity.generation)
+        if epoch_corruption == "missing":
+            connection.execute(
+                "DELETE FROM server_epochs WHERE server_id = ?",
+                [identity.server_id],
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO server_epochs (
+                    server_id, epoch, fence_epoch, started_at, ended_at
+                ) VALUES (?, ?, ?, ?, NULL)
+                """,
+                [
+                    identity.server_id,
+                    expected_epoch + 1,
+                    identity.fence_epoch,
+                    identity.started_at,
+                ],
+            )
+
+    failing._publish_identity_rows = publish_with_corrupt_epoch  # type: ignore[method-assign]
+
+    with pytest.raises(QuackStateServerReadyError):
+        failing.start()
+
+    failed_identity = failing.status()["identity"]
+    assert failed_identity["generation"] == 2
+    assert failed_identity["status"] == "ready"
+    retained = OwnerMarker.from_dict(
+        json.loads(failing.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert retained.server_id == failed_identity["server_id"]
+    assert retained.server_id != prior_marker.server_id
+    assert retained.generation == failed_identity["generation"]
+    assert retained.started_at == failed_identity["started_at"]
+
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        failed_row = connection.execute(
+            """
+            SELECT status, stopped_at
+            FROM state_servers WHERE server_id = ?
+            """,
+            [failed_identity["server_id"]],
+        ).fetchone()
+        failed_epochs = connection.execute(
+            """
+            SELECT epoch, fence_epoch, ended_at
+            FROM server_epochs WHERE server_id = ? ORDER BY epoch
+            """,
+            [failed_identity["server_id"]],
+        ).fetchall()
+    finally:
+        connection.close()
+    assert failed_row == ("ready", None)
+    assert all(row[2] is None for row in failed_epochs)
+    assert len(failed_epochs) == (0 if epoch_corruption == "missing" else 2)
+
+
 @pytest.mark.parametrize("mismatch", ["process_birth", "database_uuid"])
 def test_reconciliation_identity_mismatch_fails_closed_and_restores_marker(
     tmp_path: Path,
@@ -302,6 +415,95 @@ def test_reconciliation_identity_mismatch_fails_closed_and_restores_marker(
     assert _prior_row(database) == before
     restored = json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
     assert restored == marker.to_dict()
+
+
+def test_reconciliation_rejects_marker_generation_mismatch_without_mutation(
+    tmp_path: Path,
+) -> None:
+    database, state_dir, marker, _database_uuid = _seed_stale_server(
+        tmp_path,
+        status="ready",
+    )
+    mismatched = OwnerMarker(
+        server_id=marker.server_id,
+        process_birth=marker.process_birth,
+        database_path=marker.database_path,
+        started_at=marker.started_at,
+        fence_token=marker.fence_token,
+        generation=2,
+    )
+    server = _server(database, state_dir)
+    server.owner_marker_path().write_text(
+        json.dumps(mismatched.to_dict()),
+        encoding="utf-8",
+    )
+    before_row = _prior_row(database)
+    before_epochs = _prior_epochs(database)
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="marker generation differs",
+    ):
+        server.start()
+
+    assert _prior_row(database) == before_row
+    assert _prior_epochs(database) == before_epochs
+    restored = OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert restored == mismatched
+
+
+@pytest.mark.parametrize("epoch_corruption", ["missing", "wrong_fence", "ambiguous"])
+def test_reconciliation_rejects_missing_or_ambiguous_epoch_without_mutation(
+    tmp_path: Path,
+    epoch_corruption: str,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    database, state_dir, marker, _database_uuid = _seed_stale_server(
+        tmp_path,
+        status="ready",
+    )
+    connection = duckdb.connect(str(database))
+    try:
+        if epoch_corruption == "missing":
+            connection.execute(
+                "DELETE FROM server_epochs WHERE server_id = ?",
+                [marker.server_id],
+            )
+        elif epoch_corruption == "wrong_fence":
+            connection.execute(
+                "UPDATE server_epochs SET fence_epoch = 2 WHERE server_id = ?",
+                [marker.server_id],
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO server_epochs (
+                    server_id, epoch, fence_epoch, started_at, ended_at
+                ) VALUES (?, 2, 1, '2026-08-30T00:00:00Z', NULL)
+                """,
+                [marker.server_id],
+            )
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    before_row = _prior_row(database)
+    before_epochs = _prior_epochs(database)
+    server = _server(database, state_dir)
+
+    with pytest.raises(
+        QuackStateServerMigrationError,
+        match="missing or ambiguous generation epoch",
+    ):
+        server.start()
+
+    assert _prior_row(database) == before_row
+    assert _prior_epochs(database) == before_epochs
+    restored = OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    )
+    assert restored == marker
 
 
 @pytest.mark.parametrize("liveness", [OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN])
@@ -407,6 +609,67 @@ def test_generic_live_status_defers_without_direct_database_open(
         "deferred_to_authenticated_live_owner"
     )
     assert payload["authoritative_lifecycle"]["direct_database_file_open"] is False
+
+
+@pytest.mark.parametrize("with_status_projection", [True, False])
+def test_generic_status_marks_nonterminal_database_row_stale_without_live_owner(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    with_status_projection: bool,
+) -> None:
+    database, state_dir, marker, database_uuid = _seed_stale_server(
+        tmp_path,
+        status="ready",
+    )
+    if with_status_projection:
+        identity = {
+            "server_id": marker.server_id,
+            "store_id": "control.duckdb",
+            "database_uuid": database_uuid,
+            "process_birth_id": _birth_id(marker.process_birth),
+            "process_birth": marker.process_birth.to_dict(),
+            "listen_uri": "quack:127.0.0.1:29999",
+            "extension_fingerprint": _DIGEST,
+            "schema_revision": 1,
+            "generation": 1,
+            "started_at": "2026-08-30T00:00:00Z",
+            "status": "ready",
+            "revision": 7,
+        }
+        (state_dir / "quack-state-server.status.json").write_text(
+            json.dumps(
+                {"lifecycle": "ready", "identity": identity, "ready": True}
+            ),
+            encoding="utf-8",
+        )
+    spec = importlib.util.spec_from_file_location(
+        f"quack_status_dead_owner_{with_status_projection}",
+        OPS_SCRIPT,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    result = module.main(
+        [
+            "--database",
+            str(database),
+            "--state-dir",
+            str(state_dir),
+            "--json",
+            "status",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert result == 1
+    assert payload["lifecycle"] == "stale"
+    assert payload["ready"] is False
+    assert payload["lifecycle_consistent"] is False
+    assert payload["reason_code"] == "authoritative_server_owner_not_live"
+    assert payload["authoritative_lifecycle"]["latest"]["status"] == "ready"
+    if with_status_projection:
+        assert payload["owner_liveness"] == "dead"
 
 
 def test_generic_status_rejects_database_json_lifecycle_mismatch(

@@ -431,7 +431,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                         consistent = latest is None and identity in (None, {})
                 payload["authoritative_lifecycle"] = lifecycle
                 payload["lifecycle_consistent"] = consistent
-                if consistent is False:
+                payload["owner_liveness"] = projection_liveness
+                latest_status = (
+                    str(latest.get("status") or "")
+                    if isinstance(latest, Mapping)
+                    else ""
+                )
+                owner_missing_for_nonterminal = (
+                    lifecycle.get("available") is True
+                    and latest_status in {"starting", "ready"}
+                    and projection_liveness in {"absent", "dead"}
+                )
+                if owner_missing_for_nonterminal:
+                    consistent = False
+                    payload["lifecycle"] = "stale"
+                    payload["lifecycle_consistent"] = False
+                    payload["ready"] = False
+                    payload["reason_code"] = (
+                        "authoritative_server_owner_not_live"
+                    )
+                elif consistent is False:
                     payload["ready"] = False
                     payload["reason_code"] = "status_projection_lifecycle_mismatch"
                 _emit(payload, as_json=True)
@@ -443,18 +462,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if isinstance(latest, Mapping)
                 else "stopped"
             )
+            stale_nonterminal = (
+                lifecycle.get("available") is True
+                and observed_status in {"starting", "ready"}
+            )
             _emit(
                 {
-                    "lifecycle": observed_status,
+                    "lifecycle": "stale" if stale_nonterminal else observed_status,
                     "database_path": str(database),
                     "state_dir": str(state_dir),
                     "ready": False,
                     "authoritative_lifecycle": lifecycle,
-                    "lifecycle_consistent": lifecycle.get("available") is True,
+                    "lifecycle_consistent": (
+                        lifecycle.get("available") is True and not stale_nonterminal
+                    ),
+                    **(
+                        {"reason_code": "authoritative_server_owner_not_live"}
+                        if stale_nonterminal
+                        else {}
+                    ),
                 },
                 as_json=True,
             )
-            return EXIT_SUCCESS
+            return EXIT_FAILURE if stale_nonterminal else EXIT_SUCCESS
 
         server = _build_server(args)
         if args.command == "start":

@@ -1400,6 +1400,52 @@ class ExclusiveOwnerLease:
         self._fence_token = fence
         return marker
 
+    def bind_generation(self, *, generation: int, started_at: str) -> OwnerMarker:
+        """Replace the provisional marker with this owner's exact DB generation.
+
+        Acquisition must precede opening the database, so its first marker can
+        carry only a provisional generation.  Once the next generation and its
+        start timestamp are known, bind them while the same OS lock and fence
+        are still held.  Recovery may then use the marker as an exact lookup
+        key; it must never guess a generation from the latest database row.
+        """
+
+        if self._handle is None or self._marker is None or not self._fence_token:
+            raise QuackStateServerControlError(
+                "owner generation cannot be bound without the active lease"
+            )
+        exact_generation = int(generation)
+        exact_started_at = str(started_at or "").strip()
+        if exact_generation < 1 or not exact_started_at:
+            raise QuackStateServerControlError(
+                "owner generation binding requires an exact generation and start time"
+            )
+        current = self._read_marker()
+        if current is None or current.to_dict() != self._marker.to_dict():
+            raise QuackStateServerControlError(
+                "owner marker changed before generation binding"
+            )
+        if current.fence_token != self._fence_token:
+            raise QuackStateServerControlError(
+                "owner fence changed before generation binding"
+            )
+        bound = OwnerMarker(
+            server_id=current.server_id,
+            process_birth=current.process_birth,
+            database_path=current.database_path,
+            started_at=exact_started_at,
+            fence_token=current.fence_token,
+            generation=exact_generation,
+        )
+        _atomic_write_json(self.marker_path, bound.to_dict(), mode=0o600)
+        verified = self._read_marker()
+        if verified is None or verified.to_dict() != bound.to_dict():
+            raise QuackStateServerControlError(
+                "owner generation binding did not verify exactly"
+            )
+        self._marker = bound
+        return bound
+
     def release(
         self,
         *,
@@ -2720,7 +2766,7 @@ class QuackStateServer:
         connection: Any,
         identity: StateServerIdentity,
     ) -> dict[str, Any]:
-        """Transactionally close only this failed startup generation."""
+        """Transactionally close only this failed startup generation/epoch."""
 
         stopped_at = _utc_iso()
         connection.execute("BEGIN TRANSACTION")
@@ -2728,7 +2774,7 @@ class QuackStateServer:
             row = connection.execute(
                 """
                 SELECT database_uuid, process_birth_id, generation, status,
-                       stopped_at, revision
+                       started_at, stopped_at, revision
                 FROM state_servers
                 WHERE server_id = ?
                 """,
@@ -2745,15 +2791,59 @@ class QuackStateServer:
                 str(observed[0]) != identity.database_uuid
                 or str(observed[1]) != identity.process_birth_id
                 or int(observed[2]) != int(identity.generation)
+                or str(observed[4]) != identity.started_at
             ):
                 raise QuackStateServerMigrationError(
                     "failed startup identity row differs from the current owner"
                 )
             prior_status = str(observed[3])
-            prior_stopped_at = observed[4]
-            prior_revision = int(observed[5])
+            prior_stopped_at = observed[5]
+            prior_revision = int(observed[6])
+            expected_epoch = int(identity.startup_epoch or identity.generation)
+            expected_fence_epoch = int(identity.fence_epoch)
+            if expected_epoch < 1 or expected_fence_epoch < 1:
+                raise QuackStateServerMigrationError(
+                    "failed startup identity has an invalid epoch binding"
+                )
+            epoch_rows = connection.execute(
+                """
+                SELECT epoch, fence_epoch, started_at, ended_at
+                FROM server_epochs
+                WHERE server_id = ?
+                ORDER BY epoch, fence_epoch
+                """,
+                [identity.server_id],
+            ).fetchall()
+            normalized_epochs = [
+                tuple(candidate.values())
+                if isinstance(candidate, Mapping)
+                else tuple(candidate)
+                for candidate in epoch_rows
+            ]
+            matching_epochs = [
+                candidate
+                for candidate in normalized_epochs
+                if int(candidate[0]) == expected_epoch
+                and int(candidate[1]) == expected_fence_epoch
+            ]
+            if len(matching_epochs) != 1:
+                raise QuackStateServerMigrationError(
+                    "failed startup identity has a missing or ambiguous exact epoch"
+                )
+            matching_epoch = matching_epochs[0]
+            if str(matching_epoch[2]) != identity.started_at:
+                raise QuackStateServerMigrationError(
+                    "failed startup epoch start differs from the current owner"
+                )
+            open_epochs = [
+                candidate for candidate in normalized_epochs if candidate[3] is None
+            ]
             if prior_status in {"starting", "ready"} and prior_stopped_at is None:
-                updated = connection.execute(
+                if len(open_epochs) != 1 or open_epochs[0] != matching_epoch:
+                    raise QuackStateServerMigrationError(
+                        "failed startup identity has an ambiguous open epoch"
+                    )
+                updated_rows = connection.execute(
                     """
                     UPDATE state_servers
                     SET status = 'stopped', stopped_at = ?, revision = revision + 1
@@ -2770,15 +2860,43 @@ class QuackStateServer:
                         identity.generation,
                         prior_status,
                     ],
-                ).fetchone()
-                if updated is None:
+                ).fetchall()
+                if len(updated_rows) != 1:
                     raise QuackStateServerMigrationError(
                         "failed startup identity closure lost its exact CAS"
                     )
+                updated = (
+                    tuple(updated_rows[0].values())
+                    if isinstance(updated_rows[0], Mapping)
+                    else tuple(updated_rows[0])
+                )
                 final_status = str(updated[0])
                 final_stopped_at = updated[1]
                 final_revision = int(updated[2])
+                epoch_updates = connection.execute(
+                    """
+                    UPDATE server_epochs
+                    SET ended_at = ?
+                    WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
+                      AND ended_at IS NULL
+                    RETURNING epoch, fence_epoch, ended_at
+                    """,
+                    [
+                        stopped_at,
+                        identity.server_id,
+                        expected_epoch,
+                        expected_fence_epoch,
+                    ],
+                ).fetchall()
+                if len(epoch_updates) != 1:
+                    raise QuackStateServerMigrationError(
+                        "failed startup epoch closure lost its exact CAS"
+                    )
             elif prior_status == "stopped" and prior_stopped_at is not None:
+                if matching_epoch[3] is None or open_epochs:
+                    raise QuackStateServerMigrationError(
+                        "failed startup terminal row has an unclosed epoch"
+                    )
                 final_status = prior_status
                 final_stopped_at = prior_stopped_at
                 final_revision = prior_revision
@@ -2786,19 +2904,6 @@ class QuackStateServer:
                 raise QuackStateServerMigrationError(
                     "failed startup identity has an inadmissible lifecycle"
                 )
-            connection.execute(
-                """
-                UPDATE server_epochs
-                SET ended_at = COALESCE(ended_at, ?)
-                WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
-                """,
-                [
-                    stopped_at,
-                    identity.server_id,
-                    identity.startup_epoch or identity.generation,
-                    identity.fence_epoch,
-                ],
-            )
             verified = connection.execute(
                 """
                 SELECT status, stopped_at, revision
@@ -2813,6 +2918,23 @@ class QuackStateServer:
                     identity.generation,
                 ],
             ).fetchone()
+            verified_epochs = connection.execute(
+                """
+                SELECT epoch, fence_epoch, ended_at
+                FROM server_epochs
+                WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
+                """,
+                [identity.server_id, expected_epoch, expected_fence_epoch],
+            ).fetchall()
+            remaining_open = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) FROM server_epochs
+                    WHERE server_id = ? AND ended_at IS NULL
+                    """,
+                    [identity.server_id],
+                ).fetchone()[0]
+            )
             if (
                 verified is None
                 or str(verified[0]) != "stopped"
@@ -2820,6 +2942,9 @@ class QuackStateServer:
                 or int(verified[2]) != final_revision
                 or final_status != "stopped"
                 or final_stopped_at is None
+                or len(verified_epochs) != 1
+                or verified_epochs[0][2] is None
+                or remaining_open != 0
             ):
                 raise QuackStateServerMigrationError(
                     "failed startup identity closure did not verify"
@@ -2898,7 +3023,7 @@ class QuackStateServer:
         row = connection.execute(
             """
             SELECT database_uuid, process_birth_id, generation, status,
-                   stopped_at, revision
+                   started_at, stopped_at, revision
             FROM state_servers
             WHERE server_id = ?
             """,
@@ -2918,6 +3043,7 @@ class QuackStateServer:
             observed_birth_id = str(row.get("process_birth_id") or "")
             generation = int(row.get("generation") or 0)
             status = str(row.get("status") or "")
+            started_at = str(row.get("started_at") or "")
             stopped_at = row.get("stopped_at")
             revision = int(row.get("revision") or 0)
         else:
@@ -2925,8 +3051,9 @@ class QuackStateServer:
             observed_birth_id = str(row[1])
             generation = int(row[2])
             status = str(row[3])
-            stopped_at = row[4]
-            revision = int(row[5])
+            started_at = str(row[4])
+            stopped_at = row[5]
+            revision = int(row[6])
         receipt.update(
             {
                 "prior_generation": generation,
@@ -2942,20 +3069,78 @@ class QuackStateServer:
             raise QuackStateServerOwnershipError(
                 "prior state-server process birth differs; reconciliation refused"
             )
+        if generation != int(prior.generation):
+            raise QuackStateServerOwnershipError(
+                "prior owner marker generation differs from its state-server row; "
+                "reconciliation refused"
+            )
+        epoch_rows = connection.execute(
+            """
+            SELECT epoch, fence_epoch, started_at, ended_at
+            FROM server_epochs
+            WHERE server_id = ?
+            ORDER BY epoch, fence_epoch
+            """,
+            [prior.server_id],
+        ).fetchall()
+        normalized_epochs = [
+            tuple(candidate.values())
+            if isinstance(candidate, Mapping)
+            else tuple(candidate)
+            for candidate in epoch_rows
+        ]
+        matching_epochs = [
+            candidate
+            for candidate in normalized_epochs
+            if int(candidate[1]) == int(prior.generation)
+        ]
+        if len(matching_epochs) != 1:
+            raise QuackStateServerMigrationError(
+                "prior state-server has a missing or ambiguous generation epoch"
+            )
+        matching_epoch = matching_epochs[0]
+        if str(matching_epoch[2]) != started_at:
+            raise QuackStateServerMigrationError(
+                "prior state-server epoch start differs from its lifecycle row"
+            )
+        epoch = int(matching_epoch[0])
+        fence_epoch = int(matching_epoch[1])
+        receipt.update(
+            {
+                "prior_epoch": epoch,
+                "prior_fence_epoch": fence_epoch,
+            }
+        )
+        open_epochs = [
+            candidate for candidate in normalized_epochs if candidate[3] is None
+        ]
         if status not in {"starting", "ready"} or stopped_at is not None:
+            if status != "stopped" or stopped_at is None:
+                raise QuackStateServerMigrationError(
+                    "prior state-server row has an inadmissible terminal lifecycle"
+                )
+            if matching_epoch[3] is None or open_epochs:
+                raise QuackStateServerMigrationError(
+                    "prior terminal state-server row has an unclosed epoch"
+                )
             receipt["reason"] = "prior_server_already_terminal"
             return receipt
+        if len(open_epochs) != 1 or open_epochs[0] != matching_epoch:
+            raise QuackStateServerMigrationError(
+                "prior state-server has an ambiguous open epoch"
+            )
 
         reconciled_at = _utc_iso()
         try:
             connection.execute("BEGIN TRANSACTION")
-            connection.execute(
+            state_updates = connection.execute(
                 """
                 UPDATE state_servers
                 SET status = 'stopped', stopped_at = ?, revision = revision + 1
                 WHERE server_id = ? AND database_uuid = ?
                   AND process_birth_id = ? AND generation = ?
-                  AND status IN ('starting', 'ready') AND stopped_at IS NULL
+                  AND status = ? AND stopped_at IS NULL
+                RETURNING status, stopped_at, revision
                 """,
                 [
                     reconciled_at,
@@ -2963,16 +3148,27 @@ class QuackStateServer:
                     database_uuid,
                     prior_birth_id,
                     generation,
+                    status,
                 ],
-            )
-            connection.execute(
+            ).fetchall()
+            if len(state_updates) != 1:
+                raise QuackStateServerMigrationError(
+                    "stale state-server lifecycle closure lost its exact CAS"
+                )
+            epoch_updates = connection.execute(
                 """
                 UPDATE server_epochs
                 SET ended_at = ?
-                WHERE server_id = ? AND ended_at IS NULL
+                WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
+                  AND ended_at IS NULL
+                RETURNING epoch, fence_epoch, ended_at
                 """,
-                [reconciled_at, prior.server_id],
-            )
+                [reconciled_at, prior.server_id, epoch, fence_epoch],
+            ).fetchall()
+            if len(epoch_updates) != 1:
+                raise QuackStateServerMigrationError(
+                    "stale state-server epoch closure lost its exact CAS"
+                )
             verified = connection.execute(
                 """
                 SELECT status, stopped_at, revision
@@ -2982,6 +3178,23 @@ class QuackStateServer:
                 """,
                 [prior.server_id, database_uuid, prior_birth_id, generation],
             ).fetchone()
+            verified_epochs = connection.execute(
+                """
+                SELECT epoch, fence_epoch, ended_at
+                FROM server_epochs
+                WHERE server_id = ? AND epoch = ? AND fence_epoch = ?
+                """,
+                [prior.server_id, epoch, fence_epoch],
+            ).fetchall()
+            remaining_open = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) FROM server_epochs
+                    WHERE server_id = ? AND ended_at IS NULL
+                    """,
+                    [prior.server_id],
+                ).fetchone()[0]
+            )
             if verified is None:
                 raise QuackStateServerMigrationError(
                     "reconciled state-server row disappeared before commit"
@@ -2998,6 +3211,9 @@ class QuackStateServer:
                 verified_status != "stopped"
                 or verified_stopped_at is None
                 or verified_revision != revision + 1
+                or len(verified_epochs) != 1
+                or verified_epochs[0][2] is None
+                or remaining_open != 0
             ):
                 raise QuackStateServerMigrationError(
                     "stale state-server lifecycle update did not verify exactly"
@@ -4191,6 +4407,15 @@ class QuackStateServer:
                     status="starting",
                 )
                 self._identity = identity
+
+                # Replace the acquisition-time provisional generation before
+                # publishing any lifecycle row.  A crashed owner's marker is
+                # therefore an exact generation/fence lookup key rather than
+                # a hint that recovery could accidentally apply to a newer row.
+                owner.bind_generation(
+                    generation=identity.generation,
+                    started_at=identity.started_at,
+                )
 
                 self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
