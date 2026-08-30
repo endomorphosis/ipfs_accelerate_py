@@ -13800,7 +13800,7 @@ def test_pending_merge_consume_uses_owned_projection_portal(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
-def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_on_head(
+def test_resume_completes_retrying_attempt_when_outputs_on_head(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -13822,6 +13822,9 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_on_head(
     subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "landed"], cwd=repo, check=True)
 
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise AssertionError(f"provider must not run for {attempt.task_cid}")
+
     daemon = DatabaseImplementationDaemon(
         database_path=tmp_path / "control.duckdb",
         coordination_path=tmp_path / "coordination.duckdb",
@@ -13832,6 +13835,13 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_on_head(
         require_real_execution=True,
         repo_root=repo,
         merge_target_ref="HEAD",
+        provider_fn=provider,
+        effect_fn=lambda attempt, result: {"status": "applied"},
+        validation_fn=lambda attempt, result: {
+            "outcome": "passed",
+            "evidence_digest": "sha256:" + "f" * 64,
+            "argv": ["must-not-run"],
+        },
     )
     try:
         daemon.materialize_population(
@@ -13859,10 +13869,11 @@ def test_reconcile_landed_merged_tasks_completes_retrying_when_outputs_on_head(
                 ],
             }
         )
-        outcomes = daemon.reconcile_landed_merged_tasks()
-        assert outcomes
-        assert outcomes[0]["completed"] is True
-        assert outcomes[0]["task_alias"] == "SPAR-014"
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        result = daemon._resume_attempt_without_process_crash(attempt)
+        assert result["landed_outputs_completed"] is True
+        assert result["provider_dispatched"] is False
         refreshed = daemon.task_source.get("task:cid:014")
         assert refreshed is not None
         assert str(refreshed.status).lower() == "completed"

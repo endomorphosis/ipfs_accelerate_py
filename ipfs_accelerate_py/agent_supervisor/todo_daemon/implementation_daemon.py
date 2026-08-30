@@ -88635,9 +88635,7 @@ DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-pending-same-board-merge-consume@1"
 )
-_LANDED_MERGE_REPAIR_STATUSES = frozenset(
-    {"quarantined", "retrying", "todo"}
-)
+_LANDED_MERGE_REPAIR_STATUSES = frozenset({"quarantined"})
 DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
@@ -119994,6 +119992,29 @@ class DatabaseImplementationDaemon:
         reconciliation cannot spin on an incomplete in-progress projection.
         """
 
+        task = self.task_source.get(attempt.task_cid)
+        if task is not None and self._task_outputs_landed_on_target(task):
+            completed = self._complete_landed_running_attempt(attempt, task)
+            self._record_event(
+                "landed_merge_completed_instead_of_resume",
+                attempt_id=completed.attempt_id,
+                task_cid=completed.task_cid,
+                body={"status": completed.status},
+            )
+            return {
+                "resumed": True,
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": False,
+                "portal_replay_suppressed": False,
+                "deferred": False,
+                "landed_outputs_completed": True,
+                "provider_dispatched": False,
+                "attempt_consumed": True,
+                "attempt_id": completed.attempt_id,
+                "task_alias": completed.task_alias,
+                "status": completed.status,
+            }
+
         try:
             return self.resume_attempt(attempt)
         except Exception as exc:
@@ -120720,12 +120741,11 @@ class DatabaseImplementationDaemon:
         }
 
     def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:
-        """Complete open tasks whose declared outputs already landed.
+        """Complete quarantined tasks whose declared outputs already landed.
 
-        Retrying/todo leftovers after a merge-train consume are the same
-        class as quarantined rows: the work is on the target and DuckDB
-        still needs a completion CAS.  Consumed-no-progress work without
-        declared outputs stays quarantined.
+        Retrying leftovers are completed by the live-attempt resume path
+        after ``claim_next``.  Consumed-no-progress work without declared
+        outputs stays quarantined.
         """
 
         if self.repo_root is None:
@@ -120733,16 +120753,8 @@ class DatabaseImplementationDaemon:
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
             return []
-        tasks: list[Any] = []
-        seen: set[str] = set()
-        for status in ("quarantined", "retrying", "todo"):
-            page = list_tasks(status=status, limit=TASK_SOURCE_QUERY_LIMIT)
-            for task in tuple(getattr(page, "tasks", ()) or ()):
-                task_cid = str(getattr(task, "task_cid", "") or "")
-                if not task_cid or task_cid in seen:
-                    continue
-                seen.add(task_cid)
-                tasks.append(task)
+        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks = tuple(getattr(page, "tasks", ()) or ())
         outcomes: list[dict[str, Any]] = []
         for task in tasks:
             try:
