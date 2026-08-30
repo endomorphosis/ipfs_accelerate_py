@@ -298,11 +298,13 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
     }
 
 
-def test_managed_owner_readiness_does_not_swallow_shutdown(
+def test_managed_owner_watchdog_fences_and_does_not_swallow_shutdown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     lifecycle, _program = _concrete_lifecycle(tmp_path)
+    dead = lifecycle._read_owner_observation(authenticate_alive=False)
+    assert dead.provably_dead is True
     birth = read_process_birth(os.getpid())
     assert birth is not None
     owner = SpawnedQuackOwner(
@@ -311,17 +313,23 @@ def test_managed_owner_readiness_does_not_swallow_shutdown(
         isolated_process_group=True,
         adopted=True,
     )
-    calls = {"count": 0}
+    calls = {"readiness": 0, "termination": 0}
 
     def interrupt(_owner: SpawnedQuackOwner) -> AuthenticatedReadiness:
-        calls["count"] += 1
+        calls["readiness"] += 1
         raise runner.SupervisorRunInterrupted("operator shutdown")
 
-    monkeypatch.setattr(lifecycle, "_authenticated_readiness_once", interrupt)
+    def terminate(_owner: SpawnedQuackOwner) -> SimpleNamespace:
+        calls["termination"] += 1
+        return SimpleNamespace(termination_confirmed=True)
+
+    monkeypatch.setattr(lifecycle._watchdog, "_start_owner", lambda: owner)
+    monkeypatch.setattr(lifecycle._watchdog, "_readiness_probe", interrupt)
+    monkeypatch.setattr(lifecycle._watchdog, "_terminate_owner", terminate)
 
     with pytest.raises(runner.SupervisorRunInterrupted, match="operator shutdown"):
-        lifecycle._readiness_probe(owner)
-    assert calls["count"] == 1
+        lifecycle._watchdog.ensure(dead)
+    assert calls == {"readiness": 1, "termination": 1}
 
 
 def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(

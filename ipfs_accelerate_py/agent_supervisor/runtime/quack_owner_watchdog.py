@@ -945,6 +945,20 @@ class QuackOwnerWatchdog:
                     readiness = self._readiness_probe(owner)
                 except Exception:  # callback text may contain credentials
                     readiness = None
+                except BaseException:
+                    # Operator shutdown/cancellation must not be converted into
+                    # a retryable health failure.  Fence the process created by
+                    # this attempt before propagating the control-flow signal.
+                    # Retain an unconfirmed owner so the runner's final shutdown
+                    # boundary can retry exact process-tree termination.
+                    try:
+                        interrupted_termination = self._terminate_owner(owner)
+                    except Exception:  # never expose callback or credential text
+                        self._managed_owner = owner
+                    else:
+                        if not interrupted_termination.termination_confirmed:
+                            self._managed_owner = owner
+                    raise
                 admitted = (
                     isinstance(readiness, AuthenticatedReadiness)
                     and self._readiness_admitted(owner, readiness, current)

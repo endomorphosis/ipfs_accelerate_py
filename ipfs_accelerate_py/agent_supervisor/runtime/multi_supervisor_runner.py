@@ -2321,7 +2321,7 @@ class ConfiguredMultiSupervisorLauncher:
         return self.runner.run_cli(argv)
 
 
-class SupervisorRunInterrupted(Exception):
+class SupervisorRunInterrupted(BaseException):
     """Raised internally when a signal requests orderly shutdown."""
 
 
@@ -4036,7 +4036,7 @@ class ConfiguredMultiSupervisorLauncher:
         return self.runner.run_cli(argv)
 
 
-class SupervisorRunInterrupted(Exception):
+class SupervisorRunInterrupted(BaseException):
     """Raised internally when a signal requests orderly shutdown."""
 
 
