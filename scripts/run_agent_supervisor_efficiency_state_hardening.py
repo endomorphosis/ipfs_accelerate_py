@@ -80792,6 +80792,27 @@ def _admit_materialized_launch(
     exact_bootstrap = not any(
         bootstrap.get(name) != value for name, value in expected_fields.items()
     )
+    # Stored later-suffix receipts already include R1-R10 validation_results.
+    # Re-running those pytest matrices on every launch is what stalled owner
+    # start after historical-live itself was skipped.
+    rerun_prefix_validations = all(
+        item is None
+        for item in (
+            r45_prequalification,
+            r44_prequalification,
+            r43_prequalification,
+            r42_prequalification,
+            r41_prequalification,
+            r40_prequalification,
+            r39_prequalification,
+            r38_prequalification,
+            r37_prequalification,
+            r36_prequalification,
+            r31_prequalification,
+            r30_prequalification,
+            r29_prequalification,
+        )
+    )
     continuity: dict[str, Any] = {}
     repair_transition: dict[str, Any] = {}
     repair_transition_chain: list[dict[str, Any]] = []
@@ -80833,7 +80854,9 @@ def _admit_materialized_launch(
             max_bytes=STATUS_RECEIPT_MAX_BYTES,
         )
         repair_transition = _validate_repair_transition(
-            repair_receipt, bootstrap=bootstrap, rerun_validations=True
+            repair_receipt,
+            bootstrap=bootstrap,
+            rerun_validations=rerun_prefix_validations,
         )
         repair_transition_chain = [repair_transition]
         (
@@ -80883,7 +80906,7 @@ def _admit_materialized_launch(
                 followup_receipt,
                 bootstrap=bootstrap,
                 previous_receipt=repair_receipt,
-                rerun_validations=True,
+                rerun_validations=rerun_prefix_validations,
             )
             if (
                 repair_transition["repair_head"]
@@ -81053,7 +81076,7 @@ def _admit_materialized_launch(
                         clean_launch_receipt,
                         bootstrap=bootstrap,
                         previous_receipt=followup_receipt,
-                        rerun_validations=True,
+                        rerun_validations=rerun_prefix_validations,
                     )
                 )
                 if (
@@ -81080,7 +81103,7 @@ def _admit_materialized_launch(
                             runtime_receipt,
                             bootstrap=bootstrap,
                             previous_receipt=clean_launch_receipt,
-                            rerun_validations=True,
+                            rerun_validations=rerun_prefix_validations,
                         )
                     )
                     if (
@@ -81108,7 +81131,7 @@ def _admit_materialized_launch(
                                 quack_recovery_receipt,
                                 bootstrap=bootstrap,
                                 previous_receipt=runtime_receipt,
-                                rerun_validations=True,
+                                rerun_validations=rerun_prefix_validations,
                             )
                         )
                         if (
@@ -81136,7 +81159,7 @@ def _admit_materialized_launch(
                                     parallel_startup_receipt,
                                     bootstrap=bootstrap,
                                     previous_receipt=quack_recovery_receipt,
-                                    rerun_validations=True,
+                                    rerun_validations=rerun_prefix_validations,
                                 )
                             )
                             if (
@@ -81168,7 +81191,7 @@ def _admit_materialized_launch(
                                         previous_receipt=(
                                             parallel_startup_receipt
                                         ),
-                                        rerun_validations=True,
+                                        rerun_validations=rerun_prefix_validations,
                                     )
                                 )
                                 if (
@@ -81204,7 +81227,7 @@ def _admit_materialized_launch(
                                             previous_receipt=(
                                                 publication_receipt
                                             ),
-                                            rerun_validations=True,
+                                            rerun_validations=rerun_prefix_validations,
                                         )
                                     )
                                     if (
@@ -81244,7 +81267,7 @@ def _admit_materialized_launch(
                                                 previous_receipt=(
                                                     replay_receipt
                                                 ),
-                                                rerun_validations=True,
+                                                rerun_validations=rerun_prefix_validations,
                                             )
                                         )
                                         if (
@@ -81285,7 +81308,7 @@ def _admit_materialized_launch(
                                                     previous_receipt=(
                                                         lifecycle_receipt
                                                     ),
-                                                    rerun_validations=True,
+                                                    rerun_validations=rerun_prefix_validations,
                                                 )
                                             )
                                             if (

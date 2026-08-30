@@ -35521,8 +35521,14 @@ def test_aseh_r45_authorization_and_materialized_launch_are_wired_first(
         "_recheck_r45_owner_start_authority",
         "r45_projection_recovery_prequalification=r45_prequalification",
         "_bounded_launch_admission",
+        "rerun_prefix_validations",
     ):
         assert token in launch
+    assert launch.count("rerun_validations=rerun_prefix_validations") >= 10
+    assert (
+        "repair_receipt, bootstrap=bootstrap, rerun_validations=True"
+        not in launch
+    )
     assert launch.count("_recheck_r45_owner_start_authority") >= 3
 
     continuity = inspect.getsource(aseh_operator._read_continuity_state)
