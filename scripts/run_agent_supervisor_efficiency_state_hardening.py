@@ -91675,6 +91675,31 @@ def _await_initial_health(
     raise OperatorError("two-sample foreground health admission timed out")
 
 
+def _recent_live_work(receipt: Mapping[str, Any]) -> bool:
+    """True when a census miss must not SIGTERM claimed or just-progressed work.
+
+    Grok often runs in Docker, so descendant census is 0 while the task is
+    still in_progress. Startup grace and the last-progress window already
+    bound that exception.
+    """
+
+    active_workers = receipt.get("lane_active_worker_count")
+    if type(active_workers) is int and active_workers > 0:
+        return True
+    if receipt.get("startup_grace_active") is True:
+        return True
+    last_progress = receipt.get("last_progress_at")
+    observed = receipt.get("observed_at")
+    window = receipt.get("blocked_recovery_window_seconds")
+    return bool(
+        type(last_progress) in {int, float}
+        and type(observed) in {int, float}
+        and type(window) in {int, float}
+        and window >= 0
+        and observed - last_progress <= window
+    )
+
+
 def _post_admission_health_action(
     receipt: Mapping[str, Any],
     *,
@@ -91708,8 +91733,7 @@ def _post_admission_health_action(
     if receipt.get("broker_ready") is not True:
         return "fail", "authoritative_broker_not_ready", unhealthy_edges
     if not prior_available and not current_available:
-        active_workers = receipt.get("lane_active_worker_count")
-        if type(active_workers) is int and active_workers > 0:
+        if _recent_live_work(receipt):
             # Quack can miss two samples while a grok worker is still
             # implementing. Do not SIGTERM the live shard.
             return "continue", "", 0
@@ -91736,25 +91760,9 @@ def _post_admission_health_action(
             and receipt.get("lane_heartbeat_fresh") is False
         )
         if lane_only_loss:
-            active_workers = receipt.get("lane_active_worker_count")
-            if type(active_workers) is int and active_workers > 0:
+            if _recent_live_work(receipt):
                 # Parallel claims continue on other shards while one lane's
                 # worker census flickers. Do not SIGTERM the owner.
-                return "continue", "", 0
-            if receipt.get("startup_grace_active") is True:
-                # Lane 2 recycled during W1 startup after 020 completed and
-                # 010 claimed. Heartbeat-fresh flicker is not identity loss.
-                return "continue", "", 0
-            last_progress = receipt.get("last_progress_at")
-            observed = receipt.get("observed_at")
-            window = receipt.get("blocked_recovery_window_seconds")
-            if (
-                type(last_progress) in {int, float}
-                and type(observed) in {int, float}
-                and type(window) in {int, float}
-                and window >= 0
-                and observed - last_progress <= window
-            ):
                 return "continue", "", 0
             next_edges = unhealthy_edges + 1
             if next_edges > 2:
@@ -91765,8 +91773,7 @@ def _post_admission_health_action(
                 )
             return "continue", "", next_edges
         return "fail", "authoritative_health_admission_lost", unhealthy_edges
-    active_workers = receipt.get("lane_active_worker_count")
-    if type(active_workers) is int and active_workers > 0:
+    if _recent_live_work(receipt):
         # Replica identity can flap on one of two samples while grok is
         # still implementing. Do not burn the outage budget on live work.
         return "continue", "", 0

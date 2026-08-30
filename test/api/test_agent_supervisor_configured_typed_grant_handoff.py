@@ -4259,6 +4259,26 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
         current_available=False,
         unhealthy_edges=2,
     ) == ("continue", "", 0)
+    mixed_startup = {**unhealthy, "startup_grace_active": True}
+    assert aseh_operator._post_admission_health_action(
+        mixed_startup,
+        prior_available=True,
+        current_available=False,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+    mixed_progress = {
+        **unhealthy,
+        "lane_active_worker_count": 0,
+        "last_progress_at": 100.0,
+        "observed_at": 250.0,
+        "blocked_recovery_window_seconds": 300.0,
+    }
+    assert aseh_operator._post_admission_health_action(
+        mixed_progress,
+        prior_available=True,
+        current_available=False,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
 
     both_unavailable = {
         "healthy": False,
