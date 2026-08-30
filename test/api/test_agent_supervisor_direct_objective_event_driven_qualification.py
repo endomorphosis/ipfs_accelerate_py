@@ -8,11 +8,14 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_driven_qualification import (
     CLOSED_RELEASE_OUTCOMES,
+    CURRENT_HEAD_UNAVAILABLE_VERDICT_CID,
     DIRECT_OBJECTIVE_EVENT_DRIVEN_QUALIFICATION_INTERFACE,
     HARD_ZERO_INVARIANTS,
     HERMETIC_CANDIDATE_SUITES,
     LIVE_OBJECTIVE_MINIMUM,
     LIVE_REPLAY_MINIMUM,
+    PCPR_PHASE0_GOAL_ID,
+    PCPR_PHASE0_TASK_ID,
     REQUIRED_COHORT_CASES,
     REQUIRED_TARGETS,
     TARGET_CONTEXTPACK_REUSE_BPS,
@@ -26,7 +29,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     DirectObjectiveEventDrivenQualificationError,
     SafetyVector,
     TargetMeasurement,
+    current_head_pcpr_phase0_receipt_promotion,
     current_head_unavailable_inputs,
+    pcpr_phase0_receipt_promotion,
     qualify_current_head_without_live_campaign,
     qualify_direct_objective_event_driven,
 )
@@ -71,7 +76,17 @@ def test_missing_live_campaign_is_rnd_non_promoted_and_not_a_release() -> None:
     assert all(item["evidence_kind"] == "unavailable" for item in payload["targets"])
     assert all(item["observed_bps"] is None for item in payload["targets"])
     assert all(item["observed_count"] is None for item in payload["targets"])
-    assert verdict.verdict_cid.startswith("b")
+    assert verdict.verdict_cid == CURRENT_HEAD_UNAVAILABLE_VERDICT_CID
+    section = current_head_pcpr_phase0_receipt_promotion()
+    assert section == pcpr_phase0_receipt_promotion(verdict)
+    assert section["promotion_status"] == "rnd_non_promoted"
+    assert section["closed_release_outcome"] is None
+    assert section["release_claim"] is False
+    assert section["duckdb_or_quack_state_written"] is False
+    assert section["missed_live_cohort_count"] == 13
+    assert section["missed_target_count"] == 10
+    assert PCPR_PHASE0_TASK_ID == "PCPR-001"
+    assert PCPR_PHASE0_GOAL_ID == "PCPR-G120"
 
 
 def test_unavailable_metrics_are_not_represented_as_zero() -> None:
@@ -253,6 +268,11 @@ def test_complete_live_evidence_promotes_supervisor_without_release_claim() -> N
     assert verdict.missed_targets == ()
     assert verdict.blockers == ()
     assert verdict.promotion_status not in CLOSED_RELEASE_OUTCOMES
+    section = pcpr_phase0_receipt_promotion(verdict)
+    assert section["promotion_status"] == "supervisor_promoted"
+    assert section["closed_release_outcome"] is None
+    assert section["release_claim"] is False
+    assert section["duckdb_or_quack_state_written"] is False
 
 
 def test_unknown_or_duplicate_cohort_fails_closed() -> None:

@@ -683,3 +683,60 @@ def qualify_current_head_without_live_campaign() -> QualificationVerdict:
 
     cohort, targets, safety = current_head_unavailable_inputs()
     return qualify_direct_objective_event_driven(cohort, targets, safety)
+
+
+# Pinned identity of the ordinary missing-live-campaign verdict.  Drift here
+# means the default unavailable payload changed and the outer receipt must be
+# regenerated from this evaluator rather than transcribed.
+CURRENT_HEAD_UNAVAILABLE_VERDICT_CID: Final = (
+    "baguqeerateinyeij5jrpdtgtpiehmroe3zdp5h7t5k2va3asqo6dwwz4tg3q"
+)
+
+PCPR_PHASE0_TASK_ID: Final = "PCPR-001"
+PCPR_PHASE0_GOAL_ID: Final = "PCPR-G120"
+
+
+def pcpr_phase0_receipt_promotion(verdict: QualificationVerdict) -> dict[str, Any]:
+    """Compact outer-receipt promotion fields.  Never a closed release."""
+
+    if verdict.closed_release_outcome is not None:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification must not mint a closed release outcome"
+        )
+    if verdict.release_claim:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification must not claim a PCPR release"
+        )
+    if verdict.completion_authoritative:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "qualification completion is not authoritative"
+        )
+    if verdict.promotion_status in CLOSED_RELEASE_OUTCOMES:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "promotion_status must not be a closed release outcome"
+        )
+    if verdict.promotion_status not in PROMOTION_STATUSES:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "promotion_status is not an admitted Phase-0 status"
+        )
+    return {
+        "schema": QUALIFICATION_VERDICT_SCHEMA,
+        "interface": DIRECT_OBJECTIVE_EVENT_DRIVEN_QUALIFICATION_INTERFACE,
+        "verdict_cid": verdict.verdict_cid,
+        "promotion_status": verdict.promotion_status,
+        "supervisor_disposition": verdict.supervisor_disposition,
+        "closed_release_outcome": None,
+        "release_claim": False,
+        "completion_authoritative": False,
+        "missed_live_cohort_count": len(verdict.missed_live_cohort),
+        "missed_target_count": len(verdict.missed_targets),
+        "blockers": list(verdict.blockers),
+        "duckdb_or_quack_state_written": False,
+        "evidence_kind": "measured",
+    }
+
+
+def current_head_pcpr_phase0_receipt_promotion() -> dict[str, Any]:
+    """Fail-closed promotion section for the ordinary missing-live case."""
+
+    return pcpr_phase0_receipt_promotion(qualify_current_head_without_live_campaign())
