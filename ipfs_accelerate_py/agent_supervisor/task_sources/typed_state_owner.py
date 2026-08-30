@@ -1632,17 +1632,46 @@ def _validated_legacy_orphan_unstall_receipt(
     receipt: Any,
     *,
     task_alias: str,
+    task_cid: str,
+    admitted_control_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Accept only the exact lossy receipt written by the retired unstall path."""
+    """Accept only a closed persisted form of the retired unstall receipt.
 
-    required = {
+    The retired daemon supplied the five base fields below.  Its canonical
+    status-transition helper then carried the immutable execution-route
+    lineage from the admitted attempt into stores that had a sealed launch
+    policy.  Both persisted forms therefore existed: base-only for legacy
+    stores, and base plus the complete three-field route lineage for typed
+    stores.  Partial, foreign, or re-signed route lineage is never accepted.
+    """
+
+    base_fields = {
         "schema",
         "operation",
         "reason",
         "task_alias",
         "age_seconds",
     }
-    if not isinstance(receipt, Mapping) or set(receipt) != required:
+    route_fields = {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+    if (
+        type(task_cid) is not str
+        or not task_cid.strip()
+        or task_cid != task_cid.strip()
+        or not isinstance(receipt, Mapping)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy orphan unstall receipt differs from its closed schema"
+        )
+    fields = set(receipt)
+    carried_route_fields = fields & route_fields
+    if (
+        carried_route_fields not in (set(), route_fields)
+        or fields != base_fields | carried_route_fields
+    ):
         raise TypedStateOwnerAuthorizationError(
             "legacy orphan unstall receipt differs from its closed schema"
         )
@@ -1660,6 +1689,48 @@ def _validated_legacy_orphan_unstall_receipt(
         raise TypedStateOwnerAuthorizationError(
             "legacy orphan unstall receipt is not the exact known-bad form"
         )
+    if carried_route_fields:
+        route_value = values.get("execution_route_binding")
+        try:
+            if not isinstance(route_value, Mapping):
+                raise TaskSourceIntegrityError(
+                    "legacy orphan route binding is not an object"
+                )
+            route = TaskExecutionRouteBinding.from_dict(route_value).to_dict()
+        except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan unstall route lineage is invalid"
+            ) from exc
+        if (
+            dict(route_value) != route
+            or route["task_alias"] != task_alias
+            or route["task_cid"] != task_cid
+            or type(values.get("execution_route_policy_id")) is not str
+            or values.get("execution_route_policy_id") != route["policy_id"]
+            or type(values.get("execution_route_origin_revision")) is not int
+            or values.get("execution_route_origin_revision")
+            != route["task_revision"]
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan unstall route lineage is invalid"
+            )
+    if admitted_control_receipt is not None:
+        admitted = dict(admitted_control_receipt)
+        admitted_route_fields = set(admitted) & route_fields
+        if admitted_route_fields not in (set(), route_fields):
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan admitted route lineage is partial"
+            )
+        if carried_route_fields and (
+            admitted_route_fields != route_fields
+            or any(
+                values.get(field) != admitted.get(field)
+                for field in route_fields
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "legacy orphan unstall route differs from its admitted predecessor"
+            )
     return values
 
 
@@ -2734,11 +2805,13 @@ def _legacy_orphan_provider_outcome_unknown_receipt(
         raise TypedStateOwnerAuthorizationError(
             "legacy orphan outcome-unknown revision lineage is invalid"
         )
+    admitted = dict(admitted_control_receipt)
     source = _validated_legacy_orphan_unstall_receipt(
         source_control_receipt,
         task_alias=task_alias,
+        task_cid=task_cid,
+        admitted_control_receipt=admitted,
     )
-    admitted = dict(admitted_control_receipt)
     base = _dead_admitted_provider_outcome_unknown_receipt(
         task_cid=task_cid,
         task_alias=task_alias,
@@ -2925,6 +2998,8 @@ def _legacy_orphan_landed_completion_receipt(
             _validated_legacy_orphan_unstall_receipt(
                 source_control_receipt,
                 task_alias=task_alias,
+                task_cid=task_cid,
+                admitted_control_receipt=admitted,
             )
     elif source_status == "quarantined":
         recovery_attestation = source_control_receipt.get(
@@ -8250,6 +8325,7 @@ class TypedStateOwnerGateway:
                         _validated_legacy_orphan_unstall_receipt(
                             source_receipt,
                             task_alias=task_alias,
+                            task_cid=task_cid,
                         )
                     elif (
                         source_receipt.get("operation")
@@ -8982,6 +9058,7 @@ class TypedStateOwnerGateway:
                                 _validated_legacy_orphan_unstall_receipt(
                                     prior_receipt,
                                     task_alias=task_alias,
+                                    task_cid=task_cid,
                                 )
                         legacy_outcome_unknown_quarantine = bool(
                             prior_status == "quarantined"

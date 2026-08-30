@@ -2093,6 +2093,7 @@ class TypedDatabaseTaskSource:
                 _validated_legacy_orphan_unstall_receipt(
                     source_receipt,
                     task_alias=task.task_alias,
+                    task_cid=task.task_cid,
                 )
             except TypedStateOwnerError as exc:
                 raise TaskSourceIntegrityError(str(exc)) from exc
@@ -2352,6 +2353,7 @@ class TypedDatabaseTaskSource:
                 _validated_legacy_orphan_unstall_receipt(
                     source_receipt,
                     task_alias=task.task_alias,
+                    task_cid=task.task_cid,
                 )
             except TypedStateOwnerError as exc:
                 raise TaskSourceIntegrityError(str(exc)) from exc

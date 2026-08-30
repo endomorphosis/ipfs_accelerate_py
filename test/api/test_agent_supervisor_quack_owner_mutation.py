@@ -10,7 +10,7 @@ import socket
 import subprocess
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -428,12 +428,33 @@ def _legacy_orphan_database_path(tmp_path: Path) -> Path:
     )
 
 
+def _legacy_unstall_receipt_with_route_lineage(
+    receipt: Mapping[str, Any],
+    route: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reproduce the full route lineage persisted by the retired writer."""
+
+    return {
+        **dict(receipt),
+        "execution_route_binding": dict(route),
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+
+
 def _seed_legacy_orphan_landed_attempt(
     database: Path,
     *,
     client_id: str,
     source_status: str,
     retain_admission_on_retry: bool = False,
+    legacy_unstall_receipt_transform: (
+        Callable[
+            [dict[str, Any], dict[str, Any]],
+            Mapping[str, Any],
+        ]
+        | None
+    ) = None,
 ) -> dict[str, Any]:
     """Create the exact historical admission and optional lossy unstall row."""
 
@@ -613,22 +634,36 @@ def _seed_legacy_orphan_landed_attempt(
             ],
         )
         admitted_revision = claimed.revision + 1
+        full_route_source_receipt = admitted_receipt
         if source_status == "in_progress":
             source_receipt = admitted_receipt
             source_revision = admitted_revision
         else:
             assert source_status == "retrying"
-            source_receipt = (
-                admitted_receipt
-                if retain_admission_on_retry
-                else {
+            if retain_admission_on_retry:
+                source_receipt = admitted_receipt
+            else:
+                legacy_unstall_receipt = {
                     "schema": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_SCHEMA,
                     "operation": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_OPERATION,
                     "reason": typed_owner_module.TYPED_DATABASE_LEGACY_ORPHAN_UNSTALL_REASON,
                     "task_alias": "T",
                     "age_seconds": 600,
                 }
-            )
+                full_route_source_receipt = (
+                    _legacy_unstall_receipt_with_route_lineage(
+                        legacy_unstall_receipt,
+                        route,
+                    )
+                )
+                source_receipt = dict(legacy_unstall_receipt)
+                if legacy_unstall_receipt_transform is not None:
+                    source_receipt = dict(
+                        legacy_unstall_receipt_transform(
+                            json.loads(json.dumps(legacy_unstall_receipt)),
+                            json.loads(json.dumps(route)),
+                        )
+                    )
             poisoned_body = dict(admitted_body)
             poisoned_body["completion_receipt"] = source_receipt
             poisoned_body_json = canonical_json_bytes(poisoned_body).decode(
@@ -790,6 +825,7 @@ def _seed_legacy_orphan_landed_attempt(
         "repository_root": repository_root,
         "state_root": state_root,
         "source_receipt": source_receipt,
+        "full_route_source_receipt": full_route_source_receipt,
         "source_revision": source_revision,
         "admitted_receipt": admitted_receipt,
         "proof": proof,
@@ -1096,11 +1132,16 @@ def _raw_typed_status_command(
 
 
 @pytest.mark.parametrize(
-    ("source_status", "retain_admission_on_retry"),
+    (
+        "source_status",
+        "retain_admission_on_retry",
+        "carry_route_lineage",
+    ),
     [
-        ("in_progress", False),
-        ("retrying", False),
-        ("retrying", True),
+        pytest.param("in_progress", False, False, id="admitted"),
+        pytest.param("retrying", False, False, id="base-legacy"),
+        pytest.param("retrying", False, True, id="routed-legacy"),
+        pytest.param("retrying", True, False, id="retained-admission"),
     ],
 )
 def test_legacy_orphan_landed_completion_is_atomic_and_idempotent(
@@ -1108,6 +1149,7 @@ def test_legacy_orphan_landed_completion_is_atomic_and_idempotent(
     monkeypatch: pytest.MonkeyPatch,
     source_status: str,
     retain_admission_on_retry: bool,
+    carry_route_lineage: bool,
 ) -> None:
     """A dead admission completes once from current exact landed evidence."""
 
@@ -1118,7 +1160,21 @@ def test_legacy_orphan_landed_completion_is_atomic_and_idempotent(
         client_id=client_id,
         source_status=source_status,
         retain_admission_on_retry=retain_admission_on_retry,
+        legacy_unstall_receipt_transform=(
+            _legacy_unstall_receipt_with_route_lineage
+            if carry_route_lineage
+            else None
+        ),
     )
+    if carry_route_lineage:
+        for field in (
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        ):
+            assert fixture["source_receipt"][field] == fixture[
+                "admitted_receipt"
+            ][field]
     server = build_server(
         database_path=database,
         state_dir=fixture["state_root"] / "legacy-orphan-owner",
@@ -1222,6 +1278,130 @@ def test_legacy_orphan_landed_completion_is_atomic_and_idempotent(
             [before.task_cid],
         ).fetchone()
         assert receipt_count is not None and int(receipt_count[0]) == 1
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "partial",
+        "extra",
+        "binding",
+        "policy",
+        "origin",
+        "task-cid",
+        "task-alias",
+    ),
+)
+def test_routed_legacy_orphan_lineage_corruption_is_rejected_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corruption: str,
+) -> None:
+    """Only the exact complete route triple may follow its admission."""
+
+    def corrupt_route(
+        receipt: dict[str, Any],
+        route: dict[str, Any],
+    ) -> Mapping[str, Any]:
+        routed = _legacy_unstall_receipt_with_route_lineage(receipt, route)
+        if corruption == "partial":
+            routed.pop("execution_route_origin_revision")
+        elif corruption == "extra":
+            routed["confirmed"] = True
+        elif corruption == "binding":
+            routed["execution_route_binding"] = {
+                **route,
+                "repository_tree_id": "tree:foreign",
+            }
+        elif corruption == "policy":
+            routed["execution_route_policy_id"] = "policy:foreign"
+        elif corruption == "origin":
+            routed["execution_route_origin_revision"] = (
+                int(route["task_revision"]) + 1
+            )
+        elif corruption == "task-cid":
+            routed["execution_route_binding"] = {
+                **route,
+                "task_cid": "task:foreign",
+            }
+        else:
+            assert corruption == "task-alias"
+            routed["execution_route_binding"] = {
+                **route,
+                "task_alias": "FOREIGN",
+            }
+        return routed
+
+    database = _legacy_orphan_database_path(tmp_path)
+    client_id = f"database-implementation-daemon:route-{corruption}"
+    fixture = _seed_legacy_orphan_landed_attempt(
+        database,
+        client_id=client_id,
+        source_status="retrying",
+        legacy_unstall_receipt_transform=corrupt_route,
+    )
+    server = build_server(
+        database_path=database,
+        state_dir=fixture["state_root"] / f"route-{corruption}-owner",
+        store_id=f"route-{corruption}-owner-v1",
+        repository_id="repository:test",
+        repository_root=fixture["repository_root"],
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+        owner_liveness_probe=lambda _birth: typed_owner_module.OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id=client_id,
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+        ),
+    )
+    try:
+        before = _typed_owner_completion_state(server._connection)  # noqa: SLF001
+        with pytest.raises(
+            (TaskSourceIntegrityError, TransactionError),
+        ):
+            source.quarantine_legacy_orphan_provider_outcome_unknown(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before
+
+        source.record_validation_result(
+            task_cid="task:test",
+            outcome="passed",
+            evidence_digest=fixture["evidence_digest"],
+            argv=["database-landed-merge-repair"],
+            attempt_id="attempt:legacy-orphan",
+            body=fixture["proof"],
+        )
+        before_completion = _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        )
+        with pytest.raises(
+            (TaskSourceIntegrityError, TransactionError),
+        ):
+            source.complete_legacy_orphan_landed_attempt(
+                "task:test",
+                expected_task_revision=fixture["source_revision"],
+                expected_control_receipt=fixture["source_receipt"],
+                evidence_digest=fixture["evidence_digest"],
+                landed_proof=fixture["proof"],
+            )
+        assert _typed_owner_completion_state(  # noqa: SLF001
+            server._connection
+        ) == before_completion
     finally:
         source.close()
         server.stop()
@@ -1369,9 +1549,15 @@ def test_dead_admitted_unknown_outcome_quarantines_once_then_landed_completes(
         server.stop()
 
 
+@pytest.mark.parametrize(
+    "carry_route_lineage",
+    (False, True),
+    ids=("base-legacy", "routed-legacy"),
+)
 def test_lossy_retrying_unknown_outcome_quarantines_once_then_landed_completes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    carry_route_lineage: bool,
 ) -> None:
     """The retired retry poison becomes explicit unknown, never blind retry."""
 
@@ -1381,6 +1567,11 @@ def test_lossy_retrying_unknown_outcome_quarantines_once_then_landed_completes(
         database,
         client_id=client_id,
         source_status="retrying",
+        legacy_unstall_receipt_transform=(
+            _legacy_unstall_receipt_with_route_lineage
+            if carry_route_lineage
+            else None
+        ),
     )
     server = build_server(
         database_path=database,
