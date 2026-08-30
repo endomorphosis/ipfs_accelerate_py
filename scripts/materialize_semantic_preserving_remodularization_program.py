@@ -1885,6 +1885,55 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
     return server, paths, program, identity, ready
 
 
+_OWNER_PROJECTION_RETRYABLE_ERRORS: Final[frozenset[str]] = frozenset(
+    {
+        "DuckDBConnectionPolicyError",
+    }
+)
+_OWNER_PROJECTION_MAX_RECOVERIES: Final[int] = 8
+
+
+def _recover_poisoned_owner_connection(server: Any) -> bool:
+    """Replace a poisoned exclusive owner handle without SIGTERM'ing SPAR.
+
+    A single interrupted typed-client transaction marks the shared DuckDB
+    wrapper unusable.  The projection monitor previously treated that as a
+    terminal owner failure and killed every lane.  Reopening the exclusive
+    file owner lets live claims continue.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_quack_state_owner_connection,
+    )
+
+    connection = getattr(server, "_connection", None)
+    lock = getattr(server, "_owner_transaction_lock", None)
+    path = getattr(connection, "path", None)
+    if (
+        connection is None
+        or lock is None
+        or path is None
+        or getattr(connection, "_poisoned", False) is not True
+    ):
+        return False
+    with lock:
+        current = getattr(server, "_connection", None)
+        if current is None or getattr(current, "_poisoned", False) is not True:
+            return False
+        close = getattr(current, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+        replacement = open_quack_state_owner_connection(path)
+        server._connection = replacement
+        gateway = getattr(server, "_command_gateway", None)
+        if gateway is not None:
+            gateway._connection = replacement
+        return True
+
+
 def _owner_task_projection(server: Any) -> dict[str, Any]:
     connection = getattr(server, "_connection", None)
     transaction_lock = getattr(server, "_owner_transaction_lock", None)
@@ -2814,14 +2863,28 @@ class _OwnerProjectionMonitor:
 
     def _run(self) -> None:
         initial = True
+        recoveries = 0
         while not self.stopping.is_set():
             try:
                 _publish_live_projection(self.server, self.paths)
             except BaseException as exc:
+                retryable = type(exc).__name__ in _OWNER_PROJECTION_RETRYABLE_ERRORS
+                recovered = False
+                if retryable and recoveries < _OWNER_PROJECTION_MAX_RECOVERIES:
+                    try:
+                        recovered = _recover_poisoned_owner_connection(
+                            self.server
+                        )
+                    except Exception:
+                        recovered = False
+                if recovered:
+                    recoveries += 1
+                    continue
                 self.failure = type(exc).__name__
                 self.ready.set()
                 self.on_failure(exc)
                 return
+            recoveries = 0
             if initial:
                 initial = False
                 self.ready.set()

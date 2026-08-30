@@ -11,6 +11,7 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -1026,3 +1027,39 @@ def test_restart_rejects_partial_execution_route_receipt() -> None:
             snapshot=snapshot,
             tasks=(operator_task, partial),
         )
+
+
+def test_recover_poisoned_owner_connection_replaces_shared_handle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    replacement = object()
+
+    class _Poisoned:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    poisoned = _Poisoned()
+    gateway = SimpleNamespace(_connection=poisoned)
+    server = SimpleNamespace(
+        _connection=poisoned,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=gateway,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
+        "open_quack_state_owner_connection",
+        lambda path: replacement,
+    )
+
+    assert materializer._recover_poisoned_owner_connection(server) is True
+    assert poisoned.closed is True
+    assert server._connection is replacement
+    assert gateway._connection is replacement
+    assert materializer._recover_poisoned_owner_connection(server) is False
