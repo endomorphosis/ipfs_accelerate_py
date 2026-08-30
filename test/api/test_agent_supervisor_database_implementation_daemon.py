@@ -1619,6 +1619,90 @@ def test_unknown_callback_without_landed_outputs_reopens(
         daemon.close()
 
 
+def _consumed_no_progress_quarantine_receipt() -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-neutral-quarantine@1"
+        ),
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "consumed_no_progress",
+        "retry_suppressed": True,
+        "root_cause_required": True,
+        "attempt_id": "attempt:runner-abort",
+        "failure_fingerprint": "sha256:" + "e" * 64,
+        "failure_evidence": {
+            "implementation_candidate_present": False,
+            "implementation_commit_present": False,
+            "validation_state": "not_run",
+            "returncode": 2,
+        },
+    }
+
+
+def test_consumed_no_progress_without_effect_reopens(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_consumed_no_progress_quarantine_receipt(),
+        )
+        result = daemon.run_once()
+        reopened = result["consumed_no_progress_reopens"]
+        assert reopened
+        assert reopened[0]["reopened"] is True
+        assert reopened[0]["task_cid"] == "task:cid:001"
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status != "quarantined"
+    finally:
+        daemon.close()
+
+
+def test_consumed_no_progress_with_candidate_stays_quarantined(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = _consumed_no_progress_quarantine_receipt()
+        evidence = dict(receipt["failure_evidence"])
+        evidence["implementation_candidate_present"] = True
+        receipt["failure_evidence"] = evidence
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=receipt,
+        )
+        result = daemon.run_once()
+        assert result["consumed_no_progress_reopens"] == []
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status == "quarantined"
+    finally:
+        daemon.close()
+
+
 def test_unknown_callback_without_declared_outputs_stays_quarantined(
     tmp_path: Path,
 ) -> None:

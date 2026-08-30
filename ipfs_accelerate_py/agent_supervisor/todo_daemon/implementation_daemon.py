@@ -89541,6 +89541,104 @@ class DatabaseImplementationDaemon:
             "missing_outputs": list(paths),
         }
 
+    def _reopen_consumed_no_progress_without_effect_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Requeue runner-abort quarantines that never produced a candidate."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
+            return None
+        body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return None
+        if receipt.get("operation") != "database_portal_neutral_failure_quarantine":
+            return None
+        if str(receipt.get("failure_kind") or "") != "consumed_no_progress":
+            return None
+        if receipt.get("retry_suppressed") is not True:
+            return None
+        evidence = receipt.get("failure_evidence")
+        if not isinstance(evidence, Mapping):
+            evidence = {}
+        if (
+            evidence.get("implementation_candidate_present") is not False
+            or evidence.get("implementation_commit_present") is not False
+            or str(evidence.get("validation_state") or "") != "not_run"
+        ):
+            return None
+        if self.repo_root is not None and self._task_outputs_landed_on_target(
+            task
+        ):
+            return None
+        reopen_receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-consumed-no-progress-without-effect-reopen@1"
+            ),
+            "operation": "reopen_consumed_no_progress_without_effect",
+            "reason": "provider_runner_aborted_before_candidate",
+            "previous_failure_kind": "consumed_no_progress",
+            "previous_attempt_id": str(receipt.get("attempt_id") or ""),
+            "previous_failure_fingerprint": str(
+                receipt.get("failure_fingerprint") or ""
+            ),
+        }
+        self._cas_task_status_database(
+            str(task.task_cid),
+            expected_revision=int(task.revision),
+            new_status="todo",
+            receipt=reopen_receipt,
+        )
+        self._record_event(
+            "consumed_no_progress_without_effect_reopened",
+            task_cid=str(task.task_cid),
+            body={
+                "previous_attempt_id": reopen_receipt["previous_attempt_id"],
+                "previous_failure_fingerprint": reopen_receipt[
+                    "previous_failure_fingerprint"
+                ],
+            },
+        )
+        return {
+            "task_cid": str(task.task_cid),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "reopened": True,
+            "reason": "consumed_no_progress_without_effect_reopen",
+            "previous_attempt_id": reopen_receipt["previous_attempt_id"],
+        }
+
+    def reconcile_consumed_no_progress_without_effect_quarantines(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Reopen consumed-no-progress quarantines that never produced effects."""
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
+        tasks = tuple(getattr(page, "tasks", ()) or ())
+        outcomes: list[dict[str, Any]] = []
+        for task in tasks:
+            loaded = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
+            try:
+                outcome = self._reopen_consumed_no_progress_without_effect_task(
+                    loaded if loaded is not None else task
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "reopened": False,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if outcome is not None:
+                outcomes.append(outcome)
+        return outcomes
+
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
@@ -89761,6 +89859,9 @@ class DatabaseImplementationDaemon:
         unknown_callback_reopens = self._run_reconciliation_step(
             self.reconcile_unimplemented_unknown_callback_quarantines
         )
+        consumed_no_progress_reopens = self._run_reconciliation_step(
+            self.reconcile_consumed_no_progress_without_effect_quarantines
+        )
         terminal_portal_reconciliations = self._run_reconciliation_step(
             self.reconcile_terminal_portal_failures
         )
@@ -89798,6 +89899,7 @@ class DatabaseImplementationDaemon:
             + len(expired_attempt_reconciliations)
             + len(landed_merge_reconciliations)
             + len(unknown_callback_reopens)
+            + len(consumed_no_progress_reopens)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
             + sum(
@@ -89903,6 +90005,7 @@ class DatabaseImplementationDaemon:
                     ),
                     "landed_merge_reconciliations": landed_merge_reconciliations,
                     "unknown_callback_reopens": unknown_callback_reopens,
+                    "consumed_no_progress_reopens": consumed_no_progress_reopens,
                     "terminal_retry_reconciliations": (
                         terminal_retry_reconciliations
                     ),
@@ -89961,6 +90064,7 @@ class DatabaseImplementationDaemon:
                 ),
                 "landed_merge_reconciliations": landed_merge_reconciliations,
                 "unknown_callback_reopens": unknown_callback_reopens,
+                "consumed_no_progress_reopens": consumed_no_progress_reopens,
                 "terminal_retry_reconciliations": (
                     terminal_retry_reconciliations
                 ),
@@ -90007,6 +90111,7 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "landed_merge_reconciliations": landed_merge_reconciliations,
             "unknown_callback_reopens": unknown_callback_reopens,
+            "consumed_no_progress_reopens": consumed_no_progress_reopens,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
             "protected_path_recovery_reconciliations": (
