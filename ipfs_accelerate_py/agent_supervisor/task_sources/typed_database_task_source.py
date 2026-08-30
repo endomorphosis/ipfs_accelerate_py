@@ -1211,8 +1211,6 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "task is absent from the launch route policy"
             )
-        if task.revision == entry.task_revision:
-            return MappingProxyType(policy.binding_for_task(task).to_dict())
         body = task.body if isinstance(task.body, Mapping) else {}
         receipt = body.get("completion_receipt")
         route = (
@@ -1220,14 +1218,22 @@ class TypedDatabaseTaskSource:
             if isinstance(receipt, Mapping)
             else None
         )
-        if not isinstance(route, Mapping):
-            raise TaskSourceIntegrityError(
-                "advanced task revision has no carried execution-route binding"
+        # An owner restart reseals the current population under a fresh policy
+        # identity.  The freshly sealed entry can therefore have the same
+        # revision as ``task`` even though the authoritative task receipt
+        # still carries the older attempt route.  Preserve and validate that
+        # exact carried lineage before considering a newly synthesized route;
+        # rotating it would detach retry/recovery work from its launch.
+        if isinstance(route, Mapping):
+            return self.validate_execution_route_binding(
+                route,
+                task=task,
+                allow_claim_revision=True,
             )
-        return self.validate_execution_route_binding(
-            route,
-            task=task,
-            allow_claim_revision=True,
+        if task.revision == entry.task_revision:
+            return MappingProxyType(policy.binding_for_task(task).to_dict())
+        raise TaskSourceIntegrityError(
+            "advanced task revision has no carried execution-route binding"
         )
 
     def validate_execution_route_binding(
@@ -1242,6 +1248,22 @@ class TypedDatabaseTaskSource:
         policy = self._require_execution_route_plan_root()
         binding = TaskExecutionRouteBinding.from_dict(value)
         entry = policy.entries_by_cid.get(binding.task_cid)
+        task_body = task.body if isinstance(task.body, Mapping) else {}
+        task_receipt = task_body.get("completion_receipt")
+        carried_route = (
+            task_receipt.get("execution_route_binding")
+            if isinstance(task_receipt, Mapping)
+            else None
+        )
+        equal_revision_carried_binding = bool(
+            binding.source_revision == policy.source_revision
+            and isinstance(task_receipt, Mapping)
+            and isinstance(carried_route, Mapping)
+            and dict(carried_route) == binding.to_dict()
+            and task_receipt.get("execution_route_policy_id") == binding.policy_id
+            and task_receipt.get("execution_route_origin_revision")
+            == binding.task_revision
+        )
         current_policy_binding = (
             binding.policy_id == policy.policy_id
             and binding.plan_root_cid == policy.plan_root_cid
@@ -1259,7 +1281,15 @@ class TypedDatabaseTaskSource:
             and binding.plan_root_cid == policy.plan_root_cid
             and binding.repository_tree_id == policy.repository_tree_id
             and binding.policy_id != policy.policy_id
-            and binding.source_revision < policy.source_revision
+            # Quack owner generations are independently revisioned.  A clean
+            # owner restart may reseal a different policy ID at the same
+            # source revision.  Admit equality only when the advanced task
+            # already carries this exact binding and lineage tuple.  A
+            # greater revision remains a future/foreign lineage.
+            and (
+                binding.source_revision < policy.source_revision
+                or equal_revision_carried_binding
+            )
             and binding.task_alias == entry.task_alias
             and binding.task_contract_cid == entry.task_contract_cid
             and binding.execution_mode == entry.execution_mode
@@ -1284,19 +1314,12 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "authoritative task revision differs from its execution route"
             )
-        body = task.body if isinstance(task.body, Mapping) else {}
-        receipt = body.get("completion_receipt")
-        route = (
-            receipt.get("execution_route_binding")
-            if isinstance(receipt, Mapping)
-            else None
-        )
         if (
-            not isinstance(receipt, Mapping)
-            or not isinstance(route, Mapping)
-            or dict(route) != binding.to_dict()
-            or receipt.get("execution_route_policy_id") != binding.policy_id
-            or receipt.get("execution_route_origin_revision")
+            not isinstance(task_receipt, Mapping)
+            or not isinstance(carried_route, Mapping)
+            or dict(carried_route) != binding.to_dict()
+            or task_receipt.get("execution_route_policy_id") != binding.policy_id
+            or task_receipt.get("execution_route_origin_revision")
             != binding.task_revision
         ):
             raise TaskSourceIntegrityError(
