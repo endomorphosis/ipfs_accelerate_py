@@ -66,6 +66,7 @@ from ..proof.formal_verification_contracts import (
 
 
 FORMAL_PLAN_COMPILER_VERSION: Final = 1
+CANONICAL_OBJECTIVE_COMPILER: Final = "FormalPlanCompiler@1"
 FORMAL_PLAN_COMPILATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-compilation@1"
 )
@@ -3743,12 +3744,26 @@ def _topological_times(
     return result
 
 
+def compile_objective_snapshot(
+    source: Mapping[str, Any] | None = None, **records: Any
+) -> PlanCompilationResult:
+    """Compile an objective snapshot through the one canonical compiler.
+
+    This is intentionally a thin naming adapter, not a second objective or
+    planner subsystem.  All record normalization, semantic rejection, graph
+    construction, and formal-plan materialization remain owned by
+    :class:`FormalPlanCompiler`.
+    """
+
+    return FormalPlanCompiler().compile(source, **records)
+
+
 def compile_formal_plan(
     source: Mapping[str, Any] | None = None, **records: Any
 ) -> PlanCompilationResult:
-    """Functional entry point for :class:`FormalPlanCompiler`."""
+    """Compatibility spelling for :func:`compile_objective_snapshot`."""
 
-    return FormalPlanCompiler().compile(source, **records)
+    return compile_objective_snapshot(source, **records)
 
 
 def compile_formal_plan_json(source: str | bytes | Path) -> PlanCompilationResult:
@@ -3832,6 +3847,7 @@ __all__ = [
     "CompilationIssueSeverity",
     "CompilationResult",
     "CompilationStatus",
+    "CANONICAL_OBJECTIVE_COMPILER",
     "CompilerResult",
     "DEFAULT_VOCABULARY_PROFILE_ID",
     "FORMAL_PLAN_ADMISSION_PROJECTION_SCHEMA",
@@ -3848,6 +3864,7 @@ __all__ = [
     "PlanGraphProjection",
     "REQUIRES_PROOF_PRECONDITION_KIND",
     "compile_formal_plan",
+    "compile_objective_snapshot",
     "compile_formal_plan_duckdb",
     "compile_formal_plan_json",
     "compile_plan_admission",

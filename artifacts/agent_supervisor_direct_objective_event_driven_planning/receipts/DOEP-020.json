@@ -1,0 +1,81 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-020",
+  "task_cid": "sha256:aa601db60ea44648faa566d805529e8e980d464498d232db49f78ffbe838eb40",
+  "title": "Consolidate objective compiler",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"},
+    "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"},
+    "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"},
+    "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}
+  },
+  "changed_paths": [
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+    "test/api/doep/test_doep_020_consolidate_objective_compiler.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-020.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-020.json"
+  ],
+  "expected_outputs": [
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+    "test/api/doep/test_doep_020_consolidate_objective_compiler.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-020.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-020.json"
+  ],
+  "write_scope": [
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+    "test/api/doep/test_doep_020_consolidate_objective_compiler.py",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-020.json",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-020.json"
+  ],
+  "outputs_present": {
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py": true,
+    "test/api/doep/test_doep_020_consolidate_objective_compiler.py": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-020.json": true,
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-020.json": true
+  },
+  "path_digests": {
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py": "sha256:90fc5ab7f8197d1dd732c0fb7d47b1e82ddfc45054a10f53e7886f24526bd3a0",
+    "test/api/doep/test_doep_020_consolidate_objective_compiler.py": "sha256:5dc21325aebe16ece806e38efccead29bb5ceb33209c2effcc4731d7dc31691c",
+    "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-020.json": "sha256:4491d31bc7c2f090c03ccda8753d9e889d39e49a4511dc432a0e0a230a09b3eb"
+  },
+  "required_evidence": {
+    "source_commit_tree_gitlinks": {
+      "ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"},
+      "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"},
+      "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"},
+      "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}
+    },
+    "test_proof_results": {
+      "validation_command": ["python3", "-m", "pytest", "test/api/doep/test_doep_020_consolidate_objective_compiler.py", "-q"],
+      "proof_selection": "verified_empty",
+      "proof_reason": "The compiler seam is checked through independent deterministic Python assertions; this task makes no proof claim."
+    },
+    "limitations": [
+      "Candidate receipt only; independent fenced supervisor admission is required for completion.",
+      "Worker or model assertion alone is insufficient.",
+      "The named objective entrypoint is a thin adapter and does not introduce an independent planner, objective store, or admission path."
+    ],
+    "verifier_admission": "pending_independent_fenced_supervisor"
+  },
+  "validation": {
+    "commands": [
+      {
+        "argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_020_consolidate_objective_compiler.py", "-q"],
+        "cwd": "external/ipfs_accelerate",
+        "status": "candidate_local"
+      }
+    ]
+  },
+  "supervisor_acceptance": {
+    "completion_authoritative": false,
+    "state": "pending_independent_fenced_supervisor"
+  }
+}
