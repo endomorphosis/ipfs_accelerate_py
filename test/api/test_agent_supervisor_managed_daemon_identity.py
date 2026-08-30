@@ -7,7 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_supervisor as supervisor_module,
 )
@@ -15,13 +17,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     supervisor_loop as supervisor_loop_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
+    ManagedDaemonSpec,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     AdoptedManagedDaemonProcess,
     PortalImplementationSupervisor,
     TodoSupervisorConfig,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
-    ManagedDaemonSpec,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
@@ -51,6 +53,7 @@ def _supervisor(
     tmp_path: Path,
     *,
     required_task_ids: tuple[str, ...] = (),
+    database_managed: bool = False,
 ) -> PortalImplementationSupervisor:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -63,6 +66,22 @@ def _supervisor(
             events_path=state_dir / "events.jsonl",
             state_dir=state_dir,
             repo_root=repo,
+            database_program=(
+                DatabaseProgramConfig(
+                    authority_mode="quack",
+                    task_source_kind="duckdb",
+                    endpoint_secret_handle="env://QUACK_TOKEN",
+                    quack_endpoint="quack:127.0.0.1:45123",
+                    store_id="control.duckdb",
+                    store_generation="generation-1",
+                    schema_revision="schema-v1",
+                )
+                if database_managed
+                else None
+            ),
+            database_owner_session_id=(
+                "test-database-owner" if database_managed else ""
+            ),
             manual_completion_authority_task_ids=required_task_ids,
             manual_completion_authority_required_task_ids=required_task_ids,
         )
@@ -75,6 +94,7 @@ def _write_identity(
     pid: int,
     command: tuple[str, ...],
     start_time_ticks: int = 1234,
+    owner_scope: dict[str, str] | None = None,
 ) -> Path:
     identity = SupervisedChildIdentity(
         process_birth=ProcessBirthIdentity(
@@ -84,7 +104,11 @@ def _write_identity(
             parent_pid=17,
         ),
         command=command,
-        owner_scope=supervisor._managed_daemon_owner_scope(),
+        owner_scope=(
+            supervisor._managed_daemon_owner_scope()
+            if owner_scope is None
+            else owner_scope
+        ),
         created_at="2026-08-03T00:00:00+00:00",
     )
     path = supervisor._managed_daemon_identity_path()
@@ -380,6 +404,130 @@ def test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch
         encoding="utf-8"
     ).strip() == str(pid)
     assert supervisor._managed_daemon_identity_path().exists()
+
+
+def test_dead_orphaned_database_identity_is_quarantined_for_fresh_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 340
+    desired = tuple(supervisor._build_daemon_command())
+    identity_path = _write_identity(supervisor, pid=pid, command=desired)
+    original = identity_path.read_bytes()
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda _pid: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("dead child was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == (
+        "orphaned_dead_managed_database_identity_quarantined"
+    )
+    assert set(result["quarantined"]) == {"identity"}
+    backup = Path(result["quarantined"]["identity"])
+    assert backup.name.startswith(
+        supervisor._managed_daemon_identity_path().name
+        + ".stale-child-identity-"
+    )
+    assert backup.read_bytes() == original
+    assert not supervisor._managed_daemon_pid_path().exists()
+    assert not identity_path.exists()
+    assert supervisor.ensure_managed_daemon_pid_file()["reason"] == "missing"
+
+
+def test_unknown_orphaned_database_identity_remains_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 341
+    desired = tuple(supervisor._build_daemon_command())
+    identity_path = _write_identity(supervisor, pid=pid, command=desired)
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.UNKNOWN,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda _pid: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: pytest.fail("unknown identity searched for a peer"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "orphaned_managed_database_identity_liveness_unknown"
+    )
+    assert identity_path.exists()
+    assert not supervisor._managed_daemon_pid_path().exists()
+
+
+def test_dead_orphaned_database_identity_scope_mismatch_is_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 342
+    desired = tuple(supervisor._build_daemon_command())
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=desired,
+        owner_scope={"repo_root": str(tmp_path / "other-repository")},
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: pytest.fail("scope-mismatched identity was trusted"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "orphaned_managed_database_identity_scope_mismatch"
+    )
+    assert identity_path.exists()
+    assert not supervisor._managed_daemon_pid_path().exists()
 
 
 def test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch(
@@ -998,6 +1146,61 @@ def test_shared_adoption_recovers_live_identity_without_pid_marker(
     assert child.pid == 445
     assert pid_path.read_text(encoding="utf-8").strip() == "445"
     assert identity_path.exists()
+
+
+def test_shared_adoption_preserves_dead_identity_from_another_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pid_path = repo / "state" / "child.pid"
+    identity_path = repo / "state" / "child.identity.json"
+    command = ("python", "worker.py", "--state-dir", "state")
+    identity = SupervisedChildIdentity(
+        process_birth=ProcessBirthIdentity(
+            pid=446,
+            start_time_ticks=103,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+        command=command,
+        owner_scope={"repo_root": str(tmp_path / "other-repository")},
+        created_at="2026-08-03T00:00:00+00:00",
+    )
+    identity_path.parent.mkdir(parents=True)
+    identity_path.write_text(
+        json.dumps(identity.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "supervised_child_identity_liveness",
+        lambda _identity: pytest.fail("mismatched identity liveness was trusted"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="orphaned supervised child ownership identity mismatch",
+    ):
+        adopt_supervised_child(
+            SupervisedChildSpec(
+                repo_root=repo,
+                command=command,
+                log_path=repo / "child.log",
+                child_pid_path=pid_path,
+                env={
+                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(identity_path),
+                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                        {"repo_root": str(repo)}
+                    ),
+                },
+            )
+        )
+
+    assert identity_path.exists()
+    assert not pid_path.exists()
+    assert not tuple(identity_path.parent.glob("*.stale-child-identity-*"))
 
 
 def test_shared_termination_does_not_signal_reused_identity_pid(

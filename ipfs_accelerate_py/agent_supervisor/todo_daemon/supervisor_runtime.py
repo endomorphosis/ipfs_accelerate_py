@@ -1933,6 +1933,13 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
                 raise RuntimeError(
                     "orphaned supervised child identity is invalid"
                 )
+            if (
+                identity.command != tuple(spec.command)
+                or dict(identity.owner_scope) != owner_scope
+            ):
+                raise RuntimeError(
+                    "orphaned supervised child ownership identity mismatch"
+                )
             liveness = supervised_child_identity_liveness(identity)
             if liveness is OwnerLiveness.UNKNOWN:
                 raise RuntimeError(
@@ -1946,9 +1953,7 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
                     path.rename(backup)
                 return None
             if (
-                identity.command != tuple(spec.command)
-                or dict(identity.owner_scope) != owner_scope
-                or read_process_command_argv(identity.process_birth.pid)
+                read_process_command_argv(identity.process_birth.pid)
                 != identity.command
             ):
                 raise RuntimeError(

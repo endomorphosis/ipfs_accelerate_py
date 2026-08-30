@@ -19222,10 +19222,13 @@ class PortalImplementationSupervisor:
 
         pid_path = self._managed_daemon_pid_path()
         database_managed = self._database_managed_daemon_identity_required()
-        if not pid_path.exists():
-            identity = load_supervised_child_identity(
-                self._managed_daemon_identity_path()
+        pid_marker_present = pid_path.exists() or pid_path.is_symlink()
+        if not pid_marker_present:
+            identity_path = self._managed_daemon_identity_path()
+            identity_marker_present = (
+                identity_path.exists() or identity_path.is_symlink()
             )
+            identity = load_supervised_child_identity(identity_path)
             if (
                 identity is not None
                 and self._exact_managed_daemon_identity_is_live(
@@ -19248,16 +19251,137 @@ class PortalImplementationSupervisor:
                     result,
                 )
                 return result
-            if database_managed and (
-                self._managed_daemon_identity_path().exists()
-                or self._managed_daemon_identity_path().is_symlink()
-            ):
-                return {
-                    "repaired": False,
-                    "blocked": True,
-                    "reason": "orphaned_managed_database_identity_unproven",
+            if database_managed and identity_marker_present:
+                if identity is None:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_database_identity_unproven",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                    }
+                identity_pid = int(identity.process_birth.pid)
+                if not self._managed_daemon_identity_matches_scope(
+                    identity,
+                    pid=identity_pid,
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": (
+                            "orphaned_managed_database_identity_scope_mismatch"
+                        ),
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity_pid,
+                    }
+                liveness = supervised_child_identity_liveness(identity)
+                if liveness is OwnerLiveness.UNKNOWN:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": (
+                            "orphaned_managed_database_identity_liveness_unknown"
+                        ),
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity_pid,
+                    }
+                if liveness is OwnerLiveness.ALIVE:
+                    # The exact-live path above also verifies birth and argv.
+                    # An identity that is merely reported alive is not enough
+                    # authority to overwrite its marker or launch a peer.
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_database_identity_unproven",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity_pid,
+                    }
+                if liveness is not OwnerLiveness.DEAD:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": (
+                            "orphaned_managed_database_identity_liveness_unknown"
+                        ),
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity_pid,
+                    }
+                # Serialize the final re-observation with the shared launcher.
+                # A replacement identity, a newly committed PID marker, or an
+                # unowned matching daemon belongs to another generation and
+                # remains fail-closed. Only the exact dead identity is moved;
+                # a concurrently created PID marker is never quarantined.
+                quarantined: dict[str, str] = {}
+                with serialized_lock_update(
+                    self._managed_daemon_launch_lock_path()
+                ):
+                    current_identity = load_supervised_child_identity(
+                        identity_path
+                    )
+                    matching_pid = self._find_matching_managed_daemon_pid()
+                    if matching_pid is not None:
+                        return {
+                            "repaired": False,
+                            "blocked": True,
+                            "reason": (
+                                "matching_managed_daemon_ownership_unproven"
+                            ),
+                            "path": str(pid_path),
+                            "identity_path": str(identity_path),
+                            "pid": int(matching_pid),
+                        }
+                    if (
+                        pid_path.exists()
+                        or pid_path.is_symlink()
+                        or current_identity is None
+                        or current_identity.record_id != identity.record_id
+                        or supervised_child_identity_liveness(current_identity)
+                        is not OwnerLiveness.DEAD
+                    ):
+                        return {
+                            "repaired": False,
+                            "blocked": True,
+                            "reason": (
+                                "orphaned_managed_database_identity_changed"
+                            ),
+                            "path": str(pid_path),
+                            "identity_path": str(identity_path),
+                            "pid": identity_pid,
+                        }
+                    try:
+                        backup = unique_backup_path(
+                            identity_path,
+                            "stale-child-identity",
+                        )
+                        identity_path.rename(backup)
+                    except OSError:
+                        pass
+                    else:
+                        quarantined["identity"] = str(backup)
+                quarantine_complete = set(quarantined) == {"identity"}
+                result = {
+                    "repaired": quarantine_complete,
+                    "blocked": not quarantine_complete,
+                    "reason": (
+                        "orphaned_dead_managed_database_identity_quarantined"
+                        if quarantine_complete
+                        else "orphaned_dead_managed_database_identity_unrepairable"
+                    ),
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": identity_pid,
+                    "quarantined": quarantined,
                 }
+                if result["repaired"]:
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                return result
             return {"repaired": False, "reason": "missing", "path": str(pid_path)}
         if pid_path.is_dir():
             backup_path = unique_backup_path(pid_path, "directory-backup")
