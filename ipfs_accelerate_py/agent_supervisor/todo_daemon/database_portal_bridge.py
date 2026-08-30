@@ -755,6 +755,9 @@ _POST_MERGE_RECOVERY_LOG_STAGES: Final[frozenset[str]] = frozenset(
         "callback_identity_rejected",
         "callback_loaded_task_rejected",
         "callback_projection_rejected",
+        "callback_submodule_cleanup_failed",
+        "callback_submodule_identity_rejected",
+        "callback_submodule_initialization_failed",
         "callback_target_changed_after_checkout",
         "callback_target_changed_before_receipt",
         "callback_transaction_rejected",
@@ -7360,6 +7363,9 @@ class DatabasePortalExecutionBridge:
         current_head = str(source.get("current_target_commit") or "")
         current_tree = str(source.get("current_target_tree") or "")
         settled_source = isinstance(source.get("settled_integration_source"), Mapping)
+        callback_submodule_paths = tuple(
+            getattr(self, "worktree_submodule_paths", ()) or ()
+        )
         hygiene_eligible = (
             settled_source and task_alias == _VRIF_TERMINAL_TASK_ALIAS
         )
@@ -7411,6 +7417,16 @@ class DatabasePortalExecutionBridge:
             run_validation = getattr(portal, "_run_validation_commands", None)
             run_mutation = getattr(portal, "_run_checkout_mutation_transaction", None)
             cleanup_workspace = getattr(portal, "_cleanup_main_merge_workspace", None)
+            initialize_submodules = getattr(
+                portal,
+                "_initialize_worktree_submodules",
+                None,
+            )
+            cleanup_submodules = getattr(
+                portal,
+                "_cleanup_worktree_submodules",
+                None,
+            )
             portal_root = getattr(portal, "repo_root", None)
             if (
                 getattr(portal, "merge_queue", None) is not self.merge_queue
@@ -7422,6 +7438,13 @@ class DatabasePortalExecutionBridge:
                 or not callable(run_validation)
                 or not callable(run_mutation)
                 or not callable(cleanup_workspace)
+                or (
+                    callback_submodule_paths
+                    and (
+                        not callable(initialize_submodules)
+                        or not callable(cleanup_submodules)
+                    )
+                )
             ):
                 raise DatabasePortalBridgeError(
                     "Portal recovery daemon lacks callback requalification authority"
@@ -7622,6 +7645,7 @@ class DatabasePortalExecutionBridge:
                 temporary = Path(tempfile.mkdtemp(prefix="worktree-", dir=root))
                 temporary.rmdir()
                 added = False
+                submodule_setup_attempted = False
                 try:
                     before = subprocess.run(
                         ["git", "rev-parse", "--verify", f"refs/heads/{self.merge_target_branch}^{{commit}}"],
@@ -7657,6 +7681,73 @@ class DatabasePortalExecutionBridge:
                         )
                         return result
                     added = True
+                    if callback_submodule_paths:
+                        submodule_setup_attempted = True
+                        # Detached superproject worktrees leave gitlinks empty.
+                        # Reuse only exact objects already available from the
+                        # configured sibling checkouts; recovery may not fetch.
+                        try:
+                            initialize_submodules(
+                                temporary,
+                                branch_name="",
+                                offline_local_only=True,
+                                task=tasks[0],
+                                submodule_paths=callback_submodule_paths,
+                            )
+                        except (OSError, RuntimeError, ValueError) as exc:
+                            result["reason"] = (
+                                "callback_submodule_initialization_failed"
+                            )
+                            self._record_post_merge_recovery_stage(
+                                "callback_submodule_initialization_failed",
+                                request=request,
+                                reason=type(exc).__name__,
+                            )
+                            return result
+                        for relative in callback_submodule_paths:
+                            expected = subprocess.run(
+                                [
+                                    "git",
+                                    "rev-parse",
+                                    "--verify",
+                                    f"{current_head}:{relative}",
+                                ],
+                                cwd=temporary,
+                                capture_output=True,
+                                check=False,
+                                text=True,
+                                timeout=10,
+                            )
+                            observed = subprocess.run(
+                                [
+                                    "git",
+                                    "-C",
+                                    relative,
+                                    "rev-parse",
+                                    "--verify",
+                                    "HEAD^{commit}",
+                                ],
+                                cwd=temporary,
+                                capture_output=True,
+                                check=False,
+                                text=True,
+                                timeout=10,
+                            )
+                            if (
+                                expected.returncode != 0
+                                or observed.returncode != 0
+                                or observed.stdout.strip()
+                                != expected.stdout.strip()
+                            ):
+                                result["reason"] = (
+                                    "callback_submodule_identity_rejected"
+                                )
+                                self._record_post_merge_recovery_stage(
+                                    "callback_submodule_identity_rejected",
+                                    request=request,
+                                    reason=relative,
+                                )
+                                return result
                     pre_identities: list[dict[str, str]] | None = None
                     if hygiene_eligible:
                         initial_head = subprocess.run(
@@ -7968,6 +8059,37 @@ class DatabasePortalExecutionBridge:
                     return result
                 finally:
                     if added:
+                        if submodule_setup_attempted:
+                            try:
+                                submodule_cleanup = cleanup_submodules(
+                                    temporary,
+                                    "",
+                                )
+                            except (OSError, RuntimeError, ValueError):
+                                submodule_cleanup = None
+                            if (
+                                not isinstance(submodule_cleanup, list)
+                                or any(
+                                    not isinstance(item, Mapping)
+                                    or item.get("cleaned") is not True
+                                    for item in submodule_cleanup
+                                )
+                                or not set(callback_submodule_paths).issubset(
+                                    {
+                                        str(item.get("path") or "")
+                                        for item in submodule_cleanup
+                                        if isinstance(item, Mapping)
+                                    }
+                                )
+                            ):
+                                result.update(
+                                    passed=False,
+                                    reason="callback_submodule_cleanup_failed",
+                                )
+                                self._record_post_merge_recovery_stage(
+                                    "callback_submodule_cleanup_failed",
+                                    request=request,
+                                )
                         cleanup = cleanup_workspace(temporary, ephemeral=True)
                         if (
                             not isinstance(cleanup, Mapping)

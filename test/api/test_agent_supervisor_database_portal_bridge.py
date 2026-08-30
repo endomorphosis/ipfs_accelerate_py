@@ -13773,6 +13773,8 @@ def _run_vrif_callback_hygiene_requalification(
     advance_target_with_empty_commit: bool = False,
     repeat_cached_admission: bool = False,
     revalidate_authority: object | None = None,
+    gitlinked_validation: bool = False,
+    submodule_calls: list[tuple[str, str]] | None = None,
 ) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -13797,6 +13799,61 @@ def _run_vrif_callback_hygiene_requalification(
         target = repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(payload)
+    validation_child: Path | None = None
+    validation_command = (
+        "python -m pytest -q "
+        "test/api/residual_intelligence/test_release_report.py"
+    )
+    if gitlinked_validation:
+        validation_child = tmp_path / "validation-child-source"
+        validation_child.mkdir()
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main"],
+            cwd=validation_child,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "portal-test@example.invalid"],
+            cwd=validation_child,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Portal Test"],
+            cwd=validation_child,
+            check=True,
+        )
+        (validation_child / "test_callback_target.py").write_text(
+            "def test_callback_target():\n    assert True\n",
+            encoding="utf-8",
+        )
+        (validation_child / ".gitignore").write_text(
+            ".pytest_cache/\n__pycache__/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "add", "."], cwd=validation_child, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "validation child"],
+            cwd=validation_child,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--quiet",
+                str(validation_child),
+                "validation-child",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        validation_command = (
+            "cd validation-child && "
+            "python -m pytest -q test_callback_target.py"
+        )
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "bound target"], cwd=repo, check=True)
 
@@ -13846,7 +13903,7 @@ def _run_vrif_callback_hygiene_requalification(
         task_id=task_alias,
         canonical_task_cid=task_cid,
         metadata={"database task cid": database_task_cid},
-        validation=("python -m pytest -q test/api/residual_intelligence/test_release_report.py",),
+        validation=(validation_command,),
     )
     loaded_task = (
         task
@@ -13871,7 +13928,7 @@ def _run_vrif_callback_hygiene_requalification(
         @staticmethod
         def _run_validation_commands(
             worktree: Path,
-            _task: object,
+            validation_task: object,
             log_path: Path,
             *,
             force_uncached: bool,
@@ -13879,12 +13936,84 @@ def _run_vrif_callback_hygiene_requalification(
             assert force_uncached is True
             assert callable(mutate)
             mutate(worktree)
+            if gitlinked_validation:
+                [command] = validation_task.validation
+                completed = subprocess.run(
+                    ["bash", "-lc", command],
+                    cwd=worktree,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                )
+                log_payload = completed.stdout + completed.stderr
+                log_path.write_text(log_payload, encoding="utf-8")
+                return {
+                    "passed": completed.returncode == 0,
+                    "returncode": completed.returncode,
+                    "results": [
+                        {
+                            "validation_result_digest": hashlib.sha256(
+                                log_payload.encode("utf-8")
+                            ).hexdigest()
+                        }
+                    ],
+                }
             log_path.write_text("uncached validation passed\n", encoding="utf-8")
             return {
                 "passed": True,
                 "returncode": 0,
                 "results": [{"validation_result_digest": "7" * 64}],
             }
+
+        @staticmethod
+        def _initialize_worktree_submodules(
+            worktree: Path,
+            *,
+            branch_name: str,
+            offline_local_only: bool,
+            task: object,
+            submodule_paths: tuple[str, ...],
+        ) -> None:
+            assert validation_child is not None
+            assert branch_name == ""
+            assert offline_local_only is True
+            assert task is loaded_task
+            assert submodule_paths == ("validation-child",)
+            target = worktree / "validation-child"
+            target.rmdir()
+            expected = subprocess.run(
+                ["git", "rev-parse", "HEAD:validation-child"],
+                cwd=worktree,
+                capture_output=True,
+                check=True,
+                text=True,
+            ).stdout.strip()
+            subprocess.run(
+                ["git", "worktree", "add", "--detach", str(target), expected],
+                cwd=validation_child,
+                capture_output=True,
+                check=True,
+            )
+            if submodule_calls is not None:
+                submodule_calls.append(("initialize", expected))
+
+        @staticmethod
+        def _cleanup_worktree_submodules(
+            worktree: Path,
+            branch_name: str,
+        ) -> list[dict[str, object]]:
+            assert validation_child is not None
+            assert branch_name == ""
+            target = worktree / "validation-child"
+            removed = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(target)],
+                cwd=validation_child,
+                capture_output=True,
+                check=False,
+            )
+            if submodule_calls is not None:
+                submodule_calls.append(("cleanup", str(removed.returncode)))
+            return [{"path": "validation-child", "cleaned": removed.returncode == 0}]
 
         @staticmethod
         def _run_checkout_mutation_transaction(
@@ -13967,6 +14096,9 @@ def _run_vrif_callback_hygiene_requalification(
     bridge.repository_root = repo
     bridge.merge_queue = queue
     bridge.merge_target_branch = "main"
+    bridge.worktree_submodule_paths = (
+        ("validation-child",) if gitlinked_validation else ()
+    )
     bridge.portal_factory = lambda _paths, _alias: Portal()
     bridge._load_post_merge_callback_integration_receipt = (
         lambda path, *, source: json.loads(path.read_text(encoding="utf-8"))
@@ -14112,6 +14244,36 @@ def test_callback_requalification_requests_one_bounded_checkout_wait(
     timeout_seconds = transaction["timeout_seconds"]
     assert isinstance(timeout_seconds, float)
     assert timeout_seconds == 30.0
+
+
+def test_callback_requalification_initializes_exact_gitlinked_validation_repo(
+    tmp_path: Path,
+) -> None:
+    submodule_calls: list[tuple[str, str]] = []
+
+    receipt, repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: None,
+            task_alias="DOEP-072",
+            gitlinked_validation=True,
+            submodule_calls=submodule_calls,
+        )
+    )
+
+    assert receipt is not None, submodule_calls
+    assert receipt["validation"][0]["passed"] is True
+    assert [item[0] for item in submodule_calls] == ["initialize", "cleanup"]
+    expected_gitlink = subprocess.run(
+        ["git", "rev-parse", "HEAD:validation-child"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    assert submodule_calls[0] == ("initialize", expected_gitlink)
+    assert submodule_calls[1] == ("cleanup", "0")
+    assert cleanup_statuses == [b" D validation-child\x00"]
 
 
 def test_callback_requalification_surfaces_checkout_transaction_deferral(
