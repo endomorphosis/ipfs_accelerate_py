@@ -2296,6 +2296,137 @@ def test_protected_verification_lock_timeout_defers_without_latching(
     lock_path.unlink()
 
 
+def test_ephemeral_lock_retry_does_not_redispatch_provider_or_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, _workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    state = PortalTaskState()
+    provider_workspaces: list[Path] = []
+    validation_workspaces: list[Path] = []
+    queued_workspaces: list[Path] = []
+
+    def provider_runner(*_args, **kwargs):
+        provider_workspace = Path(kwargs["cwd"]).resolve()
+        provider_workspaces.append(provider_workspace)
+        output = provider_workspace / "src" / "example.py"
+        output.parent.mkdir(parents=True)
+        output.write_text("candidate = True\n", encoding="utf-8")
+        kwargs["on_started"](SimpleNamespace())
+        return subprocess.CompletedProcess(["fake-agent"], 0)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider_runner,
+    )
+    original_acquire = (
+        daemon._acquire_implementation_protected_verification_lock
+    )
+    acquisition_workspaces: list[Path] = []
+
+    def acquire_after_one_peer_lease(**kwargs):
+        acquisition_workspaces.append(
+            Path(kwargs["workspace_path"]).resolve()
+        )
+        if len(acquisition_workspaces) == 1:
+            return {
+                "acquired": False,
+                "reason": "lock_exists",
+                "lock_path": str(
+                    checkout_mutation_lock_path(daemon.repo_root)
+                ),
+                "waited_seconds": 30.0,
+                "lock_owner_pid": 1234,
+                "lock_owner_task_id": "EX-PEER",
+                "lock_owner_branch": "implementation/ex-peer",
+                "lock_owner_operation": "merge_validated_worktree",
+            }
+        return original_acquire(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_protected_verification_lock",
+        acquire_after_one_peer_lease,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+
+    def validate(workspace_path, *_args, **_kwargs):
+        validation_workspaces.append(Path(workspace_path).resolve())
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "reason": "passed",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        validate,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validated_candidate_handoff_guard",
+        lambda *_args, **kwargs: {
+            "allowed": True,
+            "phase": str(kwargs.get("phase") or ""),
+        },
+    )
+
+    def enqueue(**kwargs):
+        queued_workspaces.append(Path(kwargs["worktree_path"]).resolve())
+        return {
+            "queued": True,
+            "merged": False,
+            "reason": "queued",
+            "request_id": "merge:ex-001",
+            "target_branch": "main",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_validated_worktree",
+        enqueue,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-08-30T00:00:00+00:00",
+        log_path=tmp_path / "state" / "lock-retry.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is True
+    assert len(provider_workspaces) == 1
+    assert validation_workspaces == provider_workspaces
+    assert queued_workspaces == provider_workspaces
+    # Initial verification retries once in place, then post-validation
+    # verification reacquires the same repository lease normally.
+    assert acquisition_workspaces == provider_workspaces * 3
+    assert result["merge_result"]["queued"] is True
+    assert result["board_completion"]["pending_merge"] is True
+    assert result.get("reason") != (
+        "implementation_protected_path_verification_lock_timeout"
+    )
+    assert result.get("deferred") is not True
+    events = list(daemon._iter_events())
+    assert not any(
+        event.get("type") == "task_blocked" for event in events
+    )
+
+
 def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
