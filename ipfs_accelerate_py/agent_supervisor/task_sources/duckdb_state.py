@@ -556,8 +556,15 @@ class DuckDBConnection:
             return
         self._closed = True
         try:
-            self.rollback()
-            self._connection.close()
+            try:
+                self.rollback()
+            finally:
+                # A DuckDB fatal invalidates the transaction and rollback may
+                # itself raise.  The raw handle must still close before the
+                # per-file writer lock is released so a fenced physical-store
+                # repair cannot race or encounter a leaked incompatible
+                # connection in this process.
+                self._connection.close()
         finally:
             if self._lock_context is not None:
                 self._lock_context.__exit__(None, None, None)

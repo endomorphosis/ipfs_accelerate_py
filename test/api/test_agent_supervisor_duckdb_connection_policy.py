@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DUCKDB_CONNECTION_POLICY_SETTINGS,
+    DuckDBConnection,
     DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
 )
@@ -322,6 +323,42 @@ def test_policy_verification_rejects_integer_bool_spoof_and_closes() -> None:
     assert connection.closed
     assert len(connection.statements) == 1
     assert connection.statements[0].startswith("SELECT current_setting")
+
+
+def test_connection_close_closes_raw_handle_when_fatal_rollback_fails() -> None:
+    class FatalRawConnection:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def rollback(self) -> None:
+            raise RuntimeError("injected invalidated transaction")
+
+        def close(self) -> None:
+            self.closed = True
+
+    class LockContext:
+        def __init__(self) -> None:
+            self.released = False
+
+        def __exit__(self, *_args: object) -> None:
+            self.released = True
+
+    raw = FatalRawConnection()
+    lock = LockContext()
+    connection = DuckDBConnection.__new__(DuckDBConnection)
+    connection._closed = False
+    connection._transaction_active = True
+    connection._quack_pending_mutations = []
+    connection._connection = raw
+    connection._lock_context = lock
+
+    with pytest.raises(RuntimeError, match="injected invalidated transaction"):
+        connection.close()
+
+    assert connection._closed is True
+    assert raw.closed is True
+    assert lock.released is True
+    connection.close()
 
 
 @pytest.mark.parametrize(
