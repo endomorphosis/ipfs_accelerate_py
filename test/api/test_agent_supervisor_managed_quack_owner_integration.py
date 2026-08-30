@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -796,6 +797,11 @@ def test_detached_master_keeps_program_handle_but_scrubs_raw_token(
         "--detach",
     ]
     args = runner.build_arg_parser().parse_args(argv)
+    _master_log, master_pid_path = runner._master_paths(args)
+    master_pid_path.parent.mkdir(parents=True, mode=0o700)
+    os.chmod(master_pid_path.parent, 0o700)
+    master_pid_path.write_text("424242\n", encoding="ascii")
+    os.chmod(master_pid_path, 0o664)
     captured: dict[str, object] = {}
 
     class _DetachedProcess:
@@ -805,14 +811,16 @@ def test_detached_master_keeps_program_handle_but_scrubs_raw_token(
             return None
 
     def popen(command: list[str], **kwargs: object) -> _DetachedProcess:
+        captured["spawn_count"] = int(captured.get("spawn_count", 0)) + 1
         captured["command"] = command
         captured["environment"] = dict(kwargs["env"])
         return _DetachedProcess()
 
     monkeypatch.setattr(runner.subprocess, "Popen", popen)
-    monkeypatch.setattr(runner, "pid_alive", lambda _pid: True)
+    monkeypatch.setattr(runner, "pid_alive", lambda pid: pid == 55555)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "old-generation")
     monkeypatch.setenv("TEST_QUACK_OWNER_TOKEN", "old-handle-generation")
+    monkeypatch.setenv("PYTHONPATH", "/tmp/untrusted-ambient-import-root")
 
     result = runner.launch_detached(args, argv)
 
@@ -828,3 +836,11 @@ def test_detached_master_keeps_program_handle_but_scrubs_raw_token(
     assert environment[runner.STATE_ENDPOINT_SECRET_HANDLE_ENV] == (
         program.endpoint_secret_handle
     )
+    assert environment["PYTHONPATH"] == str(
+        Path(runner.__file__).resolve().parents[3]
+    )
+    assert master_pid_path.read_text(encoding="ascii") == "55555\n"
+    assert stat.S_IMODE(master_pid_path.stat().st_mode) == 0o600
+    with pytest.raises(ValueError, match="names a live process"):
+        runner.launch_detached(args, argv)
+    assert captured["spawn_count"] == 1

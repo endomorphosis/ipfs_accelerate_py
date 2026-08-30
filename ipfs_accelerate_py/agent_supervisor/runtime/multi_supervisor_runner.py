@@ -20,7 +20,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
+from typing import Any, BinaryIO, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
 
 # A datasets-authoritative configured-board process must not import repository
 # code before its complete dependency closure is available as one immutable
@@ -4837,12 +4837,17 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
 
 def _reserve_owned_pid_projection(
     pid_path: Path,
+    *,
+    recover_dead_owned: bool = False,
 ) -> tuple[int, tuple[int, int]]:
     """Reserve a no-follow, owner-only PID projection before process birth."""
 
     path = Path(pid_path)
     with serialized_lock_update(path):
-        _require_absent_pid_projection(path)
+        _require_absent_pid_projection(
+            path,
+            recover_dead_owned=recover_dead_owned,
+        )
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -4862,7 +4867,11 @@ def _reserve_owned_pid_projection(
         return descriptor, (int(opened.st_dev), int(opened.st_ino))
 
 
-def _require_absent_pid_projection(pid_path: Path) -> None:
+def _require_absent_pid_projection(
+    pid_path: Path,
+    *,
+    recover_dead_owned: bool = False,
+) -> None:
     """Reject every existing PID projection before authority-bearing work."""
 
     try:
@@ -4877,6 +4886,39 @@ def _require_absent_pid_projection(pid_path: Path) -> None:
         kind = "non-regular file"
     elif int(existing.st_nlink) != 1:
         kind = "hardlinked file"
+    elif int(existing.st_uid) != os.geteuid():
+        kind = "foreign-owned file"
+    elif recover_dead_owned:
+        try:
+            parent = os.lstat(pid_path.parent)
+            payload, evidence = _read_stable_regular_bytes(
+                pid_path,
+                max_bytes=32,
+            )
+            observed = os.lstat(pid_path)
+        except (_StableArtifactReadError, OSError) as exc:
+            raise ValueError("cannot verify existing PID projection") from exc
+        if (
+            stat.S_ISLNK(parent.st_mode)
+            or not stat.S_ISDIR(parent.st_mode)
+            or int(parent.st_uid) != os.geteuid()
+            or stat.S_IMODE(parent.st_mode) & 0o077
+            or payload is None
+            or not re.fullmatch(rb"[1-9][0-9]*\n", payload)
+            or evidence.get("state") != "present"
+            or int(evidence.get("device", -1)) != int(observed.st_dev)
+            or int(evidence.get("inode", -1)) != int(observed.st_ino)
+            or stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or int(observed.st_nlink) != 1
+            or int(observed.st_uid) != os.geteuid()
+        ):
+            raise ValueError("existing PID projection is malformed or changed")
+        recorded_pid = int(payload[:-1].decode("ascii"))
+        if pid_alive(recorded_pid):
+            raise ValueError("existing PID projection names a live process")
+        pid_path.unlink()
+        return
     else:
         kind = "existing file"
     raise ValueError(f"plan-bound PID projection is an unsafe {kind}")
@@ -8865,7 +8907,6 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
-    out_handle = master_log.open("ab")
     launch_environment: dict[str, str] | None = None
     if str(getattr(args, "database_program_json", "") or ""):
         program = parse_managed_database_program_json(
@@ -8877,19 +8918,61 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         )
         launch_environment.update(program.environment())
         launch_environment[REPOSITORY_ROOT_ENV] = str(args.repo_root.resolve())
+    if launch_environment is None:
+        launch_environment = dict(os.environ)
+    # The configured-board entry point may live below a superproject whose
+    # working directory does not itself expose ``ipfs_accelerate_py``.  Pin
+    # the detached child to the exact package tree that supplied this module;
+    # do not inherit an ambient PYTHONPATH as import authority.
+    launch_environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[3])
+    master_descriptor, master_identity = _reserve_owned_pid_projection(
+        master_pid,
+        recover_dead_owned=True,
+    )
+    process: subprocess.Popen[bytes] | None = None
+    out_handle: BinaryIO | None = None
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=args.repo_root,
-            env=launch_environment,
-            stdin=subprocess.DEVNULL,
-            stdout=out_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+        out_handle = master_log.open("ab")
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=args.repo_root,
+                env=launch_environment,
+                stdin=subprocess.DEVNULL,
+                stdout=out_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        finally:
+            out_handle.close()
+            out_handle = None
+        _publish_reserved_pid_projection(
+            master_pid,
+            master_descriptor,
+            master_identity,
+            process.pid,
         )
+    except BaseException:
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=2.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    pass
+        _discard_reserved_pid_projection(master_pid, master_identity)
+        raise
     finally:
-        out_handle.close()
-    master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
+        if out_handle is not None:
+            out_handle.close()
+        os.close(master_descriptor)
+    assert process is not None
     # The child normally removes its own projection after fencing every
     # track.  Cover the short-run race where it exits before this parent can
     # publish the detached PID.
