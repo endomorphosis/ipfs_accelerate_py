@@ -5172,6 +5172,106 @@ def test_typed_database_task_source_records_process_bound_retry_cooldown(
         server.stop()
 
 
+def test_typed_owner_stamps_post_commit_retry_placeholders_before_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retained-candidate receipt carries owner-stamped placeholders."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id="post-commit-retry-deadline-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 1_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:post-commit-recovery",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="post-commit-recovery",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+        queue_reason = (
+            "database_portal_post_commit_candidate_recovery:sha256:" + "a" * 64
+        )
+        transition_receipt = {
+            "operation": "database_portal_post_commit_candidate_recovery",
+            **{
+                name: claim[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+            "queue_reason": queue_reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "control_expected_revision": claimed.revision,
+        }
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=claimed.task_cid,
+            expected_revision=claimed.revision,
+            expected_control_receipt=claimed.body["completion_receipt"],
+            status="retrying",
+            receipt=transition_receipt,
+            delay_ms=250,
+            reason=queue_reason,
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["transition_receipt"]["backoff_ms"] == 250
+        assert result["transition_receipt"]["retry_not_before_ms"] == 1_250
+        observed = source.get_task(claimed.task_cid)
+        queue = source.get_queue_entry(claimed.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        assert observed.body["completion_receipt"] == result[
+            "transition_receipt"
+        ]
+        assert queue is not None
+        assert queue.reason == queue_reason
+        assert queue.retry_not_before_ms == 1_250
+        clock["now_ms"] = 1_249
+        assert source.ready_tasks().tasks == ()
+        clock["now_ms"] = 1_250
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            claimed.task_cid,
+        )
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+    finally:
+        source.close()
+        server.stop()
+
+
 def test_typed_database_task_source_repairs_stale_retrying_cooldown_lineage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
