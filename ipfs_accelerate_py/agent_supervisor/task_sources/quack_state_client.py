@@ -91,12 +91,17 @@ from .typed_state_owner import (
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
     TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     _legacy_unstall_recovery_receipt,
+    _post_commit_route_recovery_command_digest,
+    _post_commit_route_recovery_material,
     _process_birth_content_id,
     _process_runtime_facts,
     _protected_qualification_completion_command_digest,
@@ -659,6 +664,33 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "Replace one older typed cooldown by exact lease revision"
+            ),
+        ),
+        "executor_rebind_retry_cooldown_task_revision": StatementTemplate(
+            name="executor_rebind_retry_cooldown_task_revision",
+            sql=(
+                "UPDATE leases SET resolution_cid = ?, extension_json = ? "
+                "WHERE task_cid = ? AND revision = ? AND attempt = ? AND "
+                "resolution_cid = ? AND extension_schema = ? AND "
+                "extension_json = ? RETURNING task_cid, claim_cid, "
+                "resolution_cid, claimant_did, logical_epoch, fencing_token, "
+                "expires_at_ms, attempt, state, started_at_ms, release_reason, "
+                "retry_not_before_ms, owner_session_id, fence_epoch, revision, "
+                "extension_schema, extension_json"
+            ),
+            parameter_names=(
+                "new_resolution_cid",
+                "new_extension_json",
+                "task_cid",
+                "expected_queue_revision",
+                "expected_queue_attempt",
+                "expected_resolution_cid",
+                "expected_extension_schema",
+                "expected_extension_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Rebind one same-attempt cooldown to an advanced task revision"
             ),
         ),
         "insert_task": StatementTemplate(
@@ -3238,6 +3270,185 @@ class QuackStateClient:
                 "queue_revision": new_queue_revision,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
+
+    def recover_post_commit_route_lineage(
+        self,
+        *,
+        task_cid: str,
+        task_alias: str,
+        expected_task_revision: int,
+        current_body: Mapping[str, Any],
+        prior_status: str,
+        prior_body: Mapping[str, Any],
+        queue: Mapping[str, Any],
+        current_policy_id: str,
+        current_policy_source_revision: int,
+        current_plan_root_cid: str,
+        current_repository_tree_id: str,
+        current_task_contract_cid: str,
+        current_execution_mode: str,
+    ) -> CASResult:
+        """Atomically restore one exact route tuple from revision history."""
+
+        try:
+            material = _post_commit_route_recovery_material(
+                task_cid=task_cid,
+                task_alias=task_alias,
+                current_revision=expected_task_revision,
+                current_body=current_body,
+                prior_status=prior_status,
+                prior_body=prior_body,
+                queue=queue,
+                current_policy_id=current_policy_id,
+                current_policy_source_revision=current_policy_source_revision,
+                current_plan_root_cid=current_plan_root_cid,
+                current_repository_tree_id=current_repository_tree_id,
+                current_task_contract_cid=current_task_contract_cid,
+                current_execution_mode=current_execution_mode,
+            )
+        except TypedStateOwnerError as exc:
+            raise QuackClientError(
+                "post-commit route recovery evidence is invalid"
+            ) from exc
+        canonical_queue_extension = canonical_json_bytes(
+            dict(queue["extension"])
+        ).decode("utf-8")
+        if queue.get("extension_json") != canonical_queue_extension:
+            raise QuackClientError(
+                "post-commit route recovery requires canonical cooldown bytes"
+            )
+        parameters = {
+            "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "expected_task_revision": expected_task_revision,
+            "expected_task_status": "retrying",
+            "prior_task_revision": expected_task_revision - 1,
+            "status": "retrying",
+            "current_policy_id": current_policy_id,
+            "current_policy_source_revision": current_policy_source_revision,
+            "current_plan_root_cid": current_plan_root_cid,
+            "current_repository_tree_id": current_repository_tree_id,
+            "current_task_contract_cid": current_task_contract_cid,
+            "current_execution_mode": current_execution_mode,
+            "prior_receipt_cid": material["prior_receipt_cid"],
+            "current_receipt_cid": material["current_receipt_cid"],
+            "route_binding_cid": material["route_binding_cid"],
+            "route_binding_json": canonical_json_bytes(
+                material["route"]
+            ).decode("utf-8"),
+            "body_json": material["body_json"],
+            "expected_queue_revision": int(queue["revision"]),
+            "expected_queue_attempt": int(queue["attempt"]),
+            "expected_queue_resolution_cid": str(queue["resolution_cid"]),
+            "expected_queue_extension_json": canonical_queue_extension,
+            "new_queue_revision": material["new_queue_revision"],
+            "new_queue_resolution_cid": material["new_resolution_cid"],
+            "new_queue_extension_json": material["new_extension_json"],
+        }
+        digest = _post_commit_route_recovery_command_digest(parameters)
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:post-commit-route-recovery:{digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=f"executor-post-commit-route-recovery:{digest}",
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
+            )
+            observed_rows = _fetch_all(observed_result)
+            if len(observed_rows) != 1:
+                raise OptimisticConflictError(
+                    "post-commit route recovery cooldown became ambiguous"
+                )
+            observed = _row_mapping(
+                _result_columns(observed_result), observed_rows[0]
+            )
+            if (
+                observed.get("revision") != values["expected_queue_revision"]
+                or observed.get("attempt") != values["expected_queue_attempt"]
+                or observed.get("resolution_cid")
+                != values["expected_queue_resolution_cid"]
+                or observed.get("extension_schema")
+                != TYPED_RETRY_COOLDOWN_SCHEMA
+                or observed.get("extension_json")
+                != values["expected_queue_extension_json"]
+            ):
+                raise OptimisticConflictError(
+                    "post-commit route recovery cooldown CAS is stale"
+                )
+            queue_result = txn.execute_named_operation(
+                "executor_rebind_retry_cooldown_task_revision",
+                (
+                    values["new_queue_resolution_cid"],
+                    values["new_queue_extension_json"],
+                    values["task_cid"],
+                    values["expected_queue_revision"],
+                    values["expected_queue_attempt"],
+                    values["expected_queue_resolution_cid"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                    values["expected_queue_extension_json"],
+                ),
+            )
+            if _fetch_one(queue_result) is None:
+                raise OptimisticConflictError(
+                    "post-commit route recovery cooldown rebind failed"
+                )
+            recorded_at = self._clock()
+            task_result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "retrying",
+                    expected_task_revision + 1,
+                    recorded_at,
+                    values["body_json"],
+                    values["task_cid"],
+                    expected_task_revision,
+                ),
+            )
+            if _fetch_one(task_result) is None:
+                raise OptimisticConflictError(
+                    "post-commit route recovery task CAS failed"
+                )
+            history_result = txn.execute_named_operation(
+                "executor_insert_task_revision_history",
+                (values["task_cid"], expected_task_revision + 1),
+            )
+            if _fetch_one(history_result) is None:
+                raise OptimisticConflictError(
+                    "post-commit route recovery history append failed"
+                )
+            return {
+                "schema": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+                "event_type": "TASK_POST_COMMIT_ROUTE_LINEAGE_RECOVERED",
+                "task_cid": values["task_cid"],
+                "source_task_revision": expected_task_revision,
+                "task_revision": expected_task_revision + 1,
+                "queue_revision": values["new_queue_revision"],
+                "route_binding_cid": values["route_binding_cid"],
+                "recovery_receipt_id": material["witness"]["receipt_id"],
                 "store_revision_before": generation.revision,
             }
 
