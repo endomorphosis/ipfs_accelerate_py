@@ -1063,3 +1063,78 @@ def test_recover_poisoned_owner_connection_replaces_shared_handle(
     assert server._connection is replacement
     assert gateway._connection is replacement
     assert materializer._recover_poisoned_owner_connection(server) is False
+
+
+def test_recover_poisoned_owner_connection_uses_config_path_when_wrap_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    replacement = object()
+    database_path = tmp_path / "control.duckdb"
+    opened: list[Path] = []
+
+    class _Wrapped:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = None
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    wrapped = _Wrapped()
+    server = SimpleNamespace(
+        _connection=wrapped,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=wrapped),
+        _transport_connection=wrapped,
+        config=SimpleNamespace(database_path=database_path),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
+        "open_quack_state_owner_connection",
+        lambda path: opened.append(Path(path)) or replacement,
+    )
+
+    assert materializer._recover_poisoned_owner_connection(server) is True
+    assert wrapped.closed is True
+    assert opened == [database_path]
+    assert server._connection is replacement
+    assert server._command_gateway._connection is replacement
+    assert server._transport_connection is replacement
+
+
+def test_recover_poisoned_owner_connection_restarts_shared_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    replacement = object()
+    refreshed: list[bool] = []
+
+    class _Poisoned:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+
+        def close(self) -> None:
+            return None
+
+    poisoned = _Poisoned()
+    server = SimpleNamespace(
+        _connection=poisoned,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=poisoned),
+        _transport_connection=poisoned,
+        _refresh_read_replica=lambda: refreshed.append(True),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
+        "open_quack_state_owner_connection",
+        lambda path: replacement,
+    )
+
+    assert materializer._recover_poisoned_owner_connection(server) is True
+    assert refreshed == [True]
+    assert server._transport_connection is replacement

@@ -1754,18 +1754,24 @@ def _verify_control_plane(path: Path) -> Any:
 
 
 def _owner_connection(path: Path) -> Any:
-    import duckdb
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        DuckDBConnection,
+        open_quack_state_owner_connection,
     )
 
-    connection = duckdb.connect(str(path))
-    try:
-        connection.execute("LOAD quack")
-    except BaseException:
-        connection.close()
-        raise
-    return DuckDBConnection.wrap(connection)
+    # wrap() leaves DuckDBConnection.path = None, which made poisoned-handle
+    # recovery return False forever and never restart quack_serve.
+    return open_quack_state_owner_connection(path)
+
+
+def _owner_database_path(server: Any, connection: Any | None) -> Path | None:
+    path = getattr(connection, "path", None)
+    if path is not None:
+        return Path(path)
+    config = getattr(server, "config", None)
+    fallback = getattr(config, "database_path", None) if config is not None else None
+    if fallback is None:
+        return None
+    return Path(fallback)
 
 
 def _normalized_owner_dml(sql: str) -> str:
@@ -1904,14 +1910,14 @@ def _recover_poisoned_owner_connection(
 
     connection = getattr(server, "_connection", None)
     lock = getattr(server, "_owner_transaction_lock", None)
-    path = getattr(connection, "path", None)
+    path = _owner_database_path(server, connection)
     if connection is None or lock is None or path is None:
         return False
     if not force and getattr(connection, "_poisoned", False) is not True:
         return False
     with lock:
         current = getattr(server, "_connection", None)
-        current_path = getattr(current, "path", None)
+        current_path = _owner_database_path(server, current)
         if current is None or current_path is None:
             return False
         if not force and getattr(current, "_poisoned", False) is not True:
@@ -1922,11 +1928,24 @@ def _recover_poisoned_owner_connection(
                 close()
             except Exception:
                 pass
-        replacement = open_quack_state_owner_connection(path)
+        replacement = open_quack_state_owner_connection(current_path)
         server._connection = replacement
         gateway = getattr(server, "_command_gateway", None)
         if gateway is not None:
             gateway._connection = replacement
+        # SPAR loads quack_serve on the exclusive writer. Closing that handle
+        # kills the listener; lanes then cycle on attach. Restart transport
+        # on the replacement when it was sharing the poisoned writer.
+        if getattr(server, "_transport_connection", None) is current:
+            server._transport_connection = None
+            refresh = getattr(server, "_refresh_read_replica", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                except Exception:
+                    pass
+            if getattr(server, "_transport_connection", None) is None:
+                server._transport_connection = replacement
         return True
 
 
@@ -2864,13 +2883,18 @@ class _OwnerProjectionMonitor:
                 _publish_live_projection(self.server, self.paths)
             except BaseException as exc:
                 recovered = False
+                recover_error_type = ""
+                recover_error = ""
+                connection = getattr(self.server, "_connection", None)
                 try:
                     recovered = _recover_poisoned_owner_connection(
                         self.server,
                         force=True,
                     )
-                except Exception:
+                except Exception as recover_exc:
                     recovered = False
+                    recover_error_type = type(recover_exc).__name__
+                    recover_error = str(recover_exc)[-1000:]
                 if initial and not recovered:
                     self.failure = type(exc).__name__
                     self.ready.set()
@@ -2886,6 +2910,19 @@ class _OwnerProjectionMonitor:
                             "error_type": type(exc).__name__,
                             "error": str(exc)[-1000:],
                             "recovered": recovered,
+                            "recover_error_type": recover_error_type,
+                            "recover_error": recover_error,
+                            "connection_path_present": (
+                                getattr(connection, "path", None) is not None
+                            ),
+                            "config_database_path_present": (
+                                getattr(
+                                    getattr(self.server, "config", None),
+                                    "database_path",
+                                    None,
+                                )
+                                is not None
+                            ),
                             "initial": initial,
                         },
                         sort_keys=True,
