@@ -4031,6 +4031,44 @@ def test_aseh_health_blocked_reconciliation_allows_startup_lane_refresh(
     assert after_startup["blocked_recovery_admitted"] is False
 
 
+def test_aseh_health_admits_idle_strict_shard_lane_without_worker_census(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now - 1.0,
+        lane_mtime_ns=int((now - 1.0) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    for sample in (before, current):
+        sample["lanes"][0]["watchdog_admissible"] = False  # type: ignore[index]
+        sample["lanes"][0]["active_worker_count"] = 0  # type: ignore[index]
+        sample["lanes"][0]["worker_stall_admissible"] = True  # type: ignore[index]
+        sample["lanes"][0]["stalled_without_active_worker"] = None  # type: ignore[index]
+
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    assert receipt["lane_heartbeat_fresh"] is True
+    assert receipt["healthy"] is True
+    assert aseh_operator._post_admission_health_action(
+        receipt,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("continue", "")
+
+
 def test_aseh_health_admits_parallel_blocked_recovery_only_during_startup(
     tmp_path: Path,
 ) -> None:
@@ -4235,6 +4273,14 @@ def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     healthy = {**lane_only, "healthy": True, "lane_heartbeat_fresh": True}
     assert aseh_operator._post_admission_health_action(
         healthy,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    working = {**lane_only, "lane_active_worker_count": 2}
+    assert aseh_operator._post_admission_health_action(
+        working,
         prior_available=True,
         current_available=True,
         unhealthy_edges=2,
