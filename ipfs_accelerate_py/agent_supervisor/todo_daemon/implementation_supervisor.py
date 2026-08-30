@@ -237,10 +237,18 @@ CONTROL_PLANE_SOURCE_PATHS = (
 )
 
 
-def _read_control_plane_source_snapshot() -> dict[str, Any]:
-    """Return the current accelerator control-plane tree and file identity."""
+def _read_control_plane_source_snapshot(
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Return listed control-plane file identity plus informational Git ids.
 
-    repository_root = Path(__file__).resolve().parents[3]
+    ``source_id`` hashes CONTROL_PLANE_SOURCE_PATHS only. The agent_supervisor
+    tree id is reported for status, but implementation merges under that tree
+    must not force supervisor execv unless those listed files changed.
+    """
+
+    if repository_root is None:
+        repository_root = Path(__file__).resolve().parents[3]
 
     def git_revision(revision: str) -> str:
         try:
@@ -285,11 +293,11 @@ def _read_control_plane_source_snapshot() -> dict[str, Any]:
 
     identity_payload = {
         "schema": CONTROL_PLANE_SOURCE_SCHEMA,
-        "control_plane_tree_id": control_plane_tree_id,
         "sources": sources,
     }
     return {
         **identity_payload,
+        "control_plane_tree_id": control_plane_tree_id,
         "repository_revision": repository_revision,
         "repository_root": str(repository_root),
         "source_id": content_identity(identity_payload),
@@ -9109,10 +9117,17 @@ class PortalSupervisorConfig:
                     raise LaunchSourceAmendmentError(
                         "launch Git generation is unavailable"
                     )
-                launch_amendment.validate_launch_git(
+                from .implementation_daemon import _launch_amendment_covers_git
+
+                if not _launch_amendment_covers_git(
+                    launch_amendment,
                     source_head=head.stdout.strip(),
                     repository_tree_id=tree.stdout.strip(),
-                )
+                    repo_root=self.repo_root,
+                ):
+                    raise LaunchSourceAmendmentError(
+                        "launch Git generation differs from its source amendment"
+                    )
             except (OSError, LaunchSourceAmendmentError) as exc:
                 raise SupervisorSchedulerConfigError(
                     "launch-source amendment is invalid"

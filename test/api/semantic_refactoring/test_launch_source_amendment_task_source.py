@@ -492,6 +492,89 @@ def test_launch_amendment_covers_descendant_git_after_merge(tmp_path: Path) -> N
     assert loaded.amendment_id == amendment.amendment_id
 
 
+def _portal_supervisor_config_for_amendment(
+    repo: Path,
+    amendment: LaunchSourceAmendment,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        PortalSupervisorConfig,
+    )
+
+    state_dir = repo / "state"
+    state_dir.mkdir(exist_ok=True)
+    return PortalSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        board_namespace=amendment.board_namespace,
+        launch_source_amendment_json=amendment.to_json(),
+        require_launch_source_amendment=True,
+        repo_root=repo,
+    )
+
+
+def test_portal_supervisor_config_accepts_descendant_git_after_merge(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        SupervisorSchedulerConfigError,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "one"], cwd=repo, check=True, capture_output=True)
+    launch_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    launch_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _task, _policy, base, _task_row, _plan_row = _fixture()
+    amendment = base.successor_for_current_generation(
+        source_head=launch_head,
+        repository_tree_id=launch_tree,
+    )
+    (repo / "README.md").write_text("two\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "two"], cwd=repo, check=True, capture_output=True)
+
+    config = _portal_supervisor_config_for_amendment(repo, amendment)
+    assert config.launch_source_amendment_json == amendment.to_json()
+
+    subprocess.run(
+        ["git", "checkout", "--orphan", "unrelated"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "README.md").write_text("other\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "unrelated"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(SupervisorSchedulerConfigError, match="launch-source amendment is invalid"):
+        _portal_supervisor_config_for_amendment(repo, amendment)
+
+
 def test_unasserted_predecessor_board_does_not_acquire_amendment() -> None:
     _task, policy, _amendment, task_row, plan_row = _fixture()
     client = _Client(task_row=task_row, plan_row=plan_row)

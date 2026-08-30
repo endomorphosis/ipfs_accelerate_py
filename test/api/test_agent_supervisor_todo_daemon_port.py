@@ -16016,6 +16016,49 @@ def test_implementation_supervisor_publishes_stable_control_plane_identity(
     assert status["control_plane_update_detected_at"] == ""
 
 
+def test_control_plane_source_id_ignores_unlisted_agent_supervisor_tree_changes(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    for relative in implementation_supervisor_module.CONTROL_PLANE_SOURCE_PATHS:
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{relative}\n", encoding="utf-8")
+    extra = repo / "ipfs_accelerate_py" / "agent_supervisor" / "semantic_refactoring" / "extra.py"
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_text("first\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "one"], cwd=repo, check=True, capture_output=True)
+
+    first = implementation_supervisor_module._read_control_plane_source_snapshot(
+        repository_root=repo
+    )
+    extra.write_text("second\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "two"], cwd=repo, check=True, capture_output=True)
+    second = implementation_supervisor_module._read_control_plane_source_snapshot(
+        repository_root=repo
+    )
+
+    assert first["source_id"]
+    assert first["source_id"] == second["source_id"]
+    assert first["control_plane_tree_id"] != second["control_plane_tree_id"]
+
+    listed = repo / implementation_supervisor_module.CONTROL_PLANE_SOURCE_PATHS[0]
+    listed.write_text("changed-control-plane\n", encoding="utf-8")
+    third = implementation_supervisor_module._read_control_plane_source_snapshot(
+        repository_root=repo
+    )
+    assert third["source_id"] != first["source_id"]
+
+
 def test_implementation_supervisor_idle_source_drift_requests_process_reload(
     tmp_path,
     monkeypatch,
