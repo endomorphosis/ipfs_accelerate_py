@@ -35930,3 +35930,30 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
         "launch_git_guard_scope = _prepared_candidate_git_guard"
     )
     assert aseh_operator.ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS == 600.0
+
+
+def test_aseh_r45_receipt_id_reuses_memoized_validation_contracts() -> None:
+    path = (
+        aseh_operator.ROOT
+        / "data/aseh/evidence/bootstrap"
+        / "bootstrap-repair-historical-live-evidence-revision-closure-transition.json"
+    )
+    payload = aseh_operator._secure_runtime_json(
+        path,
+        max_bytes=aseh_operator.STATUS_RECEIPT_MAX_BYTES,
+    )
+    started = time.perf_counter()
+    first = aseh_operator._repair_historical_live_evidence_revision_closure_transition_receipt_id(
+        payload
+    )
+    first_elapsed = time.perf_counter() - started
+    started = time.perf_counter()
+    second = aseh_operator._repair_historical_live_evidence_revision_closure_transition_receipt_id(
+        payload
+    )
+    second_elapsed = time.perf_counter() - started
+    assert first == second
+    assert first.startswith("sha256:")
+    assert first_elapsed < 30.0
+    assert second_elapsed < 5.0
+    assert aseh_operator._r45_sealed_receipt_validation_executor_contract.cache_info().hits >= 1
