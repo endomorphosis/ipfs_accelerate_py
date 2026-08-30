@@ -1,0 +1,28 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-072",
+  "task_cid": "sha256:da9259c71470767b7c97927a0e91dab572b75e0f20b3bfe3d9071249e98550f9",
+  "title": "Add AST/dependency/static analysis routing",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"},
+    "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"},
+    "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"},
+    "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}
+  },
+  "changed_paths": ["ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-072.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-072.json"],
+  "expected_outputs": ["ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-072.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-072.json"],
+  "write_scope": ["ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-072.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-072.json"],
+  "outputs_present": {"ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py": true, "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-072.json": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-072.json": true},
+  "path_digests": {"ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py": "sha256:203ab93a828d0b06bc99a2876eedefa1cddd22a37f4b5a9a238caf107e0317dd", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py": "sha256:f8c452555732ce65aa6b23e402aadfc339f1b2f66ea174c18a30533eb2cea033", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-072.json": "sha256:83fad89ee68461be5264700e1c6c8a523f8cf53e386d673bdfab76e952b5cf77"},
+  "required_evidence": {"source_commit_tree_gitlinks": {"ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"}, "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"}, "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"}, "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}}, "test_proof_results": {"validation_command": ["python3", "-m", "pytest", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py", "-q"], "proof_selection": "verified_empty", "proof_reason": "The deterministic current-tree test exercises canonical AST identity, transitive internal dependency closure, static-result provenance, and fail-closed absent/opaque inputs; this task makes no separate formal proof claim."}, "limitations": ["Candidate receipt only; independent fenced supervisor admission is required for completion.", "Worker or model assertion alone is insufficient.", "Static-analysis state is execution provenance only; it never substitutes for a verification receipt or proof.", "Only imports resolvable in the current AST snapshot enter the automatic dependency cone; opaque dependencies must be explicit."], "verifier_admission": "pending_independent_fenced_supervisor"},
+  "validation": {"commands": [{"argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_072_add_ast_dependency_static_analysis_routing.py", "-q"], "cwd": "external/ipfs_accelerate", "status": "candidate_local"}]},
+  "supervisor_acceptance": {"completion_authoritative": false, "state": "pending_independent_fenced_supervisor"}
+}

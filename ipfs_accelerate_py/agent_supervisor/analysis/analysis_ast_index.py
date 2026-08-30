@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -26,6 +27,10 @@ from ..core.conflict_graph import (
     coerce_ast_blob_record,
     index_ast_blob_records,
 )
+from ..verification.model_route import (
+    AnalysisKind,
+    ModelRouteFacts,
+)
 
 
 ANALYSIS_AST_INDEX_SCHEMA_VERSION = 1
@@ -35,6 +40,9 @@ DEFAULT_QUERY_MAX_BYTES = 32_768
 HARD_QUERY_MAX_RESULTS = 100
 HARD_QUERY_MAX_BYTES = 1_048_576
 MIN_QUERY_MAX_BYTES = 256
+AST_DEPENDENCY_STATIC_ROUTE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/ast-dependency-static-route@1"
+)
 
 _PATH_FIELDS = ("path", "root_relative_path", "new_path", "file")
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
@@ -54,6 +62,20 @@ class ASTEvidenceKind(str, Enum):
     CALL = "call"
     REFERENCE = "reference"
     OBJECTIVE_TERM = "objective_term"
+
+
+class StaticAnalysisState(str, Enum):
+    """Whether a separately executed static check has supplied a result.
+
+    The index never executes a tool or treats a caller declaration as proof.
+    This state only preserves the routing boundary between AST/dependency
+    inspection and the existing verification executor.
+    """
+
+    NOT_REQUESTED = "not_requested"
+    PASSED = "passed"
+    FAILED = "failed"
+    UNAVAILABLE = "unavailable"
 
 
 def _canonical_json(value: Any) -> str:
@@ -460,6 +482,78 @@ class ASTEvidenceQueryResult:
         if indent is None:
             return _canonical_json(self.to_dict())
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent, sort_keys=True)
+
+
+@dataclass(frozen=True)
+class ASTDependencyStaticRoute:
+    """Bounded deterministic input for the canonical model-route planner.
+
+    This is deliberately a projection of :class:`AnalysisASTIndex`, not a
+    second routing ladder.  It identifies the current AST evidence and its
+    resolvable internal dependency cone, carries the result of a separately
+    executed static check, and derives the existing ``ModelRouteFacts``.
+    Callers must still pass those facts to ``decide_model_route``; no model is
+    selected, invoked, or accepted here.
+    """
+
+    index_id: str
+    focus_paths: tuple[str, ...]
+    dependency_paths: tuple[str, ...]
+    unresolved_dependencies: tuple[str, ...]
+    static_analysis_state: StaticAnalysisState
+    static_check_ids: tuple[str, ...]
+    ast_evidence: ASTEvidenceQueryResult
+    model_route_facts: ModelRouteFacts
+    reasons: tuple[str, ...]
+    schema: str = AST_DEPENDENCY_STATIC_ROUTE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != AST_DEPENDENCY_STATIC_ROUTE_SCHEMA:
+            raise AnalysisASTIndexError(f"unsupported AST route schema {self.schema!r}")
+        if not str(self.index_id).strip():
+            raise AnalysisASTIndexError("AST route requires an index identity")
+        object.__setattr__(self, "focus_paths", tuple(sorted({_repo_path(path) for path in self.focus_paths})))
+        object.__setattr__(self, "dependency_paths", tuple(sorted({_repo_path(path) for path in self.dependency_paths})))
+        object.__setattr__(
+            self,
+            "unresolved_dependencies",
+            tuple(sorted({str(item).strip() for item in self.unresolved_dependencies if str(item).strip()})),
+        )
+        object.__setattr__(self, "static_analysis_state", StaticAnalysisState(self.static_analysis_state))
+        check_ids = tuple(sorted({str(item).strip() for item in self.static_check_ids if str(item).strip()}))
+        if self.static_analysis_state is StaticAnalysisState.PASSED and not check_ids:
+            raise AnalysisASTIndexError("a passed static analysis route requires check identities")
+        object.__setattr__(self, "static_check_ids", check_ids)
+        object.__setattr__(self, "reasons", tuple(dict.fromkeys(str(item) for item in self.reasons if str(item))))
+
+    @property
+    def dependency_cone_size(self) -> int:
+        return len(self.dependency_paths)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "index_id": self.index_id,
+            "focus_paths": list(self.focus_paths),
+            "dependency_paths": list(self.dependency_paths),
+            "unresolved_dependencies": list(self.unresolved_dependencies),
+            "static_analysis_state": self.static_analysis_state.value,
+            "static_check_ids": list(self.static_check_ids),
+            "ast_evidence": self.ast_evidence.to_dict(),
+            "model_route_facts": self.model_route_facts.to_dict(),
+            "reasons": list(self.reasons),
+        }
+
+
+def _import_module(value: str) -> str:
+    """Extract the imported module from canonical AST import facts."""
+
+    text = " ".join(str(value).split())
+    if text.startswith("from ") and " import " in text:
+        return text[5:].split(" import ", 1)[0].strip()
+    if text.startswith("import "):
+        return text[7:].split(" as ", 1)[0].strip()
+    return ""
 
 
 def _reference_sort_key(item: ASTEvidenceReference) -> tuple[Any, ...]:
@@ -931,6 +1025,103 @@ class AnalysisASTIndex:
         }
         return methods[normalized](query, max_results=max_results, max_bytes=max_bytes)
 
+    def route_ast_dependency_static_analysis(
+        self,
+        *,
+        paths: Iterable[str] = (),
+        query: Any = "",
+        static_analysis_state: StaticAnalysisState | str = StaticAnalysisState.NOT_REQUESTED,
+        static_check_ids: Iterable[str] = (),
+        opaque_dependencies: Iterable[str] = (),
+        max_results: int = DEFAULT_QUERY_MAX_RESULTS,
+        max_bytes: int = DEFAULT_QUERY_MAX_BYTES,
+    ) -> ASTDependencyStaticRoute:
+        """Project current AST evidence into canonical model-route facts.
+
+        Internal imports are resolved only against this exact index snapshot.
+        Imports outside the snapshot are not guessed to be repository
+        dependencies; callers may explicitly supply opaque dependencies when
+        their authority knows a dependency cannot be inspected.  Static state
+        is declarative execution provenance, never a substituted proof.
+        """
+
+        selected = tuple(sorted({_repo_path(path) for path in paths}))
+        known_paths = set(self.paths)
+        missing = tuple(path for path in selected if path not in known_paths)
+        if missing:
+            raise AnalysisASTIndexError(
+                "AST routing paths are absent from the current snapshot: " + ", ".join(missing)
+            )
+        if not selected:
+            selected = self.paths
+
+        evidence = self.query_objective_terms(
+            query, max_results=max_results, max_bytes=max_bytes
+        )
+        by_module = {item.module: item.path for item in self.path_records if item.module}
+        by_path = {item.path: item for item in self.path_records}
+        pending = list(selected)
+        closure = set(selected)
+        while pending:
+            item = by_path[pending.pop()]
+            for raw_import in item.ast_record.imports:
+                module = _import_module(raw_import)
+                target = by_module.get(module)
+                if target is not None and target not in closure:
+                    closure.add(target)
+                    pending.append(target)
+
+        state = StaticAnalysisState(static_analysis_state)
+        opaque = tuple(sorted({str(item).strip() for item in opaque_dependencies if str(item).strip()}))
+        reasons: list[str] = ["canonical_ast_snapshot", "internal_dependency_closure"]
+        if opaque:
+            reasons.append("opaque_dependency_declared")
+        if state is StaticAnalysisState.PASSED:
+            reasons.append("static_check_result_declared_passed")
+        elif state is StaticAnalysisState.FAILED:
+            reasons.append("static_check_result_declared_failed")
+        elif state is StaticAnalysisState.UNAVAILABLE:
+            reasons.append("static_check_unavailable")
+        else:
+            reasons.append("static_check_not_requested")
+
+        dependency_paths = tuple(sorted(closure))
+        # The index is body-free; this conservative estimate is derived from
+        # compact canonical records, not from source text.
+        context_bytes = sum(
+            len(_canonical_json(by_path[path].ast_record.to_dict()).encode("utf-8"))
+            for path in dependency_paths
+        )
+        unresolved_count = int(state is StaticAnalysisState.FAILED)
+        opaque_count = len(opaque) + int(state is StaticAnalysisState.UNAVAILABLE)
+        if opaque_count or unresolved_count:
+            analysis_kind = AnalysisKind.OPAQUE
+        elif len(selected) > 2 or len(dependency_paths) > 8:
+            analysis_kind = AnalysisKind.MULTI_FILE_SYNTHESIS
+        elif state is StaticAnalysisState.PASSED:
+            analysis_kind = AnalysisKind.LOCALIZED_EXACT
+        else:
+            analysis_kind = AnalysisKind.LOCALIZED_CONSERVATIVE
+        facts = ModelRouteFacts(
+            context_token_estimate=math.ceil(context_bytes / 4),
+            analysis_kind=analysis_kind,
+            opaque_dependency_count=opaque_count,
+            dependency_cone_size=len(dependency_paths),
+            unresolved_obligation_count=unresolved_count,
+            changed_file_count=len(selected),
+        )
+        return ASTDependencyStaticRoute(
+            index_id=self.index_id,
+            focus_paths=selected,
+            dependency_paths=dependency_paths,
+            unresolved_dependencies=opaque,
+            static_analysis_state=state,
+            static_check_ids=tuple(static_check_ids),
+            ast_evidence=evidence,
+            model_route_facts=facts,
+            reasons=tuple(reasons),
+        )
+
     # Readable compatibility spellings for callers that use lookup/search.
     lookup_paths = query_paths
     lookup_path_evidence = query_paths
@@ -1178,6 +1369,17 @@ def build_analysis_ast_index(
     )
 
 
+def route_ast_dependency_static_analysis(
+    index: AnalysisASTIndex,
+    **kwargs: Any,
+) -> ASTDependencyStaticRoute:
+    """Route through the canonical AST index without creating another index."""
+
+    if not isinstance(index, AnalysisASTIndex):
+        raise AnalysisASTIndexError("AST/dependency/static routing requires AnalysisASTIndex")
+    return index.route_ast_dependency_static_analysis(**kwargs)
+
+
 # Concise aliases keep the standalone tranche friendly to both analysis and
 # evidence-oriented callers without exporting through agent_supervisor.__init__.
 ASTEvidenceIndex = AnalysisASTIndex
@@ -1196,6 +1398,7 @@ __all__ = [
     "ASTEvidenceKind",
     "ASTEvidenceQueryResult",
     "ASTEvidenceReference",
+    "ASTDependencyStaticRoute",
     "ASTIndexStats",
     "ASTQueryTruncation",
     "AnalysisASTEvidenceIndex",
@@ -1208,8 +1411,10 @@ __all__ = [
     "HARD_QUERY_MAX_RESULTS",
     "IndexedASTPath",
     "QueryBounds",
+    "StaticAnalysisState",
     "build_analysis_ast_index",
     "build_ast_evidence_index",
     "build_ast_index",
     "build_incremental_ast_index",
+    "route_ast_dependency_static_analysis",
 ]
