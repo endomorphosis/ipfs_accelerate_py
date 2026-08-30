@@ -1274,7 +1274,64 @@ from the stopped maximum generation 20.  Only after generation 21 is observed
 and bound may preflight, implementation dry-run, and the real supervisor
 launch continue.
 
-## 30. Current limitations at seal time
+## 30. M22 live-preflight receipt-compatibility successor
+
+M22 preserved M21 after two honest zero-attempt launch terminals: the direct
+configured scheduler exited 78 because `SAWM_QUACK_TOKEN` was unavailable,
+and the operator facade rejected the historical SAWM-001 completion because
+that frozen legacy receipt omitted a top-level `worker_self_approval` field.
+The separately pinned operator validation attested false and no task,
+definition, completion, provider, effect, commit, or merge authority changed.
+M22 admitted only that closed compatibility rule, appended plan revision 23
+and events 232--233, and launched generation 22 at port 24065.
+
+The stopped M22 run later preserved an interrupted pre-provider SAWM-015
+claim. Its exact control state is `in_progress@3`; coordination has exactly
+one accepted task lease, one accepted claim, and one running attempt, with no
+provider invocation, effect claim, implementation commit, or merge attempt.
+All 22 state-server rows are stopped and no listener, PID, owner marker,
+handoff token, or WAL remains.
+
+## 31. M23 four-lane successor and interrupted-claim settlement
+
+M23 preserves M22 immutably and admits the bounded repair commit
+`b5cd11f0beacba20935ab75ac51a63d226adc4eb` (tree
+`28d0c23d8738865419f1cd8b4f5ceb1c0178bcb8`). The repair provides lane-local
+execution sidecars, rejects duplicate lane identities, and retains one shared
+coordination authority through short-lived proxy-only operations. Its exact
+four source blobs are sealed in the M23 authorization.
+
+Before scheduling, M23 settles the exact interrupted SAWM-015 claim as a
+typed pre-provider failure, records the control CAS
+`in_progress@3 -> blocked@4 -> retrying@5`, and records one coordination
+settlement plus one operator rearm. No ordinary task definition, accepted
+completion, provider invocation, effect claim, commit, merge, or goal changes.
+The append is exactly plan revision 24, one evidence node, control events
+241--244, and coordination events 1356--1357.
+
+M23's fresh target and scheduler contract are:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m23/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m23/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m23
+Quack port    24066
+generation    23
+plan revision 24
+event cursor  244
+coord events  1357
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+provider cap  at least 4
+```
+
+Only control and coordination bases are copied. M22's read replica,
+execution sidecar, stopped status, supervisor status, and receipt remain
+historical evidence in `run-r2-m22`. Key presence on any scheduler,
+migration-inventory, or dependency-seal surface selects M23 before M22;
+partial or malformed declarations fail closed. This control commit does not
+materialize, start Quack, run preflight, launch workers, or mutate M22.
+
+## 32. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

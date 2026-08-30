@@ -3007,7 +3007,14 @@ def _m18_portal_completion_persistence_errors(
             materializer._expected_m18_portal_completion_persistence_authority()
         )
         errors: list[str] = []
-        if scheduler.get(key) != expected or migration.get(key) != expected:
+        if (
+            type(scheduler.get(key)) is not dict
+            or materializer._identity(scheduler.get(key))
+            != materializer._identity(expected)
+            or type(migration.get(key)) is not dict
+            or materializer._identity(migration.get(key))
+            != materializer._identity(expected)
+        ):
             errors.append("M18 portal-completion authority differs across controls")
         if seal.get(f"{key}_cid") != materializer._identity(expected):
             errors.append("M18 portal-completion authority CID is not exact")
@@ -3103,29 +3110,38 @@ def _m18_portal_completion_persistence_errors(
         ):
             errors.append("M18 exact SAWM-007 rearm authority differs")
         try:
-            current_head = _git(root, "rev-parse", "HEAD")
-            if "live_catalog_inventory_successor_materialization" in scheduler:
-                current_head = str(
-                    materializer._expected_m19_live_catalog_inventory_authority()[
-                        "prior_source_head"
-                    ]
+            if require_active_runtime:
+                current_head = _git(root, "rev-parse", "HEAD")
+                if "live_catalog_inventory_successor_materialization" in scheduler:
+                    current_head = str(
+                        materializer._expected_m19_live_catalog_inventory_authority()[
+                            "prior_source_head"
+                        ]
+                    )
+                materializer._assert_m18_source_delta(
+                    root,
+                    {
+                        "source_binding": {
+                            "head": current_head,
+                            "tree": _git(
+                                root, "rev-parse", f"{current_head}^{{tree}}"
+                            ),
+                            "datasets_gitlink": _git(
+                                root,
+                                "rev-parse",
+                                f"{current_head}:ipfs_datasets_py",
+                            ),
+                            "kit_gitlink": _git(
+                                root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                            ),
+                        }
+                    },
+                    expected,
                 )
-            materializer._assert_m18_source_delta(
-                root,
-                {
-                    "source_binding": {
-                        "head": current_head,
-                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
-                        "datasets_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
-                        ),
-                        "kit_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
-                        ),
-                    }
-                },
-                expected,
-            )
+            else:
+                _assert_m23_historical_source_handoff(
+                    materializer, scheduler, seal, migration, root=root
+                )
         except Exception as exc:
             errors.append(
                 "M18 exact repair/source seal differs: "
@@ -3181,6 +3197,206 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m23_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M23 on any declaration surface, including partial state."""
+
+    key = "multi_lane_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m23_multi_lane_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M23's exact sealed four-lane successor authority."""
+
+    key = "multi_lane_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m23_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M23 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m23_multi_lane_authority()
+        errors: list[str] = []
+        presence = (
+            key in scheduler,
+            key in migration,
+            f"{key}_cid" in seal,
+        )
+        if not all(presence):
+            errors.append("M23 multi-lane successor authority is only partially declared")
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M23 multi-lane authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M23 multi-lane authority CID is not exact")
+
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m23"
+        )
+        target_store = f"{target_root}/control.duckdb"
+        required = {
+            "schema": "sawm/multi-lane-successor-materialization-authorization@1",
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M23",
+            "migration_kind": key,
+            "supersession_mode": key,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m22/control.duckdb"
+            ),
+            "target_store_id": target_store,
+            "target_coordination_store_id": (
+                f"{target_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": target_root,
+            "target_generation": 23,
+            "target_quack_port": 24_066,
+            "target_plan_revision": 24,
+            "target_event_watermark": 244,
+            "lane_contract": {
+                "max_lanes": 4,
+                "lane_indices": [0, 1, 2, 3],
+                "strict_shard_remainders": [0, 1, 2, 3],
+                "strict_task_sharding": True,
+                "idle_lane_work_stealing": "",
+                "provider_minimum_concurrency": 4,
+                "coordination_authority_count": 1,
+                "coordination_transport": "quack_proxy_only",
+                "lane_local_execution_sidecars": True,
+            },
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append("M23 multi-lane successor authority is not exact")
+
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m23_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M23 exact control/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        lanes = scheduler.get("lanes")
+        provider = scheduler.get("provider", {})
+        lane_identity = (
+            [
+                (
+                    lane.get("index"),
+                    lane.get("name"),
+                    lane.get("strict_shard_remainder"),
+                )
+                for lane in lanes
+            ]
+            if type(lanes) is list
+            and all(type(lane) is dict for lane in lanes)
+            else None
+        )
+        provider_cap = (
+            provider.get("max_concurrency")
+            if isinstance(provider, Mapping)
+            else None
+        )
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "23",
+                "quack:127.0.0.1:24066",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_066,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M23 target/runtime binding is not exact")
+        if require_active_runtime and (
+            type(scheduler.get("max_lanes")) is not int
+            or scheduler.get("max_lanes") != 4
+            or scheduler.get("strict_task_sharding") is not True
+            or scheduler.get("idle_lane_work_stealing") != ""
+            or lane_identity
+            != [
+                (0, "sawm-lane-0", 0),
+                (1, "sawm-lane-1", 1),
+                (2, "sawm-lane-2", 2),
+                (3, "sawm-lane-3", 3),
+            ]
+            or any(
+                type(value) is not int
+                for lane in (lanes if type(lanes) is list else ())
+                if type(lane) is dict
+                for value in (
+                    lane.get("index"),
+                    lane.get("strict_shard_remainder"),
+                )
+            )
+            or type(provider_cap) is not int
+            or provider_cap < 4
+        ):
+            errors.append("scheduler M23 strict four-lane contract is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M23 multi-lane successor authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m22_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3190,6 +3406,45 @@ def _m22_successor_declared(
 
     key = "live_preflight_receipt_compatibility_successor_materialization"
     return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _assert_m23_historical_source_handoff(
+    materializer: Any,
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> None:
+    """Seal inactive predecessors at M23's exact precursor/repair boundary."""
+
+    key = "multi_lane_successor_materialization"
+    expected = materializer._expected_m23_multi_lane_authority()
+    repair_head = str(expected["repair_source_commit"])
+    repair_blobs = expected["repair_source_blobs"]
+    if (
+        type(scheduler.get(key)) is not dict
+        or materializer._identity(scheduler.get(key))
+        != materializer._identity(expected)
+        or type(migration.get(key)) is not dict
+        or materializer._identity(migration.get(key))
+        != materializer._identity(expected)
+        or seal.get(f"{key}_cid") != materializer._identity(expected)
+        or _git(root, "rev-parse", f"{repair_head}^{{tree}}")
+        != expected["repair_source_tree"]
+        or any(
+            _git(root, "rev-parse", f"{repair_head}:{path}") != blob_oid
+            for path, blob_oid in repair_blobs.items()
+        )
+    ):
+        raise RuntimeError("M23 historical source handoff is not exact")
+    _git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        str(expected["prior_source_head"]),
+        repair_head,
+    )
 
 
 def _m22_live_preflight_receipt_compatibility_successor_errors(
@@ -3285,23 +3540,62 @@ def _m22_live_preflight_receipt_compatibility_successor_errors(
             )
 
         try:
-            current_head = _git(root, "rev-parse", "HEAD")
-            materializer._assert_m22_source_delta(
-                root,
-                {
-                    "source_binding": {
-                        "head": current_head,
-                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
-                        "datasets_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
-                        ),
-                        "kit_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
-                        ),
-                    }
-                },
-                expected,
-            )
+            if require_active_runtime:
+                current_head = _git(root, "rev-parse", "HEAD")
+                materializer._assert_m22_source_delta(
+                    root,
+                    {
+                        "source_binding": {
+                            "head": current_head,
+                            "tree": _git(
+                                root, "rev-parse", f"{current_head}^{{tree}}"
+                            ),
+                            "datasets_gitlink": _git(
+                                root,
+                                "rev-parse",
+                                f"{current_head}:ipfs_datasets_py",
+                            ),
+                            "kit_gitlink": _git(
+                                root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                            ),
+                        }
+                    },
+                    expected,
+                )
+            else:
+                # M22 is historical only after M23 independently seals the
+                # exact precursor, repair commit/tree, and every repair blob.
+                m23_key = "multi_lane_successor_materialization"
+                expected_m23 = materializer._expected_m23_multi_lane_authority()
+                repair_head = str(expected_m23["repair_source_commit"])
+                repair_blobs = expected_m23["repair_source_blobs"]
+                if (
+                    type(scheduler.get(m23_key)) is not dict
+                    or materializer._identity(scheduler.get(m23_key))
+                    != materializer._identity(expected_m23)
+                    or type(migration.get(m23_key)) is not dict
+                    or materializer._identity(migration.get(m23_key))
+                    != materializer._identity(expected_m23)
+                    or seal.get(f"{m23_key}_cid")
+                    != materializer._identity(expected_m23)
+                    or _git(root, "rev-parse", f"{repair_head}^{{tree}}")
+                    != expected_m23["repair_source_tree"]
+                    or any(
+                        _git(root, "rev-parse", f"{repair_head}:{path}")
+                        != blob_oid
+                        for path, blob_oid in repair_blobs.items()
+                    )
+                ):
+                    raise RuntimeError(
+                        "M23 historical handoff does not seal the exact repair"
+                    )
+                _git(
+                    root,
+                    "merge-base",
+                    "--is-ancestor",
+                    str(expected_m23["prior_source_head"]),
+                    repair_head,
+                )
         except Exception as exc:
             errors.append(
                 "M22 exact control/source seal differs: "
@@ -3449,23 +3743,32 @@ def _m21_generation_realization_successor_errors(
             errors.append("M21 generation-realization authority is not exact")
 
         try:
-            current_head = _git(root, "rev-parse", "HEAD")
-            materializer._assert_m21_source_delta(
-                root,
-                {
-                    "source_binding": {
-                        "head": current_head,
-                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
-                        "datasets_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
-                        ),
-                        "kit_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
-                        ),
-                    }
-                },
-                expected,
-            )
+            if require_active_runtime:
+                current_head = _git(root, "rev-parse", "HEAD")
+                materializer._assert_m21_source_delta(
+                    root,
+                    {
+                        "source_binding": {
+                            "head": current_head,
+                            "tree": _git(
+                                root, "rev-parse", f"{current_head}^{{tree}}"
+                            ),
+                            "datasets_gitlink": _git(
+                                root,
+                                "rev-parse",
+                                f"{current_head}:ipfs_datasets_py",
+                            ),
+                            "kit_gitlink": _git(
+                                root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                            ),
+                        }
+                    },
+                    expected,
+                )
+            else:
+                _assert_m23_historical_source_handoff(
+                    materializer, scheduler, seal, migration, root=root
+                )
         except Exception as exc:
             errors.append(
                 "M21 exact control/source seal differs: "
@@ -3658,23 +3961,32 @@ def _m20_test_isolation_successor_errors(
         if set(expected.get("bounded_control_plane_repair_paths", ())) != expected_paths:
             errors.append("M20 bounded source repair paths are not exact")
         try:
-            current_head = _git(root, "rev-parse", "HEAD")
-            materializer._assert_m20_source_delta(
-                root,
-                {
-                    "source_binding": {
-                        "head": current_head,
-                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
-                        "datasets_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
-                        ),
-                        "kit_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
-                        ),
-                    }
-                },
-                expected,
-            )
+            if require_active_runtime:
+                current_head = _git(root, "rev-parse", "HEAD")
+                materializer._assert_m20_source_delta(
+                    root,
+                    {
+                        "source_binding": {
+                            "head": current_head,
+                            "tree": _git(
+                                root, "rev-parse", f"{current_head}^{{tree}}"
+                            ),
+                            "datasets_gitlink": _git(
+                                root,
+                                "rev-parse",
+                                f"{current_head}:ipfs_datasets_py",
+                            ),
+                            "kit_gitlink": _git(
+                                root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                            ),
+                        }
+                    },
+                    expected,
+                )
+            else:
+                _assert_m23_historical_source_handoff(
+                    materializer, scheduler, seal, migration, root=root
+                )
         except Exception as exc:
             errors.append(
                 "M20 exact repair/source seal differs: "
@@ -3897,23 +4209,32 @@ def _m19_live_catalog_inventory_successor_errors(
         if set(expected.get("bounded_control_plane_repair_paths", ())) != expected_paths:
             errors.append("M19 bounded source repair paths are not exact")
         try:
-            current_head = _git(root, "rev-parse", "HEAD")
-            materializer._assert_m19_source_delta(
-                root,
-                {
-                    "source_binding": {
-                        "head": current_head,
-                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
-                        "datasets_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
-                        ),
-                        "kit_gitlink": _git(
-                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
-                        ),
-                    }
-                },
-                expected,
-            )
+            if require_active_runtime:
+                current_head = _git(root, "rev-parse", "HEAD")
+                materializer._assert_m19_source_delta(
+                    root,
+                    {
+                        "source_binding": {
+                            "head": current_head,
+                            "tree": _git(
+                                root, "rev-parse", f"{current_head}^{{tree}}"
+                            ),
+                            "datasets_gitlink": _git(
+                                root,
+                                "rev-parse",
+                                f"{current_head}:ipfs_datasets_py",
+                            ),
+                            "kit_gitlink": _git(
+                                root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                            ),
+                        }
+                    },
+                    expected,
+                )
+            else:
+                _assert_m23_historical_source_handoff(
+                    materializer, scheduler, seal, migration, root=root
+                )
         except Exception as exc:
             errors.append(
                 "M19 exact repair/source seal differs: "
@@ -6604,13 +6925,61 @@ def _effective_nested_source_authorities(
     migration: Mapping[str, Any],
     seal: Mapping[str, Any],
 ) -> tuple[dict[str, dict[str, Any]], list[str]]:
-    """Overlay only the exact accepted M18 datasets gitlink transition."""
+    """Overlay the newest exact accepted nested-source transition."""
 
     effective = {
         str(item.get("package")): dict(item)
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m23_key = "multi_lane_successor_materialization"
+    m23_presence = (
+        m23_key in scheduler,
+        m23_key in migration,
+        f"{m23_key}_cid" in seal,
+    )
+    if any(m23_presence):
+        if not all(m23_presence):
+            return effective, ["active M23 nested-source authority is partial"]
+        scheduled = scheduler.get(m23_key)
+        migrated = migration.get(m23_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M23 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m23_key}_cid") != claimed_cid:
+            return effective, ["active M23 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("prior_datasets_gitlink") or ""),
+                str(scheduled.get("prior_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("prior_kit_gitlink") or ""),
+                str(scheduled.get("prior_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M23 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     key = "portal_completion_persistence_successor_materialization"
     presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
     if not any(presence):
@@ -6687,6 +7056,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m23_key = "multi_lane_successor_materialization"
+        m23_presence = (
+            m23_key in scheduler_probe,
+            m23_key in migration_probe,
+            f"{m23_key}_cid" in seal,
+        )
         m18_key = "portal_completion_persistence_successor_materialization"
         m18_presence = (
             m18_key in scheduler_probe,
@@ -6713,7 +7088,45 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m18_presence):
+        if any(m23_presence):
+            scheduled = scheduler_probe.get(m23_key)
+            migrated = migration_probe.get(m23_key)
+            if (
+                not all(m23_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m23_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M23 authority is partial or differs across source controls"
+                ]
+            else:
+                expected_paths = set(
+                    str(path) for path in scheduled.get("operator_control_paths", ())
+                )
+                expected = {path: "M" for path in expected_paths}
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(scheduled.get("repair_source_commit")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                unexpected = (
+                    []
+                    if observed == expected and working.issubset(expected_paths)
+                    else ["M23 status-qualified bounded source delta differs"]
+                )
+        elif any(m18_presence):
             if (
                 not all(m18_presence)
                 or not isinstance(scheduler_probe.get(m18_key), Mapping)
@@ -7207,7 +7620,79 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if _m22_successor_declared(scheduler, seal, migration):
+        if _m23_successor_declared(scheduler, seal, migration):
+            protocol_errors.extend(
+                _m23_multi_lane_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m22_live_preflight_receipt_compatibility_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m21_generation_realization_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m20_test_isolation_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif _m22_successor_declared(scheduler, seal, migration):
             protocol_errors.extend(
                 _m22_live_preflight_receipt_compatibility_successor_errors(
                     scheduler, seal, migration, root=root
@@ -7486,6 +7971,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "multi_lane_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M23 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "live_preflight_receipt_compatibility_successor_materialization",

@@ -557,6 +557,7 @@
   "runtime_root_rebind_successor_materialization_cid": "sha256:b3cf8f504196c577b59680581d3f81e6e20b856d7691e9ddcf1d2c107d4c455a",
   "accepted_source_retry_successor_materialization_cid": "sha256:5e6e324e41d424a4303ef774f91879301041827a6cc7e94d494ee69ea1a0e405",
   "source_binding_successor_materialization_cid": "sha256:5a7b909f10c6d9163f0e5e1460f3ac067ad7e7c5fe0d72c827d9ece94cd82628",
+  "multi_lane_successor_materialization_cid": "sha256:d0b30e096c1164b8106386bb0e55d8de0237740ae601e79d1056661da3bdeb25",
   "live_preflight_receipt_compatibility_successor_materialization_cid": "sha256:d0652e418cc3cc7507fe2abdd465cb9ff5df6570796d38193595a078e7bb8095",
   "generation_realization_successor_materialization_cid": "sha256:fc698104e314a46e1d65b9ee1ce06e97d0fc0fa83e3d45cf1b4b75ce58cb3d94",
   "test_isolation_successor_materialization_cid": "sha256:24d19d647e4806dda56a8d76f8eaf60bb1329249e1ca340e5793a4181aee4a7c",

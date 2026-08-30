@@ -29,6 +29,18 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M23_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m23/control.duckdb"
+)
+_M23_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m23/control.coordination.duckdb"
+)
+_M23_GENERATION = 23
+_M23_TARGET_PLAN_REVISION = 24
+_M23_TARGET_EVENT_WATERMARK = 244
+_M23_TARGET_QUACK_PORT = 24_066
 _M22_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m22/control.duckdb"
@@ -629,6 +641,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m23_key = "multi_lane_successor_materialization"
     m22_key = "live_preflight_receipt_compatibility_successor_materialization"
     m21_key = "generation_realization_successor_materialization"
     m20_key = "test_isolation_successor_materialization"
@@ -645,6 +658,83 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m23_key in config:
+        authority = config.get(m23_key)
+        try:
+            expected = _materializer()._expected_m23_multi_lane_authority()
+        except Exception as exc:
+            raise OperatorError("active M23 exact authority is unavailable") from exc
+        lanes = config.get("lanes")
+        database = config.get("database_program")
+        owner = config.get("quack_owner")
+        runtime = config.get("runtime_paths")
+        provider = config.get("provider")
+        expected_lanes = [
+            (0, "sawm-lane-0", 0, ["SAWM-008"]),
+            (1, "sawm-lane-1", 1, ["SAWM-006", "SAWM-010"]),
+            (2, "sawm-lane-2", 2, ["SAWM-015"]),
+            (3, "sawm-lane-3", 3, ["SAWM-012"]),
+        ]
+        lanes_are_exact = bool(
+            isinstance(lanes, list)
+            and len(lanes) == len(expected_lanes)
+            and all(
+                isinstance(lane, Mapping)
+                and type(lane.get("index")) is int
+                and type(lane.get("strict_shard_remainder")) is int
+                and (
+                    lane.get("index"),
+                    lane.get("name"),
+                    lane.get("strict_shard_remainder"),
+                    lane.get("initial_task_ids"),
+                )
+                == expected_lane
+                for lane, expected_lane in zip(lanes, expected_lanes, strict=True)
+            )
+        )
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != expected
+            or authority.get("schema")
+            != "sawm/multi-lane-successor-materialization-authorization@1"
+            or authority.get("migration_revision") != "SAWM-R2-M23"
+            or authority.get("target_store_id") != _M23_STORE_ID
+            or authority.get("target_coordination_store_id")
+            != _M23_COORDINATION_STORE_ID
+            or authority.get("target_runtime_root")
+            != str(Path(_M23_STORE_ID).parent)
+            or type(authority.get("target_generation")) is not int
+            or authority.get("target_generation") != _M23_GENERATION
+            or type(authority.get("target_quack_port")) is not int
+            or authority.get("target_quack_port") != _M23_TARGET_QUACK_PORT
+            or type(authority.get("target_plan_revision")) is not int
+            or authority.get("target_plan_revision") != _M23_TARGET_PLAN_REVISION
+            or type(authority.get("target_event_watermark")) is not int
+            or authority.get("target_event_watermark")
+            != _M23_TARGET_EVENT_WATERMARK
+            or authority.get("task_revision_changes") != 2
+            or authority.get("task_status_changes") != 2
+            or authority.get("coordination_semantic_changes") != 2
+            or not isinstance(database, Mapping)
+            or database.get("store_id") != _M23_STORE_ID
+            or database.get("store_generation") != str(_M23_GENERATION)
+            or database.get("quack_endpoint")
+            != f"quack:127.0.0.1:{_M23_TARGET_QUACK_PORT}"
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M23_STORE_ID
+            or owner.get("port") != _M23_TARGET_QUACK_PORT
+            or not isinstance(runtime, Mapping)
+            or runtime.get("root") != authority.get("target_runtime_root")
+            or config.get("max_lanes") != 4
+            or config.get("strict_task_sharding") is not True
+            or config.get("idle_lane_work_stealing") != ""
+            or not lanes_are_exact
+            or not isinstance(provider, Mapping)
+            or type(provider.get("max_concurrency")) is not int
+            or provider.get("max_concurrency", 0) < 4
+        ):
+            raise OperatorError("active M23 multi-lane successor authority is invalid")
+        return authority
     if m22_key in config:
         authority = config.get(m22_key)
         required = {
@@ -1247,6 +1337,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "multi_lane_successor_materialization",
             "live_preflight_receipt_compatibility_successor_materialization",
             "generation_realization_successor_materialization",
             "test_isolation_successor_materialization",
@@ -3617,6 +3708,255 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _m23_receipt_authority_fields(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return every M23 receipt field fixed directly by sealed authority."""
+
+    fields: dict[str, Any] = {
+        "schema": "sawm/non-authoritative-migration-receipt@21",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "coordination_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": "SAWM-R2-M23",
+        "multi_lane_successor_materialization_cid": _materializer()._identity(
+            dict(authority)
+        ),
+        "database_path": _M23_STORE_ID,
+        "coordination_path": _M23_COORDINATION_STORE_ID,
+        "prior_database_path": authority["prior_store_id"],
+        "prior_coordination_path": authority["prior_coordination_store_id"],
+        "ordinary_source_changes": 0,
+        "target_runtime_root": authority["target_runtime_root"],
+        "target_generation": authority["target_generation"],
+        "target_quack_port": authority["target_quack_port"],
+        "target_plan_revision": authority["target_plan_revision"],
+        "target_event_watermark": authority["target_event_watermark"],
+        "event_watermark": authority["target_event_watermark"],
+        "runtime_root_changed": True,
+        "source_binding_changed": True,
+        "control_and_coordination_bases_copied": True,
+        "prior_control_store_mutated": False,
+        "prior_coordination_store_mutated": False,
+        "prior_lifecycle_artifacts_preserved": True,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "coordination_semantic_changes": 2,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "goal_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "execution_sidecar_copied": False,
+        "read_replica_sidecar_copied": False,
+        "worker_self_approval": False,
+    }
+    for name in (
+        "prior_control_store_sha256",
+        "prior_control_store_size",
+        "prior_coordination_store_sha256",
+        "prior_coordination_store_size",
+        "prior_read_replica_path",
+        "prior_read_replica_sha256",
+        "prior_read_replica_size",
+        "prior_execution_sidecar_path",
+        "prior_execution_sidecar_sha256",
+        "prior_execution_sidecar_size",
+        "prior_receipt_publication_control_store_sha256",
+        "prior_receipt_publication_control_store_size",
+        "prior_receipt_publication_coordination_store_sha256",
+        "prior_receipt_publication_coordination_store_size",
+        "prior_receipt_publication_projection_cid",
+        "prior_receipt_publication_semantic_authority_digest",
+        "prior_receipt_publication_frozen_base_authority_digest",
+        "prior_receipt_publication_append_surface_digest",
+        "prior_receipt_publication_coordination_projection_digest",
+        "prior_receipt_publication_coordination_event_count",
+        "prior_receipt_publication_event_watermark",
+        "prior_receipt_publication_catalog_digest",
+        "prior_stopped_status_projection_path",
+        "prior_stopped_status_projection_sha256",
+        "prior_stopped_status_projection_size",
+        "prior_supervisor_status_path",
+        "prior_supervisor_status_sha256",
+        "prior_supervisor_status_size",
+        "prior_event_watermark",
+        "prior_event_prefix_sha256",
+        "prior_projection_cid",
+        "prior_semantic_authority_digest",
+        "prior_frozen_base_authority_digest",
+        "prior_append_surface_digest",
+        "prior_catalog_digest",
+        "prior_validation_digest",
+        "prior_migration_receipt_path",
+        "prior_migration_receipt_sha256",
+        "prior_migration_receipt_size",
+        "prior_migration_receipt_cid",
+        "prior_source_binding_cid",
+        "prior_database_uuid",
+        "prior_server_id",
+        "prior_process_birth_id",
+        "prior_startup_epoch",
+        "prior_started_at",
+        "prior_stopped_at",
+        "prior_generation",
+        "prior_active_claim_count",
+        "prior_active_attempt_count",
+        "prior_active_lease_count",
+        "interrupted_claim_evidence",
+        "failure_receipt",
+        "task_rearm",
+        "lane_contract",
+        "repair_source_commit",
+        "repair_source_tree",
+        "repair_source_blobs",
+        "accepted_control_plane_repair",
+    ):
+        fields[name] = authority[name]
+    return MappingProxyType(fields)
+
+
+def _require_m23_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M23's receipt-last marker without admitting its own output."""
+
+    key = "multi_lane_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    try:
+        expected_authority = materializer._expected_m23_multi_lane_authority()
+    except Exception as exc:
+        raise OperatorError("M23 exact authority is unavailable") from exc
+    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+        raise OperatorError("M23 multi-lane authority differs")
+
+    control = (REPO_ROOT / _M23_STORE_ID).resolve()
+    coordination = (REPO_ROOT / _M23_COORDINATION_STORE_ID).resolve()
+    try:
+        materializer._assert_m23_no_staging_or_pending(control)
+        observed, _ = materializer._load_nofollow_json(
+            control.parent / "migration-receipt.json",
+            root=REPO_ROOT,
+            noun="M23 final pair marker",
+        )
+        coordination_sha256, coordination_size = materializer._stable_regular_sha256(
+            coordination,
+            root=REPO_ROOT,
+            noun="materialized M23 coordination store",
+            required_link_count=1,
+        )
+    except Exception as exc:
+        raise OperatorError("M23 final pair marker is unavailable") from exc
+
+    population = materializer.build_population(REPO_ROOT)
+    validation_digest = materializer._identity(
+        {
+            "dependency": materializer._validator_report(
+                REPO_ROOT,
+                "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            ),
+            "board": materializer._validator_report(
+                REPO_ROOT,
+                "scripts/validate_semantic_addressed_world_model_board.py",
+            ),
+            "program_definition_cid": population["program_definition_cid"],
+        }
+    )
+    try:
+        migration_digest = materializer._identity(
+            materializer._m23_migration_body(population, config, validation_digest)
+        )
+    except Exception as exc:
+        raise OperatorError("M23 exact migration body is unavailable") from exc
+
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    digest_names = (
+        "control_store_sha256",
+        "coordination_store_sha256",
+        "semantic_authority_digest",
+        "frozen_base_authority_digest",
+        "append_surface_digest",
+        "catalog_digest",
+        "coordination_projection_digest",
+    )
+    if (
+        set(observed) != materializer._M23_RECEIPT_KEYS
+        or claimed != materializer._identity(unhashed)
+        or any(
+            observed.get(name) != value
+            for name, value in _m23_receipt_authority_fields(authority).items()
+        )
+        or observed.get("program_definition_cid")
+        != population["program_definition_cid"]
+        or observed.get("current_source_binding_cid")
+        != population["source_binding"]["source_binding_cid"]
+        or observed.get("validation_digest") != validation_digest
+        or observed.get("migration_digest") != migration_digest
+        or not all(
+            str(observed.get(name) or "")
+            for name in (
+                "migration_evidence_id",
+                "plan_migration_event_id",
+                "migration_evidence_event_id",
+                "projection_cid",
+                "coordination_settlement_event_id",
+                "coordination_rearm_event_id",
+                "coordination_rearm_id",
+            )
+        )
+        or not all(
+            re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(observed.get(name) or ""))
+            for name in digest_names
+        )
+        or not isinstance(observed.get("task_rearm_event_ids"), Mapping)
+        or set(observed["task_rearm_event_ids"]) != {"failure", "retry"}
+        or not isinstance(observed.get("task_rearm_receipt_cids"), Mapping)
+        or set(observed["task_rearm_receipt_cids"]) != {"failure", "retry"}
+        or observed.get("coordination_store_sha256") != coordination_sha256
+        or observed.get("coordination_store_size") != coordination_size
+        or config.get("runtime_paths", {}).get("root")
+        != authority["target_runtime_root"]
+    ):
+        raise OperatorError("M23 materialized final pair marker differs")
+
+    if checked is not None:
+        try:
+            expected = materializer._expected_m23_migration_receipt(
+                REPO_ROOT,
+                control,
+                coordination,
+                population,
+                config,
+                checked,
+                validation_digest,
+            )
+        except Exception as exc:
+            raise OperatorError("M23 exact materializer report is unavailable") from exc
+        if (
+            checked.get("valid") is not True
+            or checked.get("database_path") != str(control)
+            or checked.get("coordination_path") != str(coordination)
+            or checked.get("event_watermark") != _M23_TARGET_EVENT_WATERMARK
+            or checked.get("receipt") != observed
+            or expected != observed
+        ):
+            raise OperatorError(
+                "M23 materializer check differs from its final pair marker"
+            )
+    return MappingProxyType(dict(observed))
+
+
 def _m22_receipt_authority_fields(
     authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -5611,6 +5951,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "multi_lane_successor_materialization" in config:
+        return _require_m23_final_pair_marker(
+            config, authority, materializer, checked=checked
+        )
     if "live_preflight_receipt_compatibility_successor_materialization" in config:
         return _require_m22_final_pair_marker(
             config, authority, materializer, checked=checked
@@ -7131,6 +7475,155 @@ def _m22_legacy_completion_is_compatible(
     )
 
 
+def _m23_portal_completion_is_compatible(
+    materializer: Any,
+    *,
+    task_alias: str,
+    task_cid: str,
+    completion_receipt: Any,
+    operational_validation_revision: Any,
+) -> bool:
+    """Validate post-M22 portal completions without granting them authority."""
+
+    if (
+        not isinstance(completion_receipt, Mapping)
+        or "worker_self_approval" in completion_receipt
+        or completion_receipt.get("operation") != "database_complete"
+        or not isinstance(operational_validation_revision, Mapping)
+    ):
+        return False
+    validation = completion_receipt.get("validation")
+    transition = validation.get("accepted_source_transition") if isinstance(validation, Mapping) else None
+    if (
+        not isinstance(validation, Mapping)
+        or validation.get("validator") != "DatabasePortalExecutionBridge@1"
+        or validation.get("outcome") != "passed"
+        or validation.get("task_cid") != task_cid
+        or not isinstance(transition, Mapping)
+        or transition.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/accepted-source-transition@1"
+        or transition.get("task_alias") != task_alias
+        or transition.get("database_task_cid") != task_cid
+        or transition.get("worker_self_approval") is not False
+        or transition.get("task_completion_authority") is not False
+    ):
+        return False
+    operational = dict(operational_validation_revision)
+    claimed = str(operational.pop("receipt_cid", ""))
+    return bool(
+        claimed
+        and claimed == materializer._identity(operational)
+        and operational_validation_revision.get("schema")
+        == "sawm/operational-validation-revision@1"
+        and operational_validation_revision.get("authority_class")
+        == "operator_control_plane"
+        and operational_validation_revision.get("task_alias") == task_alias
+        and operational_validation_revision.get("task_cid") == task_cid
+        and operational_validation_revision.get("accepted_definition_changes") == 0
+        and operational_validation_revision.get("accepted_completion_changes") == 0
+        and operational_validation_revision.get("historical_definition_rewritten")
+        is False
+        and operational_validation_revision.get("worker_self_approval") is False
+    )
+
+
+def _verify_m23_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M23's exact settled/rearmed head through live Quack only."""
+
+    head = materializer._inspect_m23_head_task_projection(source, population)
+    if (
+        not isinstance(head, Mapping)
+        or head.get("event_watermark") != _M23_TARGET_EVENT_WATERMARK
+        or head.get("plan_revision") != _M23_TARGET_PLAN_REVISION
+        or not expected_projection_cid
+        or head.get("projection_cid") != expected_projection_cid
+        or set(head.get("tasks") or {}) != {"SAWM-015"}
+    ):
+        raise materializer.MigrationRequired("M23 live head projection differs")
+    expected_heads = {
+        "SAWM-000": ("completed", 2),
+        "SAWM-001": ("completed", 18),
+        "SAWM-002": ("completed", 4),
+        "SAWM-003": ("completed", 7),
+        "SAWM-004": ("completed", 7),
+        "SAWM-005": ("completed", 4),
+        "SAWM-007": ("completed", 7),
+        "SAWM-011": ("completed", 4),
+        "SAWM-015": ("retrying", 5),
+    }
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        task_cid = str(expected["task_cid"])
+        observed = source.get_task(task_cid)
+        expected_status, expected_revision = expected_heads.get(alias, ("todo", 2))
+        if (
+            observed is None
+            or observed.task_cid != task_cid
+            or observed.status != expected_status
+            or int(observed.revision) != expected_revision
+        ):
+            raise materializer.MigrationRequired(
+                f"M23-head task status/revision differs: {alias}"
+            )
+        completion_receipt = observed.body.get("completion_receipt")
+        operational = observed.body.get("operational_validation_revision")
+        if alias == "SAWM-000":
+            if (
+                not isinstance(completion_receipt, Mapping)
+                or completion_receipt.get("schema")
+                != "sawm/operator-bootstrap-completion@1"
+                or completion_receipt.get("worker_self_approval") is not False
+            ):
+                raise materializer.MigrationRequired(
+                    "M23-head operator completion receipt differs"
+                )
+        elif alias in {"SAWM-001", "SAWM-002", "SAWM-003", "SAWM-004", "SAWM-005"}:
+            if not _m22_legacy_completion_is_compatible(
+                materializer,
+                task_alias=alias,
+                task_cid=task_cid,
+                completion_receipt=completion_receipt,
+                operational_validation_revision=operational,
+            ):
+                raise materializer.MigrationRequired(
+                    f"M23-head legacy completion differs: {alias}"
+                )
+        elif alias in {"SAWM-007", "SAWM-011"}:
+            if not _m23_portal_completion_is_compatible(
+                materializer,
+                task_alias=alias,
+                task_cid=task_cid,
+                completion_receipt=completion_receipt,
+                operational_validation_revision=operational,
+            ):
+                raise materializer.MigrationRequired(
+                    f"M23-head portal completion differs: {alias}"
+                )
+        elif alias == "SAWM-015":
+            if completion_receipt != materializer._m23_task_rearm_receipt():
+                raise materializer.MigrationRequired(
+                    "M23-head SAWM-015 operator rearm differs"
+                )
+        elif completion_receipt is not None:
+            raise materializer.MigrationRequired(
+                f"M23-head unaccepted completion receipt exists: {alias}"
+            )
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
+
+
 def _verify_m22_live_head_task_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -7798,22 +8291,28 @@ def _live_preflight(
             "program_definition_cid": population["program_definition_cid"],
         }
     )
+    m23_active = "multi_lane_successor_materialization" in config
     m22_active = (
+        not m23_active
+        and
         "live_preflight_receipt_compatibility_successor_materialization"
         in config
     )
     m21_active = (
-        not m22_active
+        not m23_active
+        and not m22_active
         and "generation_realization_successor_materialization" in config
     )
     m20_active = (
-        not m22_active
+        not m23_active
+        and not m22_active
         and
         not m21_active
         and "test_isolation_successor_materialization" in config
     )
     m19_active = (
-        not m22_active
+        not m23_active
+        and not m22_active
         and
         not m21_active
         and
@@ -7822,7 +8321,8 @@ def _live_preflight(
         "live_catalog_inventory_successor_materialization" in config
     )
     m18_active = (
-        not m22_active
+        not m23_active
+        and not m22_active
         and
         not m21_active
         and not m20_active
@@ -7933,7 +8433,16 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if (
+            if "multi_lane_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m23_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif (
                 "live_preflight_receipt_compatibility_successor_materialization"
                 in config
             ):
@@ -8051,6 +8560,9 @@ def _live_preflight(
                 f"live Quack task authority conflict: {exc}"
             ) from exc
         expected_semantic_authority_digest = (
+            str(final_pair_marker.get("semantic_authority_digest") or "")
+            if m23_active
+            else
             active_source_repair["prior_semantic_authority_digest"]
             if "stale_owner_restart_successor_materialization" in config
             else active_source_repair["target_semantic_authority_digest"]
