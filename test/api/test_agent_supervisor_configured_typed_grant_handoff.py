@@ -4332,6 +4332,14 @@ def test_aseh_post_admission_bounds_parallel_scope_identity_flicker() -> None:
         unhealthy_edges=0,
     )[:2] == ("continue", "")
 
+    starting = {**scoped, "startup_grace_active": True}
+    assert aseh_operator._post_admission_health_action(
+        starting,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
     halted = {**scoped, "blocked_recovery_scope": ""}
     assert aseh_operator._post_admission_health_action(
         halted,
