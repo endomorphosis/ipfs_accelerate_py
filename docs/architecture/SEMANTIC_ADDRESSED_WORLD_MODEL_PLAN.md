@@ -1537,7 +1537,60 @@ divergent declarations fail closed. The materializer publishes the pair before
 its non-authoritative receipt marker and preserves every prior task definition,
 accepted completion, failure settlement, source transition, and world fact.
 
-## 35. Current limitations at seal time
+## 35. M27 dead-owner parallel-resume successor
+
+The first M26 implementation launch proved that the four database-backed lanes
+can execute concurrently, but it also exposed two control-plane defects.  A
+Markdown-shaped task prefix was normalized by the daemon and not by the
+supervisor readiness probe, leaving the watchdog with an empty scoped ready
+set.  Separately, the outer coordinator ignored the inner supervisor's
+fence-bound fresh child log and stopped all lanes when one long-running worker
+crossed the wrapper status threshold.  The bounded repair at commit
+`bbff12f06ff200b0f9280c50ca3866e1a752f3e9` makes both checks use the same
+canonical prefix and recognizes child-log liveness only when the exact wrapper
+PID, daemon PID and birth, parent relationship, run fence, repository root,
+confined non-symlink log, and freshness window all agree.  Idle, escaped,
+mismatched, or stale processes still fail closed and restart.
+
+M26 stopped without a live owner after preserving four exact coordination
+claims.  SAWM-006 and SAWM-012 are `in_progress`; SAWM-008 and SAWM-015 are
+already `retrying`.  M27 waits for the latest sealed lease deadline and expires
+the four dead-owner claims using their exact claim, attempt, lease, owner, and
+fence identities.  It changes no accepted completion.  Only SAWM-006 and
+SAWM-012 receive operator interruption CASes back to `retrying`; the other two
+task projections remain unchanged.  The landed SAWM-012 source and its portal
+records remain evidence candidates, not canonical completion authority.
+
+The M26 worktree pool is retained unchanged as historical failure and rescue
+evidence, including the fenced SAWM-006 branch and its uncommitted nested
+datasets work.  The existing configured-board scheduler requires every active
+runtime path to be confined beneath its runtime root, so M27 uses a fresh
+fenced worktree pool.  All mutable state, logs, registry, events, merge queue,
+Quack owner state, database authority, and new worktrees use the M27 namespace.
+The supervisor must recover or validate rescued source through the normal
+provider, proof/test, merge, and database-completion gates.
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27
+worktrees     data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/worktrees (fresh fenced pool; M26 rescue retained historically)
+Quack port    24070
+generation    26
+plan revision 28
+event cursor  268
+coord events  2586
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+provider cap  at least 4
+```
+
+DuckDB remains the durable control and coordination store.  Quack remains the
+single authenticated mutation authority that serializes short commits; it is
+not a restriction to one implementation worker.  Worktree, lease, fence,
+resource, merge, and completion authorities keep the four ordinary workers
+isolated and concurrent.
+
+## 36. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

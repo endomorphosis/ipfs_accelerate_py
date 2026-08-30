@@ -3197,6 +3197,163 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m27_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M27 on any declaration surface, including partial state."""
+
+    key = "dead_owner_parallel_resume_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m27_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Bind the landed worker merge, watchdog repair, and control seal."""
+
+    try:
+        population = materializer.build_population(root)
+        materializer._assert_m27_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M27 exact worker-merge, watchdog-repair, and control-seal chain "
+            f"differs: {type(exc).__name__}: {exc}"
+        ]
+
+
+def _m27_dead_owner_parallel_resume_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M27's stopped M26 anchor and exact dead-owner recovery."""
+
+    key = "dead_owner_parallel_resume_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m27_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M27 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m27_dead_owner_parallel_resume_authority()
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M27 dead-owner parallel-resume authority is only partially declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append(
+                "M27 dead-owner parallel-resume authority differs across controls"
+            )
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M27 dead-owner parallel-resume authority CID is not exact")
+
+        required = {
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M27",
+            "migration_kind": "stopped_run_orphan_recovery_successor_materialization",
+            "prior_event_watermark": 264,
+            "prior_plan_revision": 27,
+            "prior_generation": 25,
+            "prior_active_claim_count": 4,
+            "prior_active_attempt_count": 4,
+            "prior_active_lease_count": 4,
+            "target_generation": 26,
+            "target_quack_port": 24_070,
+            "target_plan_revision": 28,
+            "target_event_watermark": 268,
+            "target_coordination_event_count": 2_586,
+            "orphan_claim_expirations": 4,
+            "task_revision_changes": 2,
+            "task_status_changes": 2,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        for field, value in required.items():
+            if expected.get(field) != value:
+                errors.append(f"M27 authority field differs: {field}")
+        dead_claims = expected.get("interrupted_claims", {})
+        rearms = expected.get("task_rearms", {})
+        if (
+            not isinstance(dead_claims, Mapping)
+            or set(dead_claims) != {"SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015"}
+            or not isinstance(rearms, Mapping)
+            or set(rearms) != {"SAWM-006", "SAWM-012"}
+            or expected.get("observed_unaccepted_source", {})
+            .get("completion_authority")
+            is not False
+        ):
+            errors.append("M27 exact dead-claim, rearm, or source authority differs")
+        if require_active_runtime:
+            target_root = (
+                "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+            )
+            active_worktrees = (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m27/worktrees"
+            )
+            target_store = f"{target_root}/control.duckdb"
+            program = scheduler.get("database_program", {})
+            owner = scheduler.get("quack_owner", {})
+            runtime = scheduler.get("runtime_paths", {})
+            observed = (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            wanted = (
+                target_store,
+                "26",
+                "quack:127.0.0.1:24070",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                active_worktrees,
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_070,
+            )
+            expected_runtime = {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": active_worktrees,
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+            if observed != wanted or runtime != expected_runtime:
+                errors.append("scheduler M27 target/runtime binding is not exact")
+        errors.extend(_m27_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M27 dead-owner parallel-resume authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m26_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3210,9 +3367,26 @@ def _m26_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m26_source_delta(root, population, authority)
         repair = str(authority["repair_source_commit"])
         expected = {path: "M" for path in authority["source_repair_paths"]}
@@ -3363,7 +3537,20 @@ def _m26_automatic_stall_recovery_successor_errors(
                 }
             ):
                 errors.append("scheduler M26 target/runtime binding is not exact")
-        errors.extend(_m26_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m27_successor_declared(
+            scheduler, seal, migration
+        ):
+            m27 = materializer._expected_m27_dead_owner_parallel_resume_authority()
+            historical_control_head = str(m27["prior_control_source_head"])
+        errors.extend(
+            _m26_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         capsule_source = (
             root
             / "ipfs_accelerate_py/agent_supervisor/runtime/"
@@ -7716,6 +7903,54 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m27_key = "dead_owner_parallel_resume_successor_materialization"
+    m27_presence = (
+        m27_key in scheduler,
+        m27_key in migration,
+        f"{m27_key}_cid" in seal,
+    )
+    if any(m27_presence):
+        if not all(m27_presence):
+            return effective, ["active M27 nested-source authority is partial"]
+        scheduled = scheduler.get(m27_key)
+        migrated = migration.get(m27_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M27 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m27_key}_cid") != claimed_cid:
+            return effective, ["active M27 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("current_datasets_gitlink") or ""),
+                str(scheduled.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("current_kit_gitlink") or ""),
+                str(scheduled.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M27 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m26_key = "automatic_stall_recovery_successor_materialization"
     m26_presence = (
         m26_key in scheduler,
@@ -7984,6 +8219,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m27_key = "dead_owner_parallel_resume_successor_materialization"
+        m27_presence = (
+            m27_key in scheduler_probe,
+            m27_key in migration_probe,
+            f"{m27_key}_cid" in seal,
+        )
         m26_key = "automatic_stall_recovery_successor_materialization"
         m26_presence = (
             m26_key in scheduler_probe,
@@ -8034,7 +8275,51 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m26_presence):
+        if any(m27_presence):
+            scheduled = scheduler_probe.get(m27_key)
+            migrated = migration_probe.get(m27_key)
+            if (
+                not all(m27_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m27_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M27 authority is partial or differs across source controls"
+                ]
+            else:
+                expected_paths = set(
+                    str(path)
+                    for path in scheduled.get("operator_control_paths", ())
+                )
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(scheduled.get("precursor_source_head")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                expected = {path: "M" for path in expected_paths}
+                unexpected = (
+                    []
+                    if (
+                        observed == expected
+                        and working.issubset(expected_paths)
+                        and _git(root, "rev-parse", "HEAD^")
+                        == scheduled.get("precursor_source_head")
+                    )
+                    else ["M27 status-qualified control source delta differs"]
+                )
+        elif any(m26_presence):
             scheduled = scheduler_probe.get(m26_key)
             migrated = migration_probe.get(m26_key)
             if (
@@ -8739,12 +9024,27 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
-        if m26_declared or _m25_successor_declared(scheduler, seal, migration):
+        if (
+            m27_declared
+            or m26_declared
+            or _m25_successor_declared(scheduler, seal, migration)
+        ):
+            if m27_declared:
+                protocol_errors.extend(
+                    _m27_dead_owner_parallel_resume_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m26_declared:
                 protocol_errors.extend(
                     _m26_automatic_stall_recovery_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m27_declared,
                     )
                 )
             protocol_errors.extend(
@@ -8753,7 +9053,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                     seal,
                     migration,
                     root=root,
-                    require_active_runtime=not m26_declared,
+                    require_active_runtime=not (m27_declared or m26_declared),
                 )
             )
             protocol_errors.extend(

@@ -134,7 +134,7 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
     assert dependency["failure"] is None
 
 
-def test_m26_nested_source_authority_overlay_is_presence_first() -> None:
+def test_m27_nested_source_authority_overlay_is_presence_first() -> None:
     validator = _load(
         "scripts/validate_semantic_addressed_world_model_dependencies.py",
         "sawm_dependency_validator_m18_nested_overlay_test",
@@ -179,16 +179,17 @@ def test_m26_nested_source_authority_overlay_is_presence_first() -> None:
         "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1"
     )
     assert effective["ipfs_kit_py"]["gitlink_commit"] == (
-        "bb86c158983c00c920b4660b29b6fe879e414072"
+        "f30b58d4340ac6670a9da4691b6d08e5eb5948c9"
     )
     assert effective["ipfs_kit_py"]["tree"] == (
-        "e8f2722a9eac7d1919fa25efb359e168027d1cd6"
+        "4d2246774f1ec70cfc529f40d55b5acbf5ea66f6"
     )
 
     historical_scheduler = copy.deepcopy(scheduler)
     historical_migration = copy.deepcopy(migration)
     historical_seal = copy.deepcopy(seal)
     for successor_key in (
+        "dead_owner_parallel_resume_successor_materialization",
         "automatic_stall_recovery_successor_materialization",
         "native_duckdb_preload_successor_materialization",
         "multi_lane_sidecar_reopen_successor_materialization",
@@ -1041,6 +1042,9 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
     # intentionally have precedence, including fail-closed malformed handling.
     malformed_successor = copy.deepcopy(config)
     malformed_successor.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    malformed_successor.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     malformed_successor.pop(
@@ -1820,6 +1824,15 @@ def _install_synthetic_quack_native_bootstrap(
 ) -> tuple[int, int]:
     """Install a non-native exact bootstrap double with a real held fd."""
 
+    # These tests model the operator's sanitized process birth.  Host shells
+    # may carry OpenFOAM or other native-loader overrides, which production
+    # correctly rejects before touching the sealed dependency.  Remove every
+    # loader override through monkeypatch so the synthetic positive path is
+    # explicit and the hostile-loader test below remains independent.
+    for name in tuple(os.environ):
+        if name.startswith("LD_"):
+            monkeypatch.delenv(name, raising=False)
+
     from ipfs_accelerate_py import agent_implementation_route as native_route
     from ipfs_accelerate_py.agent_supervisor.runtime import (
         configured_board_scheduler as scheduler,
@@ -2414,6 +2427,9 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     ) == []
     historical_config = copy.deepcopy(config)
     historical_config.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    historical_config.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     historical_config.pop("native_duckdb_preload_successor_materialization", None)
@@ -2434,6 +2450,9 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_config.pop("live_provider_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
     historical_migration.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
@@ -2457,6 +2476,9 @@ def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_migration.pop("live_provider_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop(
+        "dead_owner_parallel_resume_successor_materialization_cid", None
+    )
     historical_seal.pop(
         "automatic_stall_recovery_successor_materialization_cid", None
     )
@@ -2786,55 +2808,66 @@ def _build_m9_rehearsal_pair(
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
         DatabaseCoordinator,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
 
     shutil.copyfile(prior_control, control)
     shutil.copyfile(prior_coordination, coordination)
-    source = DatabaseTaskSource(
-        control,
-        install_schema=False,
-        repository_tree_id=str(population["repository_tree_id"]),
-        plan_root_cid=str(population["plan_root_cid"]),
-        owner_id="sawm-r2-runtime-recovery-migrator",
-    )
+    # The historical M9 verifier requires the plan row and its append event to
+    # carry the same second-resolution timestamp.  The repository samples the
+    # clock separately for those two records, so freeze it for this disposable
+    # rehearsal and restore the production clock before returning.
+    original_clock = intent_repository._utc_iso
+    frozen_now = original_clock()
+    intent_repository._utc_iso = lambda _moment=None: frozen_now
     try:
-        operator = source.get_task("SAWM-000")
-        assert operator is not None
-        body = materializer._m9_migration_body(
-            population,
-            config,
-            validation_digest,
+        source = DatabaseTaskSource(
+            control,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-runtime-recovery-migrator",
         )
-        digest = materializer._identity(body)
-        source.plans.append_revision(
-            plan_cid=str(population["plan_root_cid"]),
-            expected_revision=9,
-            body={
-                "current_source_binding_cid": population["source_binding"][
-                    "source_binding_cid"
-                ],
-                "source_migration_revision": materializer._M9_MIGRATION_REVISION,
-                "source_migration_digest": digest,
-                "supersession_mode": materializer._M9_SUPERSESSION_MODE,
-            },
-            delta=materializer._m9_migration_plan_delta(population, config),
-        )
-        source.record_evidence(
-            task_cid=operator.task_cid,
-            evidence_kind="operator_control_plane_runtime_recovery",
-            digest=digest,
-            body=body,
-        )
-        task_cas = source.compare_and_set_status(
-            materializer._M8_LIVE_FAILURE_RECEIPT["task_cid"],
-            9,
-            "retrying",
-            materializer._m9_task_rearm_receipt(),
-        )
+        try:
+            operator = source.get_task("SAWM-000")
+            assert operator is not None
+            body = materializer._m9_migration_body(
+                population,
+                config,
+                validation_digest,
+            )
+            digest = materializer._identity(body)
+            source.plans.append_revision(
+                plan_cid=str(population["plan_root_cid"]),
+                expected_revision=9,
+                body={
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
+                    "source_migration_revision": materializer._M9_MIGRATION_REVISION,
+                    "source_migration_digest": digest,
+                    "supersession_mode": materializer._M9_SUPERSESSION_MODE,
+                },
+                delta=materializer._m9_migration_plan_delta(population, config),
+            )
+            source.record_evidence(
+                task_cid=operator.task_cid,
+                evidence_kind="operator_control_plane_runtime_recovery",
+                digest=digest,
+                body=body,
+            )
+            task_cas = source.compare_and_set_status(
+                materializer._M8_LIVE_FAILURE_RECEIPT["task_cid"],
+                9,
+                "retrying",
+                materializer._m9_task_rearm_receipt(),
+            )
+        finally:
+            source.close()
     finally:
-        source.close()
+        intent_repository._utc_iso = original_clock
     coordinator = DatabaseCoordinator(coordination).open()
     try:
         rearm = coordinator.rearm_failed_task(
@@ -3269,6 +3302,9 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     ) == []
     historical_config = copy.deepcopy(config)
     historical_config.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    historical_config.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     historical_config.pop("native_duckdb_preload_successor_materialization", None)
@@ -3288,6 +3324,9 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_config.pop("quack_refresh_successor_materialization")
     historical_config.pop("declared_output_retry_successor_materialization")
     historical_migration = copy.deepcopy(migration)
+    historical_migration.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
     historical_migration.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
@@ -3310,6 +3349,9 @@ def test_m11_controls_and_provider_retry_authority_fail_closed() -> None:
     historical_migration.pop("quack_refresh_successor_materialization")
     historical_migration.pop("declared_output_retry_successor_materialization")
     historical_seal = copy.deepcopy(seal)
+    historical_seal.pop(
+        "dead_owner_parallel_resume_successor_materialization_cid", None
+    )
     historical_seal.pop(
         "automatic_stall_recovery_successor_materialization_cid", None
     )
@@ -4119,6 +4161,9 @@ def test_m21_generation_realization_authority_is_exact_and_presence_first() -> N
     expected = materializer._expected_m21_generation_realization_authority()
     historical_config = copy.deepcopy(config)
     historical_config.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    historical_config.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     historical_config.pop("native_duckdb_preload_successor_materialization", None)
@@ -4314,6 +4359,423 @@ def test_m21_private_stage_appends_only_plan_and_operator_evidence(
     } <= materializer._M21_RECEIPT_KEYS
 
 
+def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m27_authority_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m27_authority_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m27_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    inventory = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "dead_owner_parallel_resume_successor_materialization"
+    expected = materializer._expected_m27_dead_owner_parallel_resume_authority()
+
+    assert config[key] == inventory[key] == expected
+    assert seal[f"{key}_cid"] == materializer._identity(expected)
+    assert materializer._m27_successor_configured(config) is True
+    assert dict(operator._active_source_repair_materialization(config)) == expected
+    assert expected["migration_revision"] == "SAWM-R2-M27"
+    assert expected["precursor_source_head"] == (
+        "bbff12f06ff200b0f9280c50ca3866e1a752f3e9"
+    )
+    assert expected["prior_control_source_head"] == (
+        "5e4aa2bc1c90527ba3fa8cb272b785141f50e832"
+    )
+    assert expected["source_chain"]["sawm_012_worker_commit"] == (
+        "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb"
+    )
+    assert expected["source_chain"]["two_parent_merge_commit"] == (
+        "cdced896c85e331fc32d7ad623aa2eb926b6f1c6"
+    )
+    assert expected["prior_event_watermark"] == 264
+    assert expected["target_event_watermark"] == 268
+    assert expected["prior_coordination_event_count"] == 2_582
+    assert expected["target_coordination_event_count"] == 2_586
+    assert expected["target_coordination_projection_digest"] == (
+        "sha256:40d0bcc156301700b145f93b688c0f0e0b7e6387c7c30a2eaa462284de620465"
+    )
+    assert set(expected["interrupted_claims"]) == {
+        "SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015"
+    }
+    assert set(expected["task_rearms"]) == {"SAWM-006", "SAWM-012"}
+    assert expected["unchanged_retrying_tasks"] == ["SAWM-008", "SAWM-015"]
+    assert expected["accepted_definition_changes"] == 0
+    assert expected["accepted_completion_changes"] == 0
+    assert expected["implementation_provider_invocations"] == 0
+    assert expected["worker_self_approval"] is False
+    assert expected["observed_unaccepted_source"]["completion_authority"] is False
+    assert config["database_program"]["store_id"].endswith(
+        "run-r2-m27/control.duckdb"
+    )
+    assert config["database_program"]["store_generation"] == "26"
+    assert config["database_program"]["quack_endpoint"] == (
+        "quack:127.0.0.1:24070"
+    )
+    preserved = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m26/worktrees"
+    )
+    active = (
+        "data/agent_supervisor/semantic_addressed_world_model/"
+        "run-r2-m27/worktrees"
+    )
+    assert expected["preserved_worktree_root"] == preserved
+    assert config["database_program"]["worktree_root"] == active
+    assert config["runtime_paths"]["worktrees"] == active
+    assert config["quack_owner"]["port"] == 24_070
+
+    monkeypatch.setattr(dependency, "_m27_source_chain_errors", lambda *_: [])
+    assert dependency._m27_dead_owner_parallel_resume_successor_errors(
+        config, seal, inventory, root=REPO_ROOT
+    ) == []
+
+    malformed = copy.deepcopy(config)
+    malformed[key] = None
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M27 stopped-run recovery authority is invalid",
+    ):
+        materializer._m27_successor_configured(malformed)
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M27 dead-owner parallel-resume authority is invalid",
+    ):
+        operator._active_source_repair_materialization(malformed)
+
+
+def test_m27_presence_masks_m26_and_keeps_every_predecessor_historical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m27_presence_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m27_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m27_presence_test",
+    )
+    key = "dead_owner_parallel_resume_successor_materialization"
+    authority = materializer._expected_m27_dead_owner_parallel_resume_authority()
+    scheduler = {key: authority}
+    migration = {key: authority}
+    seal = {f"{key}_cid": materializer._identity(authority)}
+    assert dependency._m27_successor_declared(scheduler, {}, {}) is True
+    assert dependency._m27_successor_declared({}, {}, migration) is True
+    assert dependency._m27_successor_declared({}, seal, {}) is True
+    assert dependency._m27_successor_declared({}, {}, {}) is False
+
+    monkeypatch.setattr(
+        board, "_m27_migration_errors", lambda *_args, **_kwargs: ["M27 active"]
+    )
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m26_migration_errors", "_m25_migration_errors",
+        "_m24_migration_errors", "_m23_migration_errors",
+        "_m22_migration_errors", "_m21_migration_errors",
+        "_m20_migration_errors", "_m19_migration_errors",
+        "_m18_migration_errors", "_m17_migration_errors",
+        "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        scheduler, seal, migration
+    ) == ["M27 active"]
+    assert historical_calls == [True] * 11
+
+    partial = {key: authority}
+    errors = board._active_successor_migration_errors(partial, {}, {})
+    assert "M27 active" in errors
+    assert any("only partially declared" in error for error in errors)
+
+
+def test_m27_final_marker_rejects_self_rehashed_authority_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m27_marker_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m27_marker_test",
+    )
+    authority = materializer._expected_m27_dead_owner_parallel_resume_authority()
+    key = "dead_owner_parallel_resume_successor_materialization"
+    config = {key: authority}
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    control = tmp_path / operator._M27_STORE_ID
+    coordination = tmp_path / operator._M27_COORDINATION_STORE_ID
+    control.parent.mkdir(parents=True)
+    control.write_bytes(b"control-live-head")
+    coordination.write_bytes(b"coordination-materialized-head")
+    coordination_hash = materializer._stable_regular_sha256(
+        coordination,
+        root=tmp_path,
+        noun="test M27 coordination store",
+        required_link_count=1,
+    )
+    marker = {
+        "schema": "sawm/non-authoritative-migration-receipt@25",
+        "authoritative": False,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": "SAWM-R2-M27",
+        f"{key}_cid": materializer._identity(authority),
+        "database_path": operator._M27_STORE_ID,
+        "coordination_path": operator._M27_COORDINATION_STORE_ID,
+        "target_runtime_root": str(Path(operator._M27_STORE_ID).parent),
+        "target_generation": 26,
+        "target_quack_port": 24_070,
+        "target_plan_revision": 28,
+        "target_event_watermark": 268,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "orphan_claim_expirations": 4,
+        "coordination_semantic_changes": 4,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "worker_self_approval": False,
+        "control_store_sha256": "0" * 64,
+        "control_store_size": 1,
+        "coordination_store_sha256": coordination_hash[0],
+        "coordination_store_size": coordination_hash[1],
+        "coordination_projection_digest": authority[
+            "target_coordination_projection_digest"
+        ],
+        "coordination_event_count": 2_586,
+        "interrupted_claims": {
+            alias: {} for alias in ("SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015")
+        },
+        "task_rearms": {"SAWM-006": {}, "SAWM-012": {}},
+    }
+
+    def publish(body: dict[str, object]) -> None:
+        unhashed = dict(body)
+        unhashed["receipt_cid"] = materializer._identity(unhashed)
+        (control.parent / "migration-receipt.json").write_text(
+            json.dumps(unhashed, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+
+    publish(marker)
+    assert dict(
+        operator._require_m27_final_pair_marker(
+            config, authority, materializer
+        )
+    )["coordination_projection_digest"] == authority[
+        "target_coordination_projection_digest"
+    ]
+    for field, bad_value in (
+        ("schema", "sawm/non-authoritative-migration-receipt@24"),
+        ("coordination_projection_digest", "sha256:" + "f" * 64),
+        ("accepted_definition_changes", 1),
+    ):
+        tampered = dict(marker)
+        tampered[field] = bad_value
+        publish(tampered)
+        with pytest.raises(
+            operator.OperatorError,
+            match="M27 materialized final pair marker differs",
+        ):
+            operator._require_m27_final_pair_marker(
+                config, authority, materializer
+            )
+
+
+def test_m27_private_stage_expires_four_claims_and_preserves_completion_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m27_private_stage_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m27_private_stage_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    authority = materializer._expected_m27_dead_owner_parallel_resume_authority()
+    population = materializer.build_population(REPO_ROOT)
+    prior_control, prior_coordination = materializer._assert_m27_prior_anchor(
+        REPO_ROOT, authority, population
+    )
+    prior_hashes = (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+    monkeypatch.setattr(
+        materializer.time,
+        "time_ns",
+        lambda: materializer._M27_CONTROL_RECORDED_AT_MS * 1_000_000,
+    )
+    stage_dir = tmp_path / "m27-stage"
+    stage_dir.mkdir()
+    validation_digest = materializer._identity(
+        {
+            "schema": "sawm/m27-private-stage-validation@1",
+            "source_binding_cid": population["source_binding"][
+                "source_binding_cid"
+            ],
+        }
+    )
+    staged = materializer._stage_m27_store_pair(
+        REPO_ROOT,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    verified = staged["verified"]
+    assert verified["valid"] is True
+    assert verified["event_watermark"] == 268
+    assert verified["coordination_event_count"] == 2_586
+    assert verified["coordination_projection_digest"] == authority[
+        "target_coordination_projection_digest"
+    ]
+    assert verified["active_claim_count"] == 0
+    assert verified["active_attempt_count"] == 0
+    assert verified["active_lease_count"] == 0
+    assert verified["orphan_claim_expirations"] == 4
+    assert verified["task_revision_changes"] == 2
+    assert verified["task_status_changes"] == 2
+    assert verified["accepted_completion_changes"] == 0
+    assert verified["implementation_provider_invocations"] == 0
+    assert prior_hashes == (
+        materializer._store_sha256(prior_control),
+        materializer._store_sha256(prior_coordination),
+    )
+
+    import duckdb
+
+    def completion_rows(path: Path) -> list[tuple[object, ...]]:
+        connection = duckdb.connect(str(path), read_only=True)
+        try:
+            return connection.execute(
+                "SELECT * FROM completion_receipts ORDER BY receipt_cid"
+            ).fetchall()
+        finally:
+            connection.close()
+
+    assert completion_rows(staged["stage_control"]) == completion_rows(prior_control)
+    stage_hash = materializer._store_sha256(staged["stage_control"])
+    assert materializer._verify_m27_store_pair_copy(
+        staged["stage_control"],
+        staged["stage_coordination"],
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    ) == verified
+    assert materializer._store_sha256(staged["stage_control"]) == stage_hash
+    assert completion_rows(staged["stage_control"]) == completion_rows(prior_control)
+    assert not tuple(stage_dir.glob("*.wal"))
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    source = DatabaseTaskSource(staged["stage_control"], install_schema=False)
+    try:
+        statuses, revisions, _receipts = (
+            operator._verify_m27_live_head_task_projection(
+                source,
+                population,
+                materializer,
+                expected_projection_cid=verified["projection_cid"],
+            )
+        )
+    finally:
+        source.close()
+    assert statuses["SAWM-006"] == "retrying"
+    assert revisions["SAWM-006"] == 4
+    assert statuses["SAWM-008"] == "retrying"
+    assert revisions["SAWM-008"] == 8
+    assert statuses["SAWM-012"] == "retrying"
+    assert revisions["SAWM-012"] == 7
+    assert statuses["SAWM-015"] == "retrying"
+    assert revisions["SAWM-015"] == 5
+
+    receipt = materializer._expected_m27_migration_receipt(
+        tmp_path,
+        staged["stage_control"],
+        staged["stage_coordination"],
+        population,
+        verified,
+        validation_digest,
+    )
+    unhashed = dict(receipt)
+    assert unhashed.pop("receipt_cid") == materializer._identity(unhashed)
+    assert receipt["schema"] == "sawm/non-authoritative-migration-receipt@25"
+    assert receipt["authoritative"] is False
+    assert receipt["receipt_is_final_pair_commit_marker"] is True
+    assert receipt["accepted_completion_changes"] == 0
+    assert receipt["worker_self_approval"] is False
+
+
+def test_m27_staging_refuses_to_time_travel_before_last_lease_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m27_clock_test",
+    )
+    monkeypatch.setattr(
+        materializer.time,
+        "time_ns",
+        lambda: (materializer._M27_CONTROL_RECORDED_AT_MS - 1) * 1_000_000,
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="before every exact claim has expired",
+    ):
+        materializer._m27_require_actual_expiry_time()
+
+
 def test_m26_stopped_recovery_authority_and_runtime_bindings_are_exact(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4353,6 +4815,36 @@ def test_m26_stopped_recovery_authority_and_runtime_bindings_are_exact(
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
+    runtime = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m26"
+    store = f"{runtime}/control.duckdb"
+    worktrees = f"{runtime}/worktrees"
+    config["database_program"].update(
+        {
+            "store_id": store,
+            "store_generation": "25",
+            "quack_endpoint": "quack:127.0.0.1:24069",
+            "event_store_path": f"{runtime}/events",
+            "runtime_registry_path": f"{runtime}/registry",
+            "worktree_root": worktrees,
+        }
+    )
+    config["quack_owner"].update(
+        {
+            "database_path": store,
+            "store_id": store,
+            "state_dir": f"{runtime}/quack-owner",
+            "port": 24_069,
+        }
+    )
+    config["runtime_paths"] = {
+        "root": runtime,
+        "state": f"{runtime}/state",
+        "worktrees": worktrees,
+        "merge_queue": f"{runtime}/merge-queue",
+        "logs": f"{runtime}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
     key = "automatic_stall_recovery_successor_materialization"
     expected = materializer._expected_m26_automatic_stall_recovery_authority()
 
@@ -4412,7 +4904,9 @@ def test_m26_stopped_recovery_authority_and_runtime_bindings_are_exact(
     )
     assert config["quack_owner"]["port"] == 24_069
 
-    monkeypatch.setattr(dependency, "_m26_source_chain_errors", lambda *_: [])
+    monkeypatch.setattr(
+        dependency, "_m26_source_chain_errors", lambda *_, **__: []
+    )
     assert dependency._m26_automatic_stall_recovery_successor_errors(
         config,
         seal,
@@ -4641,6 +5135,38 @@ def test_m26_private_stage_expires_orphans_and_rearms_only_exact_failures(
     )
     authority = materializer._expected_m26_automatic_stall_recovery_authority()
     population = materializer.build_population(REPO_ROOT)
+    population = copy.deepcopy(population)
+    population["source_binding"]["kit_gitlink"] = authority["prior_kit_gitlink"]
+    population["source_binding"]["kit_tree"] = authority["prior_kit_tree"]
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
+    runtime = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m26"
+    store = f"{runtime}/control.duckdb"
+    config["database_program"].update(
+        {
+            "store_id": store,
+            "store_generation": "25",
+            "quack_endpoint": "quack:127.0.0.1:24069",
+            "event_store_path": f"{runtime}/events",
+            "runtime_registry_path": f"{runtime}/registry",
+            "worktree_root": f"{runtime}/worktrees",
+        }
+    )
+    config["quack_owner"].update(
+        {
+            "database_path": store,
+            "store_id": store,
+            "state_dir": f"{runtime}/quack-owner",
+            "port": 24_069,
+        }
+    )
+    config["runtime_paths"] = {
+        "root": runtime,
+        "state": f"{runtime}/state",
+        "worktrees": f"{runtime}/worktrees",
+        "merge_queue": f"{runtime}/merge-queue",
+        "logs": f"{runtime}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
     prior_control, prior_coordination = materializer._assert_m26_prior_anchor(
         REPO_ROOT,
         authority,
@@ -4809,6 +5335,7 @@ def test_m25_native_preload_authority_and_four_lane_bindings_are_exact(
     )
     key = "native_duckdb_preload_successor_materialization"
     expected = materializer._expected_m25_native_duckdb_preload_authority()
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     runtime = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m25"
     store = f"{runtime}/control.duckdb"
@@ -4915,7 +5442,9 @@ def test_m25_native_preload_authority_and_four_lane_bindings_are_exact(
         (3, "sawm-lane-3", 3, ["SAWM-012"]),
     ]
 
-    monkeypatch.setattr(dependency, "_m25_source_chain_errors", lambda *_: [])
+    monkeypatch.setattr(
+        dependency, "_m25_source_chain_errors", lambda *_, **__: []
+    )
     assert dependency._m25_native_duckdb_preload_successor_errors(
         config,
         seal,
@@ -5282,6 +5811,7 @@ def test_m24_sidecar_reopen_authority_and_four_lane_bindings_are_exact() -> None
     )
     key = "multi_lane_sidecar_reopen_successor_materialization"
     expected = materializer._expected_m24_sidecar_reopen_authority()
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     config.pop("native_duckdb_preload_successor_materialization", None)
     runtime = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m24"
@@ -5648,6 +6178,7 @@ def test_m23_multi_lane_authority_scheduler_and_presence_are_exact() -> None:
     assert expected["coordination_semantic_changes"] == 2
     assert expected["accepted_completion_changes"] == 0
     m23_config = copy.deepcopy(config)
+    m23_config.pop("dead_owner_parallel_resume_successor_materialization", None)
     m23_config.pop("automatic_stall_recovery_successor_materialization", None)
     m23_config.pop("native_duckdb_preload_successor_materialization", None)
     m23_config.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -6053,6 +6584,9 @@ def test_m22_live_preflight_receipt_compatibility_authority_is_exact_and_presenc
     )
     historical_config = copy.deepcopy(config)
     historical_config.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    historical_config.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     historical_config.pop("native_duckdb_preload_successor_materialization", None)
@@ -6081,7 +6615,7 @@ def test_m22_live_preflight_receipt_compatibility_authority_is_exact_and_presenc
         operator._active_source_repair_materialization(malformed)
 
 
-def test_m22_scheduler_authority_is_preserved_under_m26_runtime() -> None:
+def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     config = json.loads(
         (
             REPO_ROOT
@@ -6103,16 +6637,16 @@ def test_m22_scheduler_authority_is_preserved_under_m26_runtime() -> None:
     assert authority["target_event_watermark"] == 233
     assert authority["target_quack_port"] == 24_065
     current_runtime = (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m26"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "25"
+    assert config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
-        "quack:127.0.0.1:24069"
+        "quack:127.0.0.1:24070"
     )
-    assert config["quack_owner"]["port"] == 24_069
+    assert config["quack_owner"]["port"] == 24_070
     assert config["runtime_paths"]["root"] == current_runtime
 
 
@@ -6605,6 +7139,7 @@ def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> N
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     config.pop("native_duckdb_preload_successor_materialization", None)
     config.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -6612,6 +7147,7 @@ def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> N
     config.pop("live_preflight_receipt_compatibility_successor_materialization")
     config.pop("generation_realization_successor_materialization")
     config.pop("test_isolation_successor_materialization")
+    inventory.pop("dead_owner_parallel_resume_successor_materialization", None)
     inventory.pop("automatic_stall_recovery_successor_materialization", None)
     inventory.pop("native_duckdb_preload_successor_materialization", None)
     inventory.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -6619,6 +7155,7 @@ def test_m19_live_catalog_inventory_authority_is_presence_first_and_exact() -> N
     inventory.pop("live_preflight_receipt_compatibility_successor_materialization")
     inventory.pop("generation_realization_successor_materialization")
     inventory.pop("test_isolation_successor_materialization")
+    seal.pop("dead_owner_parallel_resume_successor_materialization_cid", None)
     seal.pop("automatic_stall_recovery_successor_materialization_cid", None)
     seal.pop("native_duckdb_preload_successor_materialization_cid", None)
     seal.pop("multi_lane_sidecar_reopen_successor_materialization_cid")
@@ -6725,6 +7262,7 @@ def test_m20_test_isolation_authority_is_presence_first_and_exact() -> None:
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     config.pop("native_duckdb_preload_successor_materialization", None)
     config.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -6868,18 +7406,21 @@ def test_m20_validator_selection_preserves_m19_history(
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     config.pop("native_duckdb_preload_successor_materialization", None)
     config.pop("multi_lane_sidecar_reopen_successor_materialization")
     config.pop("multi_lane_successor_materialization")
     config.pop("live_preflight_receipt_compatibility_successor_materialization")
     config.pop("generation_realization_successor_materialization")
+    inventory.pop("dead_owner_parallel_resume_successor_materialization", None)
     inventory.pop("automatic_stall_recovery_successor_materialization", None)
     inventory.pop("native_duckdb_preload_successor_materialization", None)
     inventory.pop("multi_lane_sidecar_reopen_successor_materialization")
     inventory.pop("multi_lane_successor_materialization")
     inventory.pop("live_preflight_receipt_compatibility_successor_materialization")
     inventory.pop("generation_realization_successor_materialization")
+    seal.pop("dead_owner_parallel_resume_successor_materialization_cid", None)
     seal.pop("automatic_stall_recovery_successor_materialization_cid", None)
     seal.pop("native_duckdb_preload_successor_materialization_cid", None)
     seal.pop("multi_lane_sidecar_reopen_successor_materialization_cid")
@@ -7740,6 +8281,7 @@ def test_m19_operator_and_validators_are_presence_first(
             / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    config.pop("dead_owner_parallel_resume_successor_materialization", None)
     config.pop("automatic_stall_recovery_successor_materialization", None)
     config.pop("native_duckdb_preload_successor_materialization", None)
     config.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -7747,6 +8289,7 @@ def test_m19_operator_and_validators_are_presence_first(
     config.pop("live_preflight_receipt_compatibility_successor_materialization")
     config.pop("generation_realization_successor_materialization")
     config.pop("test_isolation_successor_materialization")
+    inventory.pop("dead_owner_parallel_resume_successor_materialization", None)
     inventory.pop("automatic_stall_recovery_successor_materialization", None)
     inventory.pop("native_duckdb_preload_successor_materialization", None)
     inventory.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -7754,6 +8297,7 @@ def test_m19_operator_and_validators_are_presence_first(
     inventory.pop("live_preflight_receipt_compatibility_successor_materialization")
     inventory.pop("generation_realization_successor_materialization")
     inventory.pop("test_isolation_successor_materialization")
+    seal.pop("dead_owner_parallel_resume_successor_materialization_cid", None)
     seal.pop("automatic_stall_recovery_successor_materialization_cid", None)
     seal.pop("native_duckdb_preload_successor_materialization_cid", None)
     seal.pop("multi_lane_sidecar_reopen_successor_materialization_cid")
@@ -7947,6 +8491,7 @@ def test_m18_operator_and_validators_are_presence_first(
         "sawm_operator_m18_presence_test",
     )
     historical = dict(config)
+    historical.pop("dead_owner_parallel_resume_successor_materialization", None)
     historical.pop("automatic_stall_recovery_successor_materialization", None)
     historical.pop("native_duckdb_preload_successor_materialization", None)
     historical.pop("multi_lane_sidecar_reopen_successor_materialization")
@@ -8001,6 +8546,9 @@ def test_m18_operator_and_validators_are_presence_first(
     )
     historical_inventory = dict(inventory)
     historical_inventory.pop(
+        "dead_owner_parallel_resume_successor_materialization", None
+    )
+    historical_inventory.pop(
         "automatic_stall_recovery_successor_materialization", None
     )
     historical_inventory.pop(
@@ -8015,6 +8563,9 @@ def test_m18_operator_and_validators_are_presence_first(
     historical_inventory.pop("test_isolation_successor_materialization")
     historical_inventory.pop("live_catalog_inventory_successor_materialization")
     historical_seal = dict(seal)
+    historical_seal.pop(
+        "dead_owner_parallel_resume_successor_materialization_cid", None
+    )
     historical_seal.pop(
         "automatic_stall_recovery_successor_materialization_cid", None
     )
@@ -9240,7 +9791,7 @@ def test_m16_source_seal_binds_repair_blobs_and_both_exact_deltas(
         )
 
 
-def test_m17_namespace_is_preserved_as_historical_under_m26() -> None:
+def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     config = json.loads(
         (
             REPO_ROOT
@@ -9252,9 +9803,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m26() -> None:
     assert authority["target_store_id"] == f"{root}/control.duckdb"
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
-    assert config["runtime_paths"]["root"].endswith("run-r2-m26")
-    assert config["database_program"]["store_generation"] == "25"
-    assert config["quack_owner"]["port"] == 24_069
+    assert config["runtime_paths"]["root"].endswith("run-r2-m27")
+    assert config["database_program"]["store_generation"] == "26"
+    assert config["quack_owner"]["port"] == 24_070
 
 
 def test_m18_validators_keep_m17_and_m16_historical_authority() -> None:
@@ -10341,7 +10892,7 @@ def test_m15_runtime_root_authority_is_presence_first_and_exact() -> None:
         materializer._m15_successor_configured(malformed)
 
 
-def test_m15_historical_authority_preserves_fresh_namespace_under_m26() -> None:
+def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
     config = json.loads(
         (
             REPO_ROOT
@@ -10370,11 +10921,11 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m26() -> None:
     }
     assert historical_runtime["root"] == authority["target_runtime_root"]
     assert config["runtime_paths"]["root"] == (
-        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m26"
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    assert config["database_program"]["store_generation"] == "25"
-    assert config["quack_owner"]["port"] == 24_069
+    assert config["database_program"]["store_generation"] == "26"
+    assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
 

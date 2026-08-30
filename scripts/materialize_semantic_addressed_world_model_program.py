@@ -1117,6 +1117,42 @@ _M26_AUTOMATIC_STALL_RECOVERY_SOURCE_BLOBS = MappingProxyType(
     }
 )
 
+_M27_MIGRATION_REVISION = "SAWM-R2-M27"
+_M27_SUPERSESSION_MODE = "append_only_stopped_run_recovery_successor"
+_M27_SUPERSESSION_REASON = "stopped_run_orphan_recovery_successor_materialization"
+_M27_CONTROL_RECORDED_AT = "2026-08-30T20:20:35Z"
+_M27_CONTROL_RECORDED_AT_MS = 1_788_121_235_000
+_M27_PRIOR_EVENT_WATERMARK = 264
+_M27_TARGET_EVENT_WATERMARK = 268
+_M27_TARGET_PLAN_REVISION = 28
+_M27_TARGET_GENERATION = 26
+_M27_TARGET_QUACK_PORT = 24_070
+_M27_PRIOR_EVENT_PREFIX_SHA256 = (
+    "2f82a7049a17454c88fd17fe6741fc3d7ac59059bfb8b0b685ca3a10c9fa182c"
+)
+# Filled from a private deterministic rehearsal after the four exact claim
+# expirations.  The projection excludes random event identifiers but includes
+# their typed, fixed-time semantic bodies.
+_M27_TARGET_COORDINATION_PROJECTION_DIGEST = (
+    "sha256:40d0bcc156301700b145f93b688c0f0e0b7e6387c7c30a2eaa462284de620465"
+)
+_M27_PRECURSOR_REPAIR_BLOBS = MappingProxyType(
+    {
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": (
+            "f87cba8539ec19cd03fc3abaeffd5dcdc2f2a4b5"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": (
+            "e19f01ace8dc0b3e045fa41c65bf47e27f103090"
+        ),
+        "test/api/test_agent_supervisor_database_dispatch_watchdog.py": (
+            "941df372d3bffa9993de71aeb53f69522f0a30cb"
+        ),
+        "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": (
+            "36c562fcff4dfcc4c4e49c4559eeffe1841aca06"
+        ),
+    }
+)
+
 _M21_MIGRATION_REVISION = "SAWM-R2-M21"
 _M21_SUPERSESSION_MODE = "generation_realization_successor_materialization"
 _M21_SUPERSESSION_REASON = "generation_realization_successor_materialization"
@@ -5425,6 +5461,261 @@ def _m26_successor_configured_on_any_surface(
             "M26 automatic-stall-recovery authority is only partially declared"
         )
     return _m26_successor_configured(config)
+
+
+def _m27_interrupted_claims() -> dict[str, dict[str, Any]]:
+    """Freeze the four accepted claims left by the stopped M26 workers."""
+
+    common = {
+        "schema": "sawm/stopped-run-interrupted-claim@1",
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "coordination_lease_state": "accepted",
+        "coordination_claim_state": "accepted",
+        "coordination_attempt_status": "running",
+        "owner_process_alive": False,
+        "task_completion_present": False,
+        "reconciliation_operation": "expire_task_claim",
+        "reconciliation_is_completion": False,
+        "worker_self_approval": False,
+    }
+    rows = {
+        "SAWM-006": (
+            "sha256:2d48a6c1aa320e43f9b8265223f93781e7c60ecda29e7dfcff79661cf854a52a",
+            "in_progress", 3, "claim:1c588e6f19a141548dc17509badc8209",
+            "attempt:2b362b9c40104b6f9c5735d7fb539712", 2,
+            "lease:45291e9046994df9bc9dfe98256dca1b",
+            "embedded-store:e1cb70c06a1f680dc9470342f0394b0a", 2, 2,
+            1_788_112_456_698, 1_788_121_234_521, 49,
+        ),
+        "SAWM-008": (
+            "sha256:6011cd98209c446de2def109cb735568cc581564cdeee6f3ee8aee365e1c929a",
+            "retrying", 8, "claim:813e5f44b32f410eabebf936a1f881d3",
+            "attempt:325cecb15df246ab98d6668d28142093", 3,
+            "lease:1f4b473336fe431c856bb8dbc0f974ba",
+            "embedded-store:38dd4515c6fd370721e124eda1ebc2cc", 3, 3,
+            1_788_112_458_292, 1_788_119_658_292, 1,
+        ),
+        "SAWM-012": (
+            "sha256:7b3443e7a80b5b81aed08f89733253d7145d3e2553e2c46677566075fe08ac99",
+            "in_progress", 6, "claim:057632fe8716496b95394b56a0e69632",
+            "attempt:13eceae7b2b943128dece0104cf49c4e", 2,
+            "lease:ef7f231c2c044b90b4197b006b97a833",
+            "embedded-store:8f74ea82b1f04472621cbd525411bfe9", 2, 2,
+            1_788_112_500_968, 1_788_120_486_416, 26,
+        ),
+        "SAWM-015": (
+            "sha256:39fe777843a8a4566b70aa9b9ed4ba0d5a0fbe97bfb009405154e1152c41f9ce",
+            "retrying", 5, "claim:2b1fa6cd52154ceaa8aaf5fdf7bf1dc7",
+            "attempt:897a893b7b03442399c0a81feebb516e", 3,
+            "lease:6bba2320bbae4596a8b2c0329c372589",
+            "embedded-store:75e06c156a6524aca229564a958ab01b", 3, 3,
+            1_788_112_499_809, 1_788_119_699_809, 1,
+        ),
+    }
+    result: dict[str, dict[str, Any]] = {}
+    for alias, row in rows.items():
+        (
+            task_cid, control_status, control_revision, claim_id, attempt_id,
+            attempt_number, lease_id, owner_session_id, fencing_token,
+            fence_epoch, claimed_at_ms, expires_at_ms, coordination_revision,
+        ) = row
+        result[alias] = {
+            **common,
+            "task_alias": alias,
+            "task_cid": task_cid,
+            "control_status": control_status,
+            "control_revision": control_revision,
+            "claim_id": claim_id,
+            "attempt_id": attempt_id,
+            "attempt_number": attempt_number,
+            "lease_id": lease_id,
+            "owner_session_id": owner_session_id,
+            "fencing_token": fencing_token,
+            "fence_epoch": fence_epoch,
+            "claimed_at_ms": claimed_at_ms,
+            "expires_at_ms": expires_at_ms,
+            "coordination_revision": coordination_revision,
+        }
+    return result
+
+
+def _m27_task_rearm_receipt(task_alias: str) -> dict[str, Any]:
+    claim = _m27_interrupted_claims().get(task_alias)
+    if claim is None or task_alias not in {"SAWM-006", "SAWM-012"}:
+        raise MaterializationError(f"M27 task rearm is not authorized: {task_alias}")
+    receipt = {
+        "schema": "sawm/operator-stopped-run-interruption-rearm@1",
+        "operation": "operator_control_plane_stopped_run_recovery",
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "task_alias": task_alias,
+        "task_cid": claim["task_cid"],
+        "claim_id": claim["claim_id"],
+        "attempt_id": claim["attempt_id"],
+        "lease_id": claim["lease_id"],
+        "from_status": claim["control_status"],
+        "from_revision": claim["control_revision"],
+        "to_status": "retrying",
+        "to_revision": int(claim["control_revision"]) + 1,
+        "claim_expired_without_completion": True,
+        "completion_admitted": False,
+        "portal_or_rescue_evidence_admitted": False,
+        "worker_self_approval": False,
+    }
+    receipt["receipt_id"] = _identity(receipt)
+    return receipt
+
+
+def _expected_m27_dead_owner_parallel_resume_authority() -> dict[str, Any]:
+    """Return M27's closed stopped-run successor authorization."""
+
+    prior_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m26"
+    target_root = "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+    claims = _m27_interrupted_claims()
+    return {
+        "schema": "sawm/dead-owner-parallel-resume-successor-materialization-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "migration_kind": _M27_SUPERSESSION_REASON,
+        "supersession_mode": _M27_SUPERSESSION_MODE,
+        "prior_store_id": f"{prior_root}/control.duckdb",
+        "prior_coordination_store_id": f"{prior_root}/control.coordination.duckdb",
+        "prior_control_store_sha256": "dece26d5c5d8189ee5c60a1c33170eae1e3bd8f63c4f7f8b31e2904007320bdf",
+        "prior_control_store_size": 43_528_192,
+        "prior_coordination_store_sha256": "1ab17781ea70dc65cee8be1ed766f745dda0203cba15abe8edf410e69086ff32",
+        "prior_coordination_store_size": 15_216_640,
+        "prior_stopped_status_projection_path": f"{prior_root}/quack-owner/quack-state-server.status.json",
+        "prior_stopped_status_projection_sha256": "230180f51aa38abe8c69f0ea1730a944882af8ba9528c4d73b6dcb07fe3de34f",
+        "prior_stopped_status_projection_size": 2_409,
+        "prior_migration_receipt_path": f"{prior_root}/migration-receipt.json",
+        "prior_migration_receipt_sha256": "7e3421e3b933edf71f3d9afbc45f7ed7dc2f1f78759b1e5c686df27c8c904699",
+        "prior_migration_receipt_size": 12_313,
+        "prior_migration_receipt_cid": "sha256:9f24a3b1d7a1c419d16a448aafbb926b4607c868472f55e7c998d3d619e6d1e8",
+        "prior_materialized_root_event_watermark": 262,
+        "prior_materialized_projection_cid": "baguqeera72ihvpvni55fcvlouzsomee3aqkwa4vb5fyt3s3gncv34xyifegq",
+        "prior_event_watermark": _M27_PRIOR_EVENT_WATERMARK,
+        "prior_event_prefix_sha256": _M27_PRIOR_EVENT_PREFIX_SHA256,
+        "prior_projection_cid": "baguqeeradjudrsggv5l5xezw5jfv6ry5cjmec6p5taardfwnscureos3mjxq",
+        "prior_plan_revision": 27,
+        "prior_catalog_digest": "sha256:3cc2e066bd4495e6efc0a3410a72c5df29242dcacfa94cd75d30f61c658539a7",
+        "prior_semantic_authority_digest": "sha256:d727ea25a7c662423afa3b5e631fae638731ee4f6b45ed1acf9c19fe7e2ba635",
+        "prior_frozen_base_authority_digest": "sha256:44cd384713e50bcc5f6757b5dbfc02c43a260ad84a3f7c678856f1e832cd294c",
+        "prior_append_surface_digest": "sha256:b0f339516f82051cd1cc32b3c7711551110169dc42b27f410f1509051e0bd763",
+        "prior_coordination_projection_digest": "sha256:8ede6352320a7e87b11d658c6802540979a4153afd24dd369668a5e3255aef86",
+        "prior_coordination_event_count": 2_582,
+        "prior_database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "prior_server_id": "server:406a344e-ce5e-46fd-b64f-2bf8490d52aa",
+        "prior_process_birth_id": "birth:3652e658f882651809deb1ff185e03fe",
+        "prior_started_at": "2026-08-30T17:49:44Z",
+        "prior_stopped_at": "2026-08-30T18:30:00Z",
+        "prior_generation": 25,
+        "prior_state_server_count": 25,
+        "prior_all_state_servers_stopped": True,
+        "prior_active_claim_count": 4,
+        "prior_active_attempt_count": 4,
+        "prior_active_lease_count": 4,
+        "actual_now_not_before_ms": _M27_CONTROL_RECORDED_AT_MS,
+        "interrupted_claims": claims,
+        "task_rearms": {
+            alias: _m27_task_rearm_receipt(alias)
+            for alias in ("SAWM-006", "SAWM-012")
+        },
+        "unchanged_retrying_tasks": ["SAWM-008", "SAWM-015"],
+        "precursor_source_head": "bbff12f06ff200b0f9280c50ca3866e1a752f3e9",
+        "precursor_source_tree": "e84a76f1fb85de9573a5f25534bedfc4296f7ea4",
+        "precursor_parent": "cdced896c85e331fc32d7ad623aa2eb926b6f1c6",
+        "prior_control_source_head": "5e4aa2bc1c90527ba3fa8cb272b785141f50e832",
+        "precursor_repair_blobs": dict(_M27_PRECURSOR_REPAIR_BLOBS),
+        "prior_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "prior_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "prior_kit_gitlink": "f30b58d4340ac6670a9da4691b6d08e5eb5948c9",
+        "prior_kit_tree": "4d2246774f1ec70cfc529f40d55b5acbf5ea66f6",
+        "observed_unaccepted_source": {
+            "task_alias": "SAWM-012",
+            "implementation_commit": "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb",
+            "merge_commit": "cdced896c85e331fc32d7ad623aa2eb926b6f1c6",
+            "completion_authority": False,
+            "accepted_transition_cid": None,
+            "status": "landed_with_portal_evidence_but_canonical_completion_absent",
+        },
+        "source_chain": {
+            "m26_control_commit": "5e4aa2bc1c90527ba3fa8cb272b785141f50e832",
+            "sawm_012_worker_commit": "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb",
+            "two_parent_merge_commit": "cdced896c85e331fc32d7ad623aa2eb926b6f1c6",
+            "two_parent_merge_parents": [
+                "5e4aa2bc1c90527ba3fa8cb272b785141f50e832",
+                "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb",
+            ],
+            "repair_commit": "bbff12f06ff200b0f9280c50ca3866e1a752f3e9",
+            "final_control_commit_count": 1,
+        },
+        "operator_control_paths": sorted(_M18_OPERATOR_CONTROL_PATHS),
+        "ordinary_source_changes": 0,
+        "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "current_kit_gitlink": "f30b58d4340ac6670a9da4691b6d08e5eb5948c9",
+        "current_kit_tree": "4d2246774f1ec70cfc529f40d55b5acbf5ea66f6",
+        "target_store_id": f"{target_root}/control.duckdb",
+        "target_coordination_store_id": f"{target_root}/control.coordination.duckdb",
+        "target_runtime_root": target_root,
+        "preserved_worktree_root": f"{prior_root}/worktrees",
+        "target_generation": _M27_TARGET_GENERATION,
+        "target_quack_port": _M27_TARGET_QUACK_PORT,
+        "target_plan_revision": _M27_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M27_TARGET_EVENT_WATERMARK,
+        "target_coordination_projection_digest": _M27_TARGET_COORDINATION_PROJECTION_DIGEST,
+        "target_coordination_event_count": 2_586,
+        "control_base_copied": True,
+        "coordination_base_copied": True,
+        "orphan_claim_expirations": 4,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "read_replica_sidecar_copied": False,
+        "execution_sidecar_copied": False,
+        "runtime_state_copied": False,
+        "worktrees_copied": False,
+        "merge_queue_copied": False,
+        "logs_copied": False,
+        "worker_self_approval": False,
+    }
+
+
+def _m27_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = "dead_owner_parallel_resume_successor_materialization"
+    if key not in config:
+        return False
+    observed = config.get(key)
+    expected = _expected_m27_dead_owner_parallel_resume_authority()
+    if type(observed) is not dict or _identity(observed) != _identity(expected):
+        raise MaterializationError("M27 stopped-run recovery authority is invalid")
+    return True
+
+
+def _m27_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = "dead_owner_parallel_resume_successor_materialization"
+    migration = _load_json(
+        root / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return False
+    if not all(presence):
+        raise MaterializationError("M27 stopped-run authority is only partially declared")
+    return _m27_successor_configured(config)
 
 
 def _m22_successor_configured_on_any_surface(
@@ -23728,6 +24019,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m27_successor_configured_on_any_surface(root, config):
+        return _check_m27_materialized(root, config_file)
     if _m26_successor_configured_on_any_surface(root, config):
         return _check_m26_materialized(root, config_file)
     if _m25_successor_configured_on_any_surface(root, config):
@@ -49166,12 +49459,1415 @@ def _materialize_m26(
     }
 
 
+def _m27_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_m27_dead_owner_parallel_resume_authority()
+    key = "dead_owner_parallel_resume_successor_materialization"
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if (
+        config.get(key) != expected
+        or not isinstance(inventory, Mapping)
+        or inventory.get(key) != expected
+        or seal.get(f"{key}_cid") != _identity(expected)
+    ):
+        raise MaterializationError(
+            "M27 dead-owner resume authority differs across controls"
+        )
+    return expected
+
+
+def _m27_name_status(root: Path, before: str, after: str) -> dict[str, str]:
+    changed: dict[str, str] = {}
+    for line in _git(
+        root, "diff", "--name-status", "--no-renames", before, after, "--"
+    ).splitlines():
+        fields = line.split("\t")
+        if (
+            len(fields) != 2
+            or fields[0] not in {"A", "M"}
+            or fields[1] in changed
+        ):
+            raise MaterializationError(f"M27 source delta is invalid: {line}")
+        changed[fields[1]] = fields[0]
+    return changed
+
+
+def _assert_m27_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require the exact landed/repair prefix plus one nine-control child."""
+
+    precursor = str(authority["precursor_source_head"])
+    precursor_parent = str(authority["precursor_parent"])
+    current = str(population["source_binding"]["head"])
+    source_chain = authority.get("source_chain")
+    control_paths = set(authority["operator_control_paths"])
+    expected_repair = {
+        path: ("A" if path.endswith("multi_supervisor_runner_health.py") else "M")
+        for path in _M27_PRECURSOR_REPAIR_BLOBS
+    }
+    parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    precursor_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", precursor
+    ).split()
+    merge_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", precursor_parent
+    ).split()
+    if (
+        current == precursor
+        or not isinstance(source_chain, Mapping)
+        or set(control_paths) != set(_M18_OPERATOR_CONTROL_PATHS)
+        or authority.get("prior_control_source_head")
+        != "5e4aa2bc1c90527ba3fa8cb272b785141f50e832"
+        or source_chain.get("m26_control_commit")
+        != "5e4aa2bc1c90527ba3fa8cb272b785141f50e832"
+        or source_chain.get("sawm_012_worker_commit")
+        != "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb"
+        or source_chain.get("two_parent_merge_commit") != precursor_parent
+        or source_chain.get("repair_commit") != precursor
+        or int(source_chain.get("final_control_commit_count") or 0) != 1
+        or _git(root, "rev-parse", f"{precursor}^{{tree}}")
+        != authority["precursor_source_tree"]
+        or precursor_parents != [precursor, precursor_parent]
+        or merge_parents
+        != [
+            precursor_parent,
+            "5e4aa2bc1c90527ba3fa8cb272b785141f50e832",
+            "e3a1fc0fd04f00e1ca64fba0252905d8e0f144bb",
+        ]
+        or parents != [current, precursor]
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or _m27_name_status(root, precursor_parent, precursor) != expected_repair
+        or _m27_name_status(root, precursor, current)
+        != {path: "M" for path in control_paths}
+        or int(authority.get("ordinary_source_changes", -1)) != 0
+    ):
+        raise MaterializationError(
+            "M27 source transition is not the closed prefix plus one control commit"
+        )
+    for path, blob_oid in _M27_PRECURSOR_REPAIR_BLOBS.items():
+        if _git(root, "rev-parse", f"{precursor}:{path}") != blob_oid:
+            raise MaterializationError(f"M27 precursor repair blob differs: {path}")
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py", "current_datasets_gitlink",
+            "current_datasets_tree", "datasets_gitlink",
+        ),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (precursor, current)
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M27 {dependency} authority differs")
+
+
+def _m27_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    target_root = str(authority["target_runtime_root"])
+    active_worktrees = f"{target_root}/worktrees"
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    runtime = config.get("runtime_paths")
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != authority["target_store_id"]
+        or program.get("store_generation") != "26"
+        or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+        or program.get("event_store_path") != f"{target_root}/events"
+        or program.get("runtime_registry_path") != f"{target_root}/registry"
+        or program.get("worktree_root") != active_worktrees
+        or owner.get("database_path") != authority["target_store_id"]
+        or owner.get("store_id") != authority["target_store_id"]
+        or owner.get("state_dir") != f"{target_root}/quack-owner"
+        or owner.get("port") != _M27_TARGET_QUACK_PORT
+        or runtime
+        != {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": active_worktrees,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+    ):
+        raise MaterializationError("scheduler M27 target/runtime binding differs")
+    lanes = config.get("lanes")
+    expected_lanes = [
+        (0, "sawm-lane-0", 0, ["SAWM-008"]),
+        (1, "sawm-lane-1", 1, ["SAWM-006", "SAWM-010"]),
+        (2, "sawm-lane-2", 2, ["SAWM-015"]),
+        (3, "sawm-lane-3", 3, ["SAWM-012"]),
+    ]
+    observed_lanes = (
+        [
+            (
+                lane.get("index"), lane.get("name"),
+                lane.get("strict_shard_remainder"), lane.get("initial_task_ids"),
+            )
+            for lane in lanes
+        ]
+        if type(lanes) is list and all(type(lane) is dict for lane in lanes)
+        else None
+    )
+    provider = config.get("provider")
+    if (
+        config.get("max_lanes") != 4
+        or config.get("strict_task_sharding") is not True
+        or config.get("idle_lane_work_stealing") != ""
+        or observed_lanes != expected_lanes
+        or not isinstance(provider, Mapping)
+        or int(provider.get("max_concurrency") or 0) < 4
+    ):
+        raise MaterializationError("scheduler M27 four-lane contract differs")
+    control = _confined_leaf(
+        root, str(authority["target_store_id"]), noun="M27 control store"
+    )
+    coordination = _confined_leaf(
+        root,
+        str(authority["target_coordination_store_id"]),
+        noun="M27 coordination store",
+    )
+    if (
+        control.parent != coordination.parent
+        or coordination != control.with_name("control.coordination.duckdb")
+        or str(control.parent.relative_to(root)) != target_root
+    ):
+        raise MaterializationError("scheduler M27 store pair is not confined")
+    return control, coordination
+
+
+def _m27_migration_plan_delta(
+    population: Mapping[str, Any], config: Mapping[str, Any]
+) -> dict[str, Any]:
+    del config
+    authority = _expected_m27_dead_owner_parallel_resume_authority()
+    return {
+        "kind": _M27_SUPERSESSION_REASON,
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "prior_generation": 25,
+        "target_generation": 26,
+        "target_runtime_root": authority["target_runtime_root"],
+        "target_event_watermark": _M27_TARGET_EVENT_WATERMARK,
+        "expired_dead_owner_claims": ["SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015"],
+        "rearmed_interrupted_tasks": ["SAWM-006", "SAWM-012"],
+        "unchanged_retrying_tasks": ["SAWM-008", "SAWM-015"],
+    }
+
+
+def _m27_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    del config
+    authority = _expected_m27_dead_owner_parallel_resume_authority()
+    return {
+        "schema": "sawm/operator-control-plane-source-migration@24",
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "migration_kind": _M27_SUPERSESSION_REASON,
+        "supersession_mode": _M27_SUPERSESSION_MODE,
+        "authority": authority,
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "validation_digest": validation_digest,
+        "preserved_m26_stopped_authority": {
+            "control_store_sha256": authority["prior_control_store_sha256"],
+            "coordination_store_sha256": authority["prior_coordination_store_sha256"],
+            "migration_receipt_cid": authority["prior_migration_receipt_cid"],
+            "projection_cid": authority["prior_projection_cid"],
+            "event_watermark": authority["prior_event_watermark"],
+            "generation": authority["prior_generation"],
+            "stopped_at": authority["prior_stopped_at"],
+        },
+        "interrupted_claim_reconciliation": authority["interrupted_claims"],
+        "task_rearms": authority["task_rearms"],
+        "portal_and_rescue_evidence_is_advisory": True,
+        "completion_authority_created": False,
+        "worker_self_approval": False,
+    }
+
+
+def _m27_require_actual_expiry_time() -> int:
+    now_ms = time.time_ns() // 1_000_000
+    if now_ms < _M27_CONTROL_RECORDED_AT_MS:
+        raise MigrationRequired(
+            "M27 refuses reconciliation before every exact claim has expired"
+        )
+    return now_ms
+
+
+def _assert_m27_target_clean(control: Path, coordination: Path) -> None:
+    for path in (control, coordination):
+        if not path.is_file() or path.is_symlink() or os.lstat(path).st_nlink != 1:
+            raise MigrationRequired("M27 target store is not one regular leaf")
+        if os.path.lexists(path.with_name(path.name + ".wal")):
+            raise MigrationRequired("M27 target retained a WAL")
+
+
+def _assert_m27_no_staging_or_pending(control: Path) -> None:
+    if any(control.parent.glob(".m27-installing.*")) or any(
+        control.parent.glob(".migration-receipt.json.*.tmp")
+    ):
+        raise MigrationRequired("M27 retained a staging or receipt temporary")
+
+
+def _assert_m27_prior_anchor(
+    root: Path,
+    authority: Mapping[str, Any],
+    population: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    control = _confined_leaf(
+        root, str(authority["prior_store_id"]), noun="M27 prior control"
+    )
+    coordination = _confined_leaf(
+        root,
+        str(authority["prior_coordination_store_id"]),
+        noun="M27 prior coordination",
+    )
+    anchors = {
+        control: (
+            authority["prior_control_store_sha256"],
+            authority["prior_control_store_size"],
+        ),
+        coordination: (
+            authority["prior_coordination_store_sha256"],
+            authority["prior_coordination_store_size"],
+        ),
+        root / str(authority["prior_stopped_status_projection_path"]): (
+            authority["prior_stopped_status_projection_sha256"],
+            authority["prior_stopped_status_projection_size"],
+        ),
+        root / str(authority["prior_migration_receipt_path"]): (
+            authority["prior_migration_receipt_sha256"],
+            authority["prior_migration_receipt_size"],
+        ),
+    }
+    for path, expected in anchors.items():
+        if _stable_regular_sha256(
+            path, root=root, noun="M27 prior anchor", required_link_count=1
+        ) != expected:
+            raise MigrationRequired("M27 stopped predecessor anchor differs")
+    if (
+        _m18_prior_listener_is_active(_M26_TARGET_QUACK_PORT)
+        or any(
+            os.path.lexists(path.with_name(path.name + ".wal"))
+            for path in (control, coordination)
+        )
+    ):
+        raise MigrationRequired("M27 predecessor is not stopped and WAL-free")
+    import duckdb
+
+    connection = duckdb.connect(str(control), read_only=True)
+    try:
+        server = connection.execute(
+            "SELECT server_id,database_uuid,process_birth_id,generation,"
+            "started_at,stopped_at,status,revision FROM state_servers "
+            "WHERE generation=25"
+        ).fetchall()
+        counts = connection.execute(
+            "SELECT COUNT(*),SUM(CASE WHEN status='stopped' THEN 1 ELSE 0 END),"
+            "MAX(generation) FROM state_servers"
+        ).fetchone()
+        generations = connection.execute(
+            "SELECT COUNT(*),MAX(generation),MAX(database_uuid) FROM store_generations"
+        ).fetchone()
+        prefix = _event_prefix_digest(connection, _M27_PRIOR_EVENT_WATERMARK)
+    finally:
+        connection.close()
+    if (
+        server
+        != [
+            (
+                authority["prior_server_id"], authority["prior_database_uuid"],
+                authority["prior_process_birth_id"], 25,
+                authority["prior_started_at"], authority["prior_stopped_at"],
+                "stopped", 2,
+            )
+        ]
+        or tuple(int(value or 0) for value in counts) != (25, 25, 25)
+        or generations != (25, 25, authority["prior_database_uuid"])
+        or prefix != (_M27_PRIOR_EVENT_PREFIX_SHA256, 264)
+        or population["source_binding"].get("datasets_gitlink")
+        != authority["current_datasets_gitlink"]
+        or population["source_binding"].get("kit_gitlink")
+        != authority["current_kit_gitlink"]
+    ):
+        raise MigrationRequired("M27 stopped predecessor projection differs")
+    return control, coordination
+
+
+def _inspect_m27_head_task_projection(
+    source: Any, population: Mapping[str, Any]
+) -> dict[str, Any]:
+    snapshot = source.snapshot()
+    plan = source.get_plan(str(population["plan_root_cid"]))
+    expected = {f"SAWM-{index:03d}": ("todo", 2) for index in range(45)}
+    expected.update(
+        {
+            "SAWM-000": ("completed", 2), "SAWM-001": ("completed", 18),
+            "SAWM-002": ("completed", 4), "SAWM-003": ("completed", 7),
+            "SAWM-004": ("completed", 7), "SAWM-005": ("completed", 4),
+            "SAWM-006": ("retrying", 4), "SAWM-007": ("completed", 7),
+            "SAWM-008": ("retrying", 8), "SAWM-010": ("completed", 4),
+            "SAWM-011": ("completed", 4), "SAWM-012": ("retrying", 7),
+            "SAWM-015": ("retrying", 5),
+        }
+    )
+    if (
+        snapshot.event_cursor != _M27_TARGET_EVENT_WATERMARK
+        or plan is None
+        or int(plan.get("revision") or 0) != _M27_TARGET_PLAN_REVISION
+        or snapshot.goal_count != 29
+        or snapshot.task_count != 45
+    ):
+        raise MigrationRequired("M27 head projection differs")
+    for alias, (status, revision) in expected.items():
+        task = source.get_task(alias)
+        if task is None or task.status != status or task.revision != revision:
+            raise MigrationRequired(f"M27 task projection differs: {alias}")
+        if alias in {"SAWM-006", "SAWM-012"} and dict(task.body).get(
+            "completion_receipt"
+        ) != _m27_task_rearm_receipt(alias):
+            raise MigrationRequired(f"M27 task rearm receipt differs: {alias}")
+    return {
+        "projection_cid": snapshot.projection_cid,
+        "event_watermark": snapshot.event_cursor,
+    }
+
+
+def _stage_m27_store_pair(
+    root: Path,
+    stage_dir: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M27 privately from the exact stopped M26 pair."""
+
+    _m27_require_actual_expiry_time()
+    authority = _expected_m27_dead_owner_parallel_resume_authority()
+    stage_control = stage_dir / "control.duckdb"
+    stage_coordination = stage_dir / "control.coordination.duckdb"
+    shutil.copy2(prior_control, stage_control)
+    shutil.copy2(prior_coordination, stage_coordination)
+    if (
+        _store_sha256(stage_control) != authority["prior_control_store_sha256"]
+        or _store_sha256(stage_coordination)
+        != authority["prior_coordination_store_sha256"]
+    ):
+        raise MaterializationError("M27 staged predecessor bytes differ")
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinator,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    claims = _m27_interrupted_claims()
+    expiry_order = ("SAWM-008", "SAWM-015", "SAWM-012", "SAWM-006")
+    coordinator = DatabaseCoordinator(stage_coordination).open()
+    expired: dict[str, Any] = {}
+    try:
+        for alias in expiry_order:
+            evidence = claims[alias]
+            claim = coordinator.get_task_claim(str(evidence["claim_id"]))
+            if claim is None:
+                raise MaterializationError(f"M27 interrupted claim is missing: {alias}")
+            observed = {
+                "task_cid": claim.task_cid,
+                "attempt_id": claim.attempt_id,
+                "attempt_number": claim.attempt_number,
+                "claim_id": claim.claim_id,
+                "lease_id": claim.lease_id,
+                "owner_session_id": claim.owner_session_id,
+                "fencing_token": claim.fencing_token,
+                "fence_epoch": claim.fence_epoch,
+                "claimed_at_ms": claim.claimed_at_ms,
+                "expires_at_ms": claim.expires_at_ms,
+                "state": str(getattr(claim.state, "value", claim.state)),
+                "revision": claim.revision,
+                "worktree_id": claim.worktree_id,
+                "idempotency_key": claim.idempotency_key,
+                "body": dict(claim.body),
+            }
+            expected = {
+                key: evidence[key]
+                for key in (
+                    "task_cid", "attempt_id", "attempt_number", "claim_id",
+                    "lease_id", "owner_session_id", "fencing_token",
+                    "fence_epoch", "claimed_at_ms", "expires_at_ms",
+                )
+            }
+            expected.update(
+                {
+                    "state": "accepted",
+                    "revision": evidence["coordination_revision"],
+                    "worktree_id": "",
+                    "idempotency_key": "",
+                    "body": {},
+                }
+            )
+            if observed != expected:
+                raise MaterializationError(f"M27 interrupted claim differs: {alias}")
+            expired[alias] = coordinator.expire_task_claim(
+                claim, now_ms=int(evidence["expires_at_ms"])
+            )
+    finally:
+        coordinator.close()
+
+    original_clock = intent_repository._utc_iso
+
+    def fixed_m27_utc_iso(_moment: Any = None) -> str:
+        return _M27_CONTROL_RECORDED_AT
+
+    intent_repository._utc_iso = fixed_m27_utc_iso
+    clock_interference = False
+    task_cas: dict[str, Any] = {}
+    try:
+        source = DatabaseTaskSource(
+            stage_control,
+            install_schema=False,
+            repository_tree_id=str(population["repository_tree_id"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            owner_id="sawm-r2-dead-owner-parallel-resume-migrator",
+        )
+        try:
+            expected_prior = {
+                "SAWM-006": ("in_progress", 3),
+                "SAWM-008": ("retrying", 8),
+                "SAWM-012": ("in_progress", 6),
+                "SAWM-015": ("retrying", 5),
+            }
+            for alias, (status, revision) in expected_prior.items():
+                task = source.get_task(alias)
+                if task is None or task.status != status or task.revision != revision:
+                    raise MaterializationError(f"M27 prior task differs: {alias}")
+            operator = source.get_task("SAWM-000")
+            if operator is None or operator.status != "completed" or operator.revision != 2:
+                raise MaterializationError("M27 operator task authority differs")
+            migration_body = _m27_migration_body(
+                population, config, validation_digest
+            )
+            migration_digest = _identity(migration_body)
+            plan_receipt = source.plans.append_revision(
+                plan_cid=str(population["plan_root_cid"]),
+                expected_revision=27,
+                body={
+                    "current_source_binding_cid": population["source_binding"][
+                        "source_binding_cid"
+                    ],
+                    "source_migration_revision": _M27_MIGRATION_REVISION,
+                    "source_migration_digest": migration_digest,
+                    "supersession_mode": _M27_SUPERSESSION_MODE,
+                },
+                delta=_m27_migration_plan_delta(population, config),
+            )
+            evidence = source.record_evidence(
+                task_cid=operator.task_cid,
+                evidence_kind="operator_control_plane_dead_owner_parallel_resume_successor",
+                digest=migration_digest,
+                body=migration_body,
+            )
+            for alias, prior_revision, expected_cursor in (
+                ("SAWM-006", 3, 267),
+                ("SAWM-012", 6, 268),
+            ):
+                result = source.compare_and_set_status(
+                    claims[alias]["task_cid"],
+                    prior_revision,
+                    "retrying",
+                    _m27_task_rearm_receipt(alias),
+                )
+                if (
+                    result.changed is not True
+                    or result.previous_status != "in_progress"
+                    or result.task.status != "retrying"
+                    or result.task.revision != prior_revision + 1
+                    or result.event_cursor != expected_cursor
+                ):
+                    raise MaterializationError(f"M27 control rearm differs: {alias}")
+                task_cas[alias] = result
+            _inspect_m27_head_task_projection(source, population)
+        finally:
+            source.close()
+    finally:
+        clock_interference = intent_repository._utc_iso is not fixed_m27_utc_iso
+        intent_repository._utc_iso = original_clock
+    if clock_interference or intent_repository._utc_iso is not original_clock:
+        raise MaterializationError("M27 deterministic control clock binding drifted")
+
+    import duckdb
+
+    for path in (stage_control, stage_coordination):
+        checkpoint = duckdb.connect(str(path))
+        try:
+            checkpoint.execute("CHECKPOINT")
+        finally:
+            checkpoint.close()
+    if any(
+        os.path.lexists(path.with_name(path.name + ".wal"))
+        for path in (stage_control, stage_coordination)
+    ):
+        raise MaterializationError("M27 staged mutation retained a WAL")
+    verified = _verify_m27_store_pair_copy(
+        stage_control,
+        stage_coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    return {
+        "stage_control": stage_control,
+        "stage_coordination": stage_coordination,
+        "plan_receipt": plan_receipt,
+        "evidence": evidence,
+        "migration_digest": migration_digest,
+        "expired_claims": expired,
+        "task_cas": task_cas,
+        "verified": verified,
+    }
+
+
+def _verify_m27_store_pair_copy(
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Prove M27 made only four expirations and two control rearms."""
+
+    authority = _expected_m27_dead_owner_parallel_resume_authority()
+    if (
+        _store_sha256(prior_control) != authority["prior_control_store_sha256"]
+        or _store_sha256(prior_coordination)
+        != authority["prior_coordination_store_sha256"]
+        or any(
+            os.path.lexists(path.with_name(path.name + ".wal"))
+            for path in (control, coordination, prior_control, prior_coordination)
+        )
+    ):
+        raise MigrationRequired("M27 predecessor or staged pair differs")
+    expected_body = _m27_migration_body(population, config, validation_digest)
+    expected_digest = _identity(expected_body)
+    expected_delta = _m27_migration_plan_delta(population, config)
+
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        read_coordination_registry_projection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    prior = duckdb.connect(str(prior_control), read_only=True)
+    target = duckdb.connect(str(control), read_only=True)
+    try:
+        append_tables = {
+            "plans", "plan_revisions", "evidence_nodes", "domain_events",
+            "task_revisions",
+        }
+        prior_tables = _main_table_names(prior)
+        target_tables = _main_table_names(target)
+        stable = tuple(
+            table for table in prior_tables if table not in append_tables | {"tasks"}
+        )
+        if (
+            prior_tables != target_tables
+            or _event_prefix_digest(prior, 264)
+            != (_M27_PRIOR_EVENT_PREFIX_SHA256, 264)
+            or _main_catalog_digest_on(prior) != authority["prior_catalog_digest"]
+            or _main_catalog_digest_on(target) != authority["prior_catalog_digest"]
+            or _authority_table_digest_on(prior, stable)
+            != _authority_table_digest_on(target, stable)
+        ):
+            raise MigrationRequired("M27 changed frozen control tables")
+        task_columns = [
+            str(row[1]) for row in target.execute("PRAGMA table_info('tasks')").fetchall()
+        ]
+        prior_tasks = {
+            str(row[task_columns.index("task_alias")]): row
+            for row in prior.execute("SELECT * FROM tasks ORDER BY ordinal").fetchall()
+        }
+        target_tasks = {
+            str(row[task_columns.index("task_alias")]): row
+            for row in target.execute("SELECT * FROM tasks ORDER BY ordinal").fetchall()
+        }
+        prior_task_revisions = {
+            (str(row[0]), int(row[1])): row
+            for row in prior.execute(
+                "SELECT * FROM task_revisions ORDER BY task_cid,revision"
+            ).fetchall()
+        }
+        target_task_revisions = {
+            (str(row[0]), int(row[1])): row
+            for row in target.execute(
+                "SELECT * FROM task_revisions ORDER BY task_cid,revision"
+            ).fetchall()
+        }
+        prior_plans = prior.execute("SELECT * FROM plans ORDER BY 1,2").fetchall()
+        target_plans = target.execute("SELECT * FROM plans ORDER BY 1,2").fetchall()
+        prior_revisions = prior.execute(
+            "SELECT * FROM plan_revisions ORDER BY 1,2,3,4"
+        ).fetchall()
+        target_revisions = target.execute(
+            "SELECT * FROM plan_revisions ORDER BY 1,2,3,4"
+        ).fetchall()
+        prior_evidence = prior.execute(
+            "SELECT * FROM evidence_nodes ORDER BY 1,2,3,4,5,6,7"
+        ).fetchall()
+        target_evidence = target.execute(
+            "SELECT * FROM evidence_nodes ORDER BY 1,2,3,4,5,6,7"
+        ).fetchall()
+        event_sql = (
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,"
+            "task_cid,attempt_id,session_id,recorded_at,body_json "
+            "FROM domain_events ORDER BY global_sequence"
+        )
+        prior_events = prior.execute(event_sql).fetchall()
+        target_events = target.execute(event_sql).fetchall()
+    finally:
+        target.close()
+        prior.close()
+    status_index = task_columns.index("status")
+    revision_index = task_columns.index("revision")
+    updated_index = task_columns.index("updated_at")
+    body_index = task_columns.index("body_json")
+    if set(prior_tasks) != set(target_tasks):
+        raise MigrationRequired("M27 task identity set differs")
+    for alias, prior_row in prior_tasks.items():
+        expected_row = list(prior_row)
+        if alias in {"SAWM-006", "SAWM-012"}:
+            expected_row[status_index] = "retrying"
+            expected_row[revision_index] = int(expected_row[revision_index]) + 1
+            expected_row[updated_index] = _M27_CONTROL_RECORDED_AT
+            body = json.loads(str(expected_row[body_index]))
+            body["completion_receipt"] = _m27_task_rearm_receipt(alias)
+            expected_row[body_index] = _canonical(body).decode("utf-8")
+        if tuple(expected_row) != target_tasks[alias]:
+            raise MigrationRequired(f"M27 task row differs: {alias}")
+    if any(
+        target_task_revisions.get(key) != row
+        for key, row in prior_task_revisions.items()
+    ):
+        raise MigrationRequired("M27 rewrote prior task revisions")
+    expected_new_task_revisions: dict[tuple[str, int], tuple[Any, ...]] = {}
+    for alias in ("SAWM-006", "SAWM-012"):
+        row = target_tasks[alias]
+        task_cid = str(row[task_columns.index("task_cid")])
+        revision = int(row[revision_index])
+        expected_new_task_revisions[(task_cid, revision)] = (
+            task_cid, revision, "retrying", str(row[body_index]),
+            _M27_CONTROL_RECORDED_AT,
+        )
+    if {
+        key: row for key, row in target_task_revisions.items()
+        if key not in prior_task_revisions
+    } != expected_new_task_revisions:
+        raise MigrationRequired("M27 task revision append differs")
+    if (
+        len(prior_plans) != 1
+        or len(target_plans) != 1
+        or len(prior_revisions) != 27
+        or len(target_revisions) != 28
+        or target_revisions[:-1] != prior_revisions
+        or len(target_evidence) != len(prior_evidence) + 1
+        or len(prior_events) != 264
+        or len(target_events) != 268
+        or target_events[:-4] != prior_events
+    ):
+        raise MigrationRequired("M27 append-only control counts differ")
+    prior_plan, target_plan = prior_plans[0], target_plans[0]
+    expected_plan_body = {
+        **json.loads(str(prior_plan[7])),
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "source_migration_revision": _M27_MIGRATION_REVISION,
+        "source_migration_digest": expected_digest,
+        "supersession_mode": _M27_SUPERSESSION_MODE,
+        "last_delta": expected_delta,
+    }
+    operator_task_cid = prior_tasks["SAWM-000"][task_columns.index("task_cid")]
+    evidence_kind = "operator_control_plane_dead_owner_parallel_resume_successor"
+    expected_evidence_id = content_identity(
+        {
+            "task_cid": operator_task_cid,
+            "evidence_kind": evidence_kind,
+            "digest": expected_digest,
+            "body": expected_body,
+        }
+    )
+    evidence_map = {str(row[0]): row for row in target_evidence}
+    if (
+        prior_plan[:5] != target_plan[:5]
+        or int(prior_plan[6]) != 27
+        or int(target_plan[6]) != 28
+        or str(target_plan[5]) != _M27_CONTROL_RECORDED_AT
+        or json.loads(str(target_plan[7])) != expected_plan_body
+        or target_revisions[-1]
+        != (
+            str(population["plan_root_cid"]), 28,
+            _canonical(expected_plan_body).decode("utf-8"),
+            _M27_CONTROL_RECORDED_AT,
+        )
+        or set(evidence_map) - {str(row[0]) for row in prior_evidence}
+        != {expected_evidence_id}
+        or json.loads(str(evidence_map[expected_evidence_id][6])) != expected_body
+    ):
+        raise MigrationRequired("M27 plan or evidence append differs")
+    suffix = target_events[-4:]
+    if (
+        [str(row[4]) for row in suffix]
+        != [
+            "intent.plan_revision_appended", "intent.evidence_recorded",
+            "intent.task_status_changed", "intent.task_status_changed",
+        ]
+        or [int(row[3]) for row in suffix] != [265, 266, 267, 268]
+        or any(str(row[8]) != _M27_CONTROL_RECORDED_AT for row in suffix)
+        or [str(row[5]) for row in suffix[2:]]
+        != [
+            _m27_interrupted_claims()["SAWM-006"]["task_cid"],
+            _m27_interrupted_claims()["SAWM-012"]["task_cid"],
+        ]
+    ):
+        raise MigrationRequired("M27 control event suffix differs")
+    source = DatabaseTaskSource(control, install_schema=False)
+    try:
+        head = _inspect_m27_head_task_projection(source, population)
+    finally:
+        source.close()
+    control_sha256_before_replay = _store_sha256(control)
+    with tempfile.TemporaryDirectory(prefix="sawm-m27-projection-replay-") as td:
+        replay_control = Path(td) / "control.replay.duckdb"
+        shutil.copyfile(control, replay_control)
+        if _store_sha256(replay_control) != control_sha256_before_replay:
+            raise MigrationRequired("M27 disposable replay copy differs")
+        replay = DatabaseTaskSource(replay_control, install_schema=False)
+        try:
+            projection_matches = replay.projection_matches_events()
+        finally:
+            replay.close()
+    if _store_sha256(control) != control_sha256_before_replay:
+        raise MigrationRequired("M27 replay verification mutated control authority")
+    if not projection_matches:
+        raise MigrationRequired("M27 control event replay differs")
+
+    prior_projection = read_coordination_registry_projection(prior_coordination)
+    target_projection = read_coordination_registry_projection(coordination)
+    prior_coord = duckdb.connect(str(prior_coordination), read_only=True)
+    target_coord = duckdb.connect(str(coordination), read_only=True)
+    claims = _m27_interrupted_claims()
+    try:
+        prior_event_count = int(
+            prior_coord.execute("SELECT COUNT(*) FROM lease_events").fetchone()[0]
+        )
+        target_event_count = int(
+            target_coord.execute("SELECT COUNT(*) FROM lease_events").fetchone()[0]
+        )
+        prior_completion_count = int(
+            prior_coord.execute("SELECT COUNT(*) FROM task_completions").fetchone()[0]
+        )
+        target_completion_count = int(
+            target_coord.execute("SELECT COUNT(*) FROM task_completions").fetchone()[0]
+        )
+        event_rows = target_coord.execute(
+            "SELECT event_id,lease_id,scope_key,event_type,fencing_token,"
+            "fence_epoch,observed_at_ms,body_json FROM lease_events "
+            "WHERE event_type='expired' AND lease_id IN (?,?,?,?) "
+            "ORDER BY observed_at_ms,event_id",
+            [claims[alias]["lease_id"] for alias in ("SAWM-008", "SAWM-015", "SAWM-012", "SAWM-006")],
+        ).fetchall()
+        orphan_rows: dict[str, tuple[Any, ...]] = {}
+        for alias, claim in claims.items():
+            orphan_rows[alias] = (
+                target_coord.execute(
+                    "SELECT state,revision,released_at_ms FROM task_claims WHERE claim_id=?",
+                    [claim["claim_id"]],
+                ).fetchone(),
+                target_coord.execute(
+                    "SELECT status,revision,finished_at_ms FROM task_attempts WHERE attempt_id=?",
+                    [claim["attempt_id"]],
+                ).fetchone(),
+                target_coord.execute(
+                    "SELECT state,revision FROM fenced_leases WHERE lease_id=?",
+                    [claim["lease_id"]],
+                ).fetchone(),
+            )
+    finally:
+        target_coord.close()
+        prior_coord.close()
+    for alias, claim in claims.items():
+        if orphan_rows[alias] != (
+            ("expired", int(claim["coordination_revision"]) + 1, None),
+            ("expired", 2, int(claim["expires_at_ms"])),
+            ("expired", int(claim["coordination_revision"]) + 1),
+        ):
+            raise MigrationRequired(f"M27 expired orphan rows differ: {alias}")
+    expected_events = []
+    for alias in ("SAWM-008", "SAWM-015", "SAWM-012", "SAWM-006"):
+        claim = claims[alias]
+        expected_events.append(
+            (
+                claim["lease_id"], f"task:{claim['task_cid']}", "expired",
+                claim["fencing_token"], claim["fence_epoch"],
+                claim["expires_at_ms"], {},
+            )
+        )
+    observed_events = [(*row[1:7], json.loads(str(row[7]))) for row in event_rows]
+    event_ids = [str(row[0]) for row in event_rows]
+    counts = target_projection.get("counts", {})
+    if (
+        prior_projection.get("projection_root")
+        != authority["prior_coordination_projection_digest"]
+        or target_projection.get("projection_root")
+        != authority["target_coordination_projection_digest"]
+        or prior_event_count != 2_582
+        or target_event_count != 2_586
+        or prior_completion_count != 8
+        or target_completion_count != 8
+        or observed_events != expected_events
+        or len(event_ids) != len(set(event_ids))
+        or any(re.fullmatch(r"lease-event:[0-9a-f]{32}", item) is None for item in event_ids)
+        or any(
+            int(counts.get(key) or 0) != 0
+            for key in (
+                "active_fenced_leases", "active_maintenance_leases",
+                "active_resource_claims", "active_task_attempts",
+                "active_task_claims",
+            )
+        )
+    ):
+        raise MigrationRequired("M27 coordination reconciliation differs")
+    return {
+        "valid": True,
+        "task_count": 45,
+        "goal_count": 29,
+        "projection_cid": head["projection_cid"],
+        "event_watermark": 268,
+        "projection_matches_events": True,
+        "migration_digest": expected_digest,
+        "migration_evidence_id": expected_evidence_id,
+        "plan_migration_event_id": str(suffix[0][0]),
+        "migration_evidence_event_id": str(suffix[1][0]),
+        "semantic_authority_digest": _semantic_authority_digest(control),
+        "frozen_base_authority_digest": _frozen_base_authority_digest(control),
+        "append_surface_digest": _append_surface_digest(control),
+        "catalog_digest": authority["prior_catalog_digest"],
+        "coordination_projection_digest": target_projection["projection_root"],
+        "coordination_event_count": target_event_count,
+        "control_store_sha256": _store_sha256(control),
+        "control_store_size": control.stat().st_size,
+        "coordination_store_sha256": _store_sha256(coordination),
+        "coordination_store_size": coordination.stat().st_size,
+        "active_claim_count": 0,
+        "active_attempt_count": 0,
+        "active_lease_count": 0,
+        "orphan_claim_expirations": 4,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m27_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Build M27's non-authoritative receipt-last pair marker."""
+
+    authority = _expected_m27_dead_owner_parallel_resume_authority()
+    result = {
+        "schema": "sawm/non-authoritative-migration-receipt@25",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "coordination_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": _M27_MIGRATION_REVISION,
+        "migration_kind": _M27_SUPERSESSION_REASON,
+        "supersession_mode": _M27_SUPERSESSION_MODE,
+        "dead_owner_parallel_resume_successor_materialization_cid": _identity(
+            authority
+        ),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_digest": validation_digest,
+        "database_path": str(control.relative_to(root)),
+        "coordination_path": str(coordination.relative_to(root)),
+        "target_runtime_root": authority["target_runtime_root"],
+        "preserved_worktree_root": authority["preserved_worktree_root"],
+        "target_generation": _M27_TARGET_GENERATION,
+        "target_quack_port": _M27_TARGET_QUACK_PORT,
+        "target_plan_revision": _M27_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M27_TARGET_EVENT_WATERMARK,
+        "migration_digest": verified["migration_digest"],
+        "projection_cid": verified["projection_cid"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "frozen_base_authority_digest": verified[
+            "frozen_base_authority_digest"
+        ],
+        "append_surface_digest": verified["append_surface_digest"],
+        "catalog_digest": verified["catalog_digest"],
+        "control_store_sha256": verified["control_store_sha256"],
+        "control_store_size": verified["control_store_size"],
+        "coordination_store_sha256": verified["coordination_store_sha256"],
+        "coordination_store_size": verified["coordination_store_size"],
+        "coordination_projection_digest": verified[
+            "coordination_projection_digest"
+        ],
+        "coordination_event_count": verified["coordination_event_count"],
+        "plan_migration_event_id": verified["plan_migration_event_id"],
+        "migration_evidence_event_id": verified[
+            "migration_evidence_event_id"
+        ],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "prior_database_path": authority["prior_store_id"],
+        "prior_coordination_path": authority["prior_coordination_store_id"],
+        "prior_control_store_sha256": authority["prior_control_store_sha256"],
+        "prior_coordination_store_sha256": authority[
+            "prior_coordination_store_sha256"
+        ],
+        "prior_migration_receipt_cid": authority["prior_migration_receipt_cid"],
+        "prior_projection_cid": authority["prior_projection_cid"],
+        "prior_event_watermark": authority["prior_event_watermark"],
+        "prior_generation": authority["prior_generation"],
+        "prior_database_uuid": authority["prior_database_uuid"],
+        "prior_stopped_at": authority["prior_stopped_at"],
+        "prior_source_head": authority["precursor_source_head"],
+        "prior_control_source_head": authority["prior_control_source_head"],
+        "source_chain": authority["source_chain"],
+        "observed_unaccepted_source": authority["observed_unaccepted_source"],
+        "interrupted_claims": authority["interrupted_claims"],
+        "task_rearms": authority["task_rearms"],
+        "unchanged_retrying_tasks": authority["unchanged_retrying_tasks"],
+        "control_and_coordination_bases_copied": True,
+        "prior_control_store_mutated": False,
+        "prior_coordination_store_mutated": False,
+        "read_replica_sidecar_copied": False,
+        "execution_sidecar_copied": False,
+        "runtime_state_copied": False,
+        "worktrees_copied": False,
+        "preserved_worktrees_referenced_in_place": True,
+        "merge_queue_copied": False,
+        "logs_copied": False,
+        "plan_revision_changes": 1,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "orphan_claim_expirations": 4,
+        "coordination_semantic_changes": 4,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "merge_attempt_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m27_migration_receipt(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    population: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Publish M27's marker only after both authoritative stores verify."""
+
+    expected = _expected_m27_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        verified,
+        validation_digest,
+    )
+    receipt_path = control.parent / "migration-receipt.json"
+    lock_path = control.parent / ".m27-receipt.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        pending = sorted(receipt_path.parent.glob(".migration-receipt.json.*.tmp"))
+        if pending:
+            raise MigrationRequired("M27 has an uncommitted receipt temporary")
+        if os.path.lexists(receipt_path):
+            observed, _ = _load_nofollow_json(
+                receipt_path, root=root, noun="M27 final pair marker"
+            )
+            if observed != expected:
+                raise MigrationRequired("M27 final pair marker differs")
+            return observed
+        temporary = receipt_path.with_name(
+            f".migration-receipt.json.{os.getpid()}.tmp"
+        )
+        out = os.open(
+            temporary,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        if (
+            _store_sha256(control) != verified["control_store_sha256"]
+            or _store_sha256(coordination)
+            != verified["coordination_store_sha256"]
+        ):
+            raise MigrationRequired("M27 pair changed before receipt publication")
+        os.replace(temporary, receipt_path)
+        directory = os.open(
+            receipt_path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        observed, _ = _load_nofollow_json(
+            receipt_path, root=root, noun="M27 committed final pair marker"
+        )
+        if observed != expected:
+            raise MigrationRequired("M27 committed final pair marker differs")
+        return observed
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+
+def _verify_m27_store_pair(
+    root: Path,
+    control: Path,
+    coordination: Path,
+    prior_control: Path,
+    prior_coordination: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify M27 without mutating either accepted store."""
+
+    _assert_m27_target_clean(control, coordination)
+    before = (_store_sha256(control), _store_sha256(coordination))
+    verified = _verify_m27_store_pair_copy(
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    if before != (_store_sha256(control), _store_sha256(coordination)):
+        raise MigrationRequired("M27 verification changed authority bytes")
+    return verified
+
+
+def _check_m27_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m27_source_binding_authority(root, population, config)
+    _assert_m27_source_delta(root, population, authority)
+    control, coordination = _m27_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    if not all(
+        os.path.lexists(path) for path in (control, coordination, receipt_path)
+    ):
+        raise MigrationRequired("M27 materialized pair or final marker is missing")
+    _assert_m27_no_staging_or_pending(control)
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination = _assert_m27_prior_anchor(
+        root, authority, population
+    )
+    verified = _verify_m27_store_pair(
+        root,
+        control,
+        coordination,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    receipt = _ensure_m27_migration_receipt(
+        root,
+        control,
+        coordination,
+        population,
+        verified,
+        validation_digest,
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": receipt,
+        **verified,
+    }
+
+
+def _materialize_m27(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Copy stopped M26, expire its dead claims, and rearm two tasks."""
+
+    del config_file
+    _m27_require_actual_expiry_time()
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m27_source_binding_authority(root, population, config)
+    _assert_m27_source_delta(root, population, authority)
+    control, coordination = _m27_target_paths(root, config, authority)
+    receipt_path = control.parent / "migration-receipt.json"
+    validation_digest = _m7_validation_digest(root, population)
+    prior_control, prior_coordination = _assert_m27_prior_anchor(
+        root, authority, population
+    )
+    present = tuple(os.path.lexists(path) for path in (control, coordination))
+    if present[0] != present[1]:
+        raise MigrationRequired("M27 has a partial published store pair")
+    if os.path.lexists(receipt_path) and not present[0]:
+        raise MigrationRequired("M27 has an orphaned final marker")
+    if present[0]:
+        verified = _verify_m27_store_pair(
+            root,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+        receipt_present = os.path.lexists(receipt_path)
+        receipt = _ensure_m27_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            verified,
+            validation_digest,
+        )
+        return {
+            "schema": SCHEMA,
+            "valid": True,
+            "action": "checked" if receipt_present else "recovered_final_pair_marker",
+            "migration_required": False,
+            "database_path": str(control),
+            "coordination_path": str(coordination),
+            "program_definition_cid": population["program_definition_cid"],
+            "validation_digest": validation_digest,
+            "prior_authority": authority,
+            "receipt": receipt,
+            **verified,
+        }
+
+    prohibited = (
+        receipt_path,
+        control.with_name("control.execution.duckdb"),
+        control.with_name("control.read-replica.duckdb"),
+        control.parent / "state",
+        control.parent / "events",
+        control.parent / "registry",
+        control.parent / "worktrees",
+        control.parent / "merge-queue",
+        control.parent / "logs",
+        control.parent / "quack-owner",
+    )
+    if any(os.path.lexists(path) for path in prohibited):
+        raise MaterializationError("M27 successor runtime root is not fresh")
+    control.parent.mkdir(parents=True, exist_ok=True)
+    _assert_m27_no_staging_or_pending(control)
+    stage_dir = control.parent / (
+        f".m27-installing.{os.getpid()}.{validation_digest[-12:]}"
+    )
+    os.mkdir(stage_dir, 0o700)
+    staged = _stage_m27_store_pair(
+        root,
+        stage_dir,
+        prior_control,
+        prior_coordination,
+        population,
+        config,
+        validation_digest,
+    )
+    for path in (staged["stage_control"], staged["stage_coordination"]):
+        with path.open("rb") as stream:
+            os.fsync(stream.fileno())
+    _assert_committed_clean_source(root, population)
+    _assert_m27_source_delta(root, population, authority)
+    _assert_m27_prior_anchor(root, authority, population)
+    lock_path = control.parent / ".m27-store-pair.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    created: list[tuple[Path, int, int]] = []
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if any(
+            os.path.lexists(path) for path in (control, coordination, receipt_path)
+        ):
+            raise MigrationRequired("another writer published part of M27")
+        _assert_committed_clean_source(root, population)
+        _assert_m27_source_delta(root, population, authority)
+        _assert_m27_prior_anchor(root, authority, population)
+        directory = os.open(
+            control.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            for staged_path, published_path in (
+                (staged["stage_control"], control),
+                (staged["stage_coordination"], coordination),
+            ):
+                staged_stat = os.lstat(staged_path)
+                os.link(staged_path, published_path, follow_symlinks=False)
+                created.append(
+                    (published_path, staged_stat.st_dev, staged_stat.st_ino)
+                )
+                os.fsync(directory)
+            allowed = {
+                "control.duckdb",
+                "control.coordination.duckdb",
+                ".control.duckdb.intent.lock",
+                ".control.duckdb.lock",
+                ".control.coordination.duckdb.lock",
+            }
+            entries = tuple(stage_dir.iterdir())
+            if {path.name for path in entries} - allowed or any(
+                not stat.S_ISREG(os.lstat(path).st_mode) for path in entries
+            ):
+                raise MaterializationError("M27 staging leaves differ")
+            for path in entries:
+                os.unlink(path)
+            stage_dir.rmdir()
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        verified = _verify_m27_store_pair(
+            root,
+            control,
+            coordination,
+            prior_control,
+            prior_coordination,
+            population,
+            config,
+            validation_digest,
+        )
+        if dict(verified) != dict(staged["verified"]):
+            raise MigrationRequired("published M27 pair differs from staging")
+        receipt = _ensure_m27_migration_receipt(
+            root,
+            control,
+            coordination,
+            population,
+            verified,
+            validation_digest,
+        )
+    except Exception:
+        if not os.path.lexists(receipt_path):
+            for path, device, inode in reversed(created):
+                if os.path.lexists(path):
+                    observed = os.lstat(path)
+                    if (observed.st_dev, observed.st_ino) == (device, inode):
+                        os.unlink(path)
+        raise
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "migrated_append_only_stopped_run_recovery_successor",
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "plan_migration_event_id": staged["plan_receipt"].event_id,
+        "migration_evidence_event_id": staged["evidence"].event_id,
+        "migration_digest": staged["migration_digest"],
+        "stage_cleanup_complete": True,
+        "receipt": receipt,
+        **verified,
+    }
+
+
 def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CONFIG_PATH) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     config_file = Path(config_path)
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m27_successor_configured_on_any_surface(root, config):
+        return _materialize_m27(root, config_file, config)
     if _m26_successor_configured_on_any_surface(root, config):
         return _materialize_m26(root, config_file, config)
     if _m25_successor_configured_on_any_surface(root, config):
@@ -49478,6 +51174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "dead_owner_parallel_resume_successor_materialization",
                         "automatic_stall_recovery_successor_materialization",
                         "native_duckdb_preload_successor_materialization",
                         "multi_lane_sidecar_reopen_successor_materialization",

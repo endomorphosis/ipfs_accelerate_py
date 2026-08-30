@@ -1,4 +1,5 @@
 {
+  "dead_owner_parallel_resume_successor_materialization_cid": "sha256:d9b697e010382809e78acde0e34c9e1df2607cdf5326b52b719c1601384da4d0",
   "schema": "semantic-addressed-world-model/dependency-seal@1",
   "board_namespace": "semantic-addressed-world-model-v1",
   "plan_revision": "SAWM-PLAN-R2",

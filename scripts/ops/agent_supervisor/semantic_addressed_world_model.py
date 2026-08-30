@@ -30,6 +30,22 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M27_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M27_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M27_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M27_GENERATION = 26
+_M27_TARGET_PLAN_REVISION = 28
+_M27_TARGET_EVENT_WATERMARK = 268
+_M27_TARGET_QUACK_PORT = 24_070
 _M26_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m26/control.duckdb"
@@ -681,6 +697,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m27_key = "dead_owner_parallel_resume_successor_materialization"
     m26_key = "automatic_stall_recovery_successor_materialization"
     m25_key = "native_duckdb_preload_successor_materialization"
     m24_key = "multi_lane_sidecar_reopen_successor_materialization"
@@ -701,6 +718,89 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m27_key in config:
+        authority = config.get(m27_key)
+        try:
+            expected = (
+                _materializer()._expected_m27_dead_owner_parallel_resume_authority()
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M27 dead-owner parallel-resume authority is unavailable"
+            ) from exc
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        runtime = config.get("runtime_paths")
+        lanes = config.get("lanes")
+        expected_lanes = [
+            (0, "sawm-lane-0", 0, ["SAWM-008"]),
+            (1, "sawm-lane-1", 1, ["SAWM-006", "SAWM-010"]),
+            (2, "sawm-lane-2", 2, ["SAWM-015"]),
+            (3, "sawm-lane-3", 3, ["SAWM-012"]),
+        ]
+        observed_lanes = (
+            [
+                (
+                    lane.get("index"),
+                    lane.get("name"),
+                    lane.get("strict_shard_remainder"),
+                    lane.get("initial_task_ids"),
+                )
+                for lane in lanes
+            ]
+            if isinstance(lanes, list)
+            and all(isinstance(lane, Mapping) for lane in lanes)
+            else None
+        )
+        target_root = str(Path(_M27_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M27_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != expected
+            or authority.get("migration_revision") != "SAWM-R2-M27"
+            or authority.get("target_store_id") != _M27_STORE_ID
+            or authority.get("target_coordination_store_id")
+            != _M27_COORDINATION_STORE_ID
+            or authority.get("target_generation") != _M27_GENERATION
+            or authority.get("target_plan_revision")
+            != _M27_TARGET_PLAN_REVISION
+            or authority.get("target_event_watermark")
+            != _M27_TARGET_EVENT_WATERMARK
+            or authority.get("target_quack_port") != _M27_TARGET_QUACK_PORT
+            or set(authority.get("interrupted_claims", {}))
+            != {"SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015"}
+            or set(authority.get("task_rearms", {}))
+            != {"SAWM-006", "SAWM-012"}
+            or authority.get("accepted_completion_changes") != 0
+            or authority.get("worker_self_approval") is not False
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M27_STORE_ID
+            or program.get("store_generation") != "26"
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M27_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M27_STORE_ID
+            or owner.get("store_id") != _M27_STORE_ID
+            or owner.get("port") != _M27_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or not isinstance(runtime, Mapping)
+            or dict(runtime) != expected_runtime
+            or config.get("max_lanes") != 4
+            or config.get("strict_task_sharding") is not True
+            or config.get("idle_lane_work_stealing") != ""
+            or observed_lanes != expected_lanes
+        ):
+            raise OperatorError(
+                "active M27 dead-owner parallel-resume authority is invalid"
+            )
+        return authority
     if m26_key in config:
         authority = config.get(m26_key)
         try:
@@ -1705,6 +1805,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "dead_owner_parallel_resume_successor_materialization",
             "automatic_stall_recovery_successor_materialization",
             "native_duckdb_preload_successor_materialization",
             "multi_lane_sidecar_reopen_successor_materialization",
@@ -4076,6 +4177,102 @@ def _require_m18_final_pair_marker(
             raise OperatorError(
                 "M18 materializer check differs from its final pair marker"
             )
+    return MappingProxyType(dict(observed))
+
+
+def _require_m27_final_pair_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M27's receipt-last dead-owner recovery marker."""
+
+    key = "dead_owner_parallel_resume_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    try:
+        expected_authority = (
+            materializer._expected_m27_dead_owner_parallel_resume_authority()
+        )
+    except Exception as exc:
+        raise OperatorError("M27 exact recovery authority is unavailable") from exc
+    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+        raise OperatorError("M27 dead-owner parallel-resume authority differs")
+    control = (REPO_ROOT / _M27_STORE_ID).resolve()
+    coordination = (REPO_ROOT / _M27_COORDINATION_STORE_ID).resolve()
+    try:
+        materializer._assert_m27_no_staging_or_pending(control)
+        observed, _ = materializer._load_nofollow_json(
+            control.parent / "migration-receipt.json",
+            root=REPO_ROOT,
+            noun="M27 final pair marker",
+        )
+        coordination_hash = materializer._stable_regular_sha256(
+            coordination,
+            root=REPO_ROOT,
+            noun="materialized M27 coordination store",
+            required_link_count=1,
+        )
+    except Exception as exc:
+        raise OperatorError("M27 final pair marker is unavailable") from exc
+    if not isinstance(observed, Mapping):
+        raise OperatorError("M27 final pair marker is malformed")
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    exact = {
+        "schema": "sawm/non-authoritative-migration-receipt@25",
+        "authoritative": False,
+        "receipt_is_final_pair_commit_marker": True,
+        "migration_revision": "SAWM-R2-M27",
+        f"{key}_cid": materializer._identity(expected_authority),
+        "database_path": _M27_STORE_ID,
+        "coordination_path": _M27_COORDINATION_STORE_ID,
+        "target_runtime_root": str(Path(_M27_STORE_ID).parent),
+        "target_generation": _M27_GENERATION,
+        "target_quack_port": _M27_TARGET_QUACK_PORT,
+        "target_plan_revision": _M27_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M27_TARGET_EVENT_WATERMARK,
+        "task_revision_changes": 2,
+        "task_status_changes": 2,
+        "orphan_claim_expirations": 4,
+        "coordination_semantic_changes": 4,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "implementation_provider_invocations": 0,
+        "worker_self_approval": False,
+    }
+    if (
+        claimed != materializer._identity(unhashed)
+        or any(observed.get(name) != value for name, value in exact.items())
+        # Starting the Quack owner appends its state-server identity to the
+        # control authority.  The receipt still pins the pre-start pair, while
+        # live identity/projection checks below qualify the post-start head.
+        or re.fullmatch(
+            r"[0-9a-f]{64}", str(observed.get("control_store_sha256") or "")
+        )
+        is None
+        or int(observed.get("control_store_size") or 0) <= 0
+        or observed.get("coordination_store_sha256") != coordination_hash[0]
+        or observed.get("coordination_store_size") != coordination_hash[1]
+        or observed.get("coordination_projection_digest")
+        != expected_authority["target_coordination_projection_digest"]
+        or observed.get("coordination_event_count") != 2_586
+        or set(observed.get("interrupted_claims", {}))
+        != {"SAWM-006", "SAWM-008", "SAWM-012", "SAWM-015"}
+        or set(observed.get("task_rearms", {}))
+        != {"SAWM-006", "SAWM-012"}
+    ):
+        raise OperatorError("M27 materialized final pair marker differs")
+    if checked is not None and (
+        checked.get("valid") is not True
+        or checked.get("database_path") != str(control)
+        or checked.get("coordination_path") != str(coordination)
+        or checked.get("event_watermark") != _M27_TARGET_EVENT_WATERMARK
+        or checked.get("receipt") != observed
+    ):
+        raise OperatorError("M27 materializer check differs from its final marker")
     return MappingProxyType(dict(observed))
 
 
@@ -6949,6 +7146,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "dead_owner_parallel_resume_successor_materialization" in config:
+        return _require_m27_final_pair_marker(
+            config, authority, materializer, checked=checked
+        )
     if "automatic_stall_recovery_successor_materialization" in config:
         return _require_m26_final_pair_marker(
             config, authority, materializer, checked=checked
@@ -8628,6 +8829,114 @@ def _m23_portal_completion_is_compatible(
     )
 
 
+def _verify_m27_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M27 expired four dead claims and rearmed only two tasks."""
+
+    head = materializer._inspect_m27_head_task_projection(source, population)
+    if (
+        not isinstance(head, Mapping)
+        or head.get("event_watermark") != _M27_TARGET_EVENT_WATERMARK
+        or not expected_projection_cid
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M27 live head projection differs")
+    expected_heads = {
+        "SAWM-000": ("completed", 2),
+        "SAWM-001": ("completed", 18),
+        "SAWM-002": ("completed", 4),
+        "SAWM-003": ("completed", 7),
+        "SAWM-004": ("completed", 7),
+        "SAWM-005": ("completed", 4),
+        "SAWM-006": ("retrying", 4),
+        "SAWM-007": ("completed", 7),
+        "SAWM-008": ("retrying", 8),
+        "SAWM-010": ("completed", 4),
+        "SAWM-011": ("completed", 4),
+        "SAWM-012": ("retrying", 7),
+        "SAWM-015": ("retrying", 5),
+    }
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        task_cid = str(expected["task_cid"])
+        observed = source.get_task(task_cid)
+        expected_status, expected_revision = expected_heads.get(alias, ("todo", 2))
+        if (
+            observed is None
+            or observed.task_cid != task_cid
+            or observed.status != expected_status
+            or int(observed.revision) != expected_revision
+        ):
+            raise materializer.MigrationRequired(
+                f"M27-head task status/revision differs: {alias}"
+            )
+        completion = observed.body.get("completion_receipt")
+        operational = observed.body.get("operational_validation_revision")
+        if alias == "SAWM-000":
+            if (
+                not isinstance(completion, Mapping)
+                or completion.get("schema") != "sawm/operator-bootstrap-completion@1"
+                or completion.get("worker_self_approval") is not False
+            ):
+                raise materializer.MigrationRequired(
+                    "M27-head operator completion differs"
+                )
+        elif alias in {"SAWM-001", "SAWM-002", "SAWM-003", "SAWM-004", "SAWM-005"}:
+            if not _m22_legacy_completion_is_compatible(
+                materializer,
+                task_alias=alias,
+                task_cid=task_cid,
+                completion_receipt=completion,
+                operational_validation_revision=operational,
+            ):
+                raise materializer.MigrationRequired(
+                    f"M27-head legacy completion differs: {alias}"
+                )
+        elif alias in {"SAWM-007", "SAWM-010", "SAWM-011"}:
+            if not _m23_portal_completion_is_compatible(
+                materializer,
+                task_alias=alias,
+                task_cid=task_cid,
+                completion_receipt=completion,
+                operational_validation_revision=operational,
+            ):
+                raise materializer.MigrationRequired(
+                    f"M27-head accepted portal completion differs: {alias}"
+                )
+        elif alias in {"SAWM-006", "SAWM-012"}:
+            if completion != materializer._m27_task_rearm_receipt(alias):
+                raise materializer.MigrationRequired(
+                    f"M27-head operator interruption rearm differs: {alias}"
+                )
+        elif alias == "SAWM-008":
+            if completion != materializer._m26_task_rearm_receipt(alias):
+                raise materializer.MigrationRequired(
+                    "M27-head historical SAWM-008 rearm differs"
+                )
+        elif alias == "SAWM-015":
+            if completion != materializer._m23_task_rearm_receipt():
+                raise materializer.MigrationRequired(
+                    "M27-head historical SAWM-015 rearm differs"
+                )
+        elif completion is not None:
+            raise materializer.MigrationRequired(
+                f"M27-head unaccepted completion exists: {alias}"
+            )
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = observed.status
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
+
+
 def _verify_m26_live_head_task_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -9709,28 +10018,37 @@ def _live_preflight(
             "program_definition_cid": population["program_definition_cid"],
         }
     )
+    m27_active = (
+        "dead_owner_parallel_resume_successor_materialization" in config
+    )
     m26_active = (
+        not m27_active
+        and
         "automatic_stall_recovery_successor_materialization" in config
     )
     m25_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and
         "native_duckdb_preload_successor_materialization" in config
     )
     m24_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and
         "multi_lane_sidecar_reopen_successor_materialization" in config
     )
     m23_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and "multi_lane_successor_materialization" in config
     )
     m22_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and not m23_active
@@ -9739,7 +10057,8 @@ def _live_preflight(
         in config
     )
     m21_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and not m23_active
@@ -9747,7 +10066,8 @@ def _live_preflight(
         and "generation_realization_successor_materialization" in config
     )
     m20_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and not m23_active
@@ -9757,7 +10077,8 @@ def _live_preflight(
         and "test_isolation_successor_materialization" in config
     )
     m19_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and not m23_active
@@ -9770,7 +10091,8 @@ def _live_preflight(
         "live_catalog_inventory_successor_materialization" in config
     )
     m18_active = (
-        not m26_active
+        not m27_active
+        and not m26_active
         and not m25_active
         and not m24_active
         and not m23_active
@@ -9913,7 +10235,16 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "automatic_stall_recovery_successor_materialization" in config:
+            if "dead_owner_parallel_resume_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m27_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "automatic_stall_recovery_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m26_live_head_task_projection(
                         live,
@@ -10068,7 +10399,7 @@ def _live_preflight(
             ) from exc
         expected_semantic_authority_digest = (
             str(final_pair_marker.get("semantic_authority_digest") or "")
-            if (m26_active or m25_active or m24_active or m23_active)
+            if (m27_active or m26_active or m25_active or m24_active or m23_active)
             else
             active_source_repair["prior_semantic_authority_digest"]
             if "stale_owner_restart_successor_materialization" in config
@@ -10118,6 +10449,15 @@ def _live_preflight(
         )
         expected_source_migration_digest = (
             materializer._identity(
+                materializer._m27_migration_body(
+                    population,
+                    config,
+                    validation_digest,
+                )
+            )
+            if m27_active
+            else
+            materializer._identity(
                 materializer._m26_migration_body(
                     population,
                     config,
@@ -10153,7 +10493,7 @@ def _live_preflight(
             or live_plan_body.get("source_migration_revision")
             != active_source_repair["migration_revision"]
             or (
-                (m26_active or m25_active or m24_active)
+                (m27_active or m26_active or m25_active or m24_active)
                 and (
                     live_plan_body.get("source_migration_digest")
                     != expected_source_migration_digest
