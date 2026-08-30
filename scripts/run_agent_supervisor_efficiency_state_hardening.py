@@ -14,6 +14,7 @@ import ast
 import ctypes
 import errno
 import fcntl
+import functools
 import hashlib
 import importlib.util
 import json
@@ -10814,6 +10815,7 @@ def _r19_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+@functools.cache
 def _r27_historical_live_validation_executor_contract() -> dict[str, Any]:
     """Bind the sole R27 historical route without changing R19-R26 contracts."""
 
@@ -35313,6 +35315,7 @@ def _r39_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r39_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r38_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -36721,6 +36724,7 @@ def _r40_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r40_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r39_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -36838,6 +36842,7 @@ def _r40_immutable_file_sha256(path: Path) -> str:
     return _identity(payload)
 
 
+@functools.cache
 def _r40_expected_approved_validation_runtime_deployment() -> dict[str, Any]:
     deployment: dict[str, Any] = {
         "schema": ASEH_R40_APPROVED_VALIDATION_RUNTIME_DEPLOYMENT_SCHEMA,
@@ -37020,6 +37025,7 @@ def _validate_r40_approved_validation_runtime_deployment(
     return supplied
 
 
+@functools.cache
 def _r40_approved_validation_runtime_deployment() -> dict[str, Any]:
     return _validate_r40_approved_validation_runtime_deployment(
         _r40_expected_approved_validation_runtime_deployment(),
@@ -37027,6 +37033,7 @@ def _r40_approved_validation_runtime_deployment() -> dict[str, Any]:
     )
 
 
+@functools.cache
 def _r41_validation_dependency_directories_json() -> str:
     """Attest R40's approved roots ahead of the unchanged native roots."""
 
@@ -38752,6 +38759,7 @@ def _validate_r41_r40_authorization_failure_evidence(
     return evidence
 
 
+@functools.cache
 def _r41_validation_dependency_directories_contract() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
         admit_trusted_system_dependency_directories,
@@ -38885,6 +38893,7 @@ def _r41_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r41_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r39_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -39100,6 +39109,7 @@ def _validate_r42_r41_bootstrap_failure_evidence(
     return supplied
 
 
+@functools.cache
 def _r42_validation_dependency_directories_contract() -> dict[str, Any]:
     """Extend the frozen R41 directory projection into the R42 scope."""
 
@@ -39409,6 +39419,7 @@ def _validate_r43_r42_timeout_failure_evidence(
     return evidence
 
 
+@functools.cache
 def _r43_validation_dependency_directories_contract() -> dict[str, Any]:
     """Version the frozen R42 dependency projection for the R43 executor."""
 
@@ -39460,6 +39471,7 @@ def _r43_validation_timeout_seconds(command: Sequence[str]) -> int:
     return ASEH_R43_VALIDATION_TIMEOUT_SECONDS[matches[0]]
 
 
+@functools.cache
 def _r43_validation_timeout_policy_contract() -> dict[str, Any]:
     matrix = tuple(
         tuple(item)
@@ -39728,6 +39740,7 @@ def _validate_r44_r43_authorization_failure_evidence(
     return evidence
 
 
+@functools.cache
 def _r44_validation_dependency_directories_contract() -> dict[str, Any]:
     """Version the attested directories for the R44 sealed bootstrap."""
 
@@ -39766,6 +39779,7 @@ def _validate_r44_validation_dependency_directories_contract(
     return supplied
 
 
+@functools.cache
 def _r44_validation_runtime_binding_contract() -> dict[str, Any]:
     """Bind R44's internally derived nested validation environment."""
 
@@ -41549,6 +41563,7 @@ def _r42_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r42_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r39_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -43568,6 +43583,7 @@ def _r43_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r43_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r39_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -45817,6 +45833,7 @@ def _r44_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r44_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r43_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
@@ -48475,6 +48492,7 @@ def _r45_validation_working_tree_scope(command: Sequence[str]) -> str:
     return "immutable_candidate_checkout"
 
 
+@functools.cache
 def _r45_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     parent = _r44_sealed_receipt_validation_executor_contract()
     parent_cid = _identity(parent)
