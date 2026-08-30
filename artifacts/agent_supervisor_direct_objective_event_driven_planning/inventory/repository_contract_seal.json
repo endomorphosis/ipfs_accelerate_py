@@ -1,0 +1,87 @@
+{
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "branch_names_are_navigation_only": true,
+  "completion_authoritative": false,
+  "cross_repository_ownership": {
+    "canonical_semantic_identity": "ipfs_datasets_py",
+    "ducklake_authority": false,
+    "exact_bytes_cid_storage": "ipfs_kit_py",
+    "model_output_is_completion_authority": false,
+    "operational_admission": "ipfs_accelerate_py",
+    "roles": {
+      "ipfs_accelerate_py": "Operational admission, execution, validation, merge, recovery, and terminalization",
+      "ipfs_datasets_py": "Semantic identity, schemas, ContextPack meaning, formal translation, and proof relationships",
+      "ipfs_kit_py": "Exact durable bytes, CIDs, WAL, recovery, and current-root CAS",
+      "lift_coding": "Superproject composition, protected plan documents, and operator-owned board projections"
+    }
+  },
+  "dependency_contracts": {
+    "ipfs_accelerate_py": {
+      "path": "pyproject.toml",
+      "schema": "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4",
+      "semantics": "Accelerate dependency contract V4; owner-relative closed output lists with bridge projection"
+    },
+    "ipfs_datasets_py": {
+      "path": "pyproject.toml",
+      "schema": "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@3",
+      "semantics": "Datasets dependency contract V3; bridge-projected test outputs remain owner-scoped"
+    },
+    "ipfs_kit_py": {
+      "path": "static project-dependency path",
+      "schema": "existing-static-project-dependency",
+      "semantics": "Kit remains on its existing static project-dependency path; not a competing DOEP contract surface"
+    }
+  },
+  "goal_id": "DOEP-G010.S1",
+  "immutable_source_forest": {
+    "ipfs_accelerate_py": {
+      "commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f",
+      "role": "operational_owner",
+      "superproject_path": "external/ipfs_accelerate",
+      "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"
+    },
+    "ipfs_datasets_py": {
+      "commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "role": "semantic_owner",
+      "superproject_path": "external/ipfs_datasets",
+      "tree": "456e09b51d6a07a3a5873436df24054768195320"
+    },
+    "ipfs_kit_py": {
+      "commit": "b6c65ba732733d7e33852713ba18aa3b12235668",
+      "role": "durable_bytes_owner",
+      "superproject_path": "external/ipfs_kit",
+      "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"
+    },
+    "lift_coding": {
+      "commit": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+      "role": "superproject",
+      "superproject_path": ".",
+      "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"
+    }
+  },
+  "no_competing_subsystem_created": true,
+  "non_goals": [
+    "Do not create a second planner, task database, event path, or state authority",
+    "Do not treat DuckLake, Markdown boards, model claims, or worker receipts as completion authority",
+    "Do not mutate protected plan, board, scheduler, or pyproject contract files from this task",
+    "Do not expand the sealed 85-task campaign from residual findings"
+  ],
+  "observed_at": "2026-08-30T03:15:00Z",
+  "owning_repository": "ipfs_accelerate_py",
+  "parent_goal_id": "DOEP-G010",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "plan_revision": "DOEP-PLAN-V5",
+  "root_goal_id": "DOEP-G000",
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-repository-contract-seal@1",
+  "seal_status": "sealed",
+  "superproject_gitlink_paths": {
+    "ipfs_accelerate_py": "external/ipfs_accelerate",
+    "ipfs_datasets_py": "external/ipfs_datasets",
+    "ipfs_kit_py": "external/ipfs_kit"
+  },
+  "task_cid": "sha256:27ae152374f415aad20e7396c1ba88ebb63440b98f667cbf59a26eb79a987ead",
+  "task_id": "DOEP-003",
+  "title": "Seal current cross-repository contracts and commits",
+  "worker_completion_insufficient": true
+}
