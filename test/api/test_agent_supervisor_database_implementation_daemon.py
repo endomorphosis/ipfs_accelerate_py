@@ -14175,6 +14175,12 @@ def test_git_tree_contains_gitlink_without_parent_object(tmp_path: Path) -> None
         )
         == "blob"
     )
+    assert (
+        DatabaseImplementationDaemon._git_tree_entry_kind(
+            daemon, "external/child/"
+        )
+        == "commit"
+    )
 
 
 def test_gitlink_only_outputs_are_not_landed_without_merge_proof(

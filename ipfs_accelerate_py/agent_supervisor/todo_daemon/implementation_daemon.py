@@ -118879,7 +118879,7 @@ class DatabaseImplementationDaemon:
 
         if self.repo_root is None or not relative:
             return None
-        posix = relative.replace("\\", "/")
+        posix = relative.replace("\\", "/").rstrip("/")
         if (
             not posix
             or posix.startswith("/")
