@@ -3401,7 +3401,7 @@ def _docker_create_command_identity(
         or not resolved_cwd.is_dir()
         or re.fullmatch(r"sha256:[0-9a-f]{64}", environment_id) is None
         or len(values) < 6
-        or len(values) > 512
+        or len(values) > 2048
         or any(not item or "\x00" in item for item in values)
         or values[:5]
         != [
@@ -9074,11 +9074,17 @@ class _DockerContainerLease:
                     str(self.docker_config),
                     "create",
                 ]
+                empty_items = [
+                    index
+                    for index, item in enumerate(command)
+                    if not item
+                ]
                 raise ValueError(
                     "unsupervised Docker create journal could not bind: "
                     f"{exc}; argv_prefix={list(command)[:5]!r} "
                     f"expected_prefix={expected_prefix!r} "
-                    f"cwd={str(create_cwd)!r} env_id={environment_id!r}"
+                    f"cwd={str(create_cwd)!r} env_id={environment_id!r} "
+                    f"argc={len(command)} empty_argv_indexes={empty_items!r}"
                 ) from exc
             created = subprocess.run(
                 list(command),
