@@ -41831,12 +41831,6 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     "retained candidate lifecycle identity or fence changed"
                 )
-            released_lifecycle = self.worktree_lifecycle.mark_terminal(
-                resolved_workspace,
-                lease_id=current_lifecycle.lease_id,
-                expected_fence=current_lifecycle.fence,
-                reason="verification_deferred_candidate_recovery_authorized",
-            )
             preservation = self._preserve_interrupted_worktree(
                 resolved_workspace,
                 branch_name,
@@ -41854,6 +41848,7 @@ class PortalImplementationDaemon:
                 ),
                 evidence_field="retained_candidate_recovery",
                 baseline_ref=baseline_commit,
+                retained_recovery_lifecycle=current_lifecycle,
             )
             preserved_commit = str(
                 preservation.get("preserved_commit") or ""
@@ -41865,9 +41860,20 @@ class PortalImplementationDaemon:
                 or not rescue_branch.endswith("-verification-deferred")
                 or preservation.get("cleanup_result", {}).get("cleaned")
                 is not True
+                or preservation.get(
+                    "recovery_cleanup_lifecycle_released"
+                )
+                is not True
             ):
                 raise RuntimeError(
                     "retained candidate materialization did not produce a clean rescue"
+                )
+            released_lifecycle = preservation.get(
+                "recovery_cleanup_lifecycle"
+            )
+            if not isinstance(released_lifecycle, Mapping):
+                raise RuntimeError(
+                    "retained candidate cleanup lifecycle is unavailable"
                 )
             return {
                 "schema": (
@@ -41890,7 +41896,7 @@ class PortalImplementationDaemon:
                 "rescue_branch": rescue_branch,
                 "original_branch": branch_name,
                 "original_worktree_path": workspace_path_text,
-                "released_lifecycle": released_lifecycle.to_dict(),
+                "released_lifecycle": dict(released_lifecycle),
                 "preservation": preservation,
             }
 
@@ -52088,6 +52094,7 @@ class PortalImplementationDaemon:
         event_type: str,
         evidence_field: str,
         baseline_ref: str = "",
+        retained_recovery_lifecycle: WorkspaceLifecycleRecord | None = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
@@ -52115,7 +52122,66 @@ class PortalImplementationDaemon:
                 ["branch", "-f", rescue_branch, preserved_commit],
                 cwd=self.repo_root,
             )
-        cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+        recovery_cleanup_lifecycle: WorkspaceLifecycleRecord | None = None
+        cleanup_caller_lease_id = ""
+        if retained_recovery_lifecycle is not None:
+            # The terminal retained-candidate fence must remain intact while
+            # candidate commit and rescue publication can still fail.  Only
+            # after the exact rescue ref is observed at the expected commit do
+            # we authorize its original lease to clean this workspace.
+            if not preserved_commit or not rescue_branch:
+                raise RuntimeError(
+                    "retained candidate rescue was not published"
+                )
+            published_commit = self._run_git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{rescue_branch}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            if published_commit != preserved_commit:
+                raise RuntimeError(
+                    "retained candidate rescue publication changed"
+                )
+            recovery_cleanup_lifecycle = self.worktree_lifecycle.mark_terminal(
+                worktree_path,
+                lease_id=retained_recovery_lifecycle.lease_id,
+                expected_fence=retained_recovery_lifecycle.fence,
+                reason="verification_deferred_candidate_recovery_authorized",
+            )
+            cleanup_caller_lease_id = recovery_cleanup_lifecycle.lease_id
+        if retained_recovery_lifecycle is None:
+            cleanup_result = self._cleanup_merged_worktree(
+                worktree_path,
+                branch_name,
+            )
+        else:
+            # Pooled lease release rechecks lifecycle authority through the
+            # active owner accessor.  Rebind that accessor only for this exact
+            # rescue-published lease and restore it immediately afterward.
+            previous_active_lifecycle = self._active_worktree_lifecycle
+            self._active_worktree_lifecycle = recovery_cleanup_lifecycle
+            try:
+                cleanup_result = self._cleanup_merged_worktree(
+                    worktree_path,
+                    branch_name,
+                    caller_lease_id=cleanup_caller_lease_id,
+                )
+            finally:
+                self._active_worktree_lifecycle = previous_active_lifecycle
+        recovery_cleanup_lifecycle_released: bool | None = None
+        if recovery_cleanup_lifecycle is not None:
+            recovery_cleanup_lifecycle_released = False
+            if cleanup_result.get("cleaned") is True:
+                recovery_cleanup_lifecycle_released = (
+                    self.worktree_lifecycle.compare_and_delete(
+                        recovery_cleanup_lifecycle.workspace_path,
+                        expected_fence=recovery_cleanup_lifecycle.fence,
+                        lease_id=recovery_cleanup_lifecycle.lease_id,
+                    )
+                )
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -52132,6 +52198,13 @@ class PortalImplementationDaemon:
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
+        if recovery_cleanup_lifecycle is not None:
+            result["recovery_cleanup_lifecycle"] = (
+                recovery_cleanup_lifecycle.to_dict()
+            )
+            result["recovery_cleanup_lifecycle_released"] = (
+                recovery_cleanup_lifecycle_released
+            )
         self._record_event(event_type, result)
         return result
 
@@ -70029,6 +70102,7 @@ class PortalImplementationDaemon:
         branch_name: str,
         *,
         reusable: bool = True,
+        caller_lease_id: str = "",
     ) -> dict[str, Any]:
         started_at = utc_now()
         lifecycle_record = self._active_worktree_lifecycle
@@ -70042,6 +70116,7 @@ class PortalImplementationDaemon:
         lifecycle_auth = self._authorize_worktree_cleanup(
             worktree_path,
             branch_name,
+            caller_lease_id=caller_lease_id,
         )
         if not lifecycle_auth.get("allowed", False):
             result = {
@@ -117862,8 +117937,51 @@ class DatabaseImplementationDaemon:
                                 "changed": False,
                                 "reason": exc.reason,
                                 "recovery_deferred": True,
+                                "operator_review_required": bool(
+                                    exc.recovery_receipt.get(
+                                        "operator_review_required", False
+                                    )
+                                ),
                                 "provider_dispatched": True,
                                 "attempt_consumed": False,
+                                "recovery_receipt": dict(
+                                    exc.recovery_receipt
+                                ),
+                            }
+                        )
+                        continue
+                    except (
+                        DatabasePortalBridgeError,
+                        OSError,
+                        RuntimeError,
+                        UnicodeError,
+                        ValueError,
+                    ) as exc:
+                        # A custom bridge or older adapter may not yet wrap a
+                        # retained-candidate failure in the typed exception.
+                        # Keep the authoritative task blocked and the already
+                        # dispatched attempt consumed exactly as observed;
+                        # maintenance must not crash/restart and redispatch.
+                        error_id = hashlib.sha256(
+                            (
+                                f"{type(exc).__name__}\0{str(exc)[:1024]}"
+                            ).encode("utf-8", errors="surrogatepass")
+                        ).hexdigest()
+                        outcomes.append(
+                            {
+                                "task_cid": attempt.task_cid,
+                                "attempt_id": attempt.attempt_id,
+                                "status": "blocked",
+                                "changed": False,
+                                "reason": (
+                                    "verification_recovery_callback_failed"
+                                ),
+                                "recovery_deferred": True,
+                                "operator_review_required": True,
+                                "provider_dispatched": True,
+                                "attempt_consumed": False,
+                                "error_type": type(exc).__name__,
+                                "error_id": "sha256:" + error_id,
                             }
                         )
                         continue
