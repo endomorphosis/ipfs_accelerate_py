@@ -4310,26 +4310,12 @@ def test_aseh_post_admission_bounds_parallel_scope_identity_flicker() -> None:
         "blocked_recovery_admitted": False,
         "blocked_recovery_scope": "parallel_startup",
     }
-    edges = 0
-    for _index in range(2):
-        action, reason, edges = aseh_operator._post_admission_health_action(
-            scoped,
-            prior_available=True,
-            current_available=True,
-            unhealthy_edges=edges,
-        )
-        assert (action, reason) == ("continue", "")
-    action, reason, edges = aseh_operator._post_admission_health_action(
+    assert aseh_operator._post_admission_health_action(
         scoped,
         prior_available=True,
         current_available=True,
-        unhealthy_edges=edges,
-    )
-    assert (action, reason, edges) == (
-        "fail",
-        "authoritative_board_blocked",
-        3,
-    )
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
 
     working = {**scoped, "blocked_recovery_scope": "parallel_work"}
     assert aseh_operator._post_admission_health_action(

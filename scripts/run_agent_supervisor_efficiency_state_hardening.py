@@ -91690,20 +91690,10 @@ def _post_admission_health_action(
             "parallel_startup",
             "parallel_work",
         }:
-            # Owner identity is often unsealed for the whole startup
-            # window. Keep the board up until that grace ends; after
-            # that, bound leftover identity flicker like a missing
-            # authority sample.
-            if receipt.get("startup_grace_active") is True:
-                return "continue", "", 0
-            next_edges = unhealthy_edges + 1
-            if next_edges > 2:
-                return (
-                    "fail",
-                    "authoritative_board_blocked",
-                    next_edges,
-                )
-            return "continue", "", next_edges
+            # Scope already encodes remaining ready/active work and the
+            # last-progress window. Owner-identity flicker must not
+            # SIGTERM that live parallel board.
+            return "continue", "", 0
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
