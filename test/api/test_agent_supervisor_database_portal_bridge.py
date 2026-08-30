@@ -898,6 +898,67 @@ def test_bridge_callback_no_effect_replays_after_cleanup_before_final_receipt(
     assert factory_calls == [source.task_alias]
 
 
+def test_bridge_callback_no_effect_replay_rejects_post_intent_effect_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A durable intent cannot ignore an effect appended before its replay."""
+
+    bridge, source, _record_value, paths, _workspace, factory_calls = (
+        _callback_no_effect_fixture(tmp_path)
+    )
+    original_atomic_write = database_portal_bridge_module._atomic_write
+    interrupted = {"raised": False}
+
+    def interrupt_final(path: Path, payload: bytes) -> None:
+        if (
+            path.name == "database-portal-callback-no-effect-recovery.json"
+            and not interrupted["raised"]
+        ):
+            interrupted["raised"] = True
+            raise RuntimeError("injected receipt-publication crash")
+        original_atomic_write(path, payload)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write",
+        interrupt_final,
+    )
+    with pytest.raises(RuntimeError, match="receipt-publication crash"):
+        bridge.recover_post_commit_candidate(source)
+    assert factory_calls == [source.task_alias]
+    assert (
+        paths.root
+        / "database-portal-callback-no-effect-recovery-intent.json"
+    ).is_file()
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": source.task_alias,
+            "canonical_task_cid": source.task_cid,
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "attempt": 1,
+            "implementation_commit": "f" * 40,
+            "provider_dispatched": True,
+        },
+    )
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write",
+        original_atomic_write,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="post-commit candidate is not the exact terminal event suffix",
+    ):
+        bridge.recover_post_commit_candidate(source)
+    assert not (
+        paths.root / "database-portal-callback-no-effect-recovery.json"
+    ).exists()
+
+
 @pytest.mark.parametrize("unsafe_shape", ("dirty", "ambiguous", "effectful"))
 def test_bridge_callback_no_effect_recovery_rejects_unsafe_evidence(
     tmp_path: Path,
