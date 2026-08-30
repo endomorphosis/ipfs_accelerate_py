@@ -91112,15 +91112,28 @@ def _health_receipt(
         board.payload.get("watchdog_startup_grace_seconds") or 300.0
     )
     lanes = [item for item in current.get("lanes", []) if isinstance(item, Mapping)]
-    lane_fresh = bool(
-        len(lanes) == board.max_lanes
-        and all(
+
+    def _lane_census_fresh(item: Mapping[str, Any]) -> bool:
+        heartbeat_ok = bool(
             item.get("fresh") is True
             and item.get("admissible") is True
-            and item.get("watchdog_admissible") is True
             and int(item.get("mtime_ns") or 0) >= int(launched_at * 1_000_000_000)
-            for item in lanes
         )
+        if not heartbeat_ok:
+            return False
+        if item.get("watchdog_admissible") is True:
+            return True
+        # Strict sharding leaves unused lanes idle. A live idle heartbeat with
+        # admissible stall evidence is not a failed worker census.
+        return bool(
+            item.get("active_worker_count") == 0
+            and item.get("worker_stall_admissible") is True
+            and item.get("stalled_without_active_worker") is not True
+        )
+
+    lane_fresh = bool(
+        len(lanes) == board.max_lanes
+        and all(_lane_census_fresh(item) for item in lanes)
     )
     lane_stalled = any(
         item.get("stalled_without_active_worker") is True for item in lanes
@@ -91696,6 +91709,11 @@ def _post_admission_health_action(
             and receipt.get("lane_heartbeat_fresh") is False
         )
         if lane_only_loss:
+            active_workers = receipt.get("lane_active_worker_count")
+            if type(active_workers) is int and active_workers > 0:
+                # Parallel claims continue on other shards while one lane's
+                # worker census flickers. Do not SIGTERM the owner.
+                return "continue", "", 0
             next_edges = unhealthy_edges + 1
             if next_edges > 2:
                 return (
