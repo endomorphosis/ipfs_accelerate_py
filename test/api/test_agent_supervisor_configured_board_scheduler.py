@@ -1392,6 +1392,40 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     assert not pid_path.exists()
 
 
+def test_coordinator_pid_reservation_recovers_only_a_proven_dead_owned_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    os.chmod(tmp_path, 0o700)
+    pid_path = tmp_path / "configured-board-master.pid"
+    pid_path.write_text("424242\n", encoding="ascii")
+    os.chmod(pid_path, 0o664)
+    monkeypatch.setattr(scheduler_module, "pid_alive", lambda _pid: False)
+
+    descriptor, identity = scheduler_module._reserve_coordinator_pid_projection(
+        pid_path
+    )
+    try:
+        assert stat.S_IMODE(os.fstat(descriptor).st_mode) == 0o600
+        assert pid_path.read_bytes() == b""
+    finally:
+        os.close(descriptor)
+        scheduler_module._remove_reserved_coordinator_pid(pid_path, identity)
+
+    pid_path.write_text(f"{os.getpid()}\n", encoding="ascii")
+    os.chmod(pid_path, 0o600)
+    monkeypatch.setattr(scheduler_module, "pid_alive", lambda _pid: True)
+    with pytest.raises(ConfiguredBoardError, match="live process"):
+        scheduler_module._reserve_coordinator_pid_projection(pid_path)
+    assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+
+    pid_path.write_text("not-a-pid\n", encoding="ascii")
+    monkeypatch.setattr(scheduler_module, "pid_alive", lambda _pid: False)
+    with pytest.raises(ConfiguredBoardError, match="malformed or changed"):
+        scheduler_module._reserve_coordinator_pid_projection(pid_path)
+    assert pid_path.read_text(encoding="ascii") == "not-a-pid\n"
+
+
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

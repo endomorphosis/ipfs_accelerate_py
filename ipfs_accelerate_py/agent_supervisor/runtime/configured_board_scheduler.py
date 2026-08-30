@@ -82,6 +82,7 @@ from ..task_sources.plan_revision_store import PlanRevisionStore
 from ..task_sources.task_identity import canonical_task_identity
 from ..task_sources.task_source import recompute_readiness_statuses
 from ..task_sources.todo_vector_index import parse_todo_blocks, split_csv
+from ..todo_daemon.core import pid_alive
 from ..validation.validation_commands import split_validation_commands
 from .multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
@@ -3041,11 +3042,49 @@ def _reserve_coordinator_pid_projection(pid_path: Path) -> tuple[int, tuple[int,
                 reason = "non-regular file"
             elif int(existing.st_nlink) != 1:
                 reason = "hardlinked file"
+            elif int(existing.st_uid) != os.geteuid():
+                reason = "foreign-owned file"
             else:
-                reason = "existing owned file"
-            raise ConfiguredBoardError(
-                "detached coordinator PID projection is an unsafe " + reason
-            )
+                try:
+                    parent = os.lstat(path.parent)
+                    payload, evidence = _read_stable_regular_bytes(
+                        path,
+                        max_bytes=32,
+                    )
+                    observed = os.lstat(path)
+                except (_StableArtifactReadError, OSError) as exc:
+                    raise ConfiguredBoardError(
+                        "cannot verify existing detached coordinator PID projection"
+                    ) from exc
+                if (
+                    stat.S_ISLNK(parent.st_mode)
+                    or not stat.S_ISDIR(parent.st_mode)
+                    or int(parent.st_uid) != os.geteuid()
+                    or stat.S_IMODE(parent.st_mode) & 0o077
+                    or payload is None
+                    or not re.fullmatch(rb"[1-9][0-9]*\n", payload)
+                    or evidence.get("state") != "present"
+                    or int(evidence.get("device", -1)) != int(observed.st_dev)
+                    or int(evidence.get("inode", -1)) != int(observed.st_ino)
+                    or stat.S_ISLNK(observed.st_mode)
+                    or not stat.S_ISREG(observed.st_mode)
+                    or int(observed.st_nlink) != 1
+                    or int(observed.st_uid) != os.geteuid()
+                ):
+                    raise ConfiguredBoardError(
+                        "detached coordinator PID projection is malformed or changed"
+                    )
+                recorded_pid = int(payload[:-1].decode("ascii"))
+                if pid_alive(recorded_pid):
+                    raise ConfiguredBoardError(
+                        "detached coordinator PID projection names a live process"
+                    )
+                path.unlink()
+                existing = None
+            if existing is not None:
+                raise ConfiguredBoardError(
+                    "detached coordinator PID projection is an unsafe " + reason
+                )
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
