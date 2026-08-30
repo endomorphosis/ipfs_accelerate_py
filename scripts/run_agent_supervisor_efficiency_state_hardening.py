@@ -91730,6 +91730,10 @@ def _post_admission_health_action(
             # last-progress window. Owner-identity flicker must not
             # SIGTERM that live parallel board.
             return "continue", "", 0
+        if _recent_live_work(receipt):
+            # One blocked row (ENOSPC, missing event) must not SIGTERM
+            # remaining in_progress/ready shards.
+            return "continue", "", 0
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges

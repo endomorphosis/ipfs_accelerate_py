@@ -7556,6 +7556,29 @@ def test_reconcile_completes_blocked_task_when_merge_queue_landed(
         daemon.close()
 
 
+def test_reconcile_reopens_enospc_terminal_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-terminal-enospc",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="[Errno 28] No space left on device",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_reconcile_reopens_missing_implementation_event_block(
     tmp_path: Path,
 ) -> None:

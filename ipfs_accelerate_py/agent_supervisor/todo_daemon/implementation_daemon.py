@@ -72371,6 +72371,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "Portal completion lacks a verified task_completed event",
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
+        "[Errno 28] No space left on device",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72386,6 +72387,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "Portal completion lacks a verified task_completed event",
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
+        "[Errno 28] No space left on device",
     }
 )
 _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
@@ -72394,6 +72396,7 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "Portal completion lacks a verified task_completed event",
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
+        "[Errno 28] No space left on device",
     }
 )
 _MERGE_QUEUE_LANDED_COMPLETION_SCHEMA = (
@@ -79770,6 +79773,8 @@ class DatabaseImplementationDaemon:
             return DATABASE_PORTAL_MISSING_IMPLEMENTATION_EVENT_REASON
         if DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON in reason:
             return DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON
+        if "No space left on device" in reason or "[Errno 28]" in reason:
+            return "[Errno 28] No space left on device"
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
