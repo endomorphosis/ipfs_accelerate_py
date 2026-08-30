@@ -2250,6 +2250,82 @@ def test_docker_cleanup_watchdog_cannot_write_candidate_bytecode(
         lease.close(docker_run_finished=False)
 
 
+def test_docker_cleanup_binding_ignores_repository_root_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in grok_cli_runner._DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        grok_cli_runner.REPOSITORY_ROOT_ENV,
+        "/tmp/aseh-repo-root",
+    )
+    assert (
+        grok_cli_runner._docker_cleanup_binding_path(
+            "ipfs-accelerate-grok-1-" + ("a" * 32),
+            create_directory=False,
+        )
+        is None
+    )
+    environment = grok_cli_runner._docker_cleanup_watchdog_env()
+    assert grok_cli_runner.REPOSITORY_ROOT_ENV not in environment
+
+
+def test_docker_cleanup_binding_ignores_provider_lifecycle_leak(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    for name in grok_cli_runner._DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    state_root = tmp_path / "state"
+    run_root = state_root / "run"
+    run_root.mkdir(parents=True)
+    monkeypatch.setenv(grok_cli_runner.RUN_ID_ENV, "run-provider-leak")
+    monkeypatch.setenv(grok_cli_runner.PROFILE_ID_ENV, "profile-provider-leak")
+    monkeypatch.setenv(grok_cli_runner.TARGET_ID_ENV, "target-provider-leak")
+    monkeypatch.setenv(grok_cli_runner.STATE_ROOT_ENV, str(state_root))
+    monkeypatch.setenv(grok_cli_runner.RUN_ROOT_ENV, str(run_root))
+    monkeypatch.setenv(grok_cli_runner.FENCING_EPOCH_ENV, "0")
+    monkeypatch.setenv(
+        grok_cli_runner.CONFIGURATION_ROOT_ENV,
+        "sha256:" + "a" * 64,
+    )
+    assert (
+        grok_cli_runner._docker_cleanup_binding_path(
+            "ipfs-accelerate-grok-1-" + ("b" * 32),
+            create_directory=False,
+        )
+        is None
+    )
+    environment = grok_cli_runner._docker_cleanup_watchdog_env()
+    for name in grok_cli_runner._DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES:
+        assert name not in environment
+
+
+def test_docker_cleanup_binding_rejects_asymmetric_docker_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    for name in grok_cli_runner._DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        grok_cli_runner.STATE_ROOT_ENV,
+        str(tmp_path / "state"),
+    )
+    with pytest.raises(
+        ValueError,
+        match="Docker cleanup lifecycle binding is partial",
+    ):
+        grok_cli_runner._docker_cleanup_binding_path(
+            "ipfs-accelerate-grok-1-" + ("c" * 32),
+            create_directory=False,
+        )
+    with pytest.raises(
+        ValueError,
+        match="Docker cleanup watchdog lifecycle identity is partial",
+    ):
+        grok_cli_runner._docker_cleanup_watchdog_env()
+
+
 def test_docker_cleanup_root_survives_ambient_tempdir_restore(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

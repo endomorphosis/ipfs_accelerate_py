@@ -1998,7 +1998,11 @@ def provider_subprocess_environment(
         SEALED_SYSTEM_DEPENDENCY_DIRS_ENV,
     ):
         cleaned.pop(name, None)
-    cleaned.pop(REPOSITORY_ROOT_ENV, None)
+    # Provider children operate on worktree files only.  Leaking a subset of
+    # the supervisor lifecycle identity makes grok_cli_runner fail-close on a
+    # partial Docker cleanup binding and quarantines the claim with no effect.
+    for name in _PLAN_BOUND_LIFECYCLE_ENV_NAMES:
+        cleaned.pop(name, None)
     cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
     trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
     cleaned.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)

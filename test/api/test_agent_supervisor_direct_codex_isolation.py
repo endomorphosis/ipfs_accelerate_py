@@ -956,6 +956,8 @@ def test_sealed_isolation_survives_profile_gate_and_daemon_handoffs(
         provider_environment
     )
     assert multi_runner_module.REPOSITORY_ROOT_ENV not in provider_environment
+    for name in multi_runner_module._PLAN_BOUND_LIFECYCLE_ENV_NAMES:
+        assert name not in provider_environment
 
 
 def test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider(

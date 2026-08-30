@@ -2131,10 +2131,21 @@ def _docker_cleanup_watchdog_env() -> dict[str, str]:
         for name in _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
         if name in os.environ
     }
-    if projected and len(projected) != len(
-        _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
-    ):
-        raise ValueError("Docker cleanup watchdog lifecycle identity is partial")
+    complete = (
+        len(projected) == len(_DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES)
+        and all(str(value or "").strip() for value in projected.values())
+    )
+    if projected and not complete:
+        # Provider children drop repository-root identity.  A leaked subset
+        # must not start Docker cleanup supervision.  An asymmetric docker
+        # root pair is still fail-closed.
+        state_root = str(os.environ.get(STATE_ROOT_ENV, "") or "").strip()
+        run_root = str(os.environ.get(RUN_ROOT_ENV, "") or "").strip()
+        if bool(state_root) != bool(run_root):
+            raise ValueError(
+                "Docker cleanup watchdog lifecycle identity is partial"
+            )
+        return environment
     environment.update(projected)
     return environment
 
@@ -3004,7 +3015,14 @@ def _docker_cleanup_binding_path(
     if not any(lifecycle.values()):
         return None
     if not all(lifecycle.values()):
-        raise ValueError("Docker cleanup lifecycle binding is partial")
+        # Repository-root identity alone is not Docker cleanup supervision.
+        # Provider children also drop that name while leaking the docker
+        # roots; a leaked subset must not abort the runner or start a
+        # half-bound contract.  One docker root without the other still
+        # fail-closes.
+        if bool(lifecycle[STATE_ROOT_ENV]) != bool(lifecycle[RUN_ROOT_ENV]):
+            raise ValueError("Docker cleanup lifecycle binding is partial")
+        return None
     run_root = Path(lifecycle[RUN_ROOT_ENV])
     state_root = Path(lifecycle[STATE_ROOT_ENV])
     try:
