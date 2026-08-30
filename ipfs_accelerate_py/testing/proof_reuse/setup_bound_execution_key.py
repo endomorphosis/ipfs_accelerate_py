@@ -64,6 +64,12 @@ ITEM_SETUP_BOUND_EXECUTION_KEY_ATTRIBUTE: Final = (
 ITEM_SETUP_BOUND_PHASE_ATTRIBUTE: Final = (
     "_ipfs_proof_reuse_setup_bound_phase"
 )
+# Well-known predecessor item pins.  Duplicated by name so this module stays
+# import-cold and does not load collection-time identity assemblers.
+ITEM_LOCATOR_PIN_ATTRIBUTE: Final = "_ipfs_proof_reuse_locator"
+ITEM_PREDECESSOR_EXECUTION_KEY_ATTRIBUTE: Final = (
+    "_ipfs_proof_reuse_execution_key"
+)
 MAX_TEXT_CHARS: Final = 4_096
 MAX_NAME_CHARS: Final = 256
 MAX_SEQUENCE_ITEMS: Final = 64
@@ -411,9 +417,50 @@ def get_attached_setup_bound_execution_key(item: Any) -> Any | None:
     return None
 
 
-def _closure_cid(value: Any) -> str:
+def setup_failed_from_hook_outcome(outcome: Any) -> bool:
+    """Return whether a pytest hookwrapper outcome recorded a setup exception.
+
+    Never raises.  Unknown outcome shapes are treated as not failed so
+    assembly can still run in-window; later completeness checks force RUN.
+    """
+
+    if outcome is None:
+        return False
+    excinfo = getattr(outcome, "excinfo", None)
+    if callable(excinfo):
+        try:
+            excinfo = excinfo()
+        except Exception:
+            excinfo = None
+    if excinfo is not None:
+        return True
+    exception = getattr(outcome, "exception", None)
+    if callable(exception):
+        try:
+            exception = exception()
+        except Exception:
+            exception = None
+    if exception is not None:
+        return True
+    get_result = getattr(outcome, "get_result", None)
+    if not callable(get_result):
+        return False
+    try:
+        get_result()
+    except Exception:
+        return True
+    return False
+
+
+def _public_cid(value: Any, names: Sequence[str]) -> str:
     if value is None:
         return ""
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:MAX_TEXT_CHARS]
+    for name in names:
+        candidate = getattr(value, name, None)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()[:MAX_TEXT_CHARS]
     to_dict = getattr(value, "to_dict", None)
     payload: Any = value
     if callable(to_dict):
@@ -422,14 +469,41 @@ def _closure_cid(value: Any) -> str:
         except Exception:
             payload = value
     if isinstance(payload, Mapping):
-        for key in ("closure_cid", "commitment_cid", "execution_key_cid"):
-            cid = payload.get(key)
-            if isinstance(cid, str) and cid.strip():
-                return cid.strip()[:MAX_TEXT_CHARS]
+        for name in names:
+            candidate = payload.get(name)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()[:MAX_TEXT_CHARS]
+    return ""
+
+
+def _closure_cid(value: Any) -> str:
+    cid = _public_cid(
+        value,
+        ("closure_cid", "commitment_cid", "execution_key_cid"),
+    )
+    if cid:
+        return cid
     cid = getattr(value, "closure_cid", "")
     if isinstance(cid, str):
         return cid.strip()[:MAX_TEXT_CHARS]
     return ""
+
+
+def item_assembly_pins(item: Any) -> dict[str, str]:
+    """Return public locator/predecessor pins already attached to *item*."""
+
+    if item is None:
+        return {"locator_cid": "", "predecessor_execution_key_cid": ""}
+    return {
+        "locator_cid": _public_cid(
+            getattr(item, ITEM_LOCATOR_PIN_ATTRIBUTE, None),
+            ("locator_cid", "locator_id", "content_id"),
+        ),
+        "predecessor_execution_key_cid": _public_cid(
+            getattr(item, ITEM_PREDECESSOR_EXECUTION_KEY_ATTRIBUTE, None),
+            ("execution_key_cid", "content_id"),
+        ),
+    }
 
 
 def _commit_item_funcargs(
@@ -791,8 +865,13 @@ def assemble_setup_bound_execution_key(
             None,
         )
     nodeid = ""
+    pins = item_assembly_pins(item)
     if item is not None:
         nodeid = str(getattr(item, "nodeid", "") or "")[:MAX_TEXT_CHARS]
+    if not locator_cid:
+        locator_cid = pins["locator_cid"]
+    if not predecessor_execution_key_cid:
+        predecessor_execution_key_cid = pins["predecessor_execution_key_cid"]
     locator = locator_cid or (
         f"cid:locator:{public_digest({'nodeid': nodeid})[7:23]}"
         if nodeid
@@ -1030,6 +1109,8 @@ __all__ = [
     "AUTHORITATIVE_LIFECYCLE_PHASE",
     "CLAIM_CLASS",
     "DEFAULT_POLICY_CID",
+    "ITEM_LOCATOR_PIN_ATTRIBUTE",
+    "ITEM_PREDECESSOR_EXECUTION_KEY_ATTRIBUTE",
     "ITEM_SETUP_BOUND_ASSEMBLY_ATTRIBUTE",
     "ITEM_SETUP_BOUND_EXECUTION_KEY_ATTRIBUTE",
     "ITEM_SETUP_BOUND_PHASE_ATTRIBUTE",
@@ -1053,9 +1134,11 @@ __all__ = [
     "get_attached_setup_bound_execution_key",
     "get_setup_bound_phase",
     "is_authoritative_assembly_phase",
+    "item_assembly_pins",
     "mark_setup_bound_phase",
     "public_digest",
     "record_typed_unavailable",
     "run_setup_bound_assembly_lifecycle",
+    "setup_failed_from_hook_outcome",
     "typed_unavailable_records",
 ]

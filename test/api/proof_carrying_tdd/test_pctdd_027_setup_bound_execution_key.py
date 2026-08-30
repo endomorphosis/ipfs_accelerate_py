@@ -123,6 +123,8 @@ from ipfs_accelerate_py.testing.proof_reuse.setup_bound_execution_key import (
     AUTHORITATIVE_LIFECYCLE_PHASE,
     CLAIM_CLASS,
     DEFAULT_POLICY_CID,
+    ITEM_LOCATOR_PIN_ATTRIBUTE,
+    ITEM_PREDECESSOR_EXECUTION_KEY_ATTRIBUTE,
     ITEM_SETUP_BOUND_ASSEMBLY_ATTRIBUTE,
     ITEM_SETUP_BOUND_EXECUTION_KEY_ATTRIBUTE,
     LIFECYCLE_PHASES,
@@ -142,9 +144,11 @@ from ipfs_accelerate_py.testing.proof_reuse.setup_bound_execution_key import (
     get_attached_setup_bound_assembly,
     get_attached_setup_bound_execution_key,
     is_authoritative_assembly_phase,
+    item_assembly_pins,
     public_digest,
     record_typed_unavailable,
     run_setup_bound_assembly_lifecycle,
+    setup_failed_from_hook_outcome,
     typed_unavailable_records,
 )
 from ipfs_datasets_py.logic.zkp.pctdd.test_execution_key_v2 import (
@@ -458,6 +462,49 @@ def test_hook_helpers_assemble_after_setup_and_ensure_before_call() -> None:
     assert fallback.action == "RUN"
     assert fallback.may_authorize_skip is False
     assert "setup_bound_execution_key_missing_before_call" in fallback.full_execution_reasons
+    class _FailedOutcome:
+        excinfo = (RuntimeError, RuntimeError("setup"), None)
+
+        def get_result(self) -> None:
+            raise RuntimeError("setup")
+
+    class _PassedOutcome:
+        excinfo = None
+        exception = None
+
+        def get_result(self) -> None:
+            return None
+
+    assert setup_failed_from_hook_outcome(_FailedOutcome()) is True
+    assert setup_failed_from_hook_outcome(_PassedOutcome()) is False
+    assert setup_failed_from_hook_outcome(None) is False
+    pinned = _item(
+        funcargs={},
+        **{
+            ITEM_LOCATOR_PIN_ATTRIBUTE: SimpleNamespace(
+                locator_cid="cid:locator:from-item"
+            ),
+            ITEM_PREDECESSOR_EXECUTION_KEY_ATTRIBUTE: SimpleNamespace(
+                execution_key_cid="cid:predecessor:v1"
+            ),
+        },
+    )
+    pins = item_assembly_pins(pinned)
+    assert pins["locator_cid"] == "cid:locator:from-item"
+    assert pins["predecessor_execution_key_cid"] == "cid:predecessor:v1"
+    bound_from_item = after_runtest_setup(
+        pinned,
+        **_bound_identities(locator_cid="", predecessor_execution_key_cid=""),
+    )
+    assert bound_from_item.assembled_after_setup is True
+    assert bound_from_item.assembled_before_call is True
+    assert bound_from_item.execution_key is not None
+    assert bound_from_item.execution_key.locator_cid == "cid:locator:from-item"
+    assert bound_from_item.execution_key.predecessor_execution_key_cid == (
+        "cid:predecessor:v1"
+    )
+    assert bound_from_item.may_authorize_skip is False
+    assert bound_from_item.action == "RUN"
 
 
 def test_live_item_funcargs_assemble_without_skip(
@@ -528,6 +575,7 @@ def test_never_authorizes_skip_or_widens_authority() -> None:
     ).read_text(encoding="utf-8")
     assert "assemble_and_attach_from_item" in plugin_source or "after_runtest_setup" in plugin_source
     assert "before_runtest_call" in plugin_source
+    assert "setup_failed_from_hook_outcome" in plugin_source
     assert "pytest_runtest_setup" in plugin_source
     assert "pytest_runtest_call" in plugin_source
     assert "PCTDD-027" in plugin_source

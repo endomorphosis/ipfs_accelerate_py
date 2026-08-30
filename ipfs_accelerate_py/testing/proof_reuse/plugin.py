@@ -694,10 +694,15 @@ def _install_runtime_plugin(config: Any) -> None:
                     metrics.degraded(reason_code="setup_bound_phase_mark_failed")
             outcome = yield
             try:
-                from .setup_bound_execution_key import after_runtest_setup
+                from .setup_bound_execution_key import (
+                    after_runtest_setup,
+                    setup_failed_from_hook_outcome,
+                )
 
-                setup_failed = getattr(outcome, "excinfo", None) is not None
-                after_runtest_setup(item, setup_failed=setup_failed)
+                after_runtest_setup(
+                    item,
+                    setup_failed=setup_failed_from_hook_outcome(outcome),
+                )
             except Exception:
                 metrics = getattr(config, METRICS_ATTRIBUTE, None)
                 if metrics is not None:
