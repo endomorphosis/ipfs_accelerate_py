@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import importlib
+import importlib.util
 import json
 import os
 import sys
@@ -17,9 +20,10 @@ for _name in ("ipfs_accelerate", "ipfs_datasets", "ipfs_kit"):
     if _candidate.is_dir() and str(_candidate) not in sys.path:
         sys.path.insert(0, str(_candidate))
 
-# Nested pytest.ini under external/ipfs_accelerate/test makes collected nodeids
-# rootdir-relative (`api/parallel_content_sealing/...`).  The sealed required-
-# acceptance collector admits only nodeids bound to the exact profile target.
+# Nested pytest.ini under external/ipfs_accelerate makes collected nodeids
+# rootdir-relative (`test/api/parallel_content_sealing/...` or
+# `api/parallel_content_sealing/...`).  The sealed required-acceptance
+# collector admits only nodeids bound to the exact profile target.
 _PHASE_PLUGIN_MODULE = "run_parallel_content_sealing_proof_carrying_tdd_validation"
 _PHASE_REPORTS_ATTR = "_PYTEST_PHASE_REPORTS"
 
@@ -39,11 +43,14 @@ _SOURCE_TO_CID_PATHS = (
     "datasets_profile_g",
     "kit_coordination_cid",
     "kit_proof_certificate_cid",
+    "datasets_knowledge_graph_ipld",
+    "accelerate_kubo_cid",
 )
 _SEAL_PUBLICATION_PATHS = (
     "accelerate_incremental_sealer",
     "kit_current_root_cas",
     "kit_proof_certificate_store",
+    "kit_proof_seal_store",
 )
 _HASH_IDENTITY_RULES = (
     "CID is exact byte identity under a versioned profile",
@@ -70,6 +77,23 @@ _CURRENT_PATH_LABELS = (
     "Merkle",
     "immutable store",
     "serial WAL/CAS",
+)
+_TYPED_UNAVAILABLE_CAPABILITIES = (
+    "production_zk",
+    "key_ceremony",
+    "direct_execution_profile",
+    "native_batch_hasher",
+    "serial_wal_cas_publication",
+    "kit_proof_seal_store",
+    "datasets_incremental_sealing_evidence",
+)
+_SEALER_SOURCE = (
+    "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/"
+    "incremental_sealing/sealer.py"
+)
+_KIT_PROOF_SEAL_STORE_MODULE = "ipfs_kit_py.proof_seal_store.local_store"
+_DATASETS_SEAL_EVIDENCE_MODULE = (
+    "ipfs_datasets_py.logic.zkp.incremental_sealing.evidence"
 )
 
 
@@ -153,7 +177,7 @@ _install_required_target_nodeids()
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_bytes as supervisor_cid_for_bytes,
     cid_for_dag_json as supervisor_cid_for_dag_json,
 )
@@ -168,16 +192,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     profiles_are_interchangeable,
     sha256_digest_label,
 )
-from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.sealer import (
-    IncrementalProofSealer,
-    PublicationKind,
-)
-from ipfs_accelerate_py.assurance.content_identity import (
-    ContentIdentityError,
-    IdentityErrorCode,
-    Integrity,
-    mint_content_identity,
-    reject_pseudo_cid,
+from ipfs_accelerate_py.agent_supervisor.proof.incremental_sealing.critical_path import (
+    CURRENT_PATH_LABELS,
 )
 from ipfs_accelerate_py.utils import cid_utils as accelerate_cid_utils
 from ipfs_datasets_py.logic.ipld_cid import canonical_dag_json as ipld_canonical_dag_json
@@ -292,6 +308,63 @@ def _raw_bytes() -> bytes:
     return b"pctdd-001 exact source bytes\n"
 
 
+def _module_present(name: str) -> bool:
+    try:
+        importlib.import_module(name)
+    except ImportError:
+        return False
+    return True
+
+
+def _load_source_module(relative: str, module_name: str) -> Any:
+    path = _repo_root() / relative
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"cannot load inventoried source {relative}")
+    existing = sys.modules.get(module_name)
+    existing_file = getattr(existing, "__file__", None) if existing is not None else None
+    if existing is not None and existing_file is not None:
+        try:
+            if Path(existing_file).resolve() == path.resolve():
+                return existing
+        except OSError:
+            pass
+    module = importlib.util.module_from_spec(spec)
+    # Dataclass processing of postponed annotations looks up cls.__module__ in
+    # sys.modules. File-location loads must register before exec_module.
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        if sys.modules.get(module_name) is module:
+            del sys.modules[module_name]
+        raise
+    return module
+
+
+def _assurance_content_identity() -> Any:
+    return _load_source_module(
+        "external/ipfs_accelerate/ipfs_accelerate_py/assurance/content_identity.py",
+        "pctdd_001_assurance_content_identity",
+    )
+
+
+def _kubo_cid_for_bytes(payload: bytes) -> str:
+    module = _load_source_module(
+        "external/ipfs_accelerate/ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+        "pctdd_001_kubo_cid",
+    )
+    return module.cid_for_bytes(payload)
+
+
+def _knowledge_graph_ipld_ast() -> ast.Module:
+    path = (
+        _repo_root()
+        / "external/ipfs_datasets/ipfs_datasets_py/knowledge_graphs/storage/ipld_store.py"
+    )
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
 def _typed_unavailable(
     *,
     capability: str,
@@ -333,6 +406,37 @@ def _inventory_typed_unavailable() -> tuple[dict[str, Any], ...]:
             "presence is not production admission"
         )
         break
+    kit_present = _module_present(_KIT_PROOF_SEAL_STORE_MODULE)
+    datasets_present = _module_present(_DATASETS_SEAL_EVIDENCE_MODULE)
+    kit_reason = (
+        "proof_seal_store_present_unqualified"
+        if kit_present
+        else "proof_seal_store_module_absent_on_current_kit_pin"
+    )
+    kit_message = (
+        "ipfs_kit_py.proof_seal_store imported but is not publication authority "
+        "for this inventory"
+        if kit_present
+        else (
+            "HermeticProofSealStore/SealTransitionWal are not importable on the "
+            "current kit pin; IncrementalProofSealer source remains inventoried "
+            "without publication authority"
+        )
+    )
+    datasets_reason = (
+        "incremental_sealing_evidence_present_unqualified"
+        if datasets_present
+        else "incremental_sealing_evidence_module_absent_on_current_datasets_pin"
+    )
+    datasets_message = (
+        "datasets incremental-sealing evidence imported but is not production ZK "
+        "or publication admission"
+        if datasets_present
+        else (
+            "ipfs_datasets_py.logic.zkp.incremental_sealing.evidence is absent on "
+            "the current datasets pin; sealer claim meaning is unchanged"
+        )
+    )
     return (
         _typed_unavailable(
             capability="production_zk",
@@ -371,6 +475,16 @@ def _inventory_typed_unavailable() -> tuple[dict[str, Any], ...]:
                 "inventory cannot publish or advance a current root"
             ),
         ),
+        _typed_unavailable(
+            capability="kit_proof_seal_store",
+            reason_code=kit_reason,
+            message=kit_message,
+        ),
+        _typed_unavailable(
+            capability="datasets_incremental_sealing_evidence",
+            reason_code=datasets_reason,
+            message=datasets_message,
+        ),
     )
 
 
@@ -381,6 +495,43 @@ def _git_blob_oid(payload: bytes) -> str:
     except TypeError:
         digest = hashlib.sha1(header + payload)
     return digest.hexdigest()
+
+
+def _sealer_module_ast() -> ast.Module:
+    path = _repo_root() / _SEALER_SOURCE
+    return ast.parse(path.read_text(encoding="utf-8"), filename=_SEALER_SOURCE)
+
+
+def _class_def(tree: ast.Module, name: str) -> ast.ClassDef:
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == name:
+            return node
+    raise AssertionError(f"{name} is missing from IncrementalProofSealer source")
+
+
+def _constant_string(node: ast.AST, name: str) -> str | None:
+    if isinstance(node, ast.Assign):
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == name:
+                if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    return node.value.value
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == name
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ):
+        return node.value.value
+    return None
+
+
+def _string_assign(tree: ast.Module, name: str) -> str:
+    for node in tree.body:
+        value = _constant_string(node, name)
+        if value is not None:
+            return value
+    raise AssertionError(f"{name} string assignment is missing from sealer source")
 
 
 def test_required_phase_node_ids_bind_to_profile_target() -> None:
@@ -437,6 +588,7 @@ def test_hashing_critical_path_order_is_inventoried() -> None:
     authority = _authority_matrix()
     assert inventory["schema"] == "pctdd/hashing-critical-path@1"
     assert tuple(inventory["current_path"]) == _CURRENT_PATH_LABELS
+    assert tuple(CURRENT_PATH_LABELS) == _CURRENT_PATH_LABELS
     assert inventory["current_path"][-1] == "serial WAL/CAS"
     assert "duplicate serialization/hashing requires task instrumentation" in (
         inventory["observed_gaps"]
@@ -468,7 +620,9 @@ def test_every_source_to_cid_path_is_inventoried_without_changing_identity() -> 
     kit_raw = kit_cid_for_bytes(raw, codec="raw")
     ir_raw = cid_v1(raw)
     cert_raw = cid_for_certificate_bytes(raw)
-    assurance = mint_content_identity(raw)
+    kubo_raw = _kubo_cid_for_bytes(raw)
+    assurance_mod = _assurance_content_identity()
+    assurance = assurance_mod.mint_content_identity(raw)
     assert (
         datasets_raw
         == accelerate_raw
@@ -477,6 +631,7 @@ def test_every_source_to_cid_path_is_inventoried_without_changing_identity() -> 
         == kit_raw
         == ir_raw
         == cert_raw
+        == kubo_raw
     )
     assert assurance.cid == datasets_raw
     assert assurance.codec == "raw"
@@ -552,15 +707,47 @@ def test_every_source_to_cid_path_is_inventoried_without_changing_identity() -> 
     assert datasets_cid_utils.cid_for_dag_json(unicode_payload) != ipld_dag_json_cid(
         unicode_payload
     )
+    kg_tree = _knowledge_graph_ipld_ast()
+    kg_assigns: dict[str, Any] = {}
+    for node in kg_tree.body:
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and isinstance(node.value, ast.Constant)
+        ):
+            kg_assigns[node.target.id] = node.value.value
+        elif (
+            isinstance(node, ast.Assign)
+            and node.targets
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+        ):
+            kg_assigns[node.targets[0].id] = node.value.value
+    assert kg_assigns["DEFAULT_MANIFEST_CODEC"] == "dag-cbor"
+    assert kg_assigns["DEFAULT_PAYLOAD_CODEC"] == "raw"
+    kg_functions = {
+        node.name
+        for node in kg_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "compute_cid_v1" in kg_functions
     assert inventory["datasets_ipld_cid"]["classification"] == "available_distinct_profile"
     assert inventory["datasets_profile_g"]["classification"] == "available_distinct_profile"
+    assert inventory["datasets_knowledge_graph_ipld"]["classification"] == (
+        "available_distinct_profile"
+    )
     for name in _SOURCE_TO_CID_PATHS:
         record = inventory[name]
         assert record["owner"]
         assert record["profile"]
         assert record["codec"]
         assert record["classification"]
-        assert "self_approved" not in record or record["self_approved"] is False
+        assert record["does_not"] == "execution or semantics"
+        assert record["self_approved"] is False
+        source = record["source"]
+        assert isinstance(source, str) and source
+        source_path = _repo_root() / source
+        assert source_path.exists(), f"inventoried source missing: {source}"
 
 
 def test_canonicalization_profiles_are_not_aliases() -> None:
@@ -647,23 +834,24 @@ def test_git_blob_oid_and_filesystem_metadata_are_not_cid_identity() -> None:
     assert len(blob_oid) == 40
     assert not blob_oid.startswith("b")
     assert cid.startswith("b")
+    assurance_mod = _assurance_content_identity()
     try:
-        reject_pseudo_cid(digest_hex)
-    except ContentIdentityError as exc:
-        assert exc.code is IdentityErrorCode.PSEUDO_CID_RAW_HEX
-        assert exc.integrity is Integrity.UNCHECKED
+        assurance_mod.reject_pseudo_cid(digest_hex)
+    except assurance_mod.ContentIdentityError as exc:
+        assert exc.code is assurance_mod.IdentityErrorCode.PSEUDO_CID_RAW_HEX
+        assert exc.integrity is assurance_mod.Integrity.UNCHECKED
     else:
         raise AssertionError("raw SHA-256 hex must not be admitted as a CID")
     try:
-        reject_pseudo_cid("sha256:" + digest_hex)
-    except ContentIdentityError as exc:
-        assert exc.code is IdentityErrorCode.PSEUDO_CID_LABELED
+        assurance_mod.reject_pseudo_cid("sha256:" + digest_hex)
+    except assurance_mod.ContentIdentityError as exc:
+        assert exc.code is assurance_mod.IdentityErrorCode.PSEUDO_CID_LABELED
     else:
         raise AssertionError("labeled SHA-256 must not be admitted as a CID")
     try:
-        reject_pseudo_cid("QmTest0123456789abcdef0123456789abcdef")
-    except ContentIdentityError as exc:
-        assert exc.integrity is Integrity.UNCHECKED
+        assurance_mod.reject_pseudo_cid("QmTest0123456789abcdef0123456789abcdef")
+    except assurance_mod.ContentIdentityError as exc:
+        assert exc.integrity is assurance_mod.Integrity.UNCHECKED
     else:
         raise AssertionError("Qm-like identifiers must not be admitted as CIDs")
     metadata = {"size": len(payload), "mtime": 1, "inode": "candidate-only", "path": "a.bin"}
@@ -705,22 +893,59 @@ def test_seal_publication_paths_are_inventoried_without_publication_authority(
     receipt = _receipt()
     storage = _storage_recovery()
     publication = receipt["seal_publication_inventory"]
-    assert tuple(publication)[:3] == _SEAL_PUBLICATION_PATHS
+    path_keys = tuple(key for key in publication if key != "required_invariant")
+    assert path_keys == _SEAL_PUBLICATION_PATHS
     assert publication["required_invariant"] == storage["required_invariant"]
     assert receipt["publication_authority_invoked"] is False
     sealer = publication["accelerate_incremental_sealer"]
     assert sealer["interface"] == "IncrementalProofSealer@1"
     assert sealer["publication_authority_invoked"] is False
+    assert sealer["self_approved"] is False
+    assert sealer["classification"] == "available_with_caveats"
     assert tuple(sealer["kinds"]) == ("full_checkpoint", "delta_seal")
-    assert PublicationKind.FULL_CHECKPOINT.value == "full_checkpoint"
-    assert PublicationKind.DELTA_SEAL.value == "delta_seal"
-    assert PublicationKind.FULL_CHECKPOINT is not PublicationKind.DELTA_SEAL
-    assert callable(IncrementalProofSealer.publish_full_checkpoint)
-    assert callable(IncrementalProofSealer.publish_delta_seal)
-    assert callable(IncrementalProofSealer.recover_publication)
-    assert IncrementalProofSealer.publish_full_checkpoint is not (
-        IncrementalProofSealer.publish_delta_seal
-    )
+    assert sealer["source"] == _SEALER_SOURCE
+    assert (_repo_root() / _SEALER_SOURCE).is_file()
+
+    tree = _sealer_module_ast()
+    assert _string_assign(tree, "SEALER_INTERFACE") == "IncrementalProofSealer@1"
+    kind_cls = _class_def(tree, "PublicationKind")
+    kind_values = {
+        node.targets[0].id: node.value.value
+        for node in kind_cls.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Name)
+        and isinstance(node.value, ast.Constant)
+    }
+    assert kind_values["FULL_CHECKPOINT"] == "full_checkpoint"
+    assert kind_values["DELTA_SEAL"] == "delta_seal"
+    assert kind_values["FULL_CHECKPOINT"] != kind_values["DELTA_SEAL"]
+    sealer_cls = _class_def(tree, "IncrementalProofSealer")
+    methods = {
+        node.name
+        for node in sealer_cls.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert "publish_full_checkpoint" in methods
+    assert "publish_delta_seal" in methods
+    assert "recover_publication" in methods
+    assert "publish_full_checkpoint" != "publish_delta_seal"
+
+    kit_store = publication["kit_proof_seal_store"]
+    kit_present = _module_present(_KIT_PROOF_SEAL_STORE_MODULE)
+    datasets_present = _module_present(_DATASETS_SEAL_EVIDENCE_MODULE)
+    if kit_present:
+        assert kit_store["classification"] == "available"
+    else:
+        assert kit_store["classification"] == "typed_unavailable"
+        assert kit_store["reason_code"] == "proof_seal_store_module_absent_on_current_kit_pin"
+        assert kit_store["publication_authority_invoked"] is False
+        assert kit_store["self_approved"] is False
+        assert kit_store["claim_unchanged"] is True
+    if not datasets_present:
+        assert receipt["limitations"]["datasets_incremental_sealing_evidence"][
+            "reason_code"
+        ] == "incremental_sealing_evidence_module_absent_on_current_datasets_pin"
+
     assert "immutable proof-seal persistence" in storage["existing"]
     assert "ordered WAL" in storage["existing"]
     assert "current-pointer compare-and-swap" in storage["existing"]
@@ -763,6 +988,7 @@ def test_seal_publication_paths_are_inventoried_without_publication_authority(
     assert receipt["publication_authority_invoked"] is False
     assert publication["kit_current_root_cas"]["publication_authority_invoked"] is False
     assert publication["kit_proof_certificate_store"]["publication_authority_invoked"] is False
+    assert publication["kit_proof_seal_store"]["publication_authority_invoked"] is False
 
 
 def test_typed_unavailable_cases_do_not_change_claim_meaning() -> None:
@@ -771,13 +997,8 @@ def test_typed_unavailable_cases_do_not_change_claim_meaning() -> None:
     storage_before = _storage_recovery()
     records = _inventory_typed_unavailable()
     capabilities = {item["capability"] for item in records}
-    assert capabilities == {
-        "production_zk",
-        "key_ceremony",
-        "direct_execution_profile",
-        "native_batch_hasher",
-        "serial_wal_cas_publication",
-    }
+    assert capabilities == set(_TYPED_UNAVAILABLE_CAPABILITIES)
+    receipt_limitations = _receipt()["limitations"]
     for item in records:
         assert item["status"] == "typed_unavailable"
         assert item["production_admitted"] is False
@@ -785,6 +1006,22 @@ def test_typed_unavailable_cases_do_not_change_claim_meaning() -> None:
         assert item["claim_unchanged"] is True
         assert item["reason_code"]
         assert item["message"]
+        limitation = receipt_limitations[item["capability"]]
+        assert limitation["status"] == "typed_unavailable"
+        assert limitation["production_admitted"] is False
+        assert limitation["self_approved"] is False
+        assert limitation["claim_unchanged"] is True
+        if item["capability"] == "native_batch_hasher":
+            assert limitation["reason_code"] in {
+                "native_batch_hasher_not_installed",
+                "native_batch_hasher_unqualified",
+            }
+        elif item["capability"] == "kit_proof_seal_store":
+            assert limitation["reason_code"] == item["reason_code"]
+        elif item["capability"] == "datasets_incremental_sealing_evidence":
+            assert limitation["reason_code"] == item["reason_code"]
+        else:
+            assert limitation["reason_code"] == item["reason_code"]
     identity_after = _hash_identity()
     path_after = _critical_path()
     storage_after = _storage_recovery()
@@ -826,13 +1063,7 @@ def test_receipt_is_not_completion_authority() -> None:
         "test_pctdd_001_cid_sha_canonicalization_inventory.py",
     ]
     limitations = receipt["limitations"]
-    for key in (
-        "production_zk",
-        "key_ceremony",
-        "direct_execution_profile",
-        "native_batch_hasher",
-        "serial_wal_cas_publication",
-    ):
+    for key in _TYPED_UNAVAILABLE_CAPABILITIES:
         assert limitations[key]["status"] == "typed_unavailable"
         assert limitations[key]["production_admitted"] is False
         assert limitations[key]["self_approved"] is False
@@ -848,5 +1079,6 @@ def test_receipt_is_not_completion_authority() -> None:
     publication = receipt["seal_publication_inventory"]
     assert publication["accelerate_incremental_sealer"]["publication_authority_invoked"] is False
     assert publication["kit_current_root_cas"]["publication_authority_invoked"] is False
+    assert publication["kit_proof_seal_store"]["publication_authority_invoked"] is False
     assert "execution or semantics" in receipt["claim_does_not"]
     assert "current-root publication" in receipt["claim_does_not"]
