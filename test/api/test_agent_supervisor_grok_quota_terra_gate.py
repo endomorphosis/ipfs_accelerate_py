@@ -1007,6 +1007,29 @@ def test_quota_classifier_accepts_exact_balance_exhausted_envelope() -> None:
     assert parsed["http_status"] == 402
 
 
+def test_quota_classifier_accepts_live_cli_wrapped_balance_envelope() -> None:
+    transcript = (
+        "Error: Internal error: {\n"
+        '  "message": "API error (status 402 Payment Required): '
+        'Grok Build usage balance exhausted",\n'
+        '  "http_status": 402\n'
+        "}"
+    )
+
+    assert grok_cli_runner.parse_grok_quota_error(transcript) == {
+        "kind": "usage_balance_exhausted",
+        "http_status": 402,
+    }
+    # Renderer composition alone is not quota evidence. The exact closed
+    # provider envelope is still required.
+    assert (
+        grok_cli_runner.parse_grok_quota_error(
+            "Error: Internal error: 402 usage balance exhausted"
+        )
+        == {}
+    )
+
+
 def test_direct_no_nonce_native_quota_cannot_cross_providers(
     tmp_path: Path,
     monkeypatch,

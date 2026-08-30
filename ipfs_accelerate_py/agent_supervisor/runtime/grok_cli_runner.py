@@ -143,7 +143,12 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
     if _GROK_USAGE_LIMIT_PATTERN.fullmatch(stripped):
         return {"kind": "usage_limit", "http_status": None}
     lowered = stripped.lower()
-    prefixes = ("internal error:", "error:")
+    # Grok Build currently writes the structured provider envelope through its
+    # CLI error renderer, producing ``Error: Internal error: {...}``.  Match
+    # that exact composition before the historical single renderer prefixes.
+    # The JSON shape and message/status checks below remain the authority;
+    # accepting the renderer composition does not admit free-form quota prose.
+    prefixes = ("error: internal error:", "internal error:", "error:")
     prefix = next((item for item in prefixes if lowered.startswith(item)), "")
     if not prefix:
         return {}

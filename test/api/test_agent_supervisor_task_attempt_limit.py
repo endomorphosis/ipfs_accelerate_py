@@ -759,6 +759,34 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
     assert classified["fallback_trigger"] == "primary_quota_exhausted"
 
 
+def test_classify_live_cli_wrapped_grok_402_as_typed_hard_quota() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    raw_error = (
+        "Error: Internal error: {\n"
+        '  "message": "API error (status 402 Payment Required): '
+        'Grok Build usage balance exhausted",\n'
+        '  "http_status": 402\n'
+        "}"
+    )
+    classified = classify_provider_capacity_failure(
+        _framed_grok_quota_stderr(
+            raw_error,
+            kind="usage_balance_exhausted",
+            http_status=402,
+        ),
+        provider_labels=("grok",),
+        provider_returncode=86,
+    )
+
+    assert classified["failure_class"] == "hard_quota_exhausted"
+    assert classified["fallback_eligible"] is True
+    assert classified["providers"] == ["grok"]
+    assert classified["grok_quota_runner_receipt"]["http_status"] == 402
+
+
 def test_classify_generic_usage_limit_uses_dispatched_grok_attribution() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         classify_provider_capacity_failure,

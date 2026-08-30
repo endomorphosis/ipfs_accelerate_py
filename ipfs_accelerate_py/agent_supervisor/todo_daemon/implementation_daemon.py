@@ -3476,10 +3476,118 @@ def _provider_capacity_family(label: Any) -> str:
     return PROVIDER_CAPACITY_FAMILY_ALIASES.get(normalized, normalized)
 
 
+_GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN = re.compile(
+    r"(?:\binsufficient[_ ]quota\b|"
+    r"\bquota(?:[_ ]|\s+(?:is\s+|has\s+been\s+)?)"
+    r"(?:exceeded|exhausted)\b|"
+    r"\b(?:usage\s+)?balance(?:\s+(?:is|has\s+been))?\s+exhausted\b|"
+    r"\b(?:hit|reached|exceeded)\s+(?:your|the)\s+usage\s+limit\b)",
+    re.IGNORECASE,
+)
+_GROK_FALLBACK_DISQUALIFY_PATTERN = re.compile(
+    r"(?:\b429\b|rate.?limit|too\s+many\s+requests|"
+    r"temporar(?:y|ily)|try\s+again\s+later|overload(?:ed)?|"
+    r"resource.?exhausted|service\s+unavailable|\bunavailable\b|"
+    r"timed?\s*out|\btimeout\b|auth(?:entication|orization)?|"
+    r"\bunauthorized\b|\bforbidden\b|\blogin\b|credential|api\s+key)",
+    re.IGNORECASE,
+)
+_PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER = "primary_quota_exhausted"
+_QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND = "quota_or_balance_exhausted"
+
+
+def _validated_grok_quota_runner_receipt(text: str) -> dict[str, Any]:
+    """Validate the legacy runner receipt against its exact preceding bytes.
+
+    This receipt establishes a typed hard-quota candidate for retry/cooldown
+    accounting.  It is deliberately distinct from the nonce-bound preflight,
+    independent verification, and durable route decision required to launch a
+    different provider.
+    """
+
+    from ..runtime.grok_cli_runner import (
+        DEFAULT_GROK_MODEL,
+        GROK_QUOTA_RECEIPT_SCHEMA,
+        MAX_GROK_ERROR_BYTES,
+        parse_grok_quota_error,
+    )
+
+    framed = text.rstrip()
+    if "\n" not in framed:
+        return {}
+    prefix, receipt_line = framed.rsplit("\n", 1)
+    expected_keys = {
+        "failure_kind",
+        "http_status",
+        "kind",
+        "message",
+        "model",
+        "provider",
+        "raw_error_size",
+        "raw_error_sha256",
+        "schema",
+    }
+    try:
+        receipt = json.loads(receipt_line)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+        return {}
+    kind = receipt.get("kind")
+    status = receipt.get("http_status")
+    raw_size = receipt.get("raw_error_size")
+    if (
+        receipt.get("schema") != GROK_QUOTA_RECEIPT_SCHEMA
+        or receipt.get("provider") != "grok_cli"
+        or receipt.get("model") != DEFAULT_GROK_MODEL
+        or receipt.get("failure_kind")
+        != _QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
+        or receipt.get("message") != "Grok Build usage balance exhausted"
+        or re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(receipt.get("raw_error_sha256") or ""),
+        )
+        is None
+        or isinstance(raw_size, bool)
+        or not isinstance(raw_size, int)
+        or not 0 < raw_size <= MAX_GROK_ERROR_BYTES
+        or kind not in {"usage_limit", "usage_balance_exhausted"}
+        or (kind == "usage_limit" and status is not None)
+        or (
+            kind == "usage_balance_exhausted"
+            and (
+                isinstance(status, bool)
+                or not isinstance(status, int)
+                or status != 402
+            )
+        )
+    ):
+        return {}
+    prefix_bytes = prefix.encode("utf-8")
+    candidates = (
+        prefix_bytes[-raw_size:],
+        (prefix_bytes + b"\n")[-raw_size:],
+    )
+    for candidate in candidates:
+        try:
+            candidate_text = candidate.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            continue
+        if (
+            len(candidate) == raw_size
+            and hashlib.sha256(candidate).hexdigest()
+            == receipt["raw_error_sha256"]
+            and parse_grok_quota_error(candidate_text)
+        ):
+            return dict(receipt)
+    return {}
+
+
 def classify_provider_capacity_failure(
     text: str,
     *,
     provider_labels: Sequence[str] = (),
+    provider_returncode: int | None = None,
 ) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
 
@@ -3501,22 +3609,84 @@ def classify_provider_capacity_failure(
             if str(provider).strip()
         )
     )
+    direct_grok_quota_receipt = (
+        _validated_grok_quota_runner_receipt(text)
+        if type(provider_returncode) is int
+        and provider_returncode == 86
+        else {}
+    )
+    direct_grok_quota_evidence = bool(direct_grok_quota_receipt)
     if command_providers and unique_providers:
         attributed = [
             provider
             for provider in unique_providers
             if provider != "provider" and provider in command_providers
         ]
-        if not attributed and "provider" in unique_providers:
+        if (
+            not attributed
+            and "provider" in unique_providers
+            and not (
+                "grok" in command_providers
+                and not direct_grok_quota_evidence
+            )
+        ):
             attributed = command_providers
         unique_providers = attributed
+    grok_command_attributed = bool(
+        {"grok", "xai"} & set(command_providers)
+    )
+    explicit_quota_or_balance_text = bool(
+        _GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN.search(text)
+    )
+    fallback_disqualified = bool(
+        _GROK_FALLBACK_DISQUALIFY_PATTERN.search(text)
+    )
+    if (
+        grok_command_attributed
+        and explicit_quota_or_balance_text
+        and direct_grok_quota_evidence
+        and not fallback_disqualified
+        and "grok" not in unique_providers
+    ):
+        # The concrete command is stronger attribution than generic provider
+        # wording such as "you've hit your usage limit".
+        unique_providers = ["grok"]
+    explicit_grok_quota_or_balance = bool(
+        grok_command_attributed
+        and "grok" in unique_providers
+        and explicit_quota_or_balance_text
+        and direct_grok_quota_evidence
+        and not fallback_disqualified
+    )
     result = {
         "exhausted": bool(unique_providers),
         "providers": unique_providers,
         "reason": "provider_capacity_exhausted" if unique_providers else "",
+        "capacity_failure_kind": (
+            _QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
+            if explicit_grok_quota_or_balance
+            else "provider_capacity_exhausted" if unique_providers else ""
+        ),
+        "provider_attribution": (
+            "implementation_command" if command_providers else "log_text"
+        ),
+        # Candidate eligibility is not route authority. Cross-provider launch
+        # still requires the sealed route and its stronger evidence chain.
+        "fallback_eligible": explicit_grok_quota_or_balance,
+        "fallback_trigger": (
+            _PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
+            if explicit_grok_quota_or_balance
+            else ""
+        ),
     }
     if unique_providers:
-        result["failure_class"] = "transient_capacity"
+        result["failure_class"] = (
+            "hard_quota_exhausted"
+            if explicit_grok_quota_or_balance
+            else "transient_capacity"
+        )
+    if direct_grok_quota_receipt:
+        result["grok_quota_runner_receipt"] = direct_grok_quota_receipt
     retry_at = parse_provider_declared_retry_at(text)
     if unique_providers and retry_at is not None:
         result["retry_at"] = retry_at.isoformat()
@@ -18516,6 +18686,7 @@ class PortalImplementationDaemon:
             provider_labels=_provider_labels_from_implementation_command(
                 command
             ),
+            provider_returncode=returncode,
         )
         if not classified["exhausted"]:
             return classified
