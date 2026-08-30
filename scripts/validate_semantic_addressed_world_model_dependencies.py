@@ -3181,6 +3181,180 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m22_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M22 on any declaration surface, including partial state."""
+
+    key = "live_preflight_receipt_compatibility_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m22_live_preflight_receipt_compatibility_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M22's exact live-preflight receipt compatibility authority."""
+
+    key = "live_preflight_receipt_compatibility_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m22_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M22 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m22_live_preflight_receipt_compatibility_authority()
+        )
+        errors: list[str] = []
+        presence = (
+            key in scheduler,
+            key in migration,
+            f"{key}_cid" in seal,
+        )
+        if not all(presence):
+            errors.append(
+                "M22 live-preflight receipt compatibility successor authority "
+                "is only partially declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append(
+                "M22 live-preflight receipt compatibility authority differs "
+                "across controls"
+            )
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append(
+                "M22 live-preflight receipt compatibility authority CID is not exact"
+            )
+
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m22"
+        )
+        target_store = f"{target_root}/control.duckdb"
+        required = {
+            "schema": (
+                "sawm/live-preflight-receipt-compatibility-successor-"
+                "materialization-authorization@1"
+            ),
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M22",
+            "migration_kind": key,
+            "supersession_mode": key,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m21/control.duckdb"
+            ),
+            "target_store_id": target_store,
+            "target_coordination_store_id": (
+                f"{target_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": target_root,
+            "target_generation": 22,
+            "target_quack_port": 24_065,
+            "target_plan_revision": 23,
+            "target_event_watermark": 233,
+            "event_suffix_length": 2,
+            "ordinary_source_changes": 0,
+            "coordination_semantic_changes": 0,
+            "plan_revision_changes": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append(
+                "M22 live-preflight receipt compatibility authority is not exact"
+            )
+
+        try:
+            current_head = _git(root, "rev-parse", "HEAD")
+            materializer._assert_m22_source_delta(
+                root,
+                {
+                    "source_binding": {
+                        "head": current_head,
+                        "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                        "datasets_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                        ),
+                        "kit_gitlink": _git(
+                            root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                        ),
+                    }
+                },
+                expected,
+            )
+        except Exception as exc:
+            errors.append(
+                "M22 exact control/source seal differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "22",
+                "quack:127.0.0.1:24065",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_065,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M22 target/runtime binding is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M22 live-preflight receipt compatibility authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m21_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -7033,7 +7207,70 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if _m21_successor_declared(scheduler, seal, migration):
+        if _m22_successor_declared(scheduler, seal, migration):
+            protocol_errors.extend(
+                _m22_live_preflight_receipt_compatibility_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m21_generation_realization_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m20_test_isolation_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif _m21_successor_declared(scheduler, seal, migration):
             protocol_errors.extend(
                 _m21_generation_realization_successor_errors(
                     scheduler, seal, migration, root=root
@@ -7249,6 +7486,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "live_preflight_receipt_compatibility_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M22 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "generation_realization_successor_materialization",

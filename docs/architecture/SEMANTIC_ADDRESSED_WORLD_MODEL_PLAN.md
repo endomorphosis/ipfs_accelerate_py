@@ -80,6 +80,35 @@ the supervisor decides and records.
 
 No producer may approve its own context, procedure, prediction, proof, transition, world root, or completion. Contradictory admitted premises yield conflict and abstention, never ex-falso repair authority. Unknown dynamic behavior widens an explicit frontier and is never treated as absence.
 
+### M22 append-only live-preflight compatibility successor
+
+`SAWM-R2-M22` preserves the stopped, generation-21 M21 authority and its
+historical task, goal, completion, lifecycle, and receipt evidence. A bounded
+operator-control repair admits only the five exact historical database
+completion receipts whose older schema omitted a top-level
+`worker_self_approval` field. Admission requires their pinned canonical
+identities, exact portal validation, and independently pinned,
+self-rehashing operator-control operational-validation receipts with zero
+accepted definition or completion changes. Any explicit replacement field,
+missing operational evidence, altered task binding, altered accepted source
+transition, or rehashed tamper fails closed.
+
+M22 also preserves both redacted M21 launch terminals as typed evidence. A
+direct configured-scheduler invocation produced sealed worker exit 78 because
+the Quack token handle was unavailable, with zero claims, attempts, provider
+invocations, effects, task changes, or persisted secret. The correctly routed
+operator preflight then stopped with `M21-head accepted completion differs:
+SAWM-001`; the receipt omitted the historical top-level field while its
+separately pinned operator attestation records `worker_self_approval=false`.
+That terminal likewise changed no task or accepted completion evidence.
+
+The successor copies only the exact stopped M21 control and coordination
+stores into `run-r2-m22`; execution, read-replica, logs, state, credential,
+and other lifecycle sidecars remain preserved only under M21. It appends one
+operator plan/evidence pair (plan revision 23, events 232--233), changes no
+ordinary task or goal state, and reserves generation 22 on port 24065 for the
+next qualified owner.
+
 ## 5. Repository ownership
 
 ### 5.1 `ipfs_datasets_py`
