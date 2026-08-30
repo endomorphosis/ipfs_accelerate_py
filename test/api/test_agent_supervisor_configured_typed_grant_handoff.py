@@ -4813,6 +4813,95 @@ def test_aseh_canonical_merge_suffix_admits_only_exact_two_parent_output(
         )
 
 
+def test_aseh_sealed_line_descendant_suffix_admits_two_parent_merges_without_queue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ("git", *args), cwd=tmp_path, text=True, capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "aseh-continuity@example.invalid")
+    git("config", "user.name", "ASEH Continuity")
+    (tmp_path / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", "base.txt")
+    git("commit", "-m", "sealed base")
+    base = git("rev-parse", "HEAD")
+    git("checkout", "-b", "operator-fix")
+    (tmp_path / "operator.py").write_text("fix\n", encoding="utf-8")
+    git("add", "operator.py")
+    git("commit", "-m", "operator stall fix")
+    candidate = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    git("checkout", "main")
+    git("merge", "--no-ff", "--no-edit", "operator-fix")
+    integrated = git("rev-parse", "HEAD")
+    integrated_tree = git("rev-parse", "HEAD^{tree}")
+
+    monkeypatch.setattr(aseh_operator, "ROOT", tmp_path)
+    board = SimpleNamespace(
+        protected_paths=("protected.py",),
+        merge_target_branch="main",
+    )
+    proof = aseh_operator._admit_canonical_merge_suffix(
+        board,
+        base_head=base,
+        target_head=integrated,
+        bootstrap={"integrity": {"task_revisions": {}}},
+        integrity={
+            "task_statuses": {},
+            "task_revisions": {},
+            "task_cids": {},
+        },
+        task_outputs={},
+        completed_requests=(),
+        admission_mode="sealed_line_descendant",
+    )
+    assert proof["schema"].endswith("aseh-canonical-merge-suffix@1")
+    assert proof["base_head"] == base
+    assert proof["target_head"] == integrated
+    assert proof["target_tree"] == integrated_tree
+    assert len(proof["integrations"]) == 1
+    integration = proof["integrations"][0]
+    assert integration["candidate_commit"] == candidate
+    assert integration["candidate_tree"] == candidate_tree
+    assert integration["integration_commit"] == integrated
+    assert integration["task_alias"] == (
+        aseh_operator.ASEH_SEALED_LINE_DESCENDANT_TASK_ALIAS
+    )
+    assert integration["changed_paths"] == ["operator.py"]
+    validated = aseh_operator._validate_r29_historical_live_effect_continuity(
+        proof,
+        authorization_candidate_head=base,
+        authorization_candidate_tree=git("rev-parse", f"{base}^{{tree}}"),
+        active_candidate_head=integrated,
+        active_candidate_tree=integrated_tree,
+    )
+    assert validated["integrations"][0]["candidate_commit"] == candidate
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="lacks one completed queue request",
+    ):
+        aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=integrated,
+            bootstrap={"integrity": {"task_revisions": {}}},
+            integrity={
+                "task_statuses": {},
+                "task_revisions": {},
+                "task_cids": {},
+            },
+            task_outputs={},
+            completed_requests=(),
+        )
+
+
 def test_aseh_repair_transition_receipt_is_closed_and_non_mutating() -> None:
     receipt = {
         "schema": aseh_operator.REPAIR_TRANSITION_SCHEMA,
@@ -35522,6 +35611,7 @@ def test_aseh_r45_authorization_and_materialized_launch_are_wired_first(
         "r45_projection_recovery_prequalification=r45_prequalification",
         "_bounded_launch_admission",
         "rerun_prefix_validations",
+        "sealed_line_descendant",
     ):
         assert token in launch
     assert launch.count("rerun_validations=rerun_prefix_validations") >= 10
@@ -35933,6 +36023,8 @@ def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
     assert run_supervisor.index(
         "launch_admission_bound_scope = _bounded_launch_admission"
     ) < run_supervisor.index(
+        "_load_exact_r39_receipt_chain(paths)"
+    ) < run_supervisor.index(
         "launch_git_guard_scope = _prepared_candidate_git_guard"
     )
     assert aseh_operator.ASEH_LAUNCH_ADMISSION_TIMEOUT_SECONDS == 1800.0
@@ -35963,3 +36055,25 @@ def test_aseh_r45_receipt_id_reuses_memoized_validation_contracts() -> None:
     assert first_elapsed < 30.0
     assert second_elapsed < 5.0
     assert aseh_operator._r45_sealed_receipt_validation_executor_contract.cache_info().hits >= 1
+
+
+def test_aseh_r15_through_r38_sealed_contracts_and_r18_chain_are_memoized() -> None:
+    source = Path(aseh_operator.__file__).read_text(encoding="utf-8")
+    for revision in range(15, 39):
+        token = f"def _r{revision}_sealed_receipt_validation_executor_contract("
+        index = source.index(token)
+        assert "@functools.cache" in source[index - 24:index]
+    r18 = inspect.getsource(aseh_operator._load_exact_r18_receipt_chain)
+    assert "_ASEH_EXACT_R18_RECEIPT_CHAIN" in r18
+    assert aseh_operator._r38_sealed_receipt_validation_executor_contract.cache_info().hits >= 0
+    aseh_operator._r38_sealed_receipt_validation_executor_contract.cache_clear()
+    first = aseh_operator._r38_sealed_receipt_validation_executor_contract()
+    second = aseh_operator._r38_sealed_receipt_validation_executor_contract()
+    assert first == second
+    assert (
+        aseh_operator._r38_sealed_receipt_validation_executor_contract.cache_info().hits
+        >= 1
+    )
+    launch = inspect.getsource(aseh_operator._admit_materialized_launch)
+    assert launch.count('admission_mode=') >= 2
+    assert launch.count('"sealed_line_descendant"') >= 2
