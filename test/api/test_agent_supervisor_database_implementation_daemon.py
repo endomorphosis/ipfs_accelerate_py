@@ -688,7 +688,9 @@ def test_effect_exception_is_unknown_and_blocks_without_replay(
         daemon.close()
 
 
-def test_later_session_rearms_dead_unknown_outcome_block(tmp_path: Path) -> None:
+def test_later_session_does_not_rearm_effect_unknown_outcome(
+    tmp_path: Path,
+) -> None:
     provider_calls: list[str] = []
     effect_calls: list[str] = []
 
@@ -720,26 +722,24 @@ def test_later_session_rearms_dead_unknown_outcome_block(tmp_path: Path) -> None
     )
     try:
         rearms = successor.reconcile_blocked_unknown_outcome_tasks()
-        assert len(rearms) == 1
-        assert rearms[0]["task_cid"] == "task:cid:001"
-        assert rearms[0]["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+        assert rearms == []
         task = successor.task_source.get("task:cid:001")
-        assert task is not None and task.status == "retrying"
+        assert task is not None and task.status == "blocked"
         receipt = task.body["completion_receipt"]
-        assert receipt["operation"] == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
-        assert receipt["attempts_used"] == 0
-        assert receipt["retry_exhausted"] is False
-        assert receipt["unknown_outcome_rearm_count"] == 1
+        assert receipt["operation"] == "database_unknown_outcome_blocked"
+        assert receipt["reason"] == "callback_authority_incomplete_blocked"
+        assert receipt["retry_exhausted"] is True
         assert successor.reconcile_blocked_unknown_outcome_tasks() == []
-        claimed = successor.run_once()
-        assert claimed["implementation_result"] is not None
-        assert claimed["implementation_result"]["status"] in {
-            "succeeded",
-            "completed",
-            "ok",
-        } or claimed["claimed_task_cid"] == "task:cid:001"
-        assert successor_calls == ["task:cid:001"]
+        idle = successor.run_once()
+        assert idle["implementation_result"] is None
+        attempts = successor._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts WHERE task_cid = ?",
+            ["task:cid:001"],
+        ).fetchone()
+        assert attempts is not None and int(attempts[0]) == 1
+        assert successor_calls == []
         assert len(provider_calls) == 1
+        assert len(effect_calls) == 1
     finally:
         successor.close()
 
@@ -2075,8 +2075,6 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
         old_attempt = first.claim_next()
         assert old_attempt is not None
         old_attempt = first.commit_phase(old_attempt, "context")
-        old_attempt, _, duplicated = first.run_provider(old_attempt)
-        assert duplicated is False
         old_owner = first.owner_session_id
     finally:
         first.close()
@@ -2092,15 +2090,20 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
     )
     try:
         assert replacement.owner_session_id == old_owner
-        result = replacement.run_once()
-        reconciliations = result["expired_attempt_reconciliations"]
+        expiry_result = replacement.run_once()
+        reconciliations = expiry_result["expired_attempt_reconciliations"]
         assert len(reconciliations) == 1
         assert reconciliations[0]["status"] == "expired"
         assert reconciliations[0]["provider_evidence_reused"] is False
         assert reconciliations[0]["effect_evidence_reused"] is False
+        assert expiry_result["selection_idle_reason"] == (
+            "database_expired_attempts_reconciled"
+        )
+        # Expiry and a freshly fenced retry are separate durable passes.
+        result = replacement.run_once()
         assert result["attempt_id"] != old_attempt.attempt_id
         assert result["implementation_result"]["status"] == "succeeded"
-        assert provider_calls == [old_attempt.task_cid, old_attempt.task_cid]
+        assert provider_calls == [old_attempt.task_cid]
         assert effect_calls == [old_attempt.task_cid]
         retired = replacement.get_attempt(old_attempt.attempt_id)
         assert retired is not None
@@ -2113,6 +2116,92 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
         assert replacement_claim.fencing_token > old_attempt.fencing_token
     finally:
         replacement.close()
+
+
+@pytest.mark.parametrize("callback_kind", ("provider", "effect"))
+@pytest.mark.parametrize("result_state", ("missing", "corrupt"))
+def test_expired_committed_callback_with_invalid_result_never_redispatches(
+    tmp_path: Path,
+    callback_kind: str,
+    result_state: str,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    predecessor = _open_daemon(
+        tmp_path,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        predecessor.materialize_population(_population(1))
+        attempt = predecessor.claim_next()
+        assert attempt is not None
+        attempt = predecessor.commit_phase(attempt, "context")
+        attempt, provider_result, duplicated = predecessor.run_provider(attempt)
+        assert duplicated is False
+        table = "provider_invocations"
+        if callback_kind == "effect":
+            attempt, _effect_result, duplicated = predecessor.run_effect(
+                attempt,
+                provider_result,
+            )
+            assert duplicated is False
+            table = "effect_claims"
+        connection = predecessor._require_connection()
+        if result_state == "missing":
+            connection.execute(
+                f"DELETE FROM {table} WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            )
+        else:
+            connection.execute(
+                f"UPDATE {table} SET result_json = ? WHERE attempt_id = ?",
+                ["{not-strict-json", attempt.attempt_id],
+            )
+        owner_session_id = predecessor.owner_session_id
+    finally:
+        predecessor.close()
+
+    now["ms"] = 7_000
+    successor = _open_daemon(
+        tmp_path,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        assert successor.owner_session_id == owner_session_id
+        first = successor.run_once()
+        assert first["selection_idle_reason"] == (
+            "database_expired_attempts_reconciled"
+        )
+        expired = first["expired_attempt_reconciliations"][0]
+        assert expired["reason"] == (
+            "elapsed_claim_after_durable_callback_blocked"
+        )
+        assert expired["retry_required"] is False
+        assert expired["callback_authority_incomplete"] is True
+        for _pass in range(2):
+            later = successor.run_once()
+            assert later["implementation_result"] is None
+        count = successor._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert count is not None and int(count[0]) == 1
+        terminal = successor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert provider_calls == [attempt.task_cid]
+        assert effect_calls == (
+            [attempt.task_cid] if callback_kind == "effect" else []
+        )
+    finally:
+        successor.close()
 
 
 def test_completed_control_cas_is_recovered_from_prepared_barrier(
@@ -2433,7 +2522,7 @@ def test_run_once_preserves_promoted_completion_for_reconciliation(
         daemon.close()
 
 
-def test_expired_preparation_without_control_cas_is_aborted_and_requeued(
+def test_expired_preparation_without_control_cas_is_permanently_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2482,20 +2571,49 @@ def test_expired_preparation_without_control_cas_is_aborted_and_requeued(
         result = daemon.run_once()
         assert len(result["completion_reconciliations"]) == 1
         assert result["completion_reconciliations"][0]["status"] == "aborted"
-        assert result["implementation_result"]["status"] == "succeeded"
-        assert result["attempt_id"] != attempt.attempt_id
+        assert result["completion_reconciliations"][0]["reason"] == (
+            "callback_authority_incomplete_blocked"
+        )
+        assert result["completion_reconciliations"][0]["retry_required"] is False
+        assert result["implementation_result"] is None
         old_attempt = daemon.get_attempt(attempt.attempt_id)
         assert old_attempt is not None
         assert old_attempt.status == "failed"
         final_completion = daemon.coordinator.get_prepared_task_completion(
             attempt.task_cid
         )
-        assert final_completion is not None
-        assert final_completion["status"] == "succeeded"
-        assert final_completion["attempt_id"] == result["attempt_id"]
-        completed = daemon.task_source.get(attempt.task_cid)
-        assert completed is not None
-        assert completed.status == "completed"
+        assert final_completion is None
+        blocked = daemon.task_source.get(attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        assert blocked.body["completion_receipt"]["reason"] == (
+            "callback_authority_incomplete_blocked"
+        )
+        daemon.close()
+
+        callback_calls: list[str] = []
+
+        def forbidden(*_args: object, **_kwargs: object) -> dict[str, object]:
+            callback_calls.append("callback")
+            raise AssertionError("post-validation barrier was redispatched")
+
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:prepared-abort",
+            provider_fn=forbidden,
+            effect_fn=forbidden,
+            validation_fn=forbidden,
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+        )
+        for _pass in range(2):
+            restarted = daemon.run_once()
+            assert restarted["implementation_result"] is None
+        attempts = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts WHERE task_cid = ?",
+            [attempt.task_cid],
+        ).fetchone()
+        assert attempts is not None and int(attempts[0]) == 1
+        assert callback_calls == []
     finally:
         daemon.close()
 
@@ -2700,6 +2818,8 @@ def test_quack_runner_resolves_lane_private_database_paths(tmp_path: Path) -> No
             authority_mode="quack",
             task_source_kind="duckdb",
             quack_uri="quack:127.0.0.1:45671",
+            control_store_id="store:quack-lane-test",
+            control_store_generation="generation:quack-lane-test",
             install_schema=False,
         )
         for paths in (first, second)

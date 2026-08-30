@@ -303,8 +303,27 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
         isolated_process_group=True,
         adopted=True,
     )
-
-    readiness = lifecycle._authenticated_readiness_once(owner)
+    activated_names = set(program.environment()) | set(
+        runner.STATE_CREDENTIAL_ENV_NAMES
+    ) | {
+        runner.REPOSITORY_ROOT_ENV,
+        "TEST_QUACK_OWNER_TOKEN",
+    }
+    prior_environment = {
+        name: os.environ.get(name) for name in activated_names
+    }
+    try:
+        readiness = lifecycle._authenticated_readiness_once(owner)
+    finally:
+        # This unit invokes the private process-scoped activation primitive
+        # directly rather than through the managed runner lifecycle.  Restore
+        # that process environment explicitly so later defaults tests do not
+        # inherit this test owner as ambient Quack authority.
+        for name, prior in prior_environment.items():
+            if prior is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = prior
 
     assert readiness.admitted is True
     assert readiness.binding.generation == 8

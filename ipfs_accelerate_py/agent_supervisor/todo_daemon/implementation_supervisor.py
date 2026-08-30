@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
@@ -84,10 +85,12 @@ from .implementation_supervisor_runner import (
 )
 from ..runtime.multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
+    DATABASE_PROGRAM_ENV_NAMES,
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
+    STATE_CREDENTIAL_ENV_NAMES,
     TASK_SOURCE_LEGACY_MARKDOWN,
     provider_subprocess_environment,
 )
@@ -117,6 +120,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     ReconciliationLifecycleBlockedError,
+    _database_daemon_logical_owner_id,
     _prepare_provider_route_receipt,
     _provider_state_boundary_required,
     _provider_filesystem_boundary_receipt_path,
@@ -6284,6 +6288,46 @@ def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(items)
 
 
+def _repository_anchored_path(repo_root: Path, value: Path | str) -> Path:
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = Path(repo_root).resolve(strict=False) / candidate
+    return Path(os.path.abspath(candidate))
+
+
+def _database_program_lane_paths(
+    *,
+    program: DatabaseProgramConfig,
+    repo_root: Path,
+    state_dir: Path,
+) -> tuple[Path, Path, Path]:
+    """Resolve one managed lane's exact DB sidecars against its repo root."""
+
+    def anchored(value: Path | str) -> Path:
+        return _repository_anchored_path(repo_root, value)
+
+    if program.authority_mode == "quack":
+        lane_state = anchored(state_dir)
+        database_path = lane_state / "quack-lane-control.duckdb"
+        coordination_path = (
+            lane_state / "quack-lane-coordination.duckdb"
+        )
+    else:
+        raw_store = str(program.store_id or "").strip()
+        if not raw_store:
+            raise ValueError(
+                "database program requires a store for managed owner binding"
+            )
+        database_path = anchored(raw_store)
+        coordination_path = database_path.with_name(
+            f"{database_path.stem}.coordination.duckdb"
+        )
+    execution_path = database_path.with_name(
+        f"{database_path.stem}.execution.duckdb"
+    )
+    return database_path, coordination_path, execution_path
+
+
 @dataclass
 class PortalSupervisorConfig:
     todo_path: Path
@@ -6300,6 +6344,12 @@ class PortalSupervisorConfig:
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
+    database_owner_session_id: str = ""
+    _database_owner_session_derived: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+    )
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -6518,6 +6568,46 @@ class PortalSupervisorConfig:
                     "plan-bound accepted control-plane generation drifted"
                 )
         if (
+            self.database_program is not None
+            and self.database_program.task_source_kind == "duckdb"
+            and self.database_program.authority_mode
+            in {"embedded", "embedded_exclusive", "quack"}
+        ):
+            configured_owner = str(
+                self.database_owner_session_id or ""
+            ).strip()
+            self._database_owner_session_derived = not bool(configured_owner)
+            if configured_owner:
+                if (
+                    configured_owner != self.database_owner_session_id
+                    or re.fullmatch(
+                        r"[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,255}",
+                        configured_owner,
+                    )
+                    is None
+                ):
+                    raise ValueError(
+                        "database owner session ID is not a canonical "
+                        "bounded identifier"
+                    )
+            else:
+                program = self.database_program
+                (
+                    database_path,
+                    coordination_path,
+                    execution_path,
+                ) = _database_program_lane_paths(
+                    program=program,
+                    repo_root=self.repo_root,
+                    state_dir=self.state_dir,
+                )
+                configured_owner = _database_daemon_logical_owner_id(
+                    database_path=database_path,
+                    coordination_path=coordination_path,
+                    execution_path=execution_path,
+                )
+            self.database_owner_session_id = configured_owner
+        if (
             self.manual_completion_authority_revalidation_only
             and not self.manual_completion_authority_task_ids
         ):
@@ -6548,22 +6638,14 @@ class AdoptedManagedDaemonProcess:
         return self.returncode
 
     def terminate(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGTERM)
-            self.returncode = -signal.SIGTERM
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons require an exact ownership fence"
+        )
 
     def kill(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGKILL)
-            self.returncode = -signal.SIGKILL
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons require an exact ownership fence"
+        )
 
     def wait(self, timeout: float | None = None) -> int:
         deadline = None if timeout is None else time.time() + timeout
@@ -8225,10 +8307,17 @@ class PortalImplementationSupervisor:
             self._run_forever_loop()
         finally:
             if stop_signal is not None:
-                cleanup = self._terminate_managed_daemon_tree()
-                interrupted_reconciliation = (
-                    self._reconcile_interrupted_implementation_after_shutdown()
-                )
+                with serialized_lock_update(
+                    self._managed_daemon_launch_lock_path()
+                ):
+                    cleanup = self._terminate_managed_daemon_tree(
+                        _launch_lock_held=True
+                    )
+                    interrupted_reconciliation = (
+                        self._reconcile_interrupted_implementation_after_shutdown(
+                            cleanup=cleanup
+                        )
+                    )
                 try:
                     self._record_event(
                         "supervisor_signal_shutdown",
@@ -8257,7 +8346,12 @@ class PortalImplementationSupervisor:
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
         self.repair_main_checkout_merge_state()
-        self.ensure_managed_daemon_pid_file()
+        pid_guard = self.ensure_managed_daemon_pid_file()
+        if pid_guard.get("blocked") is True:
+            raise RuntimeError(
+                "managed database daemon identity is not exact; refusing "
+                "supervision: " + str(pid_guard.get("reason") or "unknown")
+            )
         try:
             preflight = self.run_once(include_refill=False)
         except Exception as exc:
@@ -8347,6 +8441,19 @@ class PortalImplementationSupervisor:
         managed_daemon_environment = _managed_daemon_child_environment(
             database_program=self.config.database_program,
         )
+        if self._database_managed_daemon_identity_required():
+            managed_daemon_environment.update(
+                {
+                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                        self._managed_daemon_identity_path()
+                    ),
+                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                        self._managed_daemon_owner_scope(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -8894,28 +9001,46 @@ class PortalImplementationSupervisor:
                 "reason": "active_task_not_completed",
                 "active_task_id": task_id,
             }
-        stop = self._terminate_managed_daemon_tree(grace_seconds=2.0)
-        repaired_at = utc_now()
-        consume_stale_active_attempt(state)
-        state.active_attempt = 0
-        state.active_phase = ""
-        state.active_phase_started_at = ""
-        state.active_phase_detail = ""
-        state.active_log_path = ""
-        state.active_worktree_path = ""
-        state.active_branch = ""
-        state.implementation_in_progress = False
-        state.heartbeat_at = repaired_at
-        state.last_progress_at = repaired_at
-        state.save(self.config.state_path)
-        result = {
-            "attempted": True,
-            "released": True,
-            "reason": "completed_task_leftover",
-            "active_task_id": task_id,
-            "repaired_at": repaired_at,
-            "stop": stop,
-        }
+        with serialized_lock_update(self._managed_daemon_launch_lock_path()):
+            stop = self._terminate_managed_daemon_tree(
+                grace_seconds=2.0,
+                _launch_lock_held=True,
+            )
+            if stop.get("quiesced") is not True:
+                result = {
+                    "attempted": True,
+                    "released": False,
+                    "blocked": True,
+                    "reason": "completed_task_leftover_not_quiesced",
+                    "active_task_id": task_id,
+                    "stop": stop,
+                }
+                self._record_event(
+                    "completed_leftover_execution_release_blocked",
+                    result,
+                )
+                return result
+            repaired_at = utc_now()
+            consume_stale_active_attempt(state)
+            state.active_attempt = 0
+            state.active_phase = ""
+            state.active_phase_started_at = ""
+            state.active_phase_detail = ""
+            state.active_log_path = ""
+            state.active_worktree_path = ""
+            state.active_branch = ""
+            state.implementation_in_progress = False
+            state.heartbeat_at = repaired_at
+            state.last_progress_at = repaired_at
+            state.save(self.config.state_path)
+            result = {
+                "attempted": True,
+                "released": True,
+                "reason": "completed_task_leftover",
+                "active_task_id": task_id,
+                "repaired_at": repaired_at,
+                "stop": stop,
+            }
         self._record_event("completed_leftover_execution_released", result)
         return result
 
@@ -13243,10 +13368,49 @@ class PortalImplementationSupervisor:
 
     def _reconcile_interrupted_implementation_after_shutdown(
         self,
+        *,
+        cleanup: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
+            if (
+                self.config.database_program is not None
+                and self.config.database_program.task_source_kind == "duckdb"
+                and self.config.database_program.authority_mode
+                in {"embedded", "embedded_exclusive", "quack"}
+            ):
+                daemon_fence = (
+                    cleanup.get("daemon_fence")
+                    if isinstance(cleanup, Mapping)
+                    else None
+                )
+                lane_provider_fence = (
+                    cleanup.get("provider_runner_fence")
+                    if isinstance(cleanup, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(cleanup, Mapping)
+                    or cleanup.get("quiesced") is not True
+                    or cleanup.get("remaining_pid") is not None
+                    or cleanup.get("markers_removed") is not True
+                    or not isinstance(daemon_fence, Mapping)
+                    or daemon_fence.get("safe_to_restart") is not True
+                    or not isinstance(lane_provider_fence, Mapping)
+                    or lane_provider_fence.get("safe_to_restart") is not True
+                ):
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "managed_database_daemon_not_quiesced",
+                        "managed_daemon_cleanup": (
+                            dict(cleanup)
+                            if isinstance(cleanup, Mapping)
+                            else {}
+                        ),
+                    }
+                return self._reconcile_interrupted_database_portal_attempts()
             daemon = self._build_worktree_reconciliation_daemon()
             return daemon.reconcile_quiesced_active_attempt()
         except Exception as exc:
@@ -13261,6 +13425,281 @@ class PortalImplementationSupervisor:
                 "error_type": type(exc).__name__,
                 "error": str(exc),
             }
+
+    def _reconcile_interrupted_database_portal_attempts(self) -> dict[str, Any]:
+        """Reconcile DB claims against their exact nested Portal state roots."""
+
+        program = self.config.database_program
+        if program is None:
+            raise RuntimeError("database Portal reconciliation lacks a program")
+        with self._database_reconciliation_program_environment(program):
+            return self._reconcile_interrupted_database_portal_attempts_bound(
+                program
+            )
+
+    @contextmanager
+    def _database_reconciliation_program_environment(
+        self,
+        program: DatabaseProgramConfig,
+    ) -> Any:
+        """Adapt one accepted program to the legacy Quack environment API.
+
+        The direct reconciliation daemon is opened only after managed daemon
+        cleanup proved quiescence.  Its existing Quack transport resolves an
+        opaque endpoint handle and exact live store binding from environment
+        variables, so bind those non-secret values for this shutdown-only
+        scope and restore every prior value before returning.  Raw tokens are
+        explicitly unavailable inside the scope.
+        """
+
+        bindings = dict(program.environment())
+        bindings[REPOSITORY_ROOT_ENV] = str(self.config.repo_root.resolve())
+        removed_names = set(STATE_CREDENTIAL_ENV_NAMES) | set(
+            DATABASE_PROGRAM_ENV_NAMES
+        )
+        # These are live Quack-owner observations, not the logical generation
+        # and schema tokens in DatabaseProgramConfig.  Clear stale ambient
+        # pins and let the existing opaque-handle resolver admit one owner
+        # status; the transport then compares its complete live binding to
+        # that exact status before returning a connection.
+        removed_names.update(
+            {
+                "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
+                "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
+            }
+        )
+        handle = str(program.endpoint_secret_handle or "").strip()
+        if handle.startswith("env://"):
+            raw_handle_target = handle[len("env://") :].strip()
+            if raw_handle_target:
+                removed_names.add(raw_handle_target)
+        scoped_names = set(bindings) | removed_names
+        missing = object()
+        prior: dict[str, object] = {
+            name: os.environ.get(name, missing) for name in scoped_names
+        }
+        try:
+            for name in removed_names:
+                os.environ.pop(name, None)
+            os.environ.update(bindings)
+            if any(
+                os.environ.get(name) != value
+                for name, value in bindings.items()
+            ):
+                raise RuntimeError(
+                    "database reconciliation program environment did not bind "
+                    "exactly"
+                )
+            yield
+        finally:
+            for name, value in prior.items():
+                if value is missing:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = str(value)
+
+    def _reconcile_interrupted_database_portal_attempts_bound(
+        self,
+        program: DatabaseProgramConfig,
+    ) -> dict[str, Any]:
+        """Run reconciliation with the accepted program bindings active."""
+
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+        from .implementation_daemon import DatabaseImplementationDaemon
+
+        (
+            database_path,
+            coordination_path,
+            execution_path,
+        ) = _database_program_lane_paths(
+            program=program,
+            repo_root=self.config.repo_root,
+            state_dir=self.config.state_dir,
+        )
+        (
+            effective_shard_count,
+            effective_shard_index,
+            effective_strict_sharding,
+        ) = self._effective_managed_daemon_sharding()
+
+        daemon = DatabaseImplementationDaemon(
+            database_path=database_path,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=self.config.database_owner_session_id,
+            authority_mode=program.authority_mode,
+            task_source_kind=program.task_source_kind,
+            quack_uri=program.quack_endpoint,
+            markdown_path=None,
+            state_path=None,
+            strategy_path=None,
+            events_path=None,
+            pid_path=None,
+            queue_path=None,
+            max_task_attempts=self.config.max_task_attempts,
+            require_real_execution=self.config.implement,
+            task_prefix=self.config.task_prefix,
+            task_shard_count=effective_shard_count,
+            task_shard_index=effective_shard_index,
+            strict_task_sharding=effective_strict_sharding,
+            control_store_id=program.store_id,
+            control_store_generation=program.store_generation,
+        )
+        attempt_root = _repository_anchored_path(
+            self.config.repo_root,
+            self.config.state_dir,
+        ) / (
+            f"{self.config.state_prefix}_database_portal_attempts"
+        )
+
+        def portal_factory(paths: Any, task_alias: str) -> Any:
+            return PortalImplementationDaemon(
+                todo_path=paths.task_projection,
+                state_path=paths.state,
+                strategy_path=paths.strategy,
+                events_path=paths.events,
+                repo_root=self.config.repo_root,
+                task_header_prefix=self.config.task_prefix,
+                implement=False,
+                implementation_command=self.config.implementation_command,
+                implementation_timeout=self.config.implementation_timeout,
+                max_task_attempts=1,
+                implementation_log_dir=paths.implementation_logs,
+                use_ephemeral_worktree=False,
+                worktree_root=self.config.worktree_root,
+                merge_target_branch=self.config.merge_target_branch,
+                merge_queue_dir=self.config.merge_queue_dir,
+                worktree_submodule_paths=self.config.worktree_submodule_paths,
+                implementation_protected_paths=(
+                    self.config.implementation_protected_paths
+                ),
+                manual_completion_authority_task_ids=(
+                    self.config.manual_completion_authority_task_ids
+                ),
+                manual_completion_authority_required_task_ids=(
+                    self.config.manual_completion_authority_required_task_ids
+                ),
+                manual_completion_authority_epoch_id=(
+                    self.config.manual_completion_authority_epoch_id
+                ),
+                manual_completion_authority_revalidation_only=(
+                    self.config.manual_completion_authority_revalidation_only
+                ),
+                objective_path=self.config.objective_path,
+                objective_bundle_dir=self.config.objective_bundle_dir,
+                generated_status_paths=(),
+                external_reservation_manifest_paths=(),
+                assumed_completed_task_ids=(),
+                execution_slice_task_ids=(task_alias,),
+                execution_slice_task_cids=(),
+                llm_merge_resolver_command=(
+                    self.config.llm_merge_resolver_command
+                ),
+                llm_merge_resolver_timeout_seconds=(
+                    self.config.llm_merge_resolver_timeout_seconds
+                ),
+                merge_reconciliation_max_merges=(
+                    self.config.merge_reconciliation_max_merges
+                ),
+                merged_worktree_cleanup_max=(
+                    self.config.daemon_merged_worktree_cleanup_max
+                ),
+                task_shard_count=1,
+                task_shard_index=0,
+                strict_task_sharding=False,
+                validation_max_workers=self.config.validation_max_workers,
+                maintenance_interval_seconds=(
+                    getattr(
+                        self.config,
+                        "maintenance_interval_seconds",
+                        None,
+                    )
+                ),
+            )
+
+        try:
+            bridge = DatabasePortalExecutionBridge(
+                task_source=daemon.task_source,
+                attempt_root=attempt_root,
+                portal_factory=portal_factory,
+                task_header_prefix=self.config.task_prefix,
+            )
+            daemon.bind_execution_callbacks(
+                provider_fn=bridge.run_provider,
+                effect_fn=bridge.apply_effect,
+                validation_fn=bridge.validate_effect,
+            )
+            daemon.bind_database_portal_bridge(bridge)
+            shutdown_repair_deadline = time.monotonic() + 30.0
+            prior_progress_token = ""
+            for _page_index in range(64):
+                reconciliation = (
+                    daemon.reconcile_quiesced_database_portal_attempts(
+                        trigger="supervisor_signal_shutdown",
+                        force=True,
+                    )
+                )
+                if (
+                    reconciliation.get("repair_batch_pending") is not True
+                    or reconciliation.get("blocked") is True
+                ):
+                    return reconciliation
+                # The managed child is quiesced and the shared launch lock is
+                # held by the caller.  Drain the next fixed-size durable page
+                # before releasing that lock; a plan-bound --once successor
+                # must never restart from page one or overlap reconciliation.
+                progress_token = content_identity(
+                    {
+                        "cursor": (
+                            daemon._database_portal_terminal_repair_cursor()
+                        ),
+                        "attempts": [
+                            {
+                                "attempt_id": str(
+                                    item.get("attempt_id") or ""
+                                ),
+                                "reason": str(item.get("reason") or ""),
+                                "receipt_id": str(
+                                    item.get("reconciliation_receipt_id") or ""
+                                ),
+                            }
+                            for item in reconciliation.get("attempts", [])
+                        ],
+                    }
+                )
+                if (
+                    progress_token == prior_progress_token
+                    or time.monotonic() >= shutdown_repair_deadline
+                ):
+                    return {
+                        **dict(reconciliation),
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": (
+                            "database_portal_terminal_repair_shutdown_"
+                            "budget_exhausted"
+                        ),
+                        "repair_batch_pending": True,
+                        "reconciliation_complete": False,
+                        "quiesced": False,
+                        "safe_to_restart": False,
+                    }
+                prior_progress_token = progress_token
+            return {
+                **dict(reconciliation),
+                "reconciled": False,
+                "blocked": True,
+                "reason": (
+                    "database_portal_terminal_repair_shutdown_page_budget_"
+                    "exhausted"
+                ),
+                "repair_batch_pending": True,
+                "reconciliation_complete": False,
+                "quiesced": False,
+                "safe_to_restart": False,
+            }
+        finally:
+            daemon.close()
 
     def _reconciliation_guardrail_discovery_dir(self) -> Path:
         return (
@@ -17538,7 +17977,11 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
-        self.ensure_managed_daemon_pid_file()
+        pid_guard = self.ensure_managed_daemon_pid_file()
+        if pid_guard.get("blocked") is True:
+            raise RuntimeError(
+                "managed database daemon identity is not exact; refusing duplicate launch"
+            )
         command = self._build_daemon_command()
         env = os.environ.copy()
         env.update(
@@ -18062,6 +18505,15 @@ class PortalImplementationSupervisor:
                 self._managed_daemon_pid_path()
             )
 
+    def _database_managed_daemon_identity_required(self) -> bool:
+            program = self.config.database_program
+            return bool(
+                program is not None
+                and program.task_source_kind == "duckdb"
+                and program.authority_mode
+                in {"embedded", "embedded_exclusive", "quack"}
+            )
+
     def _managed_daemon_owner_scope(self) -> dict[str, str]:
             daemon_script_path = self.config.daemon_script_path
             daemon_entrypoint = (
@@ -18072,17 +18524,29 @@ class PortalImplementationSupervisor:
                     "implementation_daemon"
                 )
             )
-            return {
+            scope = {
                 "repo_root": str(self.config.repo_root.resolve(strict=False)),
                 "state_dir": str(self.config.state_dir.resolve(strict=False)),
                 "state_prefix": str(self.config.state_prefix),
                 "todo_path": str(self.config.todo_path.resolve(strict=False)),
                 "daemon_entrypoint": daemon_entrypoint,
             }
+            if (
+                self.config.database_program is not None
+                and self.config.database_program.task_source_kind == "duckdb"
+                and self.config.database_program.authority_mode
+                in {"embedded", "embedded_exclusive", "quack"}
+            ):
+                scope["database_owner_session_id"] = (
+                    self.config.database_owner_session_id
+                )
+            return scope
 
     def _managed_daemon_command_belongs_to_scope(
             self,
             command: Sequence[str],
+            *,
+            allow_legacy_derived_owner: bool = False,
         ) -> bool:
             tokens = tuple(str(part) for part in command)
             daemon_script_path = self.config.daemon_script_path
@@ -18105,11 +18569,31 @@ class PortalImplementationSupervisor:
                 ]
                 return values == [expected]
 
-            return (
+            belongs = (
                 exact_option("--state-dir", str(self.config.state_dir))
                 and exact_option("--state-prefix", self.config.state_prefix)
                 and exact_option("--todo-path", str(self.config.todo_path))
             )
+            if (
+                self.config.database_program is not None
+                and self.config.database_program.task_source_kind == "duckdb"
+                and self.config.database_program.authority_mode
+                in {"embedded", "embedded_exclusive", "quack"}
+            ):
+                owner_values = [
+                    tokens[index + 1]
+                    for index, token in enumerate(tokens[:-1])
+                    if token == "--owner-session-id"
+                ]
+                belongs = belongs and (
+                    owner_values == [self.config.database_owner_session_id]
+                    or (
+                        allow_legacy_derived_owner
+                        and self.config._database_owner_session_derived
+                        and owner_values == []
+                    )
+                )
+            return belongs
 
     def _remove_managed_daemon_identity_markers(
             self,
@@ -18167,8 +18651,66 @@ class PortalImplementationSupervisor:
                 pid=int(pid),
                 command=command,
                 owner_scope=self._managed_daemon_owner_scope(),
-                require_direct_child=require_direct_child,
-            )
+            require_direct_child=require_direct_child,
+        )
+
+    def _managed_daemon_identity_matches_scope(
+        self,
+        identity: Any,
+        *,
+        pid: int,
+    ) -> bool:
+        if identity.process_birth.pid != int(pid):
+            return False
+        expected_scope = self._managed_daemon_owner_scope()
+        expected_command = tuple(self._build_daemon_command())
+        if (
+            dict(identity.owner_scope) == expected_scope
+            and tuple(identity.command) == expected_command
+        ):
+            return True
+        legacy_scope = dict(expected_scope)
+        legacy_scope.pop("database_owner_session_id", None)
+        legacy_command = list(expected_command)
+        try:
+            owner_index = legacy_command.index("--owner-session-id")
+        except ValueError:
+            return False
+        if (
+            owner_index + 1 >= len(legacy_command)
+            or legacy_command[owner_index + 1]
+            != self.config.database_owner_session_id
+            or legacy_command.count("--owner-session-id") != 1
+        ):
+            return False
+        del legacy_command[owner_index : owner_index + 2]
+        return bool(
+            self.config._database_owner_session_derived
+            and dict(identity.owner_scope) == legacy_scope
+            and tuple(identity.command) == tuple(legacy_command)
+        )
+
+    def _exact_managed_daemon_identity_is_live(self, pid: int) -> bool:
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if identity is None or not self._managed_daemon_identity_matches_scope(
+            identity,
+            pid=pid,
+        ):
+            return False
+        try:
+            birth_before = read_process_birth(pid)
+            observed_argv = read_process_command_argv(pid)
+            birth_after = read_process_birth(pid)
+        except OSError:
+            return False
+        return bool(
+            supervised_child_identity_liveness(identity) is OwnerLiveness.ALIVE
+            and birth_before == identity.process_birth
+            and birth_after == birth_before
+            and observed_argv == identity.command
+        )
 
     def _fence_recorded_managed_daemon(
             self,
@@ -18184,11 +18726,9 @@ class PortalImplementationSupervisor:
                     "reason": "managed_daemon_ownership_unproven",
                 }
             if (
-                identity.process_birth.pid != int(pid)
-                or dict(identity.owner_scope)
-                != self._managed_daemon_owner_scope()
-                or not self._managed_daemon_command_belongs_to_scope(
-                    identity.command
+                not self._managed_daemon_identity_matches_scope(
+                    identity,
+                    pid=pid,
                 )
             ):
                 return {
@@ -18276,6 +18816,16 @@ class PortalImplementationSupervisor:
                     else "managed_daemon_owned_process_fence_failed"
                 ),
             }
+
+
+    def _effective_managed_daemon_sharding(self) -> tuple[int, int, bool]:
+            if self.config.plan_bound_dispatch:
+                return 1, 0, False
+            return (
+                max(1, int(self.config.task_shard_count)),
+                int(self.config.task_shard_index),
+                bool(self.config.strict_task_sharding),
+            )
 
 
     def _build_daemon_command(self) -> list[str]:
@@ -18372,6 +18922,17 @@ class PortalImplementationSupervisor:
                     candidate_mode=program.authority_mode,
                 )
                 command.extend(program.daemon_cli_args())
+                if (
+                    program.task_source_kind == "duckdb"
+                    and program.authority_mode
+                    in {"embedded", "embedded_exclusive", "quack"}
+                ):
+                    command.extend(
+                        [
+                            "--owner-session-id",
+                            self.config.database_owner_session_id,
+                        ]
+                    )
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -18455,15 +19016,20 @@ class PortalImplementationSupervisor:
                         str(self.config.daemon_merged_worktree_cleanup_max),
                     ]
                 )
+            (
+                effective_shard_count,
+                effective_shard_index,
+                effective_strict_sharding,
+            ) = self._effective_managed_daemon_sharding()
             command.extend(
                 [
                     "--task-shard-count",
-                    str(1 if self.config.plan_bound_dispatch else max(1, int(self.config.task_shard_count))),
+                    str(effective_shard_count),
                     "--task-shard-index",
-                    str(0 if self.config.plan_bound_dispatch else int(self.config.task_shard_index)),
+                    str(effective_shard_index),
                 ]
             )
-            if self.config.strict_task_sharding and not self.config.plan_bound_dispatch:
+            if effective_strict_sharding:
                 command.append("--strict-task-sharding")
             for path in self.config.external_reservation_manifest_paths:
                 command.extend(["--external-reservation-manifest-path", str(path)])
@@ -18529,12 +19095,30 @@ class PortalImplementationSupervisor:
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
 
-    def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
+    def _managed_daemon_launch_lock_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_supervisor.lock"
+
+    def _terminate_managed_daemon_tree(
+        self,
+        *,
+        grace_seconds: float = 1.0,
+        _launch_lock_held: bool = False,
+    ) -> dict[str, Any]:
         """Fence exact recorded daemon/provider births without argv killing."""
+
+        if not _launch_lock_held:
+            with serialized_lock_update(
+                self._managed_daemon_launch_lock_path()
+            ):
+                return self._terminate_managed_daemon_tree(
+                    grace_seconds=grace_seconds,
+                    _launch_lock_held=True,
+                )
 
         active_state = PortalTaskState.load(self.config.state_path)
         pid_path = self._managed_daemon_pid_path()
         identity_path = self._managed_daemon_identity_path()
+        initial_identity = load_supervised_child_identity(identity_path)
         pid = self._read_managed_daemon_pid()
         if pid is None:
             identity = load_supervised_child_identity(identity_path)
@@ -18576,13 +19160,27 @@ class PortalImplementationSupervisor:
         )
         markers_removed = False
         if daemon_fence.get("safe_to_restart") is True:
-            markers_removed = True
-            for marker in (pid_path, identity_path):
-                try:
-                    if marker.is_file() or marker.is_symlink():
-                        marker.unlink()
-                except OSError:
-                    markers_removed = False
+            current_identity = load_supervised_child_identity(identity_path)
+            current_pid = self._read_managed_daemon_pid()
+            identity_unchanged = bool(
+                (initial_identity is None and current_identity is None)
+                or (
+                    initial_identity is not None
+                    and current_identity is not None
+                    and current_identity.record_id
+                    == initial_identity.record_id
+                )
+            )
+            markers_removed = bool(
+                identity_unchanged and current_pid in {None, pid}
+            )
+            if markers_removed:
+                for marker in (pid_path, identity_path):
+                    try:
+                        if marker.is_file() or marker.is_symlink():
+                            marker.unlink()
+                    except OSError:
+                        markers_removed = False
         return {
             "pid": pid,
             "terminated": terminated,
@@ -18623,7 +19221,43 @@ class PortalImplementationSupervisor:
         """Remove stale or malformed managed-daemon PID state before adoption."""
 
         pid_path = self._managed_daemon_pid_path()
+        database_managed = self._database_managed_daemon_identity_required()
         if not pid_path.exists():
+            identity = load_supervised_child_identity(
+                self._managed_daemon_identity_path()
+            )
+            if (
+                identity is not None
+                and self._exact_managed_daemon_identity_is_live(
+                    int(identity.process_birth.pid)
+                )
+            ):
+                write_text_atomic(
+                    pid_path,
+                    f"{int(identity.process_birth.pid)}\n",
+                )
+                result = {
+                    "repaired": True,
+                    "reason": "orphaned_live_managed_daemon_pid_reconstructed",
+                    "path": str(pid_path),
+                    "pid": int(identity.process_birth.pid),
+                    "orphaned_identity_recovered": True,
+                }
+                self._record_event(
+                    "managed_daemon_pid_file_repaired",
+                    result,
+                )
+                return result
+            if database_managed and (
+                self._managed_daemon_identity_path().exists()
+                or self._managed_daemon_identity_path().is_symlink()
+            ):
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "orphaned_managed_database_identity_unproven",
+                    "path": str(pid_path),
+                }
             return {"repaired": False, "reason": "missing", "path": str(pid_path)}
         if pid_path.is_dir():
             backup_path = unique_backup_path(pid_path, "directory-backup")
@@ -18681,8 +19315,161 @@ class PortalImplementationSupervisor:
             if result.get("repaired"):
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        if not process_is_running(pid):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
+
+        identity_path = self._managed_daemon_identity_path()
+        identity = load_supervised_child_identity(identity_path)
+        if (
+            identity is not None
+            and int(identity.process_birth.pid) != pid
+            and self._exact_managed_daemon_identity_is_live(
+                int(identity.process_birth.pid)
+            )
+        ):
+            identity_pid = int(identity.process_birth.pid)
+            write_text_atomic(pid_path, f"{identity_pid}\n")
+            result = {
+                "repaired": True,
+                "reason": "managed_daemon_pid_reconciled_from_live_identity",
+                "path": str(pid_path),
+                "pid": identity_pid,
+                "recorded_pid_reconciled": pid,
+                "orphaned_identity_recovered": True,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if self._exact_managed_daemon_identity_is_live(pid):
+            legacy_database_identity = bool(
+                database_managed
+                and identity is not None
+                and dict(identity.owner_scope)
+                != self._managed_daemon_owner_scope()
+            )
+            if legacy_database_identity:
+                fenced = self._fence_recorded_managed_daemon(
+                    pid=pid,
+                    grace_seconds=1.0,
+                )
+                if (
+                    fenced.get("fenced") is True
+                    and not process_is_running(pid)
+                    and self._remove_managed_daemon_identity_markers(
+                        expected_pid=pid
+                    )
+                ):
+                    result = {
+                        "repaired": True,
+                        "reason": "legacy_managed_database_daemon_fenced",
+                        "path": str(pid_path),
+                        "pid": pid,
+                    }
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                    return result
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "legacy_managed_database_daemon_fence_failed",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "daemon_fence": dict(fenced),
+                }
+            return {
+                "repaired": False,
+                "reason": "active",
+                "path": str(pid_path),
+                "pid": pid,
+            }
+        process_running = process_is_running(pid)
+        if identity is not None:
+            liveness = supervised_child_identity_liveness(identity)
+            if (
+                int(identity.process_birth.pid) == pid
+                and liveness is OwnerLiveness.DEAD
+                and process_running
+            ):
+                matching_pid = self._find_matching_managed_daemon_pid(
+                    exclude_pids=set()
+                )
+                if matching_pid is not None:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "matching_managed_daemon_ownership_unproven",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": int(matching_pid),
+                    }
+                quarantined = self._quarantine_managed_daemon_identity_markers(
+                    reason="pid-reused"
+                )
+                result = {
+                    "repaired": set(quarantined) == {"pid", "identity"},
+                    "reason": "managed_daemon_pid_reused",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                    "quarantined": quarantined,
+                }
+                if result["repaired"]:
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                return result
+            if process_running:
+                # A live identity that is not the exact current command/scope
+                # (or the sole admitted legacy generation) is evidence of a
+                # different authority.  Never signal, unlink, or adopt it.
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_authority_identity_mismatch",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+        if process_running and identity is None:
+            observed_argv = read_process_command_argv(pid)
+            if (
+                not database_managed
+                and observed_argv == tuple(self._build_daemon_command())
+            ):
+                # One-way migration for the released generic PID-only child.
+                # Database lanes never use this path: their owner identity is
+                # not derivable from argv similarity alone.
+                self._write_managed_daemon_identity(
+                    pid=pid,
+                    command=observed_argv,
+                    require_direct_child=False,
+                )
+                result = {
+                    "repaired": True,
+                    "reason": "active_legacy_managed_daemon_identity_migrated",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+                self._record_event(
+                    "managed_daemon_pid_file_repaired",
+                    result,
+                )
+                return result
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_unproven",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+        if not process_running:
+            replacement_pid = (
+                None
+                if database_managed
+                else self._find_matching_managed_daemon_pid(exclude_pids={pid})
+            )
             if replacement_pid:
                 write_text_atomic(pid_path, f"{replacement_pid}\n")
                 result = {
@@ -18750,6 +19537,21 @@ class PortalImplementationSupervisor:
 
     def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
         pid_path = self._managed_daemon_pid_path()
+        try:
+            recorded_pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            recorded_pid = 0
+        if recorded_pid > 0:
+            if self._exact_managed_daemon_identity_is_live(recorded_pid):
+                # Includes the one released legacy generation: exact old
+                # owner scope plus owner-absent argv is admissible only when
+                # the selected owner is the same path-derived identity.
+                return AdoptedManagedDaemonProcess(recorded_pid)
+            if (
+                self._database_managed_daemon_identity_required()
+                and process_is_running(recorded_pid)
+            ):
+                return None
         repair = self.ensure_managed_daemon_pid_file()
         if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
             return None
@@ -18799,8 +19601,13 @@ class PortalImplementationSupervisor:
             return False
         tokens = command_line.split()
 
+        (
+            effective_shard_count,
+            effective_shard_index,
+            effective_strict_sharding,
+        ) = self._effective_managed_daemon_sharding()
         has_strict_task_sharding = "--strict-task-sharding" in tokens
-        if self.config.strict_task_sharding != has_strict_task_sharding:
+        if effective_strict_sharding != has_strict_task_sharding:
             return False
 
         def option_values(option: str) -> set[str]:
@@ -18811,17 +19618,29 @@ class PortalImplementationSupervisor:
             }
 
         if option_values("--task-shard-count") != {
-            str(self.config.task_shard_count)
+            str(effective_shard_count)
         }:
             return False
         if option_values("--task-shard-index") != {
-            str(self.config.task_shard_index)
+            str(effective_shard_index)
         }:
             return False
-
-        if option_values("--execution-slice-task-id") != set(
-            self.config.execution_slice_task_ids
+        if (
+            self.config.database_program is not None
+            and self.config.database_program.task_source_kind == "duckdb"
+            and self.config.database_program.authority_mode
+            in {"embedded", "embedded_exclusive", "quack"}
+            and option_values("--owner-session-id")
+            != {self.config.database_owner_session_id}
         ):
+            return False
+
+        expected_slice_task_ids = (
+            set()
+            if self.config.plan_bound_dispatch
+            else set(self.config.execution_slice_task_ids)
+        )
+        if option_values("--execution-slice-task-id") != expected_slice_task_ids:
             return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
@@ -18927,6 +19746,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--state-store-id", default="")
     parser.add_argument("--state-store-generation", default="")
     parser.add_argument("--state-schema-revision", default="")
+    parser.add_argument(
+        "--owner-session-id",
+        default="",
+        help=(
+            "Restart-stable database daemon owner session. When omitted, "
+            "the supervisor resolves and explicitly passes the existing "
+            "path-bound store owner identity."
+        ),
+    )
     parser.add_argument(
         "--state-failover-policy",
         choices=("fail_closed", "require_explicit_operator"),
@@ -19633,6 +20461,9 @@ def supervisor_config_from_args(
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
         database_program=database_program,
+        database_owner_session_id=str(
+            getattr(args, "owner_session_id", "") or ""
+        ),
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,

@@ -1826,7 +1826,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
                 owner_scope=owner_scope,
                 require_direct_child=True,
             )
-        except Exception:
+        except BaseException:
             direct_child_stopped = terminate_direct_child_process(
                 process,
                 grace_seconds=1.0,

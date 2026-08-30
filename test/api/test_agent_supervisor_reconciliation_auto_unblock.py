@@ -545,7 +545,7 @@ def test_supervisor_releases_completed_leftover_execution(
     monkeypatch.setattr(
         supervisor,
         "_terminate_managed_daemon_tree",
-        lambda grace_seconds=1.0: stop_calls.append(grace_seconds)
+        lambda grace_seconds=1.0, **_kwargs: stop_calls.append(grace_seconds)
         or {"terminated": True, "pid": 4321, "quiesced": True},
     )
 
@@ -560,6 +560,64 @@ def test_supervisor_releases_completed_leftover_execution(
     assert recovered.active_task_id == "PORTAL-071"
     assert recovered.active_worktree_path == ""
     assert recovered.active_attempt == 0
+
+
+def test_supervisor_retains_completed_leftover_when_fence_is_not_quiesced(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "todo.md").write_text(
+        "# Agent Todos\n\n"
+        "## PORTAL-071 Already landed\n\n"
+        "- Status: completed\n"
+        "- Completion: validated-implementation\n"
+        "- Priority: P1\n"
+        "- Track: evaluation\n"
+        "- Outputs: src/app.py\n",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(
+        active_task_id="PORTAL-071",
+        active_task_title="Already landed",
+        active_attempt=3,
+        active_phase="implementing",
+        active_worktree_path=str(repo / "worktrees" / "portal-071-attempt-3"),
+        active_branch="implementation/portal-071-attempt-3",
+        implementation_in_progress=True,
+    ).save(state_path)
+    before = state_path.read_bytes()
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+            task_prefix="## PORTAL-",
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: {
+            "terminated": False,
+            "pid": 4321,
+            "quiesced": False,
+            "remaining_pid": 4321,
+        },
+    )
+
+    result = supervisor.release_completed_leftover_execution()
+
+    assert result["released"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "completed_task_leftover_not_quiesced"
+    assert state_path.read_bytes() == before
 
 
 def test_supervisor_does_not_stop_live_incomplete_task(

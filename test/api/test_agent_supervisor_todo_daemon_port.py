@@ -10827,7 +10827,7 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_terminate_managed_daemon_tree",
-        lambda: cleanup_calls.append(True)
+        lambda **_kwargs: cleanup_calls.append(True)
         or {
             "pid": 4321,
             "terminated": True,
@@ -10839,7 +10839,7 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_reconcile_interrupted_implementation_after_shutdown",
-        lambda: reconciliation_calls.append(True)
+        lambda **_kwargs: reconciliation_calls.append(True)
         or {
             "reconciled": True,
             "blocked": False,

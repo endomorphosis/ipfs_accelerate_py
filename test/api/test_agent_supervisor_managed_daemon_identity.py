@@ -124,7 +124,7 @@ def test_direct_managed_daemon_identity_requires_direct_child(
     }
 
 
-def test_authority_arg_change_fences_recorded_owned_daemon_before_replacement(
+def test_authority_arg_change_blocks_without_signalling_or_replacement(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -154,46 +154,26 @@ def test_authority_arg_change_fences_recorded_owned_daemon_before_replacement(
     monkeypatch.setattr(supervisor_module, "process_is_running", lambda value: int(value) == pid)
     monkeypatch.setattr(supervisor_module, "process_command_line", lambda _pid: " ".join(old_command))
     monkeypatch.setattr(supervisor_module, "read_process_command_argv", lambda _pid: old_command)
-    liveness = iter(
-        (
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.ALIVE,
-            OwnerLiveness.DEAD,
-        )
-    )
     monkeypatch.setattr(
         supervisor_module,
         "supervised_child_identity_liveness",
-        lambda _identity: next(liveness),
+        lambda _identity: OwnerLiveness.ALIVE,
     )
-    fence_calls: list[dict[str, object]] = []
-
-    def fake_terminate(pid_value: int, **kwargs: object) -> bool:
-        assert pid_path.exists()
-        assert supervisor._managed_daemon_identity_path().exists()
-        fence_calls.append({"pid": pid_value, **kwargs})
-        return True
-
-    monkeypatch.setattr(supervisor_module, "terminate_pid_tree", fake_terminate)
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "authority-drifted daemon was signalled"
+        ),
+    )
 
     result = supervisor.ensure_managed_daemon_pid_file()
 
-    assert result["repaired"] is True
-    assert result["reason"] == "obsolete_owned_managed_daemon_fenced"
-    assert fence_calls == [
-        {
-            "pid": pid,
-            "grace_seconds": 1.0,
-            "freeze_first": True,
-            "require_gone": True,
-            "owned_process_group_id": pid,
-            "expected_root_start_time_ticks": 1234,
-        }
-    ]
-    assert not pid_path.exists()
-    assert not supervisor._managed_daemon_identity_path().exists()
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "managed_daemon_authority_identity_mismatch"
+    assert pid_path.read_text(encoding="utf-8").strip() == str(pid)
+    assert supervisor._managed_daemon_identity_path().exists()
 
 
 def test_pid_reuse_identity_mismatch_never_signals(
@@ -375,6 +355,16 @@ def test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch
     )
     monkeypatch.setattr(
         supervisor_module,
+        "read_process_birth",
+        lambda value: ProcessBirthIdentity(
+            pid=int(value),
+            start_time_ticks=1234,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
         "terminate_pid_tree",
         lambda *_args, **_kwargs: pytest.fail("owned live daemon was signalled"),
     )
@@ -423,6 +413,16 @@ def test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch(
         supervisor_module,
         "read_process_command_argv",
         lambda value: desired if int(value) == identity_pid else None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda value: ProcessBirthIdentity(
+            pid=int(value),
+            start_time_ticks=1234,
+            boot_id="boot-test",
+            parent_pid=17,
+        ),
     )
     monkeypatch.setattr(
         supervisor_module,
@@ -758,6 +758,72 @@ def test_shared_launcher_reaps_direct_child_when_identity_capture_fails(
 
     assert process.terminate_calls == 1
     assert process.returncode == -15
+
+
+def test_shared_launcher_reaps_direct_child_on_system_exit_during_identity_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pid_path = repo / "state" / "child.pid"
+    identity_path = repo / "state" / "child.identity.json"
+
+    class FakeProcess:
+        pid = 450
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.terminate_calls = 0
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        def wait(self, timeout: float | None = None) -> int:
+            assert timeout is not None
+            assert self.returncode is not None
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "launch_process_child",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "write_supervised_child_identity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit(143)),
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        launch_supervised_child(
+            SupervisedChildSpec(
+                repo_root=repo,
+                command=("python", "worker.py"),
+                log_path=repo / "child.log",
+                child_pid_path=pid_path,
+                env={
+                    SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(identity_path),
+                    SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                        {"repo_root": str(repo)}
+                    ),
+                },
+            )
+        )
+
+    assert raised.value.code == 143
+    assert process.terminate_calls == 1
+    assert process.returncode == -15
+    assert not pid_path.exists()
+    assert not identity_path.exists()
     assert not pid_path.exists()
     assert not identity_path.exists()
 

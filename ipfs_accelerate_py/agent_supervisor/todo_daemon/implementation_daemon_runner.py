@@ -1297,6 +1297,12 @@ def bind_database_portal_execution_from_args(
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
     )
+    bridge_binder = getattr(daemon, "bind_database_portal_bridge", None)
+    if not callable(bridge_binder):
+        raise RuntimeError(
+            "production database daemon does not expose Portal recovery binding"
+        )
+    bridge_binder(bridge)
     return bridge
 
 
@@ -1379,6 +1385,10 @@ def build_portal_implementation_daemon_from_args(
             task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
             strict_task_sharding=bool(
                 getattr(parsed, "strict_task_sharding", False)
+            ),
+            control_store_id=str(program.store_id if program else ""),
+            control_store_generation=str(
+                program.store_generation if program else ""
             ),
         )
         bind_database_portal_execution_from_args(
@@ -1533,6 +1543,10 @@ def build_database_implementation_daemon_from_args(
         task_shard_index=int(getattr(parsed, "task_shard_index", 0) or 0),
         strict_task_sharding=bool(
             getattr(parsed, "strict_task_sharding", False)
+        ),
+        control_store_id=str(program.store_id if program else ""),
+        control_store_generation=str(
+            program.store_generation if program else ""
         ),
     )
 
