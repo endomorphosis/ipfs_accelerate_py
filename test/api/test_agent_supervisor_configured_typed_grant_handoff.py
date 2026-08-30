@@ -4252,6 +4252,13 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert action == "fail"
     assert reason == "authoritative_status_recovery_grace_exhausted"
     assert edges == 3
+    live_worker = {**unhealthy, "lane_active_worker_count": 1}
+    assert aseh_operator._post_admission_health_action(
+        live_worker,
+        prior_available=True,
+        current_available=False,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
 
     both_unavailable = {
         "healthy": False,
