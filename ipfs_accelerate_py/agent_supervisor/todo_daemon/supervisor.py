@@ -61,7 +61,7 @@ _PYTHON_EXECUTABLE_RE = re.compile(
     r"python(?:[0-9]+(?:\.[0-9]+)*)?(?:\.exe)?",
     re.IGNORECASE,
 )
-_SEALED_RUNNER_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+_SEALED_RUNNER_MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 _PROTECTED_ATTEMPT_LATCH_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "protected-implementation-attempt-latch@1"
