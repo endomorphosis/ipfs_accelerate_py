@@ -323,6 +323,78 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
     }
 
 
+def test_proven_dead_owner_status_can_seed_a_new_sealed_endpoint(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path.resolve()
+    database = repo / "state" / "control.duckdb"
+    database.parent.mkdir(parents=True)
+    database.write_bytes(b"exact-store-file")
+    state_dir = database.parent / "quack-owner"
+    old_program = _managed_program(state_dir, port=25123)
+    _write_owner_status(
+        repo=repo,
+        program=old_program,
+        birth=ProcessBirthIdentity(
+            pid=999_999_999,
+            start_time_ticks=1,
+            boot_id="test-boot",
+        ),
+        generation=7,
+        lifecycle="failed",
+    )
+    entry = repo / "quack-owner-entry.py"
+    entry.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    new_program = _managed_program(state_dir, port=25124)
+
+    lifecycle = runner.ManagedLocalQuackOwnerLifecycle(
+        program=new_program,
+        repo_root=repo,
+        python_executable=sys.executable,
+        owner_entry_path=entry,
+    )
+
+    assert lifecycle.program.quack_endpoint == "quack:127.0.0.1:25124"
+    with pytest.raises(
+        runner._StableArtifactReadError,
+        match="differs from the configured authority",
+    ):
+        lifecycle._status_identity()
+
+
+def test_live_owner_status_cannot_migrate_to_another_endpoint(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path.resolve()
+    database = repo / "state" / "control.duckdb"
+    database.parent.mkdir(parents=True)
+    database.write_bytes(b"exact-store-file")
+    state_dir = database.parent / "quack-owner"
+    old_program = _managed_program(state_dir, port=25123)
+    birth = read_process_birth(os.getpid())
+    assert birth is not None
+    _write_owner_status(
+        repo=repo,
+        program=old_program,
+        birth=birth,
+        generation=7,
+        lifecycle="ready",
+    )
+    entry = repo / "quack-owner-entry.py"
+    entry.write_text("raise SystemExit(0)\n", encoding="utf-8")
+
+    with pytest.raises(
+        runner._StableArtifactReadError,
+        match="differs from the configured authority",
+    ):
+        runner.ManagedLocalQuackOwnerLifecycle(
+            program=_managed_program(state_dir, port=25124),
+            repo_root=repo,
+            python_executable=sys.executable,
+            owner_entry_path=entry,
+        )
+
+
 def test_managed_owner_watchdog_fences_and_does_not_swallow_shutdown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

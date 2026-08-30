@@ -1239,7 +1239,9 @@ class ManagedLocalQuackOwnerLifecycle:
         self.health_check_interval_seconds = float(
             policy.health_check_interval_seconds
         )
-        _baseline_status, baseline_identity = self._status_identity()
+        _baseline_status, baseline_identity = self._status_identity(
+            allow_proven_dead_endpoint_migration=True
+        )
         self._repository_id = str(
             baseline_identity.get("repository_id") or ""
         ).strip()
@@ -1247,17 +1249,14 @@ class ManagedLocalQuackOwnerLifecycle:
             raise DatabaseProgramConfigError(
                 "managed Quack recovery requires an exact repository identity"
             )
-        baseline = self._read_owner_observation(authenticate_alive=False)
-        if baseline.binding is None:
-            raise DatabaseProgramConfigError(
-                "managed Quack recovery requires a prior exact store identity"
-            )
+        self._birth_from_identity(baseline_identity)
+        baseline_binding = self._binding_from_identity(baseline_identity)
         self._watchdog = QuackOwnerWatchdog(
             lock_path=self.owner_state_dir / ".managed-owner-recovery.lock",
             start_owner=self._start_owner,
             readiness_probe=self._readiness_probe,
             expected_binding=QuackOwnerBinding(
-                **baseline.binding.to_dict()
+                **baseline_binding.to_dict()
             ),
             observe_owner=lambda: self._read_owner_observation(
                 authenticate_alive=True
@@ -1326,7 +1325,11 @@ class ManagedLocalQuackOwnerLifecycle:
         if handle.startswith("env://"):
             os.environ.pop(handle[len("env://") :], None)
 
-    def _status_identity(self) -> tuple[dict[str, Any], dict[str, Any]]:
+    def _status_identity(
+        self,
+        *,
+        allow_proven_dead_endpoint_migration: bool = False,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         status_path = self.owner_state_dir / "quack-state-server.status.json"
         status, _evidence = _read_stable_regular_json(
             status_path,
@@ -1340,7 +1343,7 @@ class ManagedLocalQuackOwnerLifecycle:
                 "managed owner status has no exact identity"
             )
         expected_repository_id = getattr(self, "_repository_id", "")
-        if (
+        base_identity_differs = (
             status.get("schema")
             != "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
             or status.get("interface") != "QuackStateServer@1"
@@ -1354,18 +1357,55 @@ class ManagedLocalQuackOwnerLifecycle:
             or identity.get("store_id") != self.program.store_id
             or str(identity.get("schema_revision") or "")
             != self.program.schema_revision
-            or identity.get("listen_uri") != self.program.quack_endpoint
             or identity.get("secret_handle")
             != self.program.endpoint_secret_handle
             or (
                 expected_repository_id
                 and identity.get("repository_id") != expected_repository_id
             )
+        )
+        endpoint_differs = (
+            identity.get("listen_uri") != self.program.quack_endpoint
+        )
+        if base_identity_differs or (
+            endpoint_differs
+            and not (
+                allow_proven_dead_endpoint_migration
+                and self._proven_dead_endpoint_migration(status, identity)
+            )
         ):
             raise _StableArtifactReadError(
                 "managed owner status differs from the configured authority"
             )
         return status, identity
+
+    def _proven_dead_endpoint_migration(
+        self,
+        status: Mapping[str, Any],
+        identity: Mapping[str, Any],
+    ) -> bool:
+        """Admit an old endpoint only as dead store-identity evidence."""
+
+        from ..merge.worktree_lifecycle import OwnerLiveness, owner_liveness
+
+        old_endpoint = str(identity.get("listen_uri") or "")
+        endpoint_pattern = re.compile(
+            r"quack:(?://)?(?:127\.0\.0\.1|localhost):(\d{1,5})",
+            flags=re.IGNORECASE,
+        )
+        if (
+            status.get("lifecycle") not in {"failed", "stopped"}
+            or old_endpoint == self.program.quack_endpoint
+            or endpoint_pattern.fullmatch(old_endpoint) is None
+            or endpoint_pattern.fullmatch(self.program.quack_endpoint) is None
+        ):
+            return False
+        try:
+            birth = self._birth_from_identity(identity)
+            liveness = owner_liveness(birth)
+        except (OSError, TypeError, ValueError, _StableArtifactReadError):
+            return False
+        return liveness is OwnerLiveness.DEAD
 
     @staticmethod
     def _birth_from_identity(identity: Mapping[str, Any]):
