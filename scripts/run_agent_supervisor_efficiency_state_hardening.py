@@ -91680,9 +91680,11 @@ def _await_initial_health(
 def _recent_live_work(receipt: Mapping[str, Any]) -> bool:
     """True when a census miss must not SIGTERM claimed or just-progressed work.
 
-    Grok often runs in Docker, so descendant census is 0 while the task is
-    still in_progress. Startup grace and the last-progress window already
-    bound that exception.
+    Grok often runs in a worktree or an opt-in container, so descendant
+    census is 0 while the task is still in_progress. Startup grace and the
+    last-progress window already bound that exception. When the current
+    authority sample is missing (replica refresh FAILED), a prior sample's
+    in_progress count is still live work.
     """
 
     active_workers = receipt.get("lane_active_worker_count")
@@ -91693,6 +91695,17 @@ def _recent_live_work(receipt: Mapping[str, Any]) -> bool:
         # Claimed/in_progress board rows are live work even when Grok is
         # inside a container/worktree the descendant census cannot see.
         return True
+    samples = receipt.get("samples")
+    if isinstance(samples, list):
+        for sample in samples:
+            if not isinstance(sample, Mapping):
+                continue
+            authority = sample.get("authority")
+            if not isinstance(authority, Mapping):
+                continue
+            sample_active = authority.get("active_count")
+            if type(sample_active) is int and sample_active > 0:
+                return True
     if receipt.get("startup_grace_active") is True:
         return True
     last_progress = receipt.get("last_progress_at")
@@ -91740,8 +91753,15 @@ def _post_admission_health_action(
     if receipt.get("scheduler_alive") is not True:
         return "fail", "authoritative_scheduler_not_live", unhealthy_edges
     if receipt.get("owner_ready") is not True:
+        if _recent_live_work(receipt):
+            # Replica-refresh FAILED withdraws lifecycle readiness while
+            # claimed in_progress shards are still implementing. Do not
+            # SIGTERM that live work inside the last-progress window.
+            return "continue", "", 0
         return "fail", "authoritative_owner_not_ready", unhealthy_edges
     if receipt.get("broker_ready") is not True:
+        if _recent_live_work(receipt):
+            return "continue", "", 0
         return "fail", "authoritative_broker_not_ready", unhealthy_edges
     if not prior_available and not current_available:
         if _recent_live_work(receipt):
