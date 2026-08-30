@@ -557,6 +557,7 @@
   "runtime_root_rebind_successor_materialization_cid": "sha256:b3cf8f504196c577b59680581d3f81e6e20b856d7691e9ddcf1d2c107d4c455a",
   "accepted_source_retry_successor_materialization_cid": "sha256:5e6e324e41d424a4303ef774f91879301041827a6cc7e94d494ee69ea1a0e405",
   "source_binding_successor_materialization_cid": "sha256:5a7b909f10c6d9163f0e5e1460f3ac067ad7e7c5fe0d72c827d9ece94cd82628",
+  "automatic_stall_recovery_successor_materialization_cid": "sha256:386c6e031daa7e3d3aad125ebe0ca3e0a10ea34e545500a5a61af9b96ec87f91",
   "native_duckdb_preload_successor_materialization_cid": "sha256:81e35c368ef5951208ebe93d4b7b319f898ae174fae2731204182505cbc0b946",
   "multi_lane_sidecar_reopen_successor_materialization_cid": "sha256:75325d3da85a0d75bc9255f4af0fdee4843db27dd3f4b4e30ab99ab453a235e8",
   "multi_lane_successor_materialization_cid": "sha256:d0b30e096c1164b8106386bb0e55d8de0237740ae601e79d1056661da3bdeb25",

@@ -1463,7 +1463,81 @@ the controls are committed, validated, materialized receipt-last, and checked
 may generation-24 Quack start, preflight, implementation dry-run, and the four
 implementation lanes resume.
 
-## 34. Current limitations at seal time
+## 34. M26 stopped-runtime automatic recovery successor
+
+Generation 24 ran four strict lanes and landed two supervisor merge commits.
+SAWM-010 has an accepted completion and source-transition receipt. SAWM-012's
+source reached the target branch, but the pre-repair portal path then produced
+a false terminal failure; the source is preserved as landed evidence and is
+explicitly not completion authority. SAWM-008 and SAWM-012 remain canonically
+blocked at revisions 7 and 4 with their exact failure settlements. M26 rearms
+only those two failures through separate operator control CASes and matching
+coordination rearms. It never marks either task complete.
+
+The stopped M25 pair also contains two expired-by-wall-clock coordination
+preparations for SAWM-006 and SAWM-015. Both task controls remained unchanged
+(`todo@2` and `retrying@5`), neither claim reached a lane-local execution
+attempt or provider/effect record, and neither has a logical completion.
+M26 therefore uses the existing `expire_task_claim` authority on exact copied
+claims. It records `accepted/running@1 -> expired@2`, leaves each task ready,
+and creates no fabricated failure, task CAS, or completion receipt.
+
+The bounded supervisor repair adds durable watchdog recovery for missing
+workers, timeouts, log stalls, provider quota pauses, retryable validation and
+merge failures, expired preparations, and stale coordination. Recovery remains
+lease/fence and revision guarded, carries typed maintenance evidence, preserves
+failed attempts, and cannot approve its own work. Receipt-backed source
+continuation uses the existing configured-board capsule verifier: every later
+first-parent successor must be an exact two-parent supervisor merge and must
+resolve a unique canonical Quack completion carrying
+`accepted-source-transition@3`. Bare descendants remain forbidden.
+The repair is sealed as commit
+`bd39c5eee1f607ff23bc8632aae1933253fc9e05`, tree
+`cd805dd1ae95c8f76009f9d257179d74fc23230c`, directly above the frozen
+M25 source head. Its ten exact source/test blobs are bound in the M26 control
+authority; the watchdog test is an addition and the other nine paths are
+modifications.
+
+M25 stopped cleanly at `2026-08-30T15:38:01Z`. M26 freezes the exact control
+SHA-256
+`94dacc7d8e101a51b8d387ea42ccf4bdbd785155e3943107972896b4438a841c`,
+coordination SHA-256
+`bbf7369915f2008f6d6373ca7a350b7606484bca14092817031ed81d630064b4`,
+stopped-status SHA-256
+`e96b5fafb16fce45551ebb83c7085168b85fd6e4c7e73081c785c94e39eafce9`,
+and migration-receipt SHA-256
+`626c43fd4eb8b9a5735748e1f1a8571dbd5a028f486e31b7527470aa36cc670b`.
+The stale read replica stays historical and is not copied. Worktrees, lane
+sidecars, state, merge queues, logs, credentials, owner state, locks, and WALs
+are likewise not copied.
+
+M26 appends plan revision 27, one operator evidence node, and exactly two task
+status events, producing control event cursor 262. Coordination receives two
+expiry and two rearm events, producing event count 2421 and projection digest
+`sha256:96b801b636e67c62ec35bc6338ba4b39494b0d6c8ca7439e8d88f4beab60c085`.
+The fresh runtime contract is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m26/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m26/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m26
+Quack port    24069
+generation    25
+plan revision 27
+event cursor  262
+coord events  2421
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+provider cap  at least 4
+```
+
+Key presence selects
+`automatic_stall_recovery_successor_materialization` before M25 on every
+protected control surface. Partial, malformed, CID-divergent, or source-chain
+divergent declarations fail closed. The materializer publishes the pair before
+its non-authoritative receipt marker and preserves every prior task definition,
+accepted completion, failure settlement, source transition, and world fact.
+
+## 35. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
