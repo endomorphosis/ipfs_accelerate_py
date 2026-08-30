@@ -3180,10 +3180,14 @@ def _docker_mount(
 ) -> list[str]:
     """Return one Docker bind-mount argument without invoking a shell."""
 
-    target = destination or source
+    try:
+        resolved_source = source.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Docker create mount source is unavailable") from exc
+    target = destination if destination is not None else resolved_source
     fields = [
         "type=bind",
-        f"src={source}",
+        f"src={resolved_source}",
         f"dst={target}",
     ]
     if read_only:
@@ -3603,17 +3607,23 @@ def _docker_create_command_identity(
             resolved_source = source.resolve(strict=True)
         except OSError as exc:
             raise ValueError("Docker create mount source is unavailable") from exc
+        docker_sockets = {
+            Path("/var/run/docker.sock"),
+            Path("/run/docker.sock"),
+        }
         if (
             not source.is_absolute()
             or resolved_source != source.absolute()
             or not destination.is_absolute()
-            or destination
-            in {
-                Path("/var/run/docker.sock"),
-                Path("/run/docker.sock"),
-            }
+            or source in docker_sockets
+            or resolved_source in docker_sockets
         ):
-            raise ValueError("Docker create mount path is unsafe")
+            # Covering the host socket with a provider-mask destination is
+            # required isolation. Binding the real socket as a source is not.
+            raise ValueError(
+                "Docker create mount path is unsafe "
+                f"src={source} dst={destination}"
+            )
         writable_workspace = bool(
             resolved_source == resolved_cwd and destination == resolved_cwd
         )
