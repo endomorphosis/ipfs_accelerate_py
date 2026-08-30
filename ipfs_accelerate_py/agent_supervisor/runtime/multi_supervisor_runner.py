@@ -1418,15 +1418,34 @@ class ManagedLocalQuackOwnerLifecycle:
                 raise _StableArtifactReadError(
                     "authenticated Quack transport returned no live binding"
                 )
-            binding = self._binding_from_identity(raw_binding)
+            transport_binding = self._binding_from_identity(raw_binding)
         finally:
             connection.close()
-        _status, identity = self._status_identity()
+        status, identity = self._status_identity()
         status_birth = self._birth_from_identity(identity)
+        binding = self._binding_from_identity(identity)
+        storage_schema_fingerprint = str(
+            status.get("storage_schema_fingerprint") or ""
+        ).strip()
+        # The state-server identity deliberately commits to the SHA-256 digest
+        # of the schema profile, while the storage mutation binding carries the
+        # canonical schema CID from control_plane_metadata.  They are distinct
+        # identity layers.  Authenticate each against its corresponding status
+        # field instead of requiring the digest and CID strings to be equal.
+        transport_identity_matches = (
+            transport_binding.store_id == binding.store_id
+            and transport_binding.schema_revision == binding.schema_revision
+            and transport_binding.database_uuid == binding.database_uuid
+            and transport_binding.generation == binding.generation
+            and transport_binding.server_id == binding.server_id
+            and bool(storage_schema_fingerprint)
+            and transport_binding.schema_fingerprint
+            == storage_schema_fingerprint
+        )
         if (
             not process_births_match(owner.process_birth, status_birth)
             or str(identity.get("process_birth_id") or "") != owner.birth_id
-            or self._binding_from_identity(identity) != binding
+            or not transport_identity_matches
             or identity.get("status") != "ready"
         ):
             raise _StableArtifactReadError(
@@ -1451,6 +1470,11 @@ class ManagedLocalQuackOwnerLifecycle:
                 )
             try:
                 return self._authenticated_readiness_once(owner)
+            except SupervisorRunInterrupted:
+                # The process signal handler uses this typed exception to leave
+                # startup immediately.  Treating it as transient readiness
+                # would make SIGTERM wait through every startup retry window.
+                raise
             except Exception:  # noqa: BLE001 - bounded readiness retry
                 if time.monotonic() >= deadline:
                     raise
@@ -1469,6 +1493,8 @@ class ManagedLocalQuackOwnerLifecycle:
             _status, identity = self._status_identity()
             birth = self._birth_from_identity(identity)
             binding = self._binding_from_identity(identity)
+        except SupervisorRunInterrupted:
+            raise
         except Exception:  # malformed/absent status is not proof of death
             return QuackOwnerObservation(
                 process_birth=None,
@@ -1507,6 +1533,8 @@ class ManagedLocalQuackOwnerLifecycle:
                 adopted=True,
             )
             readiness = self._authenticated_readiness_once(owner)
+        except SupervisorRunInterrupted:
+            raise
         except Exception:
             return QuackOwnerObservation(
                 process_birth=birth,

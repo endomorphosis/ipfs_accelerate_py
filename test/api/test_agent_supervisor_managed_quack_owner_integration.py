@@ -88,6 +88,7 @@ def _write_owner_status(
         "repository_id": repository_id,
         "status": lifecycle,
     }
+    storage_schema_fingerprint = "baguqeera" + "2" * 56
     payload: dict[str, object] = {
         "schema": "ipfs_accelerate_py/agent-supervisor/quack-state-server@1",
         "interface": "QuackStateServer@1",
@@ -96,6 +97,7 @@ def _write_owner_status(
         "state_dir": str(state_dir),
         "store_id": program.store_id,
         "secret_handle": program.endpoint_secret_handle,
+        "storage_schema_fingerprint": storage_schema_fingerprint,
         "identity": identity,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -237,8 +239,13 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
     )
     captured: dict[str, object] = {}
 
+    transport_binding = {
+        **identity,
+        "schema_fingerprint": "baguqeera" + "2" * 56,
+    }
+
     class _Connection:
-        _quack_mutation_binding = identity
+        _quack_mutation_binding = transport_binding
 
         def close(self) -> None:
             captured["closed"] = True
@@ -276,6 +283,11 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
 
     assert readiness.admitted is True
     assert readiness.binding.generation == 8
+    assert readiness.binding.schema_fingerprint == identity["schema_fingerprint"]
+    assert (
+        transport_binding["schema_fingerprint"]
+        != readiness.binding.schema_fingerprint
+    )
     assert lifecycle._repository_id == "repository:sealed-authority"
     assert captured == {
         "uri": program.quack_endpoint,
@@ -284,6 +296,32 @@ def test_concrete_owner_authenticates_by_handle_and_preserves_binding(
         "raw_state_token": None,
         "closed": True,
     }
+
+
+def test_managed_owner_readiness_does_not_swallow_shutdown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle, _program = _concrete_lifecycle(tmp_path)
+    birth = read_process_birth(os.getpid())
+    assert birth is not None
+    owner = SpawnedQuackOwner(
+        process=None,
+        process_birth=birth,
+        isolated_process_group=True,
+        adopted=True,
+    )
+    calls = {"count": 0}
+
+    def interrupt(_owner: SpawnedQuackOwner) -> AuthenticatedReadiness:
+        calls["count"] += 1
+        raise runner.SupervisorRunInterrupted("operator shutdown")
+
+    monkeypatch.setattr(lifecycle, "_authenticated_readiness_once", interrupt)
+
+    with pytest.raises(runner.SupervisorRunInterrupted, match="operator shutdown"):
+        lifecycle._readiness_probe(owner)
+    assert calls["count"] == 1
 
 
 def test_concrete_owner_spawn_reuses_repository_id_and_positive_environment(
