@@ -36084,6 +36084,20 @@ def test_aseh_r15_through_r38_sealed_contracts_and_r18_chain_are_memoized() -> N
     assert launch.count('"sealed_line_descendant"') >= 2
 
 
+def test_aseh_control_plane_archive_budget_covers_loaded_supervisor_tree() -> None:
+    from ipfs_accelerate_py.agent_implementation_route import (
+        _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES,
+        _AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
+        _SEALED_RUNNER_MAX_ARCHIVE_BYTES,
+    )
+
+    assert _AGENT_CONTROL_PLANE_MAX_FILE_BYTES >= 8 * 1024 * 1024
+    assert _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES >= 128 * 1024 * 1024
+    assert _SEALED_RUNNER_MAX_ARCHIVE_BYTES >= 128 * 1024 * 1024
+
+
 def test_aseh_strip_control_plane_group_other_write_drops_umask_bits(
     tmp_path: Path,
 ) -> None:
