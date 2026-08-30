@@ -14495,8 +14495,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 docker_fence_thread.join(timeout=6.0)
                 if docker_fence_thread.is_alive() or docker_fence_failures:
                     docker_lease.preserve_for_recovery = True
+                    detail = (
+                        str(docker_fence_failures[0])
+                        if docker_fence_failures
+                        else "capture thread still running"
+                    )
                     print(
-                        "Grok Docker kernel cleanup fence was not captured",
+                        "Grok Docker kernel cleanup fence was not captured: "
+                        + detail,
                         file=sys.stderr,
                     )
                     return 125
@@ -14553,8 +14559,14 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 docker_fence_thread.join(timeout=6.0)
                 if docker_fence_thread.is_alive() or docker_fence_failures:
                     docker_lease.preserve_for_recovery = True
+                    detail = (
+                        str(docker_fence_failures[0])
+                        if docker_fence_failures
+                        else "capture thread still running"
+                    )
                     print(
-                        "Grok Docker kernel cleanup fence was not captured",
+                        "Grok Docker kernel cleanup fence was not captured: "
+                        + detail,
                         file=sys.stderr,
                     )
                     return 125
